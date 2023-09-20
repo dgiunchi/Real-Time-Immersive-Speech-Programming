@@ -65,7 +65,7 @@ public class TestRoslyn : MonoBehaviour
 
     
 
-    public void RunCode()
+    public void RunCode(GameObject gameObjectTarget)
     {
         // Get the C# code from the input field
         //cSharpSource = "using UnityEngine;\r\n\r\npublic class ColorObject : MonoBehaviour\r\n{\r\n    private void Start()\r\n    {\r\n        // Create a new material with the desired color\r\n        Material material = new Material(Shader.Find(\"Standard\"));\r\n        material.color = Color.red;\r\n\r\n        // Assign the new material to the object\'s Renderer component\r\n        Renderer renderer = GetComponent<Renderer>();\r\n        if (renderer != null)\r\n        {\r\n            renderer.material = material;\r\n        }\r\n    }\r\n}\n\n";
@@ -89,7 +89,7 @@ public class TestRoslyn : MonoBehaviour
                         throw new Exception("Maze crawler code does not define a class. You must include one class definition of any name that inherits from 'RoslynCSharp.Example.MazeCrawler'");
                 }
 
-                ScriptProxy p = type.CreateInstance(GameObject.Find("Cube"));
+                ScriptProxy p = type.CreateInstance(gameObjectTarget);
                 if (p != null)
                 {
                     Debug.Log("Created instance");

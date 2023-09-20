@@ -13,7 +13,7 @@
     },
     "key":"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",
     "preprompt": "write a script in C# for Unity, so a class that inherits from MonoBehaviour. In your answer always write code between tag ```csharp and tag ```",
-    "prompt_suffix": "Use a Component name that does not conflict with previous used or default Component names from Unity. Do not use interaction from devices such as keyboard or mouse. Use ASCII code and not unicode in the answer. When creating a new object, give it a nique name in order to find it in future requests. Create only one MonoBehaviour",
+    "prompt_suffix": "Use a Component name that does not conflict with previous used or default Component names from Unity. Do not use interaction from devices such as keyboard or mouse. Use ASCII code and not unicode in the answer. Create only one MonoBehaviour",
     "roomserver":
     {
         "tcp":
