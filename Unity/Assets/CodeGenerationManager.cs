@@ -37,6 +37,7 @@ public class CodeGenerationManager : MonoBehaviour
     public TestRoslyn testRoslyn;
 
     public GameObject targetObject;
+    public GameObject sceneController;
 
     [Serializable]
     private struct Message
@@ -81,15 +82,16 @@ public class CodeGenerationManager : MonoBehaviour
 
     public void ProcessMessage(ReferenceCountedSceneGraphMessage data)
     {
+        Message message = data.FromJson<Message>();
+        Debug.Log("Res: " + message.data.ToString());
+        testRoslyn.SetCodeString(message.data.ToString());
+
         if (targetObject != null)
         {
-            Message message = data.FromJson<Message>();
-            Debug.Log("Res: " + message.data.ToString());
-            testRoslyn.SetCodeString(message.data.ToString());
             testRoslyn.RunCode(targetObject);
         }
-        else { 
-            Debug.Log("No target object");
+        else {
+            testRoslyn.RunCode(sceneController);
         }
         
     }

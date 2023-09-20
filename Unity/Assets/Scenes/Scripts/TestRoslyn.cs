@@ -39,6 +39,8 @@ public class TestRoslyn : MonoBehaviour
         foreach (AssemblyReferenceAsset reference in assemblyReferences)
             domain.RoslynCompilerService.ReferenceAssemblies.Add(reference);
 
+        domain.InitializeCompilerService();
+
     }
 
     // Update is called once per frame

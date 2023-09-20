@@ -79,10 +79,12 @@ public class SelectObjectRay : MonoBehaviour
 
         if (lastSelectedObject != null)
         {
-            lastSelectedObject.GetComponent<Outline>().enabled = false; 
+            //lastSelectedObject.GetComponent<Outline>().enabled = false; 
+            renderer.material.color = Color.green;
         }
 
-        obj.GetComponent<Outline>().enabled = true;
+        //obj.GetComponent<Outline>().enabled = true;
+        renderer.material.color = Color.red;
         codeGenerationManager.targetObject = obj;
         lastSelectedObject = obj;
     }
@@ -139,7 +141,8 @@ public class SelectObjectRay : MonoBehaviour
         } else { 
             if (lastSelectedObject != null)
             {
-                lastSelectedObject.GetComponent<Outline>().enabled = false;
+                //lastSelectedObject.GetComponent<Outline>().enabled = false;
+                renderer.material.color = Color.green;
                 codeGenerationManager.targetObject = null;
             }
         }
@@ -149,11 +152,11 @@ public class SelectObjectRay : MonoBehaviour
     {
         if (raycasthitinfo.collider != null)
         {
-            var meshCollider = raycasthitinfo.collider as MeshCollider;
-            if (meshCollider != null)
+            var collider = raycasthitinfo.collider;
+            if (collider != null)
             {
-                Debug.Log("hit " + meshCollider.gameObject.name);
-                return meshCollider.gameObject;
+                Debug.Log("hit " + collider.gameObject.name);
+                return collider.gameObject;
             }
         }
         return null;
