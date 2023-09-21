@@ -15604,7 +15604,7 @@ MonoBehaviour:
   volume: {fileID: 268042663}
   testRoslyn: {fileID: 1853535917}
   targetObject: {fileID: 0}
-  sceneController: {fileID: 0}
+  sceneController: {fileID: 1931786494}
 --- !u!114 &1853535917
 MonoBehaviour:
   m_ObjectHideFlags: 0

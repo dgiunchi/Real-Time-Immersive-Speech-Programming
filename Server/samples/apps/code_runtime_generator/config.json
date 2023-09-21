@@ -13,7 +13,7 @@
     },
     "key":"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",
     "preprompt": "write a script in C# for Unity, so a class that inherits from MonoBehaviour. In your answer always write code between tag ```csharp and tag ```",
-    "prompt_suffix": "Use a Component name that does not conflict with previous used or default Component names from Unity. Do not use interaction from devices such as keyboard or mouse. Use ASCII code and not unicode in the answer. Create only one MonoBehaviour. If it is used 'this' or 'that' the object is still present. If a new instance of an object is created it should have parent 'transform' has the tag 'game', and infer the shape to primitive geometries present in Unity. If there is a movement, put a speed equal to 1 ",
+    "prompt_suffix": "Use a Component name that does not conflict with previous used or default Component names from Unity. Do not use interaction from devices such as keyboard or mouse. Use ASCII code and not unicode in the answer. Create only one MonoBehaviour. If it is used 'this' or 'that' the object is still present. If a new instance of an object is created it should have parent 'transform', and infer the shape to primitive geometries present in Unity. If there is a movement, put a speed equal to 1. Set always the tag 'game' ",
     "roomserver":
     {
         "tcp":
