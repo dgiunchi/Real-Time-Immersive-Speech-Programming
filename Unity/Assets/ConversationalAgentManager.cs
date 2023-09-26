@@ -82,6 +82,6 @@ public class ConversationalAgentManager : MonoBehaviour
         Message message = data.FromJson<Message>();
         Debug.Log("Res: " + message.data.ToString());
         testRoslyn.SetCodeString(message.data.ToString());
-        testRoslyn.RunCode();
+        //testRoslyn.RunCode();
     }
 }
