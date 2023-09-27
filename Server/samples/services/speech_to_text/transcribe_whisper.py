@@ -183,7 +183,7 @@ def recognize_from_stdin():
                         if(text == ""):
                             continue
                         
-                        text += "[" + args.output_name + "]"
+                        #text += "[" + args.output_name + "]"
                         print(">{}".format(text))
                         
                         with open(label_file, 'w') as f:
