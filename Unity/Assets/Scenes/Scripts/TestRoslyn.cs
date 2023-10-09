@@ -5,6 +5,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Trivial.Mono.Cecil.Cil;
+using Ubiq.Samples;
+using Ubiq.XR;
 using UnityEngine;
 using UnityEngine.UI;
 using static System.Net.Mime.MediaTypeNames;
@@ -17,10 +19,17 @@ public class TestRoslyn : MonoBehaviour
     private ScriptDomain domain = null;
     // Start is called before the first frame update
 
+    public HandController handController;
+    
+    public Canvas canvas;
+    public GameObject connectionPanel;
+    public GameObject text;
 
     public AssemblyReferenceAsset[] assemblyReferences;
     private string cSharpSource;
     private static readonly Regex csharpScriptRegex = new Regex(@"`csharp\n(.*?)\n`", RegexOptions.Multiline);
+
+    bool codevis = false;
     // Methods
     /// <summary>
     /// Called by Unity.
@@ -41,12 +50,33 @@ public class TestRoslyn : MonoBehaviour
 
         domain.InitializeCompilerService();
 
+        handController.TriggerPress.AddListener(showCodePanel);
     }
 
     // Update is called once per frame
     void Update()
     {
+        if (Input.GetKeyUp(KeyCode.V))
+        {
+            codevis = !codevis;
+            showCodePanel(codevis);
+        }
+    }
 
+    public void showCodePanel(bool show)
+    {
+        if (show)
+        {
+            canvas.gameObject.SetActive(show);
+            connectionPanel.SetActive(!show);
+        } else
+        {
+            connectionPanel.SetActive(!show);
+            canvas.gameObject.SetActive(show);
+        }
+        
+        
+        
     }
 
     public static string Extract(string text)
@@ -109,6 +139,9 @@ public class TestRoslyn : MonoBehaviour
         else
         {
         }
+
+        //display the code
+        text.GetComponent<UnityEngine.UI.Text>().text = cSharpSource;
     }
 
     
