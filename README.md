@@ -48,3 +48,50 @@ The `Genie/samples` folder contains a number of samples that demonstrate how to 
 - [**Transcription**](Server/samples/apps/transcription/README.md): transcribes audio streams of users in a room
 
 For a demo video of the samples, please refer to the [Ubiq-Genie demo video](https://youtu.be/cGz0z9BIgQk).
+
+
+## to do list
+
+- add components (done)
+
+- add objects (done)
+
+- track all the objects in the scene
+
+- track all components in the scene
+
+- replace object (versioning)
+
+- replace component (versioning)
+
+- a custom component defined in framework needs to be known by compiler
+
+- positioning in the hierarchy and the 3D space
+
+- change values of public variables of the components (include linking objects)
+
+- make an interaction between two (or more) objects (need a visible ID for the object known by the model)
+
+- ​improve prompt programming (probably needs to be dynamic; prompt needs to change during the session)
+
+- add interaction for checking only when use activate the recording session
+
+- upgrade to ubiq 0.5.0
+
+ 
+
+General Aspects to be tackled
+
+- clashing between valid instructions, conflict handler 
+
+- how to deal with code that does not work or not doing the required action (but can build, which visual feedback? how to edit?)
+
+- security (we can inject what we want in a Quest)
+
+- for the collaborative aspect, make all networked objects
+    -- collaborative dynamic programming
+       - the object has to be networked for the parameters need to be shared (gpt this for creating a prompt https://ucl-vr.github.io/ubiq/creatinganetworkedobject/)
+       - no clashing
+
+
+- store the created scene  (do not know if it is possible - versioning) (and so restore)
