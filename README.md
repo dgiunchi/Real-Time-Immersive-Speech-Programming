@@ -38,10 +38,13 @@ git clone git@github.com:UCL-VR/ubiq-genie.git Ubiq-Genie
 
 5. Read the README file in the corresponding folder in the `Server/samples/apps` folder for further setup instructions. For a list of available samples, see the [Samples](#samples) section below.
 
-## Documentation
-For more information on how to use Ubiq-Genie, please refer to the README file in the `Genie` folder.
+## Code Runtime Generator
 
-## Samples from Ubiq Genie
+The `Server/samples` folder contains a number of samples that demonstrate how to use Ubiq-Genie and so DreamcodeVR. For more information on how to use these samples, please refer to the README files in the corresponding folders. Currently, the following collaborative samples are available:
+
+- [**DreameCodeVR**](Server/samples/apps/code_runtime_generator/README.md): generates a code that will be used to build procedural behaviours inside the 3D environment.
+
+## Other Samples from Ubiq Genie
 
 The `Genie/samples` folder contains a number of samples that demonstrate how to use Ubiq-Genie. For more information on how to use these samples, please refer to the README files in the corresponding folders. Currently, the following collaborative samples are available:
 
