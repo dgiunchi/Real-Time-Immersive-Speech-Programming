@@ -2,7 +2,7 @@
 DreamCodeVR is a Unity project developed at UCL based on Ubiq Social VR Platform and Ubiq Genie (plugin for backend services). It is designed to assist users, irrespective of their coding skills, in crafting basic object behavior in VR environments by translating spoken language into
 code within an active application. 
 
-![Illustrations of two sample demos available in Ubiq-Genie](header.png)
+![Illustrations of DreamcodeVR concept](DCVR.png)
 
 Ubiq-Genie is a framework that enables you to build server-assisted collaborative mixed reality applications with Unity using the [Ubiq](https://ubiq.online) framework.
 
