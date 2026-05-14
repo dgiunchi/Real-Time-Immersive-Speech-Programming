@@ -201,7 +201,7 @@ public class StoryTellerManager : MonoBehaviour
         UnityWebRequest www = UnityWebRequestTexture.GetTexture(serverBaseUrl + name);
         www.SendWebRequest().completed += operation =>
         {
-            if (www.isNetworkError || www.isHttpError)
+            if (www.result == UnityWebRequest.Result.ConnectionError || www.result == UnityWebRequest.Result.ProtocolError)
             {
                 Debug.Log(www.error);
                 onComplete(null,null);

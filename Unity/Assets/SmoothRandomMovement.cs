@@ -30,7 +30,7 @@ public class SmoothRandomMovement : MonoBehaviour
     };
 
     List<CaptureAnimation> animations = new List<CaptureAnimation>();
-    CaptureAnimation animation = new CaptureAnimation();
+    CaptureAnimation anim= new CaptureAnimation();
 
     public HandController rec_leftHand;
     public HandController rec_rightHand;
@@ -127,12 +127,12 @@ public class SmoothRandomMovement : MonoBehaviour
 
     void LoadAnimations()
     {
-        animation = new CaptureAnimation();
+        anim = new CaptureAnimation();
         foreach (KeyValuePair<string, string> value in files_00)
         {
-            LoadAnimation(ref animation, value);
+            LoadAnimation(ref anim, value);
         }
-        animations.Add(animation);
+        animations.Add(anim);
 
     }
 
@@ -220,22 +220,22 @@ public class SmoothRandomMovement : MonoBehaviour
             if (stopPressedRight)
             {
                 Debug.Log("Save file in here: " + Application.dataPath);
-                string positionsString = string.Join("\n", animation.rec_positionLeftHand.Select(p => p.ToString("f4")));
+                string positionsString = string.Join("\n", anim.rec_positionLeftHand.Select(p => p.ToString("f4")));
                 File.WriteAllText(Application.dataPath + "/test00_lh_positions.txt", positionsString);
 
-                string orientationString = string.Join("\n", animation.rec_orientationLeftHand.Select(p => p.ToString("f4")));
+                string orientationString = string.Join("\n", anim.rec_orientationLeftHand.Select(p => p.ToString("f4")));
                 File.WriteAllText(Application.dataPath + "/test00_lh_orientations.txt", orientationString);
 
-                positionsString = string.Join("\n", animation.rec_positionRightHand.Select(p => p.ToString("f4")));
+                positionsString = string.Join("\n", anim.rec_positionRightHand.Select(p => p.ToString("f4")));
                 File.WriteAllText(Application.dataPath + "/test00_rh_positions.txt", positionsString);
 
-                orientationString = string.Join("\n", animation.rec_orientationRightHand.Select(p => p.ToString("f4")));
+                orientationString = string.Join("\n", anim.rec_orientationRightHand.Select(p => p.ToString("f4")));
                 File.WriteAllText(Application.dataPath + "/test00_rh_orientations.txt", orientationString);
 
-                positionsString = string.Join("\n", animation.rec_positionHead.Select(p => p.ToString("f4")));
+                positionsString = string.Join("\n", anim.rec_positionHead.Select(p => p.ToString("f4")));
                 File.WriteAllText(Application.dataPath + "/test00_h_positions.txt", positionsString);
 
-                orientationString = string.Join("\n", animation.rec_orientationHead.Select(p => p.ToString("f4")));
+                orientationString = string.Join("\n", anim.rec_orientationHead.Select(p => p.ToString("f4")));
                 File.WriteAllText(Application.dataPath + "/test00_h_orientations.txt", orientationString);
 
                 stopPressedRight = false;
@@ -243,21 +243,21 @@ public class SmoothRandomMovement : MonoBehaviour
 
             if (isPressedRight)
             {
-                animation.rec_positionLeftHand.Add(rec_leftHand.gameObject.transform.localPosition);
-                animation.rec_orientationLeftHand.Add(rec_leftHand.gameObject.transform.localRotation);
+                anim.rec_positionLeftHand.Add(rec_leftHand.gameObject.transform.localPosition);
+                anim.rec_orientationLeftHand.Add(rec_leftHand.gameObject.transform.localRotation);
 
-                animation.rec_positionRightHand.Add(rec_rightHand.gameObject.transform.localPosition);
-                animation.rec_orientationRightHand.Add(rec_rightHand.gameObject.transform.localRotation);
+                anim.rec_positionRightHand.Add(rec_rightHand.gameObject.transform.localPosition);
+                anim.rec_orientationRightHand.Add(rec_rightHand.gameObject.transform.localRotation);
 
-                animation.rec_positionHead.Add(rec_head.gameObject.transform.localPosition);
-                animation.rec_orientationHead.Add(rec_head.gameObject.transform.localRotation);
+                anim.rec_positionHead.Add(rec_head.gameObject.transform.localPosition);
+                anim.rec_orientationHead.Add(rec_head.gameObject.transform.localRotation);
             }
         }
         else
         {
             if(Input.GetKey(KeyCode.L))
             {
-                long size = animation.rec_orientationHead.Count;
+                long size = anim.rec_orientationHead.Count;
                 float step_size = gestureLength / size;
                 if (count > size - 1)
                 {

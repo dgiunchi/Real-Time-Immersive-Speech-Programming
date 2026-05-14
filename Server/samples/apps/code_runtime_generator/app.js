@@ -29,16 +29,20 @@ class CodeGeneration extends ApplicationController {
     }
 
     definePipeline() {
-        // Step 1: When we receive audio data from a peer, split it into a peer UUID and audio data, and send it to the transcription service
+        // Step 1: When we receive audio data from a peer, split it into a peer UUID and PCM audio, and send it to the transcription service
         this.components.audioReceiver.on("data", (data) => {
             // Split the data into a peer_uuid (36 bytes) and audio data (rest)
             const peerUUID = data.message.subarray(0, 36).toString();
-            const audio_data = data.message.subarray(36, data.message.length);
-            // Send the audio data to the transcription service
-            this.components.transcriptionService.sendToChildProcess(
+            const pcmChunk = Buffer.from(data.message.subarray(36, data.message.length));
+
+            const sent = this.components.transcriptionService.addAudioChunk(
                 peerUUID,
-                JSON.stringify(audio_data.toJSON()) + "\n"
+                pcmChunk
             );
+
+            if (!sent) {
+                console.warn("Dropped audio chunk before STT HTTP session could accept peer " + peerUUID);
+            }
         });
 
         // Step 2: When we receive a transcription from the transcription service, send it to the image generation service
@@ -46,7 +50,7 @@ class CodeGeneration extends ApplicationController {
             // roomClient.peers is a Map of all peers in the room
             // Get the peer with the given identifier
             const peer = this.roomClient.peers.get(identifier);
-            const peerName = peer.properties.get("ubiq.samples.social.name");
+            const peerName = peer ? peer.properties.get("ubiq.samples.social.name") : identifier;
 
             var response = data.toString();
             var threshold = 10;
