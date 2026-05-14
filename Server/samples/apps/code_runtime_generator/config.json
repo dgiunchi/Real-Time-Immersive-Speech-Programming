@@ -8,8 +8,8 @@
             "region": "uksouth"
         },
         "openAI": {
-            "key": "",
-            "model": "gpt-4o-mini"
+            "key": "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",
+            "model": "gpt-5.5"
         }
     },
     "key":"",
