@@ -15,9 +15,9 @@ using Ubiq.Logging.Utf8Json;
 [RequireComponent(typeof(LineRenderer))]
 public class SelectObjectRay : MonoBehaviour
 {
-    private NetworkContext context;
     private RoomClient roomClient;
     public NetworkId networkId = new NetworkId(93);
+    [SerializeField] private bool cloneForOtherHands = true;
 
     public bool isSelecting;
     public GameObject selectedObject;
@@ -46,24 +46,76 @@ public class SelectObjectRay : MonoBehaviour
 
     private void Start()
     {
-        context = NetworkScene.Register(this, networkId);
+        if (cloneForOtherHands)
+        {
+            CreateMissingHandSelectors();
+        }
 
-        foreach (IPrimaryButtonProvider item in GetComponentsInParent<MonoBehaviour>().Where(c => c is IPrimaryButtonProvider))
+        foreach (IPrimaryButtonProvider item in GetComponentsInParent<MonoBehaviour>(true).Where(c => c is IPrimaryButtonProvider))
         {
             item.PrimaryButtonPress.AddListener(UpdateSelect);
             item.PrimaryButtonPress.AddListener(listenForCommand);
         }
 
         // Get HandController in parent
-        handController = GetComponentsInParent<MonoBehaviour>().Where(c => c is HandController).FirstOrDefault() as HandController;
-        handController.TriggerPress.AddListener(listenForCommand);
+        handController = GetComponentsInParent<MonoBehaviour>(true).Where(c => c is HandController).FirstOrDefault() as HandController;
+        if (handController)
+        {
+            handController.TriggerPress.AddListener(listenForCommand);
+        }
+        else
+        {
+            Debug.LogWarning("SelectObjectRay could not find HandController parent.", this);
+        }
 
-        var roomClient = NetworkScene.Find(this).GetComponentInChildren<RoomClient>();
+        roomClient = NetworkScene.Find(this)?.GetComponentInChildren<RoomClient>();
+    }
+
+    private void CreateMissingHandSelectors()
+    {
+        foreach (var hand in FindObjectsOfType<HandController>(true))
+        {
+            if (hand.GetComponentInChildren<SelectObjectRay>(true))
+            {
+                continue;
+            }
+
+            var selector = new GameObject("Selector");
+            selector.transform.SetParent(hand.transform, false);
+
+            var lineRenderer = selector.AddComponent<LineRenderer>();
+            CopyLineRenderer(renderer, lineRenderer);
+
+            var ray = selector.AddComponent<SelectObjectRay>();
+            ray.cloneForOtherHands = false;
+            ray.networkId = networkId;
+            ray.codeGenerationManager = codeGenerationManager;
+            ray.genieMicrophoneCapture = genieMicrophoneCapture;
+        }
+    }
+
+    private void CopyLineRenderer(LineRenderer source, LineRenderer target)
+    {
+        target.sharedMaterial = source.sharedMaterial;
+        target.useWorldSpace = true;
+        target.startWidth = source.startWidth;
+        target.endWidth = source.endWidth;
+        target.startColor = source.startColor;
+        target.endColor = source.endColor;
+        target.numCornerVertices = source.numCornerVertices;
+        target.numCapVertices = source.numCapVertices;
+        target.textureMode = source.textureMode;
+        target.alignment = source.alignment;
+        target.shadowCastingMode = source.shadowCastingMode;
+        target.receiveShadows = source.receiveShadows;
     }
 
     public void listenForCommand(bool listen)
     {
-        genieMicrophoneCapture.gain = listen ? 1.0f : 0.0f;
+        if (genieMicrophoneCapture)
+        {
+            genieMicrophoneCapture.gain = listen ? 1.0f : 0.0f;
+        }
     }
 
     public void UpdateSelect(bool selectActivation)

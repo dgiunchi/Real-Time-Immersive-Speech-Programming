@@ -9,5 +9,5 @@ EditorBuildSettings:
     path: Assets/Demos/DynamicCompiler/DynamicCompiler.unity
     guid: a0e68bc371518bc49886dcaaf217899d
   m_configObjects:
-    Unity.XR.Oculus.Settings: {fileID: 11400000, guid: 24a3a85085b0f4146b13bc10c67f6cf0, type: 2}
-    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 29e13b271405ff8418f24ca6577e7950, type: 2}
+    Unity.XR.Oculus.Settings: {fileID: 11400000, guid: 2e6b683044e1a7940a059e54596d95d3, type: 2}
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 283602848f59c3c4f954700546bbb1b7, type: 2}
