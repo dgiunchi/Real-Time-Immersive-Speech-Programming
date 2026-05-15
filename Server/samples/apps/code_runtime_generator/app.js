@@ -5,6 +5,15 @@ const fs = require("fs");
 const nconf = require("nconf");
 
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
+const DATA_DIR = "data";
+const INPUT_FILE = `${DATA_DIR}/input.txt`;
+
+function ensureRuntimeDataFiles() {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(INPUT_FILE)) {
+        fs.writeFileSync(INPUT_FILE, "");
+    }
+}
 
 class CodeGeneration extends ApplicationController {
     constructor(configFile = "config.json") {
@@ -12,8 +21,10 @@ class CodeGeneration extends ApplicationController {
     }
 
     registerComponents() {
+        ensureRuntimeDataFiles();
+
         // A FileServer to serve image files to clients
-        this.components.fileServer = new FileServer("data");
+        this.components.fileServer = new FileServer(DATA_DIR);
 
         // A MessageReader to read audio data from peers based on fixed network ID
         this.components.audioReceiver = new MessageReader(this.scene, 98);
@@ -73,18 +84,9 @@ class CodeGeneration extends ApplicationController {
                 // Remove all newlines from the response
                 response = response.replace(/(\r\n|\n|\r)/gm, "");
                 
-                const filename = "data/input.txt";
-                const exists = fs.existsSync(filename);
-
-                // If the file exists, append the data
-                if (exists) {
-                    fs.appendFileSync(filename, response);
-                    console.log(`File ${filename} appended successfully.`);
-                } else {
-                    // If the file does not exist, create it and write the data
-                    fs.writeFileSync(filename, response);
-                }
-
+                ensureRuntimeDataFiles();
+                fs.appendFileSync(INPUT_FILE, response);
+                console.log(`File ${INPUT_FILE} appended successfully.`);
 
                 if (response.startsWith(">")) {
                     response = response.slice(1); // Slice off the leading '>' character

@@ -11,6 +11,8 @@ start = -1
 end   = -1
 
 pattern = r'```csharp(.*?)```'
+DATA_DIR = "data"
+RESPONSE_FILE = os.path.join(DATA_DIR, "response.txt")
 
 def get_max_output_tokens():
     return int(os.environ.get("OPENAI_MAX_COMPLETION_TOKENS") or os.environ.get("OPENAI_MAX_TOKENS") or "1000")
@@ -58,7 +60,8 @@ def request_response(message_log, model):
         print(f"[CodeGenerationService] OpenAI request failed: {exc}", file=sys.stderr, flush=True)
         return message_log, False
     
-    with open(os.path.join("data", "response.txt"), "a") as file:
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(RESPONSE_FILE, "a") as file:
         file.write("\n==========\n")
         file.write(response.choices[0].message['content'])
     
