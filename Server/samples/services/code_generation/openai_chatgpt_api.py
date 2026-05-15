@@ -12,13 +12,48 @@ end   = -1
 
 pattern = r'```csharp(.*?)```'
 
+def get_max_output_tokens():
+    return int(os.environ.get("OPENAI_MAX_COMPLETION_TOKENS") or os.environ.get("OPENAI_MAX_TOKENS") or "1000")
+
+def uses_max_completion_tokens(model):
+    normalized = model.lower().replace(" ", "-")
+    return normalized.startswith(("gpt-5", "o1", "o3", "o4"))
+
+def create_chat_completion(model, message_log):
+    params = {
+        "model": model,
+        "messages": message_log,
+    }
+
+    if uses_max_completion_tokens(model):
+        params["max_completion_tokens"] = get_max_output_tokens()
+    else:
+        params["max_tokens"] = get_max_output_tokens()
+        params["temperature"] = 0.7
+
+    try:
+        return openai.ChatCompletion.create(**params)
+    except Exception as exc:
+        text = str(exc)
+
+        if "max_tokens" in text and "max_completion_tokens" in text:
+            params.pop("max_tokens", None)
+            params["max_completion_tokens"] = get_max_output_tokens()
+            return openai.ChatCompletion.create(**params)
+
+        if "temperature" in text:
+            params.pop("temperature", None)
+            return openai.ChatCompletion.create(**params)
+
+        raise
+
 def request_response(message_log, model):
     if not openai.api_key:
         print("[CodeGenerationService] Missing OpenAI API key. Set OPENAI_API_KEY or config.credentials.openAI.key.", file=sys.stderr, flush=True)
         return message_log, False
 
     try:
-        response = openai.ChatCompletion.create(model=model, messages=message_log, max_tokens=1000, temperature=0.7)
+        response = create_chat_completion(model, message_log)
     except Exception as exc:
         print(f"[CodeGenerationService] OpenAI request failed: {exc}", file=sys.stderr, flush=True)
         return message_log, False

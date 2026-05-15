@@ -2,6 +2,36 @@
 
 Ubiq-Genie is a framework that enables you to build server-assisted collaborative mixed reality applications with Unity using the [Ubiq](https://ubiq.online) framework.
 
+## Local Setup
+
+Install Node dependencies from the `Server` folder:
+
+```powershell
+npm install
+```
+
+Create the Python virtual environment used by sample services:
+
+```powershell
+cd samples
+py -3.12 -m venv .\venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Run the DreamCodeVR code generation sample:
+
+```powershell
+$env:OPENAI_API_KEY="sk-proj-your-real-key"
+$env:OPENAI_MODEL="gpt-5.5"
+$env:STT_HTTP_URL="http://130.136.2.161:50101/stt/transcribe"
+cd apps\code_runtime_generator
+node app.js
+```
+
+Runtime data and local dependencies are intentionally ignored by Git: `node_modules`, `samples/venv`, Python `__pycache__`, and sample `data/input.txt` / `data/response.txt`.
+
 Ubiq-Genie has a modular architecture designed to facilitate the integration of new services and the ability to update or replace individual services without affecting the entire system. The architecture consists of three main components: the Unity scene, applications, and services.
 
 ## System Architecture

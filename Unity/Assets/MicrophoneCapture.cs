@@ -12,9 +12,13 @@ using Ubiq.Samples;
 using Ubiq.Voip;
 using Ubiq.Voip.Implementations;
 using Ubiq.Voip.Implementations.Dotnet;
+using Ubiq.XR;
 
 public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 {
+    private const string RecordingStartMessage = "__STT_CONTROL__:start";
+    private const string RecordingStopMessage = "__STT_CONTROL__:stop";
+
     public bool sendToServer = true;
     public float gain = 1.0f;
     public PlaybackStats lastFrameStats { get; private set; }
@@ -24,6 +28,9 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private RoomClient roomClient;
     private IDotnetVoipSource microphoneInput;
     private G722AudioDecoder decoder = new G722AudioDecoder();
+    private HandController recordingHand;
+    private bool recordingEventsBound;
+    private bool isRecording;
 
     void Start()
     {
@@ -35,6 +42,11 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         if (microphoneInput != null)
         {
             microphoneInput.OnAudioSourceEncodedSample -= SendAudioToServer;
+        }
+
+        if (recordingHand != null)
+        {
+            recordingHand.TriggerPress.RemoveListener(SetRecording);
         }
     }
 
@@ -58,13 +70,43 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
                 microphoneInput.OnAudioSourceEncodedSample += SendAudioToServer;
             }
         }
+
+        if (!recordingEventsBound)
+        {
+            BindLeftTrigger();
+        }
+    }
+
+    private void BindLeftTrigger()
+    {
+        foreach (var hand in FindObjectsOfType<HandController>())
+        {
+            if (hand.Left)
+            {
+                recordingHand = hand;
+                recordingHand.TriggerPress.AddListener(SetRecording);
+                recordingEventsBound = true;
+                return;
+            }
+        }
+    }
+
+    private void SetRecording(bool recording)
+    {
+        if (recording == isRecording)
+        {
+            return;
+        }
+
+        isRecording = recording;
+        SendControlMessage(recording ? RecordingStartMessage : RecordingStopMessage);
     }
 
     private void SendAudioToServer(uint durationRtpUnits, byte[] sample)
     {
         // lastFrameStats
 
-        if (sendToServer) {
+        if (sendToServer && isRecording) {
             // Debug.Log("Sending audio to server");
             // Decode the sample from G722 to PCM
             short[] decodedSampleShort = decoder.Decode(sample);
@@ -80,19 +122,39 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             byte[] decodedSampleByte = new byte[decodedSampleShort.Length * sizeof(short)];
             Buffer.BlockCopy(decodedSampleShort, 0, decodedSampleByte, 0, decodedSampleByte.Length);
 
-            // Get the client UUID
-            byte[] clientUUID = System.Text.Encoding.UTF8.GetBytes(roomClient.Me.uuid);
-
-            // Create a message that fits the client UUID and the decoded sample
-            var message = ReferenceCountedSceneGraphMessage.Rent(decodedSampleByte.Length + clientUUID.Length);
-
-            // Copy the client UUID and the decoded sample into the message
-            clientUUID.CopyTo(new Span<byte>(message.bytes, message.start, clientUUID.Length));
-            decodedSampleByte.CopyTo(new Span<byte>(message.bytes, message.start + clientUUID.Length, decodedSampleByte.Length));
-
-            // Send the message to the server with a fixed network ID
-            context.Send(message);
+            SendPayloadToServer(decodedSampleByte);
         }
+    }
+
+    private void SendControlMessage(string controlMessage)
+    {
+        if (!sendToServer)
+        {
+            return;
+        }
+
+        SendPayloadToServer(System.Text.Encoding.UTF8.GetBytes(controlMessage));
+    }
+
+    private void SendPayloadToServer(byte[] payload)
+    {
+        if (!roomClient || roomClient.Me == null)
+        {
+            return;
+        }
+
+        // Get the client UUID
+        byte[] clientUUID = System.Text.Encoding.UTF8.GetBytes(roomClient.Me.uuid);
+
+        // Create a message that fits the client UUID and payload
+        var message = ReferenceCountedSceneGraphMessage.Rent(payload.Length + clientUUID.Length);
+
+        // Copy the client UUID and payload into the message
+        clientUUID.CopyTo(new Span<byte>(message.bytes, message.start, clientUUID.Length));
+        payload.CopyTo(new Span<byte>(message.bytes, message.start + clientUUID.Length, payload.Length));
+
+        // Send the message to the server with a fixed network ID
+        context.Send(message);
     }
 
     public void ProcessMessage(ReferenceCountedSceneGraphMessage msg)
