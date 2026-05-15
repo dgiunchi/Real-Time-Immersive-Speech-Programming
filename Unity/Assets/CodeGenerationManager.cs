@@ -11,7 +11,6 @@ using System.Text;
 using Ubiq.Samples;
 using Ubiq.Voip;
 using Ubiq.Voip.Implementations;
-using Ubiq.Voip.Implementations.Dotnet;
 
 public class CodeGenerationManager : MonoBehaviour
 {

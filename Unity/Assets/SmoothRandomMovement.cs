@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.IO;
 using System.Linq;
+using System;
 using Ubiq.XR;
 
 public class SmoothRandomMovement : MonoBehaviour
@@ -201,7 +202,7 @@ public class SmoothRandomMovement : MonoBehaviour
 
                     // Parse the values as doubles
                     float value1 = float.Parse(values[0]); //this is because the offset of the player
-                    float value2 = float.Parse(values[1]) - rec_head.transform.parent.parent.GetComponent<CameraOffsetter>().cameraOffset; //that should be removed when we record.
+                    float value2 = float.Parse(values[1]) - GetCameraOffset(); //that should be removed when we record.
                     float value3 = float.Parse(values[2]);
                     array.Add(new Vector3(value1, value2, value3));
                 }
@@ -289,5 +290,29 @@ public class SmoothRandomMovement : MonoBehaviour
 
             }
         }
+    }
+
+    private float GetCameraOffset()
+    {
+        if (!rec_head || !rec_head.transform.parent || !rec_head.transform.parent.parent)
+        {
+            return 0f;
+        }
+
+        var offsetter = rec_head.transform.parent.parent.GetComponent("CameraOffsetter") as MonoBehaviour;
+        if (!offsetter)
+        {
+            return 0f;
+        }
+
+        var type = offsetter.GetType();
+        var field = type.GetField("cameraOffset");
+        if (field != null)
+        {
+            return Convert.ToSingle(field.GetValue(offsetter));
+        }
+
+        var property = type.GetProperty("cameraOffset");
+        return property != null ? Convert.ToSingle(property.GetValue(offsetter, null)) : 0f;
     }
 }

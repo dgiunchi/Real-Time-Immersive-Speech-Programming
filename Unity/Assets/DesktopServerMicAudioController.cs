@@ -52,5 +52,6 @@ public class DesktopServerMicAudioController : MonoBehaviour
     public void listenForCommand(bool listen)
     {
         microphoneCapture.gain = listen ? 1 : 0;
+        microphoneCapture.SetRecording(listen);
     }
 }
