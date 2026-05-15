@@ -6,6 +6,80 @@ code within an active application.
 
 Dreamcode VR is based on Ubiq and Ubiq Genie. Ubiq is a framework developed by UCL for social VR experiments, and Ubiq-Genie is a framework that enables you to build server-assisted collaborative mixed reality applications with Unity using the [Ubiq](https://ubiq.online) framework.
 
+## Current Setup
+
+Use this section for the current DreamCodeVR fork.
+
+### Required tools
+
+- Unity `2021.3.16f1`
+- Node.js with npm
+- Python `3.12` recommended for `Server/samples/venv`
+- OpenAI API key for code generation
+- Access to faster-whisper STT HTTP at `http://130.136.2.161:50101`
+
+### Install server dependencies
+
+```powershell
+cd Server
+npm install
+```
+
+```powershell
+cd samples
+py -3.12 -m venv .\venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+If PowerShell blocks activation:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+### Configure API keys
+
+Set secrets in the same terminal before starting the server. Do not commit API keys.
+
+```powershell
+$env:OPENAI_API_KEY="sk-proj-your-real-key"
+$env:OPENAI_MODEL="gpt-5.5"
+$env:OPENAI_MAX_COMPLETION_TOKENS="1000"
+```
+
+Current STT uses faster-whisper HTTP, not Azure Speech STT. Defaults:
+
+```powershell
+$env:STT_HTTP_URL="http://130.136.2.161:50101/stt/transcribe"
+$env:STT_SAMPLE_RATE="16000"
+$env:STT_CHANNELS="1"
+$env:STT_BITS_PER_SAMPLE="16"
+$env:STT_REQUIRE_RECORDING="true"
+```
+
+Health check:
+
+```powershell
+curl.exe http://130.136.2.161:50101/health
+```
+
+### Run DreamCodeVR
+
+```powershell
+cd Server\samples\apps\code_runtime_generator
+node app.js
+```
+
+Then open the Unity project from the `Unity` folder with Unity `2021.3.16f1`, open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
+
+In VR, hold the left controller trigger to record speech. Release it to send the utterance to STT. Point at an object with the ray to select it; red ray means selected target.
+
+### Git hygiene
+
+Generated folders such as `Server/samples/venv`, `node_modules`, Unity `Library`, `Temp`, `obj`, runtime logs, and sample input/output files are ignored. If any of those are already tracked, remove them from Git with `git rm --cached` so they stay on disk but stop being pushed.
+
 ## Features
 
 Ubiq's goal is to enable your networked project. It includes message passing, room management, rendezvous and matchmaking, object spawning, shared binary blobs, multiple synchronisation models, lighweight XR interaction examples, customisable avatars and voice chat across Windows, Linux, Android, MacOS, and Javascript running in the browser.

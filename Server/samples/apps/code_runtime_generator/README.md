@@ -1,32 +1,112 @@
-# Code-Runtime Generator Sample
+# Code Runtime Generator Sample
 
-This guide provides instructions on using the Ubiq-Genie framework to create an application that enables collaborative interaction with a service that generates code that will be built and loaaded within a shared environment. The code is then attached to a selected object at on the fly the behaviour generated will be available in the scene.
+This sample runs DreamCodeVR: Unity sends selected-object context and push-to-talk audio to the Node app. The server transcribes speech with faster-whisper HTTP, sends recognized text to OpenAI, extracts one C# `MonoBehaviour`, and sends it back to Unity to compile and attach in the scene.
 
-## Prerequisites
+## Requirements
 
-An Azure Speech Services subscription is needed for this sample. You can create a free subscription [here](https://azure.microsoft.com/en-us/try/cognitive-services/?api=speech-services).
+- Node.js with npm
+- Python `3.12` recommended
+- Unity `2021.3.16f1`
+- OpenAI API key
+- Faster-whisper STT backend reachable at `http://130.136.2.161:50101`
 
-Before proceeding, ensure the Ubiq-Genie framework and the necessary dependencies for this sample are correctly installed. For further details, please see the [README](../../README.md) file in the Genie folder.
+Azure Speech STT is no longer used by this sample.
 
-## Running the Sample
+## Install
 
-Follow these steps to run the sample:
+From the repo root:
 
-1. Open a terminal and navigate to the `Server/samples/apps/code_runtime_generator` directory. Ensure the Python virtual environment in the `samples` directory is activated (e.g., `source venv/bin/activate`).
-2. Update the `key` and `serviceRegion` variables in `config.json` to match your Azure Speech Services subscription key and region.
-3. Execute the following command:
+```powershell
+cd Server
+npm install
+```
 
-    ```bash
-    node app.js
-    ```
+Create the Python venv in `Server/samples/venv`:
 
-4. Launch Unity and navigate to the `Unity/Assets/Samples/Ubiq-Genie/DynamicCompiler` directory. Open the `DynamicCompiler.unity` scene.
-5. Check that the `Room Client` under the `Network Scene` object has the correct IP address and port for the server. If the server is running on the same machine as the Unity Editor, the IP address should be `localhost`.
-6. In the Unity Editor, press the `Play` button to launch the application.
-7. Speak into the microphone. The agent will respond to your queries and requests, facing you while speaking and employing simple gestures.
-    - On desktop, press and hold the space bar to record a voice command, releasing it to stop the recording. In VR, use the grip button to record a voice command, releasing it to stop the recording.
+```powershell
+cd samples
+py -3.12 -m venv .\venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
 
+If PowerShell blocks activation:
 
-## Support
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
 
-For any questions or issues, please use the Discussions tab on Github or send an email to [Daniele Giunchi](mailto:d.giunchi@ucl.ac.uk).
+## Configure
+
+Set secrets and model config in the same terminal that starts `node app.js`:
+
+```powershell
+$env:OPENAI_API_KEY="sk-proj-your-real-key"
+$env:OPENAI_MODEL="gpt-5.5"
+$env:OPENAI_MAX_COMPLETION_TOKENS="1000"
+```
+
+Optional STT config:
+
+```powershell
+$env:STT_HTTP_URL="http://130.136.2.161:50101/stt/transcribe"
+$env:STT_SAMPLE_RATE="16000"
+$env:STT_CHANNELS="1"
+$env:STT_BITS_PER_SAMPLE="16"
+$env:STT_FINALIZE_AFTER_MS="1200"
+$env:STT_MIN_AUDIO_MS="300"
+$env:STT_MAX_AUDIO_MS="20000"
+$env:STT_REQUIRE_RECORDING="true"
+```
+
+Health check:
+
+```powershell
+curl.exe http://130.136.2.161:50101/health
+```
+
+Do not store real API keys in `config.json`. Environment variables override config values.
+
+## Run Server
+
+From `Server/samples/apps/code_runtime_generator`:
+
+```powershell
+node app.js
+```
+
+The app starts a Ubiq room server using `config.json`:
+
+- TCP port: `8009`
+- WSS port: `8010`
+- Unity STT input network id: `98`
+- Unity codegen output network id: `94`
+
+## Run Unity
+
+1. Open the `Unity` folder with Unity `2021.3.16f1`.
+2. Open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`.
+3. In the scene, select `Network Scene` / `Room Client`.
+4. Set server address to the machine running Node. Use `localhost` only when Unity Editor and server run on the same PC.
+5. Ensure TCP port is `8009`.
+6. Press Play, or build to device.
+
+## Usage Flow
+
+1. Point at a scene object tagged `game`.
+2. Red ray means current target object is selected.
+3. Hold left controller trigger to record speech.
+4. Release left trigger to send utterance to STT.
+5. Server receives plain text like `>make this sphere red`.
+6. Server strips `>`, sends command to OpenAI, receives C# code, and sends it to Unity.
+7. Unity compiles and attaches generated behaviour to the selected object.
+
+## Troubleshooting
+
+- `No connection` in headset: check `Room Client` IP/port and firewall. Device must reach the server PC on TCP `8009`.
+- `Missing OpenAI API key`: set `$env:OPENAI_API_KEY` before `node app.js`.
+- `Unsupported parameter: max_tokens`: use current code; GPT-5 models use `max_completion_tokens`.
+- `Incorrect API key`: key is invalid, expired, copied with typo, or from wrong OpenAI project.
+- STT returns nothing: check `curl.exe http://130.136.2.161:50101/health`, microphone permission, and left-trigger push-to-talk.
+- Command splits into pieces: hold left trigger for the whole sentence, then release once.
