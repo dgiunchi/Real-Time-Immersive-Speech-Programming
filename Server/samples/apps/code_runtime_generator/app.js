@@ -4,6 +4,8 @@ const {  CodeGenerationService, SpeechToTextService, FileServer } = require("ubi
 const fs = require("fs");
 const nconf = require("nconf");
 
+const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
+
 class CodeGeneration extends ApplicationController {
     constructor(configFile = "config.json") {
         super(configFile);
@@ -34,15 +36,27 @@ class CodeGeneration extends ApplicationController {
             // Split the data into a peer_uuid (36 bytes) and audio data (rest)
             const peerUUID = data.message.subarray(0, 36).toString();
             const pcmChunk = Buffer.from(data.message.subarray(36, data.message.length));
+            if (pcmChunk.length <= 64) {
+                const control = pcmChunk.toString("utf8");
+                if (control.startsWith(STT_CONTROL_PREFIX)) {
+                    const action = control.slice(STT_CONTROL_PREFIX.length);
+                    if (action === "start") {
+                        this.components.transcriptionService.recordingStart(peerUUID);
+                    } else if (action === "stop") {
+                        this.components.transcriptionService.recordingStop(peerUUID);
+                    } else {
+                        console.warn("Unknown STT control action from " + peerUUID + ": " + action);
+                    }
+                    return;
+                }
+            }
 
             const sent = this.components.transcriptionService.addAudioChunk(
                 peerUUID,
                 pcmChunk
             );
 
-            if (!sent) {
-                console.warn("Dropped audio chunk before STT HTTP session could accept peer " + peerUUID);
-            }
+            // False means no active push-to-talk recording; normal outside left-trigger hold.
         });
 
         // Step 2: When we receive a transcription from the transcription service, send it to the image generation service
