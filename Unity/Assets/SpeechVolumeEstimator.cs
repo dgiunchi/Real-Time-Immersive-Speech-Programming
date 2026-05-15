@@ -1,68 +1,67 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using Ubiq.Avatars;
 using Ubiq.Voip;
 
-// Genie port of SpeechIndicator to add EstimateCurrentVolume()
 public class SpeechVolumeEstimator : MonoBehaviour
 {
-    public float sampleSecondsPerIndicator;
+    public float sampleSecondsPerIndicator = 2.0f;
 
     private Ubiq.Avatars.Avatar avatar;
     private VoipAvatar voipAvatar;
+    private VoipPeerConnection subscribedPeerConnection;
 
-    private float currentFrameVolumeSum = 0;
-    private int currentFrameSampleCount = 0;
+    private float currentFrameVolumeSum;
+    private int currentFrameSampleCount;
     private float[] volumeFrames;
 
     public float EstimateCurrentVolume()
     {
-        if (volumeFrames != null)
-        {
-            return volumeFrames[0];
-        }
-        return 0;
+        return volumeFrames != null ? volumeFrames[0] : 0f;
     }
 
     private void Start()
     {
         avatar = GetComponentInParent<Ubiq.Avatars.Avatar>();
         voipAvatar = GetComponentInParent<VoipAvatar>();
+    }
 
-        var speechIndicator = GetComponent<Ubiq.Samples.SpeechIndicator>();
-        sampleSecondsPerIndicator = speechIndicator ? speechIndicator.sampleSecondsPerIndicator : 2.0f;
+    private void OnDestroy()
+    {
+        Unsubscribe();
     }
 
     private void LateUpdate()
     {
         if (!avatar || avatar.IsLocal || !voipAvatar)
         {
+            Unsubscribe();
             enabled = false;
             return;
         }
 
-        if (!voipAvatar.peerConnection)
+        if (voipAvatar.peerConnection != subscribedPeerConnection)
         {
-            return;
+            Unsubscribe();
+            subscribedPeerConnection = voipAvatar.peerConnection;
+            if (subscribedPeerConnection)
+            {
+                subscribedPeerConnection.playbackStatsPushed += OnPlaybackStatsPushed;
+            }
         }
-
-        UpdateSamples();
     }
 
-    private void UpdateSamples()
+    private void OnPlaybackStatsPushed(VoipPeerConnection.AudioStats stats)
     {
         if (volumeFrames == null)
         {
             volumeFrames = new float[1];
         }
 
-        var volumeWindowSampleCount = 0;
+        currentFrameVolumeSum += stats.volumeSum;
+        currentFrameSampleCount += stats.sampleCount;
 
-        var stats = voipAvatar.peerConnection.GetLastFramePlaybackStats();
-        currentFrameVolumeSum += stats.volume;
-        currentFrameSampleCount += stats.samples;
-        volumeWindowSampleCount = (int)(sampleSecondsPerIndicator * stats.sampleRate);
+        var sampleRate = stats.sampleRate > 0 ? stats.sampleRate : AudioSettings.outputSampleRate;
+        var volumeWindowSampleCount = Mathf.Max(1, Mathf.RoundToInt(sampleSecondsPerIndicator * sampleRate));
 
         if (currentFrameSampleCount > volumeWindowSampleCount)
         {
@@ -74,10 +73,19 @@ public class SpeechVolumeEstimator : MonoBehaviour
 
     private void PushVolumeSample(float sample)
     {
-        for (int i = volumeFrames.Length - 1; i >= 1; i--)
+        for (var i = volumeFrames.Length - 1; i >= 1; i--)
         {
-            volumeFrames[i] = volumeFrames[i-1];
+            volumeFrames[i] = volumeFrames[i - 1];
         }
         volumeFrames[0] = sample;
+    }
+
+    private void Unsubscribe()
+    {
+        if (subscribedPeerConnection)
+        {
+            subscribedPeerConnection.playbackStatsPushed -= OnPlaybackStatsPushed;
+            subscribedPeerConnection = null;
+        }
     }
 }

@@ -1,18 +1,11 @@
-using System.Collections;
-using System.Collections.Generic;
-using Ubiq.Networking;
-using UnityEngine;
-using Ubiq.Dictionaries;
-using Ubiq.Messaging;
-using Ubiq.Logging.Utf8Json;
-using Ubiq.Rooms;
 using System;
+using System.Collections.Generic;
 using System.Text;
-using Ubiq.Samples;
-using Ubiq.Voip;
-using Ubiq.Voip.Implementations;
-using Ubiq.Voip.Implementations.Dotnet;
-using Ubiq.XR;
+using Ubiq.Messaging;
+using Ubiq.Networking;
+using Ubiq.Rooms;
+using UnityEngine;
+using UnityEngine.XR;
 
 public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 {
@@ -21,77 +14,94 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 
     public bool sendToServer = true;
     public float gain = 1.0f;
+    public int sampleRate = 16000;
+    public int microphoneBufferSeconds = 1;
     public PlaybackStats lastFrameStats { get; private set; }
     public NetworkId networkId = new NetworkId(98);
+
     private NetworkContext context;
-
     private RoomClient roomClient;
-    private IDotnetVoipSource microphoneInput;
-    private G722AudioDecoder decoder = new G722AudioDecoder();
-    private HandController recordingHand;
-    private bool recordingEventsBound;
+    private AudioClip microphoneClip;
+    private int lastMicPosition;
     private bool isRecording;
+    private bool leftTriggerState;
+    private readonly List<InputDevice> leftControllers = new List<InputDevice>();
 
-    void Start()
+    private void Start()
     {
-        context = NetworkScene.Register(this,networkId);
+        context = NetworkScene.Register(this, networkId);
+        EnsureMicrophoneStarted();
     }
 
-    void OnDestroy()
+    private void OnDestroy()
     {
-        if (microphoneInput != null)
+        if (microphoneClip)
         {
-            microphoneInput.OnAudioSourceEncodedSample -= SendAudioToServer;
-        }
-
-        if (recordingHand != null)
-        {
-            recordingHand.TriggerPress.RemoveListener(SetRecording);
+            Microphone.End(null);
         }
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Update()
     {
         if (!roomClient)
         {
             roomClient = NetworkScene.Find(this)?.GetComponentInChildren<RoomClient>();
-            if (!roomClient)
-            {
-                return;
-            }
         }
 
-        if (microphoneInput == null)
-        {
-            microphoneInput = roomClient.GetComponentInChildren<IDotnetVoipSource>(includeInactive:true);
-            if (microphoneInput != null)
-            {
-                microphoneInput.OnAudioSourceEncodedSample += SendAudioToServer;
-            }
-        }
-
-        if (!recordingEventsBound)
-        {
-            BindLeftTrigger();
-        }
+        EnsureMicrophoneStarted();
+        UpdateRecordingFromLeftTrigger();
+        SendPendingMicrophoneSamples();
     }
 
-    private void BindLeftTrigger()
+    private void EnsureMicrophoneStarted()
     {
-        foreach (var hand in FindObjectsOfType<HandController>())
+#if UNITY_ANDROID && !UNITY_EDITOR
+        if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Microphone))
         {
-            if (hand.Left)
-            {
-                recordingHand = hand;
-                recordingHand.TriggerPress.AddListener(SetRecording);
-                recordingEventsBound = true;
-                return;
-            }
+            UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.Microphone);
+            return;
         }
+#endif
+        if (microphoneClip || Microphone.devices.Length == 0)
+        {
+            return;
+        }
+
+        microphoneClip = Microphone.Start(null, true, Mathf.Max(1, microphoneBufferSeconds), sampleRate);
+        lastMicPosition = Microphone.GetPosition(null);
     }
 
-    private void SetRecording(bool recording)
+    private void UpdateRecordingFromLeftTrigger()
+    {
+        var triggerPressed = GetLeftTriggerPressed();
+        if (triggerPressed == leftTriggerState)
+        {
+            return;
+        }
+
+        leftTriggerState = triggerPressed;
+        SetRecording(triggerPressed);
+    }
+
+    private bool GetLeftTriggerPressed()
+    {
+        leftControllers.Clear();
+        InputDevices.GetDevicesWithCharacteristics(
+            InputDeviceCharacteristics.Left | InputDeviceCharacteristics.Controller,
+            leftControllers);
+
+        foreach (var controller in leftControllers)
+        {
+            if (controller.TryGetFeatureValue(CommonUsages.triggerButton, out bool pressed) && pressed)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void SetRecording(bool recording)
     {
         if (recording == isRecording)
         {
@@ -99,31 +109,85 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         }
 
         isRecording = recording;
+        if (isRecording)
+        {
+            lastMicPosition = microphoneClip ? Microphone.GetPosition(null) : 0;
+        }
         SendControlMessage(recording ? RecordingStartMessage : RecordingStopMessage);
     }
 
-    private void SendAudioToServer(uint durationRtpUnits, byte[] sample)
+    private void SendPendingMicrophoneSamples()
     {
-        // lastFrameStats
-
-        if (sendToServer && isRecording) {
-            // Debug.Log("Sending audio to server");
-            // Decode the sample from G722 to PCM
-            short[] decodedSampleShort = decoder.Decode(sample);
-
-            var stats = new PlaybackStats();
-            stats.sampleCount = decodedSampleShort.Length;
-            foreach(var pcm in decodedSampleShort)
-            {
-                stats.volumeSum += Mathf.Abs(((float)pcm) / short.MaxValue);
-            }
-            lastFrameStats = stats;
-
-            byte[] decodedSampleByte = new byte[decodedSampleShort.Length * sizeof(short)];
-            Buffer.BlockCopy(decodedSampleShort, 0, decodedSampleByte, 0, decodedSampleByte.Length);
-
-            SendPayloadToServer(decodedSampleByte);
+        if (!sendToServer || !isRecording || !microphoneClip || roomClient == null || roomClient.Me == null)
+        {
+            return;
         }
+
+        var currentPosition = Microphone.GetPosition(null);
+        if (lastMicPosition < 0)
+        {
+            lastMicPosition = currentPosition;
+            return;
+        }
+
+        if (currentPosition < 0 || currentPosition == lastMicPosition)
+        {
+            return;
+        }
+
+        if (currentPosition > lastMicPosition)
+        {
+            SendSamples(lastMicPosition, currentPosition - lastMicPosition);
+        }
+        else
+        {
+            SendSamples(lastMicPosition, microphoneClip.samples - lastMicPosition);
+            if (currentPosition > 0)
+            {
+                SendSamples(0, currentPosition);
+            }
+        }
+
+        lastMicPosition = currentPosition;
+    }
+
+    private void SendSamples(int startSample, int sampleCount)
+    {
+        if (sampleCount <= 0)
+        {
+            return;
+        }
+
+        var samples = new float[sampleCount * microphoneClip.channels];
+        if (!microphoneClip.GetData(samples, startSample))
+        {
+            return;
+        }
+
+        var pcm = new byte[sampleCount * sizeof(short)];
+        var stats = new PlaybackStats();
+        var outputOffset = 0;
+        var channels = Mathf.Max(1, microphoneClip.channels);
+
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var mixed = 0f;
+            for (var channel = 0; channel < channels; channel++)
+            {
+                mixed += samples[(i * channels) + channel];
+            }
+            mixed = Mathf.Clamp(mixed / channels * gain, -1f, 1f);
+
+            var int16 = (short)Mathf.RoundToInt(mixed * short.MaxValue);
+            pcm[outputOffset++] = (byte)(int16 & 0xff);
+            pcm[outputOffset++] = (byte)((int16 >> 8) & 0xff);
+
+            stats.sampleCount++;
+            stats.volumeSum += Mathf.Abs(mixed);
+        }
+
+        lastFrameStats = stats;
+        SendPayloadToServer(pcm);
     }
 
     private void SendControlMessage(string controlMessage)
@@ -133,27 +197,22 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             return;
         }
 
-        SendPayloadToServer(System.Text.Encoding.UTF8.GetBytes(controlMessage));
+        SendPayloadToServer(Encoding.UTF8.GetBytes(controlMessage));
     }
 
     private void SendPayloadToServer(byte[] payload)
     {
-        if (!roomClient || roomClient.Me == null)
+        if (roomClient == null || roomClient.Me == null)
         {
             return;
         }
 
-        // Get the client UUID
-        byte[] clientUUID = System.Text.Encoding.UTF8.GetBytes(roomClient.Me.uuid);
-
-        // Create a message that fits the client UUID and payload
+        var clientUUID = Encoding.UTF8.GetBytes(roomClient.Me.uuid);
         var message = ReferenceCountedSceneGraphMessage.Rent(payload.Length + clientUUID.Length);
 
-        // Copy the client UUID and payload into the message
         clientUUID.CopyTo(new Span<byte>(message.bytes, message.start, clientUUID.Length));
         payload.CopyTo(new Span<byte>(message.bytes, message.start + clientUUID.Length, payload.Length));
 
-        // Send the message to the server with a fixed network ID
         context.Send(message);
     }
 

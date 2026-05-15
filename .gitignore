@@ -59,6 +59,7 @@ Server/config/local.json
 **/[Ll]ogs/
 **/[Uu]ser[Ss]ettings/
 **/[Mm]emoryCaptures/
+**/*~/
 
 # Unity generated IDE files
 *.csproj
