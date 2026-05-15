@@ -655,3 +655,133 @@ public class CircularMovement : MonoBehaviour
     }
 }
 ```
+
+==========
+```csharp
+using UnityEngine;
+
+public class RedFearPrimitiveComponentA73 : MonoBehaviour
+{
+    private GameObject fearShape;
+    private Material fearMaterial;
+
+    private void Awake()
+    {
+        gameObject.tag = "game";
+
+        fearShape = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        fearShape.name = "RedFearPrimitive";
+        fearShape.transform.SetParent(transform, false);
+        fearShape.tag = "game";
+
+        fearShape.transform.localPosition = Vector3.zero;
+        fearShape.transform.localRotation = Quaternion.identity;
+        fearShape.transform.localScale = Vector3.one;
+
+        Renderer renderer = fearShape.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            fearMaterial = new Material(Shader.Find("Standard"));
+            fearMaterial.color = Color.red;
+            renderer.material = fearMaterial;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (fearMaterial != null)
+        {
+            Destroy(fearMaterial);
+        }
+    }
+}
+```
+==========
+```csharp
+using UnityEngine;
+
+public class SelectedSphereRedApplierB91 : MonoBehaviour
+{
+    private Material redMaterial;
+
+    private void Awake()
+    {
+        gameObject.tag = "game";
+
+        Renderer targetRenderer = GetComponent<Renderer>();
+
+        if (targetRenderer == null)
+        {
+            GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.name = "SelectedRedSphere";
+            sphere.transform.SetParent(transform, false);
+            sphere.transform.localPosition = Vector3.zero;
+            sphere.transform.localRotation = Quaternion.identity;
+            sphere.transform.localScale = Vector3.one;
+            sphere.tag = "game";
+
+            targetRenderer = sphere.GetComponent<Renderer>();
+        }
+
+        if (targetRenderer != null)
+        {
+            redMaterial = new Material(Shader.Find("Standard"));
+            redMaterial.color = Color.red;
+            targetRenderer.material = redMaterial;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (redMaterial != null)
+        {
+            Destroy(redMaterial);
+        }
+    }
+}
+```
+==========
+
+==========
+```csharp
+using UnityEngine;
+
+public class PointedCubeForwardMoverC42 : MonoBehaviour
+{
+    private const float Speed = 1.0f;
+
+    private Transform cubeTransform;
+
+    private void Awake()
+    {
+        gameObject.tag = "game";
+
+        MeshFilter meshFilter = GetComponent<MeshFilter>();
+
+        if (meshFilter != null)
+        {
+            cubeTransform = transform;
+        }
+        else
+        {
+            GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = "PointedForwardCube";
+            cube.transform.SetParent(transform, false);
+            cube.transform.localPosition = Vector3.zero;
+            cube.transform.localRotation = Quaternion.identity;
+            cube.transform.localScale = Vector3.one;
+            cube.tag = "game";
+
+            cubeTransform = cube.transform;
+        }
+    }
+
+    private void Update()
+    {
+        if (cubeTransform != null)
+        {
+            cubeTransform.position += cubeTransform.forward * Speed * Time.deltaTime;
+        }
+    }
+}
+```
