@@ -1,0 +1,5 @@
+C:/Users/valla/UnityProjects/GitHub/Real-Time-Immersive-Speech-Programming/Unity/.utmp/RelWithDebInfo/2q6zop6f/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/valla/UnityProjects/GitHub/Real-Time-Immersive-Speech-Programming/Unity/.utmp/RelWithDebInfo/2q6zop6f/armeabi-v7a/CMakeFiles/rebuild_cache.dir
+C:/Users/valla/UnityProjects/GitHub/Real-Time-Immersive-Speech-Programming/Unity/.utmp/RelWithDebInfo/2q6zop6f/armeabi-v7a/FramePacing/CMakeFiles/swappywrapper.dir
+C:/Users/valla/UnityProjects/GitHub/Real-Time-Immersive-Speech-Programming/Unity/.utmp/RelWithDebInfo/2q6zop6f/armeabi-v7a/FramePacing/CMakeFiles/edit_cache.dir
+C:/Users/valla/UnityProjects/GitHub/Real-Time-Immersive-Speech-Programming/Unity/.utmp/RelWithDebInfo/2q6zop6f/armeabi-v7a/FramePacing/CMakeFiles/rebuild_cache.dir
