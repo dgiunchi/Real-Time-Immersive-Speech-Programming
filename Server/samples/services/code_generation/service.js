@@ -4,16 +4,18 @@ const { ServiceController } = require("ubiq-genie-components");
 
 function getPythonCommand() {
     const samplesRoot = path.resolve(__dirname, "..", "..");
+    const venvRoot = path.join(samplesRoot, "venv");
     const candidates = process.platform === "win32"
-        ? [path.join(samplesRoot, "venv", "Scripts", "python.exe")]
-        : [path.join(samplesRoot, "venv", "bin", "python")];
+        ? [{ command: path.join(venvRoot, "Scripts", "python.exe"), config: path.join(venvRoot, "pyvenv.cfg") }]
+        : [{ command: path.join(venvRoot, "bin", "python"), config: path.join(venvRoot, "pyvenv.cfg") }];
 
     for (const candidate of candidates) {
-        if (fs.existsSync(candidate)) {
-            return candidate;
+        if (fs.existsSync(candidate.command) && fs.existsSync(candidate.config)) {
+            return candidate.command;
         }
     }
 
+    console.warn("[CodeGenerationService] Python venv not found or incomplete. Recreate it with: cd Server\\samples; py -3.12 -m venv .\\venv; .\\venv\\Scripts\\Activate.ps1; pip install -r requirements.txt");
     return "python";
 }
 
@@ -33,7 +35,8 @@ class CodeGenerationService extends ServiceController {
             config.openAIModel ||
             "gpt-4o-mini";
 
-        this.registerChildProcess("default", getPythonCommand(), [
+        this.pythonCommand = getPythonCommand();
+        this.pythonOptions = [
             "-u",
             path.join(__dirname, "openai_chatgpt_api.py"),
             "--preprompt",
@@ -44,7 +47,23 @@ class CodeGenerationService extends ServiceController {
             apiKey,
             "--model",
             model
-        ]);
+        ];
+
+        this.ensureDefaultChildProcess();
+    }
+
+    ensureDefaultChildProcess() {
+        if (this.childProcesses.default == undefined) {
+            this.registerChildProcess("default", this.pythonCommand, this.pythonOptions);
+        }
+    }
+
+    sendToChildProcess(identifier, data) {
+        if (identifier === "default") {
+            this.ensureDefaultChildProcess();
+        }
+
+        return super.sendToChildProcess(identifier, data);
     }
 }
 
