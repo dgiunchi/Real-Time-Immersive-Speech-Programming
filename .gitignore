@@ -1,0 +1,102 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+.vs/
+*.swp
+*.swo
+
+# Logs / temp
+*.log
+*.tmp
+*.temp
+*.pid
+*.seed
+*.pid.lock
+logs/
+tmp/
+temp/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+config/local.json
+Server/config/local.json
+
+# Node
+**/node_modules/
+**/.npm/
+**/.yarn/cache/
+**/.yarn/unplugged/
+**/.yarn/build-state.yml
+**/.yarn/install-state.gz
+**/.pnp.*
+**/coverage/
+**/.nyc_output/
+**/dist/
+**/out/
+
+# Python
+**/__pycache__/
+*.py[cod]
+*$py.class
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+**/env/
+
+# Unity generated folders
+**/[Ll]ibrary/
+**/[Tt]emp/
+**/[Oo]bj/
+**/[Bb]uild/
+**/[Bb]uilds/
+**/[Ll]ogs/
+**/[Uu]ser[Ss]ettings/
+**/[Mm]emoryCaptures/
+
+# Unity generated IDE files
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.txt
+
+# Unity packages/build artifacts
+*.apk
+*.aab
+*.unitypackage
+crashlytics-build.properties
+**/Assets/Plugins/Editor/JetBrains*/
+**/Assets/StreamingAssets/aa.meta
+**/Assets/StreamingAssets/aa/
+**/Assets/AddressableAssetsData/*/*.bin*
+
+# Keep Unity asset metadata for tracked assets
+!Unity/Assets/**/*.meta
+
+# Project runtime/generated data
+Server/samples/*.wav
+Server/samples/*.mp3
+Server/samples/*.jpg
+Server/samples/*.png
+Server/samples/apps/code_runtime_generator/data/input.txt
+Server/samples/apps/code_runtime_generator/data/response.txt
+Unity/Recordings/

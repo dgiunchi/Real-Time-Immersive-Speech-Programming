@@ -14,6 +14,14 @@ function getNumber(name, fallback) {
     return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function getBoolean(name, fallback) {
+    const value = process.env[name];
+    if (value == undefined || value === "") {
+        return fallback;
+    }
+    return value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes";
+}
+
 function durationMsForBytes(bytes, sampleRate, channels, bitsPerSample) {
     const bytesPerSampleFrame = channels * (bitsPerSample / 8);
     return (bytes / bytesPerSampleFrame / sampleRate) * 1000;
@@ -85,6 +93,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
         this.finalizeAfterMs = getNumber("STT_FINALIZE_AFTER_MS", DEFAULT_FINALIZE_AFTER_MS);
         this.minAudioMs = getNumber("STT_MIN_AUDIO_MS", DEFAULT_MIN_AUDIO_MS);
         this.maxAudioMs = getNumber("STT_MAX_AUDIO_MS", DEFAULT_MAX_AUDIO_MS);
+        this.requireExplicitRecording = getBoolean("STT_REQUIRE_RECORDING", true);
 
         this.sessions = new Map();
         this.childProcesses = {};
@@ -95,7 +104,8 @@ class FasterWhisperHttpSttService extends EventEmitter {
         console.log(
             `[FasterWhisperHttpSttService] ready url=${this.url} ` +
             `format=${this.sampleRate}Hz/${this.channels}ch/${this.bitsPerSample}bit ` +
-            `finalizeAfterMs=${this.finalizeAfterMs} minAudioMs=${this.minAudioMs} maxAudioMs=${this.maxAudioMs}`
+            `finalizeAfterMs=${this.finalizeAfterMs} minAudioMs=${this.minAudioMs} ` +
+            `maxAudioMs=${this.maxAudioMs} requireExplicitRecording=${this.requireExplicitRecording}`
         );
     }
 
@@ -117,6 +127,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
                 bytes: 0,
                 timer: null,
                 transcribing: false,
+                recording: false,
             };
             this.sessions.set(peerUUID, session);
             this.childProcesses[peerUUID] = session;
@@ -135,7 +146,13 @@ class FasterWhisperHttpSttService extends EventEmitter {
             return false;
         }
 
-        const session = this.getSession(peerUUID);
+        let session = this.sessions.get(peerUUID);
+        if (this.requireExplicitRecording && (!session || !session.recording)) {
+            return false;
+        }
+
+        session = session || this.getSession(peerUUID);
+
         session.chunks.push(chunk);
         session.bytes += chunk.length;
 
@@ -162,9 +179,17 @@ class FasterWhisperHttpSttService extends EventEmitter {
 
     recordingStart(peerUUID) {
         this.clearSession(peerUUID, "recording start");
+        const session = this.getSession(peerUUID);
+        session.recording = true;
+        console.log(`[FasterWhisperHttpSttService] recording start peerUUID=${peerUUID}`);
     }
 
     recordingStop(peerUUID) {
+        const session = this.sessions.get(peerUUID);
+        if (session) {
+            session.recording = false;
+        }
+        console.log(`[FasterWhisperHttpSttService] recording stop peerUUID=${peerUUID}`);
         this.finalizePeer(peerUUID, "recording stop");
     }
 
@@ -224,7 +249,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
     }
 
     deleteIdleSession(peerUUID, session) {
-        if (!session.transcribing && session.bytes === 0) {
+        if (!session.transcribing && !session.recording && session.bytes === 0) {
             this.sessions.delete(peerUUID);
             delete this.childProcesses[peerUUID];
         }
