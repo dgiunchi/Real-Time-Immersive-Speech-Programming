@@ -1,5 +1,5 @@
 # ninja log v5
-1	1002	8005518776010027	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	aafdacf0a18e6095
-1003	1164	8005518777521945	C:/Users/valla/UnityProjects/GitHub/Real-Time-Immersive-Speech-Programming/Unity/Library/Bee/Android/Prj/Mono2x/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/2q6zop6f/obj/armeabi-v7a/libswappywrapper.so	4fc1b5a14f89b455
-13	1395	8005585981781886	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	aafdacf0a18e6095
-1396	1682	8005585984465110	C:/Users/valla/UnityProjects/GitHub/Real-Time-Immersive-Speech-Programming/Unity/Library/Bee/Android/Prj/Mono2x/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/2q6zop6f/obj/armeabi-v7a/libswappywrapper.so	4fc1b5a14f89b455
+8	907	8009782427820323	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	aafdacf0a18e6095
+907	1277	8009782431400747	C:/Users/valla/UnityProjects/GitHub/Real-Time-Immersive-Speech-Programming/Unity/Library/Bee/Android/Prj/Mono2x/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/2q6zop6f/obj/armeabi-v7a/libswappywrapper.so	4fc1b5a14f89b455
+10	1184	8009880329041861	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	aafdacf0a18e6095
+1185	1483	8009880331994637	C:/Users/valla/UnityProjects/GitHub/Real-Time-Immersive-Speech-Programming/Unity/Library/Bee/Android/Prj/Mono2x/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/2q6zop6f/obj/armeabi-v7a/libswappywrapper.so	4fc1b5a14f89b455
