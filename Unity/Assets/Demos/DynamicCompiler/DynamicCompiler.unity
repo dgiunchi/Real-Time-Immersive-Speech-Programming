@@ -13289,7 +13289,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1344c3c82d62a2a41a3576d8abb8e3ea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_Material: {fileID: 2100000, guid: 67249b88fb0cf8c46aa3ddca7f632c6f, type: 2}
+  m_Material: {fileID: 2100000, guid: 4e75f38b7ce2462c96ddc3a0e3dbf491, type: 2}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
@@ -15859,7 +15859,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1344c3c82d62a2a41a3576d8abb8e3ea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_Material: {fileID: 2100000, guid: 67249b88fb0cf8c46aa3ddca7f632c6f, type: 2}
+  m_Material: {fileID: 2100000, guid: 4e75f38b7ce2462c96ddc3a0e3dbf491, type: 2}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
@@ -17589,6 +17589,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   sendToServer: 1
   gain: 1
+  sampleRate: 16000
+  microphoneBufferSeconds: 1
+  triggerThreshold: 0.75
+  releaseDebounceSeconds: 0.15
+  logRecordingState: 1
   networkId:
     a: 0
     b: 98
@@ -31683,7 +31688,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1344c3c82d62a2a41a3576d8abb8e3ea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_Material: {fileID: 2100000, guid: 67249b88fb0cf8c46aa3ddca7f632c6f, type: 2}
+  m_Material: {fileID: 2100000, guid: 4e75f38b7ce2462c96ddc3a0e3dbf491, type: 2}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
@@ -58237,7 +58242,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 31236ae480c068b47b3b029b89d511ba, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Guid: 6765c52b-3ad6-4fb0-9030-2c9a05dc4731
+  Guid: {fileID: 11400000, guid: 7e7f5f8a0f874c9fb5c3e8dfb7e2a604, type: 2}
+  networkScene: {fileID: 0}
+  roomClient: {fileID: 0}
+  joinOnStart: 1
+  joinOnConnectionChange: 1
 --- !u!4 &7068762447081937021 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7068762446378101729, guid: 2fb578800afc87244b5ba3a0fbbd11c0, type: 3}

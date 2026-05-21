@@ -1042,7 +1042,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 31236ae480c068b47b3b029b89d511ba, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Guid: 6765c52b-3ad6-4fb0-9030-2c9a05dc4731
+  Guid: {fileID: 11400000, guid: 7e7f5f8a0f874c9fb5c3e8dfb7e2a604, type: 2}
+  networkScene: {fileID: 0}
+  roomClient: {fileID: 0}
+  joinOnStart: 1
+  joinOnConnectionChange: 1
 --- !u!114 &7068762447081937018 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 7068762446378101731, guid: 2fb578800afc87244b5ba3a0fbbd11c0, type: 3}

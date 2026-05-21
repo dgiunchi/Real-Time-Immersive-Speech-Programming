@@ -7,6 +7,7 @@ using Ubiq.XR;
 public class DesktopServerMicAudioController : MonoBehaviour
 {
     public MicrophoneCapture microphoneCapture;
+    public bool controlAndroidRecording = false;
 
     private bool desktopMode = false;
 
@@ -35,7 +36,7 @@ public class DesktopServerMicAudioController : MonoBehaviour
                 listenForCommand(false);
             }
         }
-        if (!Application.isEditor && Application.platform == RuntimePlatform.Android)
+        if (controlAndroidRecording && !Application.isEditor && Application.platform == RuntimePlatform.Android)
         {
             var listen = false;
             foreach(var controller in handControllers)

@@ -196,6 +196,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
     async finalizePeer(peerUUID, reason = "finalize") {
         const session = this.sessions.get(peerUUID);
         if (!session || session.bytes === 0) {
+            console.log(`[FasterWhisperHttpSttService] no audio to transcribe peerUUID=${peerUUID} reason=${reason}`);
             return false;
         }
 

@@ -16,6 +16,9 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     public float gain = 1.0f;
     public int sampleRate = 16000;
     public int microphoneBufferSeconds = 1;
+    public float triggerThreshold = 0.75f;
+    public float releaseDebounceSeconds = 0.15f;
+    public bool logRecordingState = true;
     public PlaybackStats lastFrameStats { get; private set; }
     public NetworkId networkId = new NetworkId(98);
 
@@ -25,6 +28,14 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private int lastMicPosition;
     private bool isRecording;
     private bool leftTriggerState;
+    private bool loggedNoRoomClient;
+    private bool loggedNoPeer;
+    private bool loggedNoConnections;
+    private bool loggedFirstAudioChunk;
+    private bool loggedMicrophonePermissionRequest;
+    private bool loggedNoMicrophoneDevices;
+    private bool loggedMicrophoneStarted;
+    private float lastTriggerPressedTime;
     private readonly List<InputDevice> leftControllers = new List<InputDevice>();
 
     private void Start()
@@ -58,29 +69,62 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 #if UNITY_ANDROID && !UNITY_EDITOR
         if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Microphone))
         {
+            if (logRecordingState && !loggedMicrophonePermissionRequest)
+            {
+                Debug.Log("[MicrophoneCapture] requesting microphone permission");
+                loggedMicrophonePermissionRequest = true;
+            }
             UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.Microphone);
             return;
         }
 #endif
-        if (microphoneClip || Microphone.devices.Length == 0)
+        if (microphoneClip)
         {
+            return;
+        }
+
+        if (Microphone.devices.Length == 0)
+        {
+            if (logRecordingState && !loggedNoMicrophoneDevices)
+            {
+                Debug.LogWarning("[MicrophoneCapture] no microphone devices found");
+                loggedNoMicrophoneDevices = true;
+            }
             return;
         }
 
         microphoneClip = Microphone.Start(null, true, Mathf.Max(1, microphoneBufferSeconds), sampleRate);
         lastMicPosition = Microphone.GetPosition(null);
+        loggedNoMicrophoneDevices = false;
+
+        if (logRecordingState && !loggedMicrophoneStarted)
+        {
+            Debug.Log(
+                $"[MicrophoneCapture] microphone started devices={string.Join(",", Microphone.devices)} " +
+                $"frequency={sampleRate} channels={microphoneClip.channels} samples={microphoneClip.samples} " +
+                $"position={lastMicPosition}");
+            loggedMicrophoneStarted = true;
+        }
     }
 
     private void UpdateRecordingFromLeftTrigger()
     {
         var triggerPressed = GetLeftTriggerPressed();
-        if (triggerPressed == leftTriggerState)
+        if (triggerPressed)
+        {
+            lastTriggerPressedTime = Time.unscaledTime;
+        }
+
+        var effectivePressed = triggerPressed ||
+            (leftTriggerState && Time.unscaledTime - lastTriggerPressedTime < releaseDebounceSeconds);
+
+        if (effectivePressed == leftTriggerState)
         {
             return;
         }
 
-        leftTriggerState = triggerPressed;
-        SetRecording(triggerPressed);
+        leftTriggerState = effectivePressed;
+        SetRecording(effectivePressed);
     }
 
     private bool GetLeftTriggerPressed()
@@ -96,6 +140,11 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             {
                 return true;
             }
+
+            if (controller.TryGetFeatureValue(CommonUsages.trigger, out float value) && value >= triggerThreshold)
+            {
+                return true;
+            }
         }
 
         return false;
@@ -108,18 +157,39 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             return;
         }
 
+        if (!recording && isRecording)
+        {
+            SendPendingMicrophoneSamples(true);
+        }
+
         isRecording = recording;
         if (isRecording)
         {
             lastMicPosition = microphoneClip ? Microphone.GetPosition(null) : 0;
+            loggedFirstAudioChunk = false;
         }
+
+        if (logRecordingState)
+        {
+            Debug.Log($"[MicrophoneCapture] recording {(recording ? "start" : "stop")}");
+        }
+
         SendControlMessage(recording ? RecordingStartMessage : RecordingStopMessage);
     }
 
-    private void SendPendingMicrophoneSamples()
+    private void SendPendingMicrophoneSamples(bool force = false)
     {
-        if (!sendToServer || !isRecording || !microphoneClip || roomClient == null || roomClient.Me == null)
+        if (!sendToServer || (!isRecording && !force) || roomClient == null || roomClient.Me == null)
         {
+            return;
+        }
+
+        if (!microphoneClip)
+        {
+            if (logRecordingState)
+            {
+                Debug.LogWarning("[MicrophoneCapture] no microphone clip while recording");
+            }
             return;
         }
 
@@ -132,6 +202,12 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 
         if (currentPosition < 0 || currentPosition == lastMicPosition)
         {
+            if (force && logRecordingState)
+            {
+                Debug.LogWarning(
+                    $"[MicrophoneCapture] no pending samples on stop currentPosition={currentPosition} " +
+                    $"lastMicPosition={lastMicPosition}");
+            }
             return;
         }
 
@@ -197,14 +273,44 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             return;
         }
 
+        if (logRecordingState)
+        {
+            Debug.Log($"[MicrophoneCapture] control {controlMessage}");
+        }
+
         SendPayloadToServer(Encoding.UTF8.GetBytes(controlMessage));
     }
 
     private void SendPayloadToServer(byte[] payload)
     {
+        if (!roomClient)
+        {
+            roomClient = NetworkScene.Find(this)?.GetComponentInChildren<RoomClient>();
+        }
+
+        var control = payload.Length <= 64 ? Encoding.UTF8.GetString(payload) : null;
         if (roomClient == null || roomClient.Me == null)
         {
+            if (logRecordingState && roomClient == null && !loggedNoRoomClient)
+            {
+                Debug.LogWarning("[MicrophoneCapture] drop packet: RoomClient not found");
+                loggedNoRoomClient = true;
+            }
+            else if (logRecordingState && roomClient != null && roomClient.Me == null && !loggedNoPeer)
+            {
+                Debug.LogWarning("[MicrophoneCapture] drop packet: RoomClient.Me not ready");
+                loggedNoPeer = true;
+            }
             return;
+        }
+
+        if (context.Scene == null || context.Scene.connectionCount == 0)
+        {
+            if (logRecordingState && !loggedNoConnections)
+            {
+                Debug.LogWarning("[MicrophoneCapture] sending while NetworkScene has 0 connections");
+                loggedNoConnections = true;
+            }
         }
 
         var clientUUID = Encoding.UTF8.GetBytes(roomClient.Me.uuid);
@@ -214,6 +320,16 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         payload.CopyTo(new Span<byte>(message.bytes, message.start + clientUUID.Length, payload.Length));
 
         context.Send(message);
+
+        if (logRecordingState && control != null && control.StartsWith("__STT_CONTROL__:"))
+        {
+            Debug.Log($"[MicrophoneCapture] sent control {control} peer={roomClient.Me.uuid} bytes={message.length}");
+        }
+        else if (logRecordingState && !loggedFirstAudioChunk)
+        {
+            Debug.Log($"[MicrophoneCapture] sent first audio chunk peer={roomClient.Me.uuid} pcmBytes={payload.Length}");
+            loggedFirstAudioChunk = true;
+        }
     }
 
     public void ProcessMessage(ReferenceCountedSceneGraphMessage msg)
