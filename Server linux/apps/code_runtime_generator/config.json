@@ -1,0 +1,39 @@
+{
+  "name": "CodeGenerated",
+  "roomGuid": "6765c52b-3ad6-4fb0-9030-2c9a05dc4731",
+  "outputNetworkId": 94,
+  "fileServer": {
+    "port": 3000
+  },
+  "credentials": {
+    "openAI": {
+      "key": "",
+      "model": "gpt-5.5"
+    }
+  },
+  "preprompt": "write a script in C# for Unity, so a class that inherits from MonoBehaviour. In your answer always write code between tag ```csharp and tag ```",
+  "prompt_suffix": "Use a Component name that does not conflict with previous used or default Component names from Unity. Do not use interaction from devices such as keyboard or mouse. Use ASCII code and not unicode in the answer. Create only one MonoBehaviour. If it is used 'this' or 'that' the object is still present. If a new instance of an object is created it should have parent 'transform', and infer the shape to primitive geometries present in Unity. If there is a movement, put a speed equal to 1. Set always the tag 'game' ",
+  "roomserver": {
+    "uri": "localhost",
+    "joinExisting": false,
+    "tcp": {
+      "port": 50000
+    },
+    "wss": {
+      "port": 50001,
+      "cert": "../../cert.pem",
+      "key": "../../key.pem"
+    }
+  },
+  "status": {
+    "port": 50002,
+    "cert": "../../cert.pem",
+    "key": "../../key.pem",
+    "apikeys": []
+  },
+  "iceservers": [
+    {
+      "uri": "stun:stun.l.google.com:19302"
+    }
+  ]
+}
