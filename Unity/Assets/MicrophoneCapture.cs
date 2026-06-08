@@ -12,6 +12,8 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private const string RecordingStartMessage = "__STT_CONTROL__:start";
     private const string RecordingStopMessage = "__STT_CONTROL__:stop";
 
+    public event Action<bool> RecordingStateChanged;
+
     public bool sendToServer = true;
     public float gain = 1.0f;
     public int sampleRate = 16000;
@@ -175,6 +177,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         }
 
         SendControlMessage(recording ? RecordingStartMessage : RecordingStopMessage);
+        RecordingStateChanged?.Invoke(isRecording);
     }
 
     private void SendPendingMicrophoneSamples(bool force = false)
