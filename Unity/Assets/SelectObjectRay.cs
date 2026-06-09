@@ -22,7 +22,7 @@ public class SelectObjectRay : MonoBehaviour
     public bool isSelecting;
     public GameObject selectedObject;
     private GameObject lastSelectedObject = null;
-    private Material lastMaterial = null;
+    //private Material lastMaterial = null;
 
     private HandController handController;
     public CodeGenerationManager codeGenerationManager;
@@ -31,8 +31,8 @@ public class SelectObjectRay : MonoBehaviour
     private new LineRenderer renderer;
 
     private readonly float range = 8f;
-    private readonly float curve = 20f;
-    private readonly int segments = 50;
+    //private readonly float curve = 20f;
+    //private readonly int segments = 50;
 
     private Color validColour = new Color(0f, 1f, 0f, 0.4f);
     private Color collisionColour = new Color(1f, 1f, 0f, 0.4f);
@@ -73,7 +73,7 @@ public class SelectObjectRay : MonoBehaviour
 
     private void CreateMissingHandSelectors()
     {
-        foreach (var hand in FindObjectsOfType<HandController>(true))
+        foreach (var hand in FindObjectsByType<HandController>(FindObjectsSortMode.None))
         {
             if (hand.GetComponentInChildren<SelectObjectRay>(true))
             {

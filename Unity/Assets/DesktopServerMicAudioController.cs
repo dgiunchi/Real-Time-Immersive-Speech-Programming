@@ -17,7 +17,7 @@ public class DesktopServerMicAudioController : MonoBehaviour
     void Start()
     {
         desktopMode = Application.platform == RuntimePlatform.WindowsEditor || Application.platform == RuntimePlatform.WindowsPlayer || Application.platform == RuntimePlatform.OSXEditor || Application.platform == RuntimePlatform.OSXPlayer;
-        handControllers = FindObjectsOfType<HandController>(includeInactive:true);
+        handControllers = FindObjectsByType<HandController>(FindObjectsSortMode.None);
     }
 
     // Update is called once per frame

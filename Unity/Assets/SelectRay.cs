@@ -32,8 +32,8 @@ public class SelectRay : MonoBehaviour
     private new LineRenderer renderer;
 
     private readonly float range = 8f;
-    private readonly float curve = 20f;
-    private readonly int segments = 50;
+    //private readonly float curve = 20f;
+    //private readonly int segments = 50;
 
     private Color validColour = new Color(0f, 1f, 0f, 0.4f);
     private Color collisionColour = new Color(1f, 1f, 0f, 0.4f);

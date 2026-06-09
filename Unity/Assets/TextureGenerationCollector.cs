@@ -19,7 +19,7 @@ public class TextureGenerationCollector : MonoBehaviour
     private RoomClient client;
     public string serverBaseUrl;
     public SelectRay selectRay;
-    private bool paintAll = false;
+    //private bool paintAll = false;
 
     [Serializable]
     private struct Message
@@ -96,7 +96,7 @@ public class TextureGenerationCollector : MonoBehaviour
     // Find all submeshes of GameObjects in the scene with the given material name. Return a list of tuples of the GameObject and submesh index.
     private List<Tuple<GameObject, int>> FindTargets(string materialName) {
         List<Tuple<GameObject, int>> targets = new List<Tuple<GameObject, int>>();
-        GameObject[] allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+        GameObject[] allObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
         foreach (GameObject obj in allObjects) {
             if (obj.GetComponent<Renderer>() != null) {
                 Material[] materials = obj.GetComponent<Renderer>().materials;

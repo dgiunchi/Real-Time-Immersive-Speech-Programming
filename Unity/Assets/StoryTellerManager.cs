@@ -162,7 +162,7 @@ public class StoryTellerManager : MonoBehaviour
                 }
                 catch (Exception e)
                 {
-                    Debug.Log("Received audio data");
+                    Debug.Log("Audio data error: " + e);
                 }
             }
 
@@ -220,7 +220,7 @@ public class StoryTellerManager : MonoBehaviour
     private List<Tuple<GameObject, int>> FindTargets(string materialName)
     {
         List<Tuple<GameObject, int>> targets = new List<Tuple<GameObject, int>>();
-        GameObject[] allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+        GameObject[] allObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
         foreach (GameObject obj in allObjects)
         {
             if (obj.GetComponent<Renderer>() != null)

@@ -41,7 +41,7 @@ public class SmoothRandomMovement : MonoBehaviour
     bool stopPressedRight = false;
 
     bool isPressedLeft = false;
-    bool stopPressedLeft = false;
+    //bool stopPressedLeft = false;
 
     public bool record = false;
 
@@ -116,13 +116,13 @@ public class SmoothRandomMovement : MonoBehaviour
     public void listenForCommandLeftHand(bool listen)
     {
 
-        if (isPressedLeft)
-        {
-            if (listen == false)
-            {
-                stopPressedLeft = true;
-            }
-        }
+        //if (isPressedLeft)
+        //{
+        //    if (listen == false)
+        //    {
+        //        stopPressedLeft = true;
+        //    }
+        //}
         isPressedLeft = listen;
     }
 

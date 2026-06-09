@@ -15,7 +15,7 @@ public class TestRoslyn : MonoBehaviour
 {
     //private
     private string activeCSharpSource = null;
-    private ScriptProxy activeCrawlerScript = null;
+    //private ScriptProxy activeCrawlerScript = null;
     private ScriptDomain domain = null;
     // Start is called before the first frame update
 

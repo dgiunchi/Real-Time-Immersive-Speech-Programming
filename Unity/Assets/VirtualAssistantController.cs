@@ -97,7 +97,7 @@ public class VirtualAssistantController : MonoBehaviour
             // No speech target specified: find the loudest current peer
             if (!microphoneCapture)
             {
-                microphoneCapture = FindObjectOfType<MicrophoneCapture>();
+                microphoneCapture = FindFirstObjectByType<MicrophoneCapture>();
             }
 
             if (microphoneCapture)

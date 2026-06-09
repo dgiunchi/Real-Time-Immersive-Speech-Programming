@@ -37,7 +37,7 @@ namespace DreamCodeVR2.ContextBridge
                 return;
             }
 
-            foreach (var editableObject in FindObjectsOfType<AIEditableObject>(true))
+            foreach (var editableObject in FindObjectsByType<AIEditableObject>(FindObjectsSortMode.None))
             {
                 Register(editableObject);
             }

@@ -10252,6 +10252,103 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 204156942}
   m_CullTransparentMesh: 0
+--- !u!1 &205025804
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 205025808}
+  - component: {fileID: 205025807}
+  - component: {fileID: 205025806}
+  - component: {fileID: 205025805}
+  m_Layer: 0
+  m_Name: ContextBridge
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &205025805
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 205025804}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bb5dbfedd399c404dbf7c1a8738b9987, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.InteractionContextTransmitter
+  networkId:
+    a: 0
+    b: 99
+  provider: {fileID: 205025806}
+  microphoneCapture: {fileID: 0}
+  sendOnRecordingStart: 1
+  sendOnRecordingStop: 1
+  sendPeriodicallyWhileRecording: 0
+  periodicHz: 5
+  manualSendKey: 0
+  logContextSends: 1
+--- !u!114 &205025806
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 205025804}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0b967d0b2135ea04783ed5f49f865837, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.InteractionContextProvider
+  sceneRegistry: {fileID: 205025807}
+  pointerOrigins:
+  - {fileID: 2141631248}
+  raycastLayers:
+    serializedVersion: 2
+    m_Bits: 51
+  maxRayDistance: 8
+  useExistingSelection: 1
+  raycastEverySnapshot: 1
+  codeGenerationManager: {fileID: 0}
+  existingSelectionSources:
+  - {fileID: 2141631249}
+--- !u!114 &205025807
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 205025804}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f33b39473081940b8db6d8489d4010, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.SceneRegistry
+  autoDiscoverOnStart: 1
+  allowFallbackSummaries: 1
+  fallbackEditable: 0
+  sceneVersion: 0
+--- !u!4 &205025808
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 205025804}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.28745, y: 0.68446, z: -0.31213}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &224836585
 GameObject:
   m_ObjectHideFlags: 0
@@ -17610,6 +17707,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   microphoneCapture: {fileID: 1853535914}
+  controlAndroidRecording: 0
 --- !u!114 &1853535916
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -17774,6 +17872,7 @@ GameObject:
   - component: {fileID: 1894584482}
   - component: {fileID: 1894584481}
   - component: {fileID: 1894584480}
+  - component: {fileID: 1894584485}
   m_Layer: 0
   m_Name: CubeTraining
   m_TagString: game
@@ -17893,6 +17992,26 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1894584485
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1894584479}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 52b12f3ec3d4fe148a3fd5992b78732c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
+  objectId: cube_001
+  displayName: Demo Cube
+  description: 
+  labels:
+  - cube
+  - demo_object
+  editable: 1
+  includeRendererBounds: 1
 --- !u!1 &1916914937
 GameObject:
   m_ObjectHideFlags: 0
@@ -68313,3 +68432,4 @@ SceneRoots:
   - {fileID: 1149140466}
   - {fileID: 1894584484}
   - {fileID: 588261178}
+  - {fileID: 205025808}

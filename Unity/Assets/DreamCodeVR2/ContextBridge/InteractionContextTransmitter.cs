@@ -133,7 +133,7 @@ namespace DreamCodeVR2.ContextBridge
         {
             if (!provider)
             {
-                provider = FindObjectOfType<InteractionContextProvider>();
+                provider = FindFirstObjectByType<InteractionContextProvider>();
             }
         }
 
@@ -149,7 +149,7 @@ namespace DreamCodeVR2.ContextBridge
         {
             if (!microphoneCapture)
             {
-                microphoneCapture = FindObjectOfType<global::MicrophoneCapture>();
+                microphoneCapture = FindFirstObjectByType<global::MicrophoneCapture>();
             }
 
             if (!microphoneCapture || subscribedToMicrophone)

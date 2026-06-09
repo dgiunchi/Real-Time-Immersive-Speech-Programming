@@ -52,7 +52,18 @@ namespace DreamCodeVR2.ContextBridge
         {
             if (!sceneRegistry)
             {
-                sceneRegistry = SceneRegistry.Instance ? SceneRegistry.Instance : FindObjectOfType<SceneRegistry>();
+                if (SceneRegistry.Instance)
+                {
+                    sceneRegistry = SceneRegistry.Instance;
+                }
+                else
+                {
+                    var registries = FindObjectsByType<SceneRegistry>(FindObjectsSortMode.None);
+                    if (registries != null && registries.Length > 0)
+                    {
+                        sceneRegistry = registries[0];
+                    }
+                }
             }
         }
 
