@@ -1,0 +1,5 @@
+# ninja log v5
+0	264	8033184283625159	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	1ec74305fc3974e4
+265	397	8033184284819024	C:/Users/Scianso/Documents/GitHub/Real-Time-Immersive-Speech-Programming/Unity/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/4l42p6a1/obj/arm64-v8a/libswappywrapper.so	8df5186009cf8c0f
+1	758	8033214115398924	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	1ec74305fc3974e4
+758	1072	8033214118413048	C:/Users/Scianso/Documents/GitHub/Real-Time-Immersive-Speech-Programming/Unity/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/4l42p6a1/obj/arm64-v8a/libswappywrapper.so	8df5186009cf8c0f

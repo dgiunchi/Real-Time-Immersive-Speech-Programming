@@ -266,6 +266,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         }
 
         lastFrameStats = stats;
+        Debug.Log($"[MicrophoneCapture] audio chunk pcmBytes={pcm.Length} gain={gain} avgVolume={(stats.sampleCount > 0 ? stats.volumeSum / stats.sampleCount : 0f)}");
         SendPayloadToServer(pcm);
     }
 

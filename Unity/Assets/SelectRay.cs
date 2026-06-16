@@ -28,6 +28,7 @@ public class SelectRay : MonoBehaviour
     private HandController handController;
     public TextureGenerationCollector textureGenerationCollector;
     public MicrophoneCapture genieMicrophoneCapture;
+    public bool controlMicrophoneGain = false;
 
     private new LineRenderer renderer;
 
@@ -64,7 +65,10 @@ public class SelectRay : MonoBehaviour
 
     public void listenForCommand(bool listen)
     {
-        genieMicrophoneCapture.gain = listen ? 1.0f : 0.0f;
+        if (controlMicrophoneGain && genieMicrophoneCapture)
+        {
+            genieMicrophoneCapture.gain = listen ? 1.0f : 0.0f;
+        }
     }
 
     public void UpdateSelect(bool selectActivation)

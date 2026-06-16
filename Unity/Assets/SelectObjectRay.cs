@@ -27,6 +27,7 @@ public class SelectObjectRay : MonoBehaviour
     private HandController handController;
     public CodeGenerationManager codeGenerationManager;
     public MicrophoneCapture genieMicrophoneCapture;
+    public bool controlMicrophoneGain = false;
 
     private new LineRenderer renderer;
 
@@ -91,6 +92,7 @@ public class SelectObjectRay : MonoBehaviour
             ray.networkId = networkId;
             ray.codeGenerationManager = codeGenerationManager;
             ray.genieMicrophoneCapture = genieMicrophoneCapture;
+            ray.controlMicrophoneGain = controlMicrophoneGain;
         }
     }
 
@@ -112,7 +114,7 @@ public class SelectObjectRay : MonoBehaviour
 
     public void listenForCommand(bool listen)
     {
-        if (genieMicrophoneCapture)
+        if (controlMicrophoneGain && genieMicrophoneCapture)
         {
             genieMicrophoneCapture.gain = listen ? 1.0f : 0.0f;
         }
