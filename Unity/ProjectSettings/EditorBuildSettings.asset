@@ -5,9 +5,12 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Demos/DynamicCompiler/DynamicCompiler.unity
     guid: a0e68bc371518bc49886dcaaf217899d
+  - enabled: 1
+    path: Assets/DreamCodeVR2/EscapeRoomTestbed/DreamCodeVR2_EscapeRoom_Testbed.unity
+    guid: 38b93dd71f54458380d1be9bfaf62aa1
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: 90b3801b909b681489e09e638278f3ba, type: 2}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: aa9593fd3d168f6499e926e14a425326, type: 2}

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: eafa68a76c333f54a92a699acfaf48dd
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 368242
+  packageName: 'Cozy Art Gallery: Oil Paintings'
+  packageVersion: 1.0
+  assetPath: Assets/PolyKebap/OilPaintings/DemoScene/DemoRoom_Paintings.mat
+  uploadId: 887786
