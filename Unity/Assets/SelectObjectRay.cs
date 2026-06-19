@@ -3,6 +3,7 @@ using UnityEngine.Events;
 using System.Collections;
 using System;
 using System.Linq;
+using DreamCodeVR2.ContextBridge;
 using Ubiq.XR;
 using Ubiq.Networking;
 using Ubiq.Logging;
@@ -28,6 +29,7 @@ public class SelectObjectRay : MonoBehaviour
     public CodeGenerationManager codeGenerationManager;
     public MicrophoneCapture genieMicrophoneCapture;
     public bool controlMicrophoneGain = false;
+    [SerializeField] private bool logSelectionDebug = true;
 
     private new LineRenderer renderer;
 
@@ -125,12 +127,16 @@ public class SelectObjectRay : MonoBehaviour
         isSelecting = selectActivation;
     }
 
-    private void SetCurrentSelection(GameObject obj)
+    private struct SelectionHit
     {
-        
-        Debug.Log("Sending current selection: " + obj.name);
-        
+        public RaycastHit hitInfo;
+        public GameObject hitObject;
+        public GameObject resolvedObject;
+        public AIEditableObject editableObject;
+    }
 
+    private void SetCurrentSelection(SelectionHit selection)
+    {
         if (lastSelectedObject != null)
         {
             //lastSelectedObject.GetComponent<Outline>().enabled = false; 
@@ -139,8 +145,18 @@ public class SelectObjectRay : MonoBehaviour
 
         //obj.GetComponent<Outline>().enabled = true;
         renderer.material.color = Color.red;
-        codeGenerationManager.targetObject = obj;
-        lastSelectedObject = obj;
+        if (codeGenerationManager)
+        {
+            codeGenerationManager.targetObject = selection.resolvedObject;
+        }
+
+        if (logSelectionDebug && lastSelectedObject != selection.resolvedObject)
+        {
+            Debug.Log($"[Selection] hit={selection.hitObject.name} resolved={selection.editableObject.objectId} display={selection.editableObject.displayName}");
+            Debug.Log($"[Selection] hitTag={selection.hitObject.tag} resolvedTag={selection.resolvedObject.tag}");
+        }
+
+        lastSelectedObject = selection.resolvedObject;
     }
 
     private void Update()
@@ -173,12 +189,8 @@ public class SelectObjectRay : MonoBehaviour
 
         var positions = new Vector3[2];
 
-        RaycastHit raycasthitinfo;
-
         positions[0] = transform.position;
         positions[1] = transform.position + transform.forward * range;
-
-        Physics.Linecast(positions[0], positions[1], out raycasthitinfo);
 
         renderer.positionCount = 2;
         renderer.SetPositions(positions);
@@ -186,33 +198,62 @@ public class SelectObjectRay : MonoBehaviour
         renderer.startWidth = 0.01f;
         renderer.endWidth = 0.01f;
 
-        selectedObject = GetSelectedObject(raycasthitinfo);
-        if (selectedObject != null && selectedObject.tag == "game")
+        var selection = GetSelectionHit(positions[0], transform.forward);
+        selectedObject = selection?.resolvedObject;
+
+        if (selection.HasValue)
         {
-            Debug.Log("hit the box");
-            SetCurrentSelection(selectedObject);
-            lastSelectedObject = selectedObject;
-        } else { 
+            SetCurrentSelection(selection.Value);
+        }
+        else
+        {
             if (lastSelectedObject != null)
             {
                 //lastSelectedObject.GetComponent<Outline>().enabled = false;
                 renderer.material.color = Color.green;
-                codeGenerationManager.targetObject = null;
+                if (codeGenerationManager)
+                {
+                    codeGenerationManager.targetObject = null;
+                }
+                lastSelectedObject = null;
             }
         }
     }
 
-    private GameObject GetSelectedObject(RaycastHit raycasthitinfo)
+    private SelectionHit? GetSelectionHit(Vector3 origin, Vector3 direction)
     {
-        if (raycasthitinfo.collider != null)
+        var hits = Physics.RaycastAll(origin, direction, range, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+            .OrderBy(hit => hit.distance);
+
+        foreach (var hit in hits)
         {
-            var collider = raycasthitinfo.collider;
-            if (collider != null)
+            var hitObject = hit.collider ? hit.collider.gameObject : null;
+            if (hitObject == null)
             {
-                Debug.Log("hit " + collider.gameObject.name);
-                return collider.gameObject;
+                continue;
             }
+
+            var editableObject = hitObject.GetComponentInParent<AIEditableObject>();
+            if (editableObject == null)
+            {
+                continue;
+            }
+
+            var resolvedObject = editableObject.gameObject;
+            if (!hitObject.CompareTag("game") && !resolvedObject.CompareTag("game"))
+            {
+                continue;
+            }
+
+            return new SelectionHit
+            {
+                hitInfo = hit,
+                hitObject = hitObject,
+                resolvedObject = resolvedObject,
+                editableObject = editableObject
+            };
         }
+
         return null;
     }
 
