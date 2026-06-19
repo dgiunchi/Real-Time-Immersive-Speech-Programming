@@ -153,7 +153,7 @@ public class SelectObjectRay : MonoBehaviour
         if (logSelectionDebug && lastSelectedObject != selection.resolvedObject)
         {
             Debug.Log($"[Selection] hit={selection.hitObject.name} resolved={selection.editableObject.objectId} display={selection.editableObject.displayName}");
-            Debug.Log($"[Selection] hitTag={selection.hitObject.tag} resolvedTag={selection.resolvedObject.tag}");
+            //Debug.Log($"[Selection] hitTag={selection.hitObject.tag} resolvedTag={selection.resolvedObject.tag}");
         }
 
         lastSelectedObject = selection.resolvedObject;

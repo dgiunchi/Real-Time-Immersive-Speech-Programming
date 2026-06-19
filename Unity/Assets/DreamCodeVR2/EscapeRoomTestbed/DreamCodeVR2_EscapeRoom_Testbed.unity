@@ -119,6 +119,37 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &1354018
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1354019}
+  m_Layer: 0
+  m_Name: drawer_inside_anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1354019
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1354018}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.030414939, y: 0.13159488, z: 0.000000059604645}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 729322094}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &21417012
 GameObject:
   m_ObjectHideFlags: 0
@@ -473,13 +504,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: door_001
-  displayName: Door
-  description: Main exit door of the escape room
+  displayName: Exit Door
+  description: Main exit door of the escape room. It can be unlocked with the correct
+    key and opened.
   labels:
   - door
   - exit
-  - interactive
   - openable
+  - lockable
+  - interactive
+  - final_goal
   editable: 1
   includeRendererBounds: 1
 --- !u!4 &45509929 stripped
@@ -839,6 +873,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 93238902}
   m_CullTransparentMesh: 0
+--- !u!1 &110838601
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 110838602}
+  m_Layer: 0
+  m_Name: drawer_inside_anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &110838602
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 110838601}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.030414999, y: 0.1315949, z: 0.000000059604645}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1159036567}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &111021313
 GameObject:
   m_ObjectHideFlags: 0
@@ -11097,6 +11162,59 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Padding: {x: 0, y: 0, z: 0, w: 0}
   m_Softness: {x: 0, y: 0}
+--- !u!1 &286363353
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 286363354}
+  - component: {fileID: 286363355}
+  m_Layer: 0
+  m_Name: selection_proxy_collider
+  m_TagString: game
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &286363354
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 286363353}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.0000026226044, y: 0.00000029802322, z: -0.0000074505806}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1235293849}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &286363355
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 286363353}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.0799994, y: 1.0800009, z: 1.0800233}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &308960588
 GameObject:
   m_ObjectHideFlags: 0
@@ -11237,13 +11355,23 @@ PrefabInstance:
       propertyPath: m_Name
       value: basket_001
       objectReference: {fileID: 0}
+    - target: {fileID: 3738181026152085607, guid: 24042fd7b94f31440811b9323881f0fc, type: 3}
+      propertyPath: m_TagString
+      value: game
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: 413194333080029812, guid: 24042fd7b94f31440811b9323881f0fc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 579591076}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 3738181026152085607, guid: 24042fd7b94f31440811b9323881f0fc, type: 3}
       insertIndex: -1
       addedObject: {fileID: 323660378}
+    - targetCorrespondingSourceObject: {fileID: 3738181026152085607, guid: 24042fd7b94f31440811b9323881f0fc, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 323660380}
   m_SourcePrefab: {fileID: 100100000, guid: 24042fd7b94f31440811b9323881f0fc, type: 3}
 --- !u!1 &323660377 stripped
 GameObject:
@@ -11264,13 +11392,43 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: basket_001
   displayName: Basket
-  description: Basket that should contain a ball
+  description: Basket where the created soccer ball must be placed.
   labels:
   - basket
   - container
+  - receptacle
+  - placement_target
+  - ball_target
+  - puzzle_mechanism
   - interactive
   editable: 1
   includeRendererBounds: 1
+--- !u!4 &323660379 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 413194333080029812, guid: 24042fd7b94f31440811b9323881f0fc, type: 3}
+  m_PrefabInstance: {fileID: 323660376}
+  m_PrefabAsset: {fileID: 0}
+--- !u!65 &323660380
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 323660377}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 2.4469082, y: 1.664303, z: 2.449987}
+  m_Center: {x: -0.0021018982, y: 0.8171515, z: 0.0026601553}
 --- !u!224 &324201662 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 1210197956863469167, guid: 33cb6d2a29abed346b39b957a9e24d34, type: 3}
@@ -11361,6 +11519,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 7068762446051028576, guid: 2fb578800afc87244b5ba3a0fbbd11c0, type: 3}
   m_PrefabInstance: {fileID: 7068762447081937015}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &335000833
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 335000834}
+  m_Layer: 0
+  m_Name: desk_surface_anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &335000834
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 335000833}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.014156342, y: 0.9601729, z: 0.03606701}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1747401695}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &338133031 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 219049320038626091, guid: 33cb6d2a29abed346b39b957a9e24d34, type: 3}
@@ -11691,6 +11880,59 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 02aa14982b527f6498e01f290d7f8f18, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!1 &415260352
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 415260353}
+  - component: {fileID: 415260354}
+  m_Layer: 0
+  m_Name: selection_proxy_collider
+  m_TagString: game
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &415260353
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 415260352}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.00442, y: 0.038497806, z: 0.000541687}
+  m_LocalScale: {x: 0.19811277, y: 1, z: 0.51502}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1188529458}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &415260354
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 415260352}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.08549022, y: 0.10107048, z: 0.14424205}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &438298637
 GameObject:
   m_ObjectHideFlags: 0
@@ -12337,6 +12579,59 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5514386084912180037, guid: bb25b73aa11996046885b3fbcfa4587c, type: 3}
   m_PrefabInstance: {fileID: 487713744}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &493783231
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 493783232}
+  - component: {fileID: 493783233}
+  m_Layer: 0
+  m_Name: selection_proxy_collider
+  m_TagString: game
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &493783232
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 493783231}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 610001503}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &493783233
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 493783231}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.0799991, y: 1.0799991, z: 1.0800229}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &504553092
 GameObject:
   m_ObjectHideFlags: 0
@@ -12582,6 +12877,37 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: 1
   m_LayoutPriority: 0
+--- !u!1 &579591075
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 579591076}
+  m_Layer: 0
+  m_Name: basket_inside_anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &579591076
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 579591075}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.0021018982, y: 0.8171515, z: 0.0026601553}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 323660379}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &610001000
 GameObject:
   m_ObjectHideFlags: 0
@@ -13207,7 +13533,8 @@ Transform:
   m_LocalPosition: {x: -0.9370001, y: 0.96029997, z: -0.011844968}
   m_LocalScale: {x: 0.02, y: 0.05, z: 0.02}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 493783232}
   m_Father: {fileID: 45509929}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!65 &610001504
@@ -13245,10 +13572,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: lock_001
   displayName: Door Lock
-  description: Lock attached to the exit door
+  description: Lock attached to the exit door. It should be unlocked with the silver
+    key.
   labels:
   - lock
   - door_lock
+  - exit_lock
   - puzzle_mechanism
   - interactive
   editable: 1
@@ -13344,6 +13673,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2044358136}
+  - {fileID: 1102250321}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!65 &610002104
@@ -13380,12 +13710,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: clue_note_001
-  displayName: Clue Note
-  description: Note containing a clue for the escape room
+  displayName: First Clue Note
+  description: First note explaining that the golden key opens locked drawers.
   labels:
   - clue
   - note
-  - puzzle_item
+  - readable
+  - puzzle_instruction
+  - first_clue
+  - interactive
   editable: 1
   includeRendererBounds: 1
 --- !u!1 &651644820
@@ -13661,6 +13994,16 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 703366047}
   m_CullTransparentMesh: 0
+--- !u!4 &729322093 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2652730014271055692, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
+  m_PrefabInstance: {fileID: 1315326852}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &729322094 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7284648735942239757, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
+  m_PrefabInstance: {fileID: 1315326852}
+  m_PrefabAsset: {fileID: 0}
 --- !u!20 &737898846 stripped
 Camera:
   m_CorrespondingSourceObject: {fileID: 1206544754330353990, guid: 33cb6d2a29abed346b39b957a9e24d34, type: 3}
@@ -13808,6 +14151,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 766998394}
   m_CullTransparentMesh: 0
+--- !u!1 &769365183
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 769365184}
+  m_Layer: 0
+  m_Name: drawer_inside_anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &769365184
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 769365183}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.122615635, y: 0.11596097, z: -0.000000059604645}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 897628530}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &782233883
 GameObject:
   m_ObjectHideFlags: 0
@@ -14043,6 +14417,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 799751066}
   m_CullTransparentMesh: 0
+--- !u!1 &814077970
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 814077971}
+  m_Layer: 0
+  m_Name: drawer_inside_anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &814077971
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 814077970}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.030414939, y: 0.13159491, z: 0.000000059604645}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 118841727}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &833890785
 GameObject:
   m_ObjectHideFlags: 0
@@ -14357,7 +14762,8 @@ Transform:
   m_LocalPosition: {x: -0.0382, y: 0.169, z: -0.001}
   m_LocalScale: {x: 0.02, y: 0.05, z: 0.02}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 1366365285}
   m_Father: {fileID: 897628530}
   m_LocalEulerAnglesHint: {x: 0, y: 90, z: 0}
 --- !u!114 &858063664
@@ -14373,11 +14779,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: lock_002
-  displayName: Table Drawer Lock
-  description: Lock attached to the second drawer of the table
+  displayName: Desk Drawer Lock
+  description: Lock attached to the locked desk drawer. It should be unlocked with
+    the golden key.
   labels:
   - lock
+  - drawer_lock
+  - desk_drawer_lock
   - table_drawer_lock
+  - golden_key_target
   - puzzle_mechanism
   - interactive
   editable: 1
@@ -15332,6 +15742,121 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1086088387}
   m_CullTransparentMesh: 0
+--- !u!1 &1099612912
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1099612913}
+  m_Layer: 0
+  m_Name: cabinet_top_anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1099612913
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1099612912}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.011306763, y: 0.9825196, z: -0.00394392}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 729322093}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1102250320
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1102250321}
+  - component: {fileID: 1102250322}
+  m_Layer: 0
+  m_Name: selection_proxy_collider
+  m_TagString: game
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1102250321
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1102250320}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.049996376, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 610002103}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &1102250322
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1102250320}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.1800157, y: 1.0799999, z: 1.0800003}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!1 &1113562467
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1113562468}
+  m_Layer: 0
+  m_Name: drawer_inside_anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1113562468
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1113562467}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.122615635, y: 0.11596098, z: -0.000000059604645}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1747401696}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1130258960
 GameObject:
   m_ObjectHideFlags: 0
@@ -15364,13 +15889,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 52b12f3ec3d4fe148a3fd5992b78732c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
-  objectId: clue_note_001
-  displayName: Clue Note
-  description: Note containing a clue for the escape room
+  objectId: clue_note_002
+  displayName: Second Clue Note
+  description: Second note instructing the user to create a soccer ball and place
+    it in the basket.
   labels:
   - clue
   - note
-  - puzzle_item
+  - readable
+  - puzzle_instruction
+  - ball_task_clue
+  - interactive
   editable: 1
   includeRendererBounds: 1
 --- !u!65 &1130258962
@@ -15465,6 +15994,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1812687709}
+  - {fileID: 1770928211}
   m_Father: {fileID: 118841727}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 90}
 --- !u!1 &1131063058
@@ -16237,7 +16767,10 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 26534e4bdb6dfb242b60032a43a33710, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: c66a258f040ecba4fbb42d115468edbb, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 415260353}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c66a258f040ecba4fbb42d115468edbb, type: 3}
       insertIndex: -1
@@ -16262,12 +16795,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: key_002
   displayName: Silver Key
-  description: A puzzle key that can be used in future behavior logic
+  description: Hidden key used to unlock and open the exit door.
   labels:
   - key
-  - pickup
-  - puzzle_item
   - silver_key
+  - exit_key
+  - puzzle_item
+  - unlock_item
+  - hidden
+  - interactive
   editable: 1
   includeRendererBounds: 1
 --- !u!4 &1188529458 stripped
@@ -16358,9 +16894,21 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: 8279290154444453107, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 335000834}
+    - targetCorrespondingSourceObject: {fileID: 3948007773062401142, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2130771191}
     - targetCorrespondingSourceObject: {fileID: 7922696606194889228, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 858063663}
+    - targetCorrespondingSourceObject: {fileID: 7922696606194889228, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 769365184}
+    - targetCorrespondingSourceObject: {fileID: 3479089102188310684, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1113562468}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 274247390857597921, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
       insertIndex: -1
@@ -16368,12 +16916,18 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1080262744445832912, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1198313281}
+    - targetCorrespondingSourceObject: {fileID: 1080262744445832912, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1747401699}
     - targetCorrespondingSourceObject: {fileID: 7912126172215672056, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1198313280}
     - targetCorrespondingSourceObject: {fileID: 6008145480749346537, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1198313279}
+    - targetCorrespondingSourceObject: {fileID: 6008145480749346537, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1747401698}
   m_SourcePrefab: {fileID: 100100000, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
 --- !u!1 &1198313274 stripped
 GameObject:
@@ -16393,14 +16947,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: table_001
-  displayName: Wooden Table
-  description: Table used as a placement surface with drawers, drawers can contain
-    usefull stuffs
+  displayName: Desk
+  description: Desk with drawers. It can hold keys, notes, and other puzzle objects.
   labels:
+  - desk
   - table
-  - surface
   - furniture
-  - openable
+  - surface
+  - container_parent
   - interactive
   editable: 1
   includeRendererBounds: 1
@@ -16432,11 +16986,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: table_drawer_003
-  displayName: Table Drawer 3
-  description: Third drawer of the table
+  displayName: Desk Drawer 3
+  description: Third drawer of the desk. It can be made openable and searched.
   labels:
   - drawer
+  - desk_drawer
+  - table_drawer
+  - container
   - openable
+  - unlocked
   - interactive
   editable: 1
   includeRendererBounds: 1
@@ -16453,11 +17011,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: table_drawer_002
-  displayName: Table Drawer 2
-  description: Second drawer of the table
+  displayName: Locked Desk Drawer
+  description: Locked drawer of the desk. It should be unlocked using the golden
+    key.
   labels:
   - drawer
-  - openable
+  - desk_drawer
+  - table_drawer
+  - container
+  - locked
+  - lockable
+  - golden_key_target
   - interactive
   editable: 1
   includeRendererBounds: 1
@@ -16474,11 +17038,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: table_drawer_001
-  displayName: Table Drawer 1
-  description: First drawer of the table
+  displayName: Desk Drawer 1
+  description: First drawer of the desk. It can be made openable and may contain
+    puzzle objects.
   labels:
   - drawer
+  - desk_drawer
+  - table_drawer
+  - container
   - openable
+  - unlocked
   - interactive
   editable: 1
   includeRendererBounds: 1
@@ -16575,7 +17144,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: lamp_001
   displayName: Puzzle Lamp
-  description: Lamp that can change state or color in future puzzle logic
+  description: Lamp that can provide visual feedback for puzzle events.
   labels:
   - lamp
   - light
@@ -16602,8 +17171,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.22805911, y: 1.2900001, z: 0.26334003}
-  m_Center: {x: 0.08999999, y: 0.64500004, z: 0.09}
+  m_Size: {x: 0.2580593, y: 1.3199999, z: 0.29334}
+  m_Center: {x: 0.089999914, y: 0.645, z: 0.089999914}
 --- !u!4 &1213554621 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c562dda72d4fc4fcd8560a3d1fc2e0ae, type: 3}
@@ -16641,7 +17210,8 @@ Transform:
   m_LocalPosition: {x: -0.2365, y: 0.13, z: 0}
   m_LocalScale: {x: 0.019999998, y: 0.05, z: 0.019999998}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 286363354}
   m_Father: {fileID: 118841727}
   m_LocalEulerAnglesHint: {x: 0, y: 90, z: 0}
 --- !u!114 &1235293850
@@ -16658,10 +17228,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: lock_003
   displayName: Cabinet Drawer Lock
-  description: Lock attached to the second drawer of the cabinet
+  description: Lock attached to the locked cabinet drawer. It should be unlocked
+    with the golden key.
   labels:
   - lock
+  - drawer_lock
   - cabinet_drawer_lock
+  - golden_key_target
   - puzzle_mechanism
   - interactive
   editable: 1
@@ -17406,15 +17979,27 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: 2652730014271055692, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1099612913}
+    - targetCorrespondingSourceObject: {fileID: 7284648735942239757, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1354019}
     - targetCorrespondingSourceObject: {fileID: 2056631070585837791, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1188529458}
+    - targetCorrespondingSourceObject: {fileID: 2056631070585837791, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 110838602}
     - targetCorrespondingSourceObject: {fileID: 4978154958422294945, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1235293849}
     - targetCorrespondingSourceObject: {fileID: 4978154958422294945, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1130258965}
+    - targetCorrespondingSourceObject: {fileID: 4978154958422294945, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 814077971}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 744487092153474297, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
       insertIndex: -1
@@ -17422,9 +18007,15 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 466115070560271274, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1315326860}
+    - targetCorrespondingSourceObject: {fileID: 466115070560271274, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1315326862}
     - targetCorrespondingSourceObject: {fileID: 2006100300571712507, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1315326859}
+    - targetCorrespondingSourceObject: {fileID: 2006100300571712507, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1315326861}
     - targetCorrespondingSourceObject: {fileID: 6442575328978680615, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1315326858}
@@ -17447,12 +18038,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: cabinet_001
-  displayName: Wooden Cabinet
-  description: Cabinet with drawers that can contain clues or keys
+  displayName: Cabinet
+  description: Cabinet with drawers that may contain hidden puzzle objects such as
+    the silver key or notes.
   labels:
   - cabinet
-  - container
-  - openable
+  - dresser
+  - furniture
+  - container_parent
   - interactive
   editable: 1
   includeRendererBounds: 1
@@ -17484,11 +18077,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: cabinet_drawer_002
-  displayName: Cabinet Drawer 2
-  description: Second drawer of the cabinet
+  displayName: Locked Cabinet Drawer
+  description: Locked drawer of the cabinet. It should be unlocked using the golden
+    key.
   labels:
   - drawer
-  - openable
+  - cabinet_drawer
+  - container
+  - locked
+  - lockable
+  - golden_key_target
   - interactive
   editable: 1
   includeRendererBounds: 1
@@ -17506,10 +18104,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: cabinet_drawer_001
   displayName: Cabinet Drawer 1
-  description: First drawer of the cabinet
+  description: First cabinet drawer. It contains or hides the silver key.
   labels:
   - drawer
+  - cabinet_drawer
+  - container
   - openable
+  - unlocked
+  - contains_silver_key
   - interactive
   editable: 1
   includeRendererBounds: 1
@@ -17527,13 +18129,58 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: cabinet_drawer_003
   displayName: Cabinet Drawer 3
-  description: Third drawer of the cabinet
+  description: Third cabinet drawer. It can be made openable and searched.
   labels:
   - drawer
+  - cabinet_drawer
+  - container
   - openable
+  - unlocked
   - interactive
   editable: 1
   includeRendererBounds: 1
+--- !u!65 &1315326861
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1315326856}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.54483247, y: 0.2931899, z: 0.8632963}
+  m_Center: {x: -0.030414999, y: 0.1315949, z: 0.000000059604645}
+--- !u!65 &1315326862
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1315326857}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.54483247, y: 0.29318982, z: 0.8632963}
+  m_Center: {x: -0.030414939, y: 0.13159488, z: 0.000000059604645}
 --- !u!1 &1319131826
 GameObject:
   m_ObjectHideFlags: 0
@@ -17899,6 +18546,59 @@ MonoBehaviour:
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
+--- !u!1 &1366365284
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1366365285}
+  - component: {fileID: 1366365286}
+  m_Layer: 0
+  m_Name: selection_proxy_collider
+  m_TagString: game
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1366365285
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1366365284}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.00000062584877, y: -0.00000029802322, z: 0.0000018775463}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 858063663}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &1366365286
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1366365284}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.0799992, y: 1.0799997, z: 1.0799993}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1380986963 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3752704583562168691, guid: 33cb6d2a29abed346b39b957a9e24d34, type: 3}
@@ -18702,6 +19402,59 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.22805911, y: 1.2900001, z: 0.26334003}
   m_Center: {x: 0.08999999, y: 0.64500004, z: 0.09}
+--- !u!1 &1528783352
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1528783353}
+  - component: {fileID: 1528783354}
+  m_Layer: 0
+  m_Name: selection_proxy_collider
+  m_TagString: game
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1528783353
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1528783352}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.0097, y: 0.038497847, z: 0.000541687}
+  m_LocalScale: {x: 0.31007, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2084505967}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &1528783354
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1528783352}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.08549022, y: 0.10107048, z: 0.14424205}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1530327149
 GameObject:
   m_ObjectHideFlags: 0
@@ -19775,6 +20528,116 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1668651205}
   m_CullTransparentMesh: 0
+--- !u!4 &1747401695 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8279290154444453107, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+  m_PrefabInstance: {fileID: 1198313273}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &1747401696 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3479089102188310684, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+  m_PrefabInstance: {fileID: 1198313273}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &1747401697 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3948007773062401142, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+  m_PrefabInstance: {fileID: 1198313273}
+  m_PrefabAsset: {fileID: 0}
+--- !u!65 &1747401698
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1198313276}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.43430808, y: 0.261922, z: 0.35075834}
+  m_Center: {x: 0.122615635, y: 0.11596098, z: -0.000000059604645}
+--- !u!65 &1747401699
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1198313278}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.43430808, y: 0.26192203, z: 0.35075834}
+  m_Center: {x: 0.09222072, y: -0.115960956, z: -0.000000059604645}
+--- !u!1 &1770928210
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1770928211}
+  - component: {fileID: 1770928212}
+  m_Layer: 0
+  m_Name: selection_proxy_collider
+  m_TagString: game
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1770928211
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1770928210}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.050000846, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1130258965}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!65 &1770928212
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1770928210}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.18001, y: 1.0799992, z: 1.0800008}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1812687708
 GameObject:
   m_ObjectHideFlags: 0
@@ -20966,6 +21829,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 8420742024679213807, guid: c2e57ac18c36e3c448c9e6e6d37310c7, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1891920694}
+    - targetCorrespondingSourceObject: {fileID: 8420742024679213807, guid: c2e57ac18c36e3c448c9e6e6d37310c7, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1891920695}
   m_SourcePrefab: {fileID: 100100000, guid: c2e57ac18c36e3c448c9e6e6d37310c7, type: 3}
 --- !u!1 &1891920693 stripped
 GameObject:
@@ -20985,15 +21851,40 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: painting_001
-  displayName: Wall Painting
-  description: Painting that can hide or reveal a clue
+  displayName: Crooked Painting
+  description: A crooked wall painting that can be straightened and moved to reveal
+    or contextualize clues.
   labels:
   - painting
+  - wall_object
   - decoration
-  - clue_holder
+  - movable
+  - rotatable
+  - clue_context
   - interactive
   editable: 1
   includeRendererBounds: 1
+--- !u!65 &1891920695
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1891920693}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 3.3290389, y: 4.3394012, z: 0.18127874}
+  m_Center: {x: 0, y: 0, z: -0.07477379}
 --- !u!1 &1916914937
 GameObject:
   m_ObjectHideFlags: 0
@@ -22198,7 +23089,10 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 31c2da2b7f644321b6509ffb40a4c8da, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: c66a258f040ecba4fbb42d115468edbb, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1528783353}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: c66a258f040ecba4fbb42d115468edbb, type: 3}
       insertIndex: -1
@@ -22223,14 +23117,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ContextBridge.AIEditableObject
   objectId: key_001
   displayName: Golden Key
-  description: A puzzle key that can be used in future behavior logic
+  description: Visible key used to unlock locked drawers and discover further instructions.
   labels:
   - key
-  - pickup
-  - puzzle_item
   - golden_key
+  - drawer_key
+  - puzzle_item
+  - unlock_item
+  - visible
+  - interactive
   editable: 1
   includeRendererBounds: 1
+--- !u!4 &2084505967 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c66a258f040ecba4fbb42d115468edbb, type: 3}
+  m_PrefabInstance: {fileID: 2084505964}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &2088234938
 GameObject:
   m_ObjectHideFlags: 0
@@ -22679,6 +23581,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 6815075459618467101, guid: 59bce046eba3bb14a80855d4c1810e99, type: 3}
   m_PrefabInstance: {fileID: 114615204}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &2130771190
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2130771191}
+  m_Layer: 0
+  m_Name: drawer_inside_anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2130771191
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2130771190}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.09222072, y: -0.115960956, z: -0.000000059604645}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1747401697}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2141631247
 GameObject:
   m_ObjectHideFlags: 0

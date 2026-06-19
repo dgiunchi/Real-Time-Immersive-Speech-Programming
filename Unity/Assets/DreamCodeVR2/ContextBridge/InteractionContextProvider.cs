@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using UnityEngine;
 
 namespace DreamCodeVR2.ContextBridge
@@ -139,28 +140,52 @@ namespace DreamCodeVR2.ContextBridge
                     continue;
                 }
 
-                if (!Physics.Raycast(
+                foreach (var hit in Physics.RaycastAll(
                     origin.position,
                     origin.forward,
-                    out var hit,
                     maxRayDistance,
                     raycastLayers,
-                    QueryTriggerInteraction.Ignore))
+                    QueryTriggerInteraction.Ignore).OrderBy(hit => hit.distance))
                 {
-                    continue;
-                }
+                    if (!TryResolveEditableHit(hit, out _))
+                    {
+                        continue;
+                    }
 
-                if (hit.distance >= bestDistance)
-                {
-                    continue;
-                }
+                    if (hit.distance >= bestDistance)
+                    {
+                        continue;
+                    }
 
-                bestHit = hit;
-                bestDistance = hit.distance;
-                foundHit = true;
+                    bestHit = hit;
+                    bestDistance = hit.distance;
+                    foundHit = true;
+                    break;
+                }
             }
 
             return foundHit;
+        }
+
+        private bool TryResolveEditableHit(RaycastHit hit, out AIEditableObject editableObject)
+        {
+            editableObject = null;
+
+            var collider = hit.collider;
+            if (!collider)
+            {
+                return false;
+            }
+
+            editableObject = collider.GetComponentInParent<AIEditableObject>();
+            if (!editableObject)
+            {
+                return false;
+            }
+
+            var hitObject = collider.gameObject;
+            var resolvedObject = editableObject.gameObject;
+            return hitObject.CompareTag("game") || resolvedObject.CompareTag("game");
         }
     }
 }
