@@ -30,8 +30,13 @@ public class SelectObjectRay : MonoBehaviour
     public MicrophoneCapture genieMicrophoneCapture;
     public bool controlMicrophoneGain = false;
     [SerializeField] private bool logSelectionDebug = true;
+    [SerializeField] private bool highlightPointedObject = true;
+    [SerializeField] private Color highlightColor = new Color(0.2f, 1f, 0.35f, 1f);
+    [SerializeField] private float highlightWidth = 3f;
+    [SerializeField] private Outline.Mode highlightMode = Outline.Mode.OutlineAll;
 
     private new LineRenderer renderer;
+    private Outline activeOutline;
 
     private readonly float range = 8f;
     //private readonly float curve = 20f;
@@ -45,6 +50,11 @@ public class SelectObjectRay : MonoBehaviour
     {
         renderer = GetComponent<LineRenderer>();
         renderer.useWorldSpace = true;
+    }
+
+    private void OnDisable()
+    {
+        ClearHighlight();
     }
 
     private void Start()
@@ -139,11 +149,10 @@ public class SelectObjectRay : MonoBehaviour
     {
         if (lastSelectedObject != null)
         {
-            //lastSelectedObject.GetComponent<Outline>().enabled = false; 
             renderer.material.color = Color.green;
         }
 
-        //obj.GetComponent<Outline>().enabled = true;
+        SetHighlight(selection.resolvedObject);
         renderer.material.color = Color.red;
         if (codeGenerationManager)
         {
@@ -209,7 +218,7 @@ public class SelectObjectRay : MonoBehaviour
         {
             if (lastSelectedObject != null)
             {
-                //lastSelectedObject.GetComponent<Outline>().enabled = false;
+                ClearHighlight();
                 renderer.material.color = Color.green;
                 if (codeGenerationManager)
                 {
@@ -218,6 +227,58 @@ public class SelectObjectRay : MonoBehaviour
                 lastSelectedObject = null;
             }
         }
+    }
+
+    private void SetHighlight(GameObject target)
+    {
+        if (!highlightPointedObject)
+        {
+            ClearHighlight();
+            return;
+        }
+
+        if (activeOutline && activeOutline.gameObject == target)
+        {
+            ApplyHighlightStyle(activeOutline);
+            if (!activeOutline.enabled)
+            {
+                activeOutline.enabled = true;
+            }
+            return;
+        }
+
+        ClearHighlight();
+        if (target == null)
+        {
+            return;
+        }
+
+        activeOutline = target.GetComponent<Outline>();
+        if (!activeOutline)
+        {
+            activeOutline = target.AddComponent<Outline>();
+        }
+
+        ApplyHighlightStyle(activeOutline);
+        activeOutline.enabled = true;
+    }
+
+    private void ClearHighlight()
+    {
+        if (!activeOutline)
+        {
+            return;
+        }
+
+        activeOutline.enabled = false;
+        activeOutline = null;
+    }
+
+    private void ApplyHighlightStyle(Outline outline)
+    {
+        outline.OutlineMode = highlightMode;
+        outline.OutlineColor = highlightColor;
+        outline.OutlineWidth = highlightWidth;
     }
 
     private SelectionHit? GetSelectionHit(Vector3 origin, Vector3 direction)

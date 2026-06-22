@@ -11213,8 +11213,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1.0799994, y: 1.0800009, z: 1.0800233}
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Size: {x: 2.2225199, y: 1.0800009, z: 3.4188614}
+  m_Center: {x: -0.005178667, y: 0, z: -1.1694189}
 --- !u!1 &308960588
 GameObject:
   m_ObjectHideFlags: 0
@@ -14261,6 +14261,27 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 782233883}
   m_CullTransparentMesh: 0
+--- !u!65 &784052015
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1315326853}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.59217703, y: 0.96251965, z: 0.98696184}
+  m_Center: {x: 0.008251488, y: 0.48125982, z: -0.00394392}
 --- !u!1 &799629907
 GameObject:
   m_ObjectHideFlags: 0
@@ -16913,6 +16934,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 274247390857597921, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1198313275}
+    - targetCorrespondingSourceObject: {fileID: 274247390857597921, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1747401702}
     - targetCorrespondingSourceObject: {fileID: 1080262744445832912, guid: cd27d2f3845bbf54e80a6b037fdf61e0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1198313281}
@@ -18004,6 +18028,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 744487092153474297, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1315326854}
+    - targetCorrespondingSourceObject: {fileID: 744487092153474297, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 784052015}
     - targetCorrespondingSourceObject: {fileID: 466115070560271274, guid: 3f46a5fe3e59db445b9f5c6557b040f3, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1315326860}
@@ -18158,8 +18185,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.54483247, y: 0.2931899, z: 0.8632963}
-  m_Center: {x: -0.030414999, y: 0.1315949, z: 0.000000059604645}
+  m_Size: {x: 0.0921188, y: 0.29318988, z: 0.8632963}
+  m_Center: {x: -0.25677183, y: 0.1315949, z: 0.000000059604645}
 --- !u!65 &1315326862
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -18597,8 +18624,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1.0799992, y: 1.0799997, z: 1.0799993}
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Size: {x: 2.2738688, y: 1.0799997, z: 3.9258485}
+  m_Center: {x: -0.030007401, y: 0, z: -1.4229248}
 --- !u!1 &1380986963 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3752704583562168691, guid: 33cb6d2a29abed346b39b957a9e24d34, type: 3}
@@ -20585,6 +20612,27 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.43430808, y: 0.26192203, z: 0.35075834}
   m_Center: {x: 0.09222072, y: -0.115960956, z: -0.000000059604645}
+--- !u!65 &1747401702
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1198313274}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.0011234, y: 0.9401729, z: 2.0022469}
+  m_Center: {x: -0.014156431, y: 0.47008646, z: 0.03606695}
 --- !u!1 &1770928210
 GameObject:
   m_ObjectHideFlags: 0
@@ -23668,6 +23716,10 @@ MonoBehaviour:
   genieMicrophoneCapture: {fileID: 1853535914}
   controlMicrophoneGain: 0
   logSelectionDebug: 1
+  highlightPointedObject: 1
+  highlightColor: {r: 1, g: 0.65, b: 0, a: 1}
+  highlightWidth: 3
+  highlightMode: 1
 --- !u!114 &2141631250
 MonoBehaviour:
   m_ObjectHideFlags: 0
