@@ -49,6 +49,22 @@ namespace DreamCodeVR2.ContextBridge
             UpdatePointingCache();
         }
 
+        public AIEditableObject GetCurrentPointedEditableObject()
+        {
+            EnsureRegistry();
+            if (!TryGetBestPointerHit(out var hit))
+            {
+                return null;
+            }
+
+            return hit.collider ? hit.collider.GetComponentInParent<AIEditableObject>() : null;
+        }
+
+        public AIEditableObject GetCurrentSelectedEditableObject()
+        {
+            return ResolveActiveSelectionObject();
+        }
+
         private void EnsureRegistry()
         {
             if (!sceneRegistry)
@@ -75,11 +91,33 @@ namespace DreamCodeVR2.ContextBridge
                 return null;
             }
 
+            var selectedObject = ResolveActiveSelectionObject();
+            if (!selectedObject)
+            {
+                return null;
+            }
+
+            if (sceneRegistry.TryGetSummary(selectedObject.gameObject, out var summary))
+            {
+                return summary;
+            }
+
+            return null;
+        }
+
+        private AIEditableObject ResolveActiveSelectionObject()
+        {
+            if (!useExistingSelection || !sceneRegistry)
+            {
+                return null;
+            }
+
             if (codeGenerationManager && codeGenerationManager.targetObject)
             {
-                if (sceneRegistry.TryGetSummary(codeGenerationManager.targetObject, out var summary))
+                var editableFromManager = codeGenerationManager.targetObject.GetComponentInParent<AIEditableObject>();
+                if (editableFromManager)
                 {
-                    return summary;
+                    return editableFromManager;
                 }
             }
 
@@ -95,9 +133,10 @@ namespace DreamCodeVR2.ContextBridge
                     continue;
                 }
 
-                if (sceneRegistry.TryGetSummary(source.selectedObject, out var summary))
+                var editableFromSource = source.selectedObject.GetComponentInParent<AIEditableObject>();
+                if (editableFromSource)
                 {
-                    return summary;
+                    return editableFromSource;
                 }
             }
 

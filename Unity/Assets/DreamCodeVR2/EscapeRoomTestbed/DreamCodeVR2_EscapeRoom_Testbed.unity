@@ -23716,10 +23716,6 @@ MonoBehaviour:
   genieMicrophoneCapture: {fileID: 1853535914}
   controlMicrophoneGain: 0
   logSelectionDebug: 1
-  highlightPointedObject: 1
-  highlightColor: {r: 1, g: 0.65, b: 0, a: 1}
-  highlightWidth: 3
-  highlightMode: 1
 --- !u!114 &2141631250
 MonoBehaviour:
   m_ObjectHideFlags: 0
