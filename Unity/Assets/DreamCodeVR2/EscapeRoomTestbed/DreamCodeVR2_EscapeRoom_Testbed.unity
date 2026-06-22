@@ -23709,7 +23709,7 @@ MonoBehaviour:
   networkId:
     a: 0
     b: 93
-  cloneForOtherHands: 1
+  cloneForOtherHands: 0
   isSelecting: 0
   selectedObject: {fileID: 0}
   codeGenerationManager: {fileID: 1853535916}
