@@ -42,10 +42,10 @@ namespace DreamCodeVR2.UI
         public Transform followTarget;
 
         [Header("Layout")]
-        public float distanceFromCamera = 1.55f;
+        public float distanceFromCamera = 1.42f;
         public float horizontalOffset = 0.58f;
         public float verticalOffset = 0.04f;
-        public float uiScale = 0.00105f;
+        public float uiScale = 0.00118f;
         public float followSmoothing = 7f;
 
         [Header("Behavior")]

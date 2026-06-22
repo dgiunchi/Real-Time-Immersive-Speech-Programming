@@ -86,10 +86,10 @@ namespace DreamCodeVR2.UI
             controller.interactionContextProvider = Object.FindFirstObjectByType<InteractionContextProvider>();
             controller.selectObjectRay = Object.FindFirstObjectByType<SelectObjectRay>();
             controller.followTarget = mainCamera.transform;
-            controller.distanceFromCamera = 1.55f;
+            controller.distanceFromCamera = 1.42f;
             controller.horizontalOffset = 0.58f;
             controller.verticalOffset = 0.04f;
-            controller.uiScale = 0.00105f;
+            controller.uiScale = 0.00118f;
             controller.followSmoothing = 7f;
 
             var canvasObject = new GameObject("Canvas");
