@@ -12,7 +12,7 @@ Use this section for the current DreamCodeVR fork.
 
 ### Required tools
 
-- Unity `2021.3.16f1`
+- Unity `6000.3.9f1`
 - Node.js with npm
 - Python `3.12` recommended for `Server/samples/venv`
 - OpenAI API key for code generation
