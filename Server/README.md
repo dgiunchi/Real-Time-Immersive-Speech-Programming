@@ -4,30 +4,148 @@ Ubiq-Genie is a framework that enables you to build server-assisted collaborativ
 
 ## Local Setup
 
-Install Node dependencies from the `Server` folder:
+The `Server` folder is not runnable with `npm install` alone.
+
+This repository is now trimmed for the `samples/apps/code_runtime_generator` flow first. The default Python requirements only include the package needed by that sample's OpenAI worker.
+
+The Node side depends on:
+
+- a vendored copy of the historical UCL-VR `Node` package under `Server/vendor/ubiq`
+- top-level Node packages such as `nconf`
+- a Python virtual environment for the sample services
+- runtime environment variables such as `OPENAI_API_KEY`
+
+Because of this, local setup should be treated as a two-step process: install dependencies, then validate the environment before starting a sample app.
+
+### 1. Install Node dependencies
+
+From the `Server` folder run:
 
 ```powershell
 npm install
 ```
 
-Create the Python virtual environment used by sample services:
+Notes:
+
+- The repository no longer depends on `gitpkg.now.sh` for `ubiq`; it now uses the vendored package in `Server/vendor/ubiq`.
+- The server bootstrap in `components/application.js` still expects `node_modules/ubiq/app.js` to exist locally after `npm install`.
+
+### 2. Run the local setup check
+
+Use the helper script below to verify the pieces that `npm install` does not guarantee by itself:
+
+```powershell
+npm run doctor
+```
+
+The check reports whether the local machine can resolve:
+
+- `ubiq`
+- `nconf`
+- the Python virtual environment under `samples/venv`
+- `OPENAI_API_KEY`
+- `STT_HTTP_URL`
+
+### 3. Create the Python virtual environment
+
+For `code_runtime_generator`, create the environment from `Server/samples`:
 
 ```powershell
 cd samples
-py -3.12 -m venv .\venv
+py -3.10 -m venv .\venv
 .\venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
 
-Run the DreamCodeVR code generation sample:
+`samples/requirements.txt` is intentionally minimal and currently installs only `openai==0.28.1`, which is what `samples/services/code_generation/openai_chatgpt_api.py` needs.
+
+If you later need the older broad dependency set for image generation, local Whisper, or other legacy samples, it has been preserved in:
+
+```text
+samples/requirements-legacy-all.txt
+```
+
+### 4. Set runtime environment variables
+
+For the DreamCodeVR code generation sample:
 
 ```powershell
 $env:OPENAI_API_KEY="sk-proj-your-real-key"
 $env:OPENAI_MODEL="gpt-5.5"
 $env:STT_HTTP_URL="http://130.136.2.161:50101/stt/transcribe"
-cd apps\code_runtime_generator
+```
+
+`STT_HTTP_URL` is especially important for local runs. The code currently falls back to the remote endpoint above, which may be down or inaccessible from your network.
+
+### 5. Start a sample app
+
+From the `Server` folder you can start the main sample used in this repository with:
+
+```powershell
+npm run start:code-runtime-generator
+```
+
+The script above changes into the correct sample directory before bootstrapping the app, so `config.json`, `cert.pem`, and `key.pem` are resolved correctly.
+
+Equivalent manual command:
+
+```powershell
+cd samples\apps\code_runtime_generator
 node app.js
+```
+
+## Known Local Setup Failure Modes
+
+### `npm install` does not materialize `node_modules/ubiq`
+
+The `ubiq` dependency in `package.json` is now resolved from the vendored folder:
+
+```text
+file:vendor/ubiq
+```
+
+If the install is interrupted or `node_modules` is stale, the app will still fail on imports such as:
+
+```javascript
+require("ubiq/ubiq/messaging")
+```
+
+and the room server bootstrap in `components/application.js` will also fail because `node_modules/ubiq/app.js` is missing.
+
+### `nconf` is missing
+
+The project code imports `nconf` directly from the sample apps and from `components/application.js`, so it must be installed at the top level of `Server/node_modules`.
+
+### Python services do not start
+
+If `samples/venv` does not exist, services such as code generation fall back to a plain `python` executable and may fail depending on your PATH and installed packages.
+
+## What `npm install` Does Not Do
+
+`npm install` does not:
+
+- create `samples/venv`
+- install `samples/requirements.txt`
+- set `OPENAI_API_KEY`
+- ensure that the remote STT endpoint is reachable
+- validate that the vendored `ubiq` package has been linked into `node_modules`
+
+## Python Scope
+
+The default Python environment is now scoped to `code_runtime_generator`.
+
+- `samples/requirements.txt` is the minimal install path for code generation.
+- `samples/requirements-legacy-all.txt` preserves the older cross-sample dependency set.
+
+## Vendored Ubiq Source
+
+To keep this project compatible with the existing CommonJS imports such as `require("ubiq/ubiq/messaging")`, the repository vendors the historical `Node` package from the UCL-VR `ubiq` repository at commit `176b628c1af34aedad19a35ed5bf4c5a8473953e`.
+
+The vendored source lives in:
+
+```text
+Server/vendor/ubiq
 ```
 
 Runtime data and local dependencies are intentionally ignored by Git: `node_modules`, `samples/venv`, Python `__pycache__`, and sample `data/input.txt` / `data/response.txt`.

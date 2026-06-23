@@ -15,7 +15,7 @@ function getPythonCommand() {
         }
     }
 
-    console.warn("[CodeGenerationService] Python venv not found or incomplete. Recreate it with: cd Server\\samples; py -3.12 -m venv .\\venv; .\\venv\\Scripts\\Activate.ps1; pip install -r requirements.txt");
+    console.warn("[CodeGenerationService] Python venv not found or incomplete. Recreate it with: cd Server\\samples; py -3.10 -m venv .\\venv; .\\venv\\Scripts\\Activate.ps1; python -m pip install --upgrade pip setuptools wheel; pip install -r requirements.txt");
     return "python";
 }
 
