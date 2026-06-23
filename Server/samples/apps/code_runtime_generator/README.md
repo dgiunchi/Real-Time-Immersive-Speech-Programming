@@ -6,7 +6,7 @@ This sample runs DreamCodeVR: Unity sends selected-object context and push-to-ta
 
 - Node.js with npm
 - Python `3.10` recommended
-- Unity `2021.3.16f1`
+- Unity `6000.3.9f1`
 - OpenAI API key
 - Faster-whisper STT backend reachable at `http://130.136.2.161:50101`
 
