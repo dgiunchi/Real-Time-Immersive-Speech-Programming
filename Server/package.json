@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "Ubiq-Genie",
   "scripts": {
+    "doctor": "node scripts/check-local-setup.js",
+    "start:code-runtime-generator": "node scripts/start-code-runtime-generator.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "UCL VECG",
@@ -10,9 +12,10 @@
   "dependencies": {
     "express": "^4.18.2",
     "form-data": "^4.0.5",
+    "nconf": "^0.11.3",
     "node-pre-gyp": "^0.17.0",
     "path": "^0.12.7",
-    "ubiq": "https://gitpkg.now.sh/UCL-VR/ubiq/Node?176b628c1af34aedad19a35ed5bf4c5a8473953e",
+    "ubiq": "file:vendor/ubiq",
     "ubiq-genie-components": "file:components",
     "ubiq-genie-services": "file:samples/services",
     "uuid": "^9.0.0",

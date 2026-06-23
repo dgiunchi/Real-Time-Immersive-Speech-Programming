@@ -5,7 +5,7 @@ This sample runs DreamCodeVR: Unity sends selected-object context and push-to-ta
 ## Requirements
 
 - Node.js with npm
-- Python `3.12` recommended
+- Python `3.10` recommended
 - Unity `2021.3.16f1`
 - OpenAI API key
 - Faster-whisper STT backend reachable at `http://130.136.2.161:50101`
@@ -25,11 +25,13 @@ Create the Python venv in `Server/samples/venv`:
 
 ```powershell
 cd samples
-py -3.12 -m venv .\venv
+py -3.10 -m venv .\venv
 .\venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 ```
+
+The default `requirements.txt` in `Server/samples` is intentionally minimal for this sample and currently installs only the Python OpenAI client used by `services/code_generation/openai_chatgpt_api.py`.
 
 If PowerShell blocks activation:
 
