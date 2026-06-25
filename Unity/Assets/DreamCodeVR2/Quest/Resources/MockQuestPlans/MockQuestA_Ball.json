@@ -1,0 +1,111 @@
+{
+  "quest_id": "mock_ball_001",
+  "mode": "fixed",
+  "title": "Ball Variant Escape Sequence",
+  "summary": "Straighten the painting, search carefully, then create and place the ball before opening the exit door.",
+  "final_key": "key_002",
+  "drawer_key": "key_001",
+  "tasks": [
+    {
+      "step": 1,
+      "type": "StraightenObject",
+      "target": "painting_001",
+      "description": "Straighten or move the painting to reveal the next lead."
+    },
+    {
+      "step": 2,
+      "type": "SearchDrawer",
+      "target": "cabinet_drawer_002",
+      "key": "key_001",
+      "description": "Use the non-exit key to inspect a drawer and recover the second clue."
+    },
+    {
+      "step": 3,
+      "type": "CreateAndPlaceObject",
+      "object_to_create": "soccer_ball_001",
+      "primitive": "sphere",
+      "material": "soccer_ball_material",
+      "target_anchor": "basket_inside_anchor",
+      "requires_planning": true,
+      "description": "Create a soccer ball, give it the right look, and place it in the basket."
+    },
+    {
+      "step": 4,
+      "type": "UnlockExitDoor",
+      "target": "door_001",
+      "key": "key_002",
+      "lock": "lock_001",
+      "has_error_risk": true,
+      "description": "Try the correct exit key on the door once the room setup is complete."
+    }
+  ],
+  "initial_setup": [
+    {
+      "action": "ResetCreatedObject",
+      "object": "soccer_ball_001"
+    },
+    {
+      "action": "ResetCreatedObject",
+      "object": "colored_cube_001"
+    },
+    {
+      "action": "PlaceObject",
+      "object": "key_001",
+      "anchor": "table_001.desk_surface_anchor",
+      "parent": "table_001"
+    },
+    {
+      "action": "PlaceObject",
+      "object": "key_002",
+      "anchor": "cabinet_drawer_001.drawer_inside_anchor",
+      "parent": "cabinet_drawer_001"
+    },
+    {
+      "action": "PlaceObject",
+      "object": "clue_note_002",
+      "anchor": "cabinet_drawer_002.drawer_inside_anchor",
+      "parent": "cabinet_drawer_002"
+    },
+    {
+      "action": "SetMaterial",
+      "object": "key_001",
+      "material": "GoldKey"
+    },
+    {
+      "action": "SetMaterial",
+      "object": "key_002",
+      "material": "SilverKey"
+    }
+  ],
+  "clues": [
+    {
+      "object": "clue_note_001",
+      "text": "Two keys, two purposes. Some locks help you search, one lock leads outside. Try carefully.",
+      "style": "vague_actionable",
+      "text_target": "TMP_Text"
+    },
+    {
+      "object": "clue_note_002",
+      "text": "Something round belongs in the basket. Create it, give it the right look, and place it there.",
+      "style": "vague_actionable",
+      "text_target": "TMP_Text"
+    }
+  ],
+  "error_risk": {
+    "type": "wrong_key_on_exit",
+    "correct_key": "key_002",
+    "wrong_key": "key_001",
+    "target": "door_001",
+    "correct_target": "lock_001",
+    "distractor_targets": [ "lock_002", "lock_003" ],
+    "repair_hint": "If the exit does not open, keep searching. One key helps you explore, one key gets you out."
+  },
+  "validation_flags": {
+    "has_fixed_first_task": true,
+    "has_fixed_final_task": true,
+    "has_planning_task": true,
+    "has_error_risk_task": true,
+    "anchor_only_placement": true,
+    "clue_text_limited": true
+  }
+}

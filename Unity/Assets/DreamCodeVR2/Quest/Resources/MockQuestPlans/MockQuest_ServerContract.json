@@ -1,0 +1,101 @@
+{
+  "quest_id": "mock_server_contract_001",
+  "mode": "llm_generated_placeholder",
+  "title": "Server Contract Alignment Quest",
+  "summary": "A server-style quest plan using canonical object fields and unique variable placements.",
+  "final_key": "key_002",
+  "drawer_key": "key_001",
+  "tasks": [
+    {
+      "step": 1,
+      "type": "StraightenAndMovePainting",
+      "target": "painting_001",
+      "description": "Straighten or move the painting to reveal the next lead."
+    },
+    {
+      "step": 2,
+      "type": "ReadClue",
+      "target": "clue_note_002",
+      "key": "key_001",
+      "description": "Use the search key to reach the clue and read it carefully."
+    },
+    {
+      "step": 3,
+      "type": "CreateTextureAndPlaceObject",
+      "object_to_create": "soccer_ball_001",
+      "primitive": "sphere",
+      "material": "soccer_ball_material",
+      "target_anchor": "basket_001.basket_inside_anchor",
+      "requires_planning": true,
+      "description": "Create a soccer ball, give it the right look, and place it in the basket."
+    },
+    {
+      "step": 4,
+      "type": "UnlockDoorWithKey",
+      "target": "door_001",
+      "key": "key_002",
+      "lock": "lock_001",
+      "has_error_risk": true,
+      "description": "Use the correct final key on the exit door."
+    }
+  ],
+  "initial_setup": [
+    {
+      "action": "ResetCreatedObject",
+      "object": "soccer_ball_001"
+    },
+    {
+      "action": "ResetCreatedObject",
+      "object": "colored_cube_001"
+    },
+    {
+      "action": "PlaceObject",
+      "object": "key_001",
+      "anchor": "table_001.desk_surface_anchor",
+      "parent": "table_001"
+    },
+    {
+      "action": "PlaceObject",
+      "object": "key_002",
+      "anchor": "cabinet_drawer_001.drawer_inside_anchor",
+      "parent": "cabinet_drawer_001"
+    },
+    {
+      "action": "PlaceObject",
+      "object": "clue_note_002",
+      "anchor": "table_drawer_002.drawer_inside_anchor",
+      "parent": "table_drawer_002"
+    }
+  ],
+  "clues": [
+    {
+      "object": "clue_note_001",
+      "text_target": "Text (TMP)",
+      "style": "vague_but_actionable",
+      "text": "Two keys, two purposes. Some locks help you search, one lock leads outside. Try carefully."
+    },
+    {
+      "object": "clue_note_002",
+      "text_target": "Text (TMP)",
+      "style": "vague_but_actionable",
+      "text": "Something round belongs in the basket. Create it, give it the right look, and place it there."
+    }
+  ],
+  "error_risk": {
+    "type": "wrong_key_on_exit",
+    "correct_key": "key_002",
+    "wrong_key": "key_001",
+    "target": "door_001",
+    "correct_target": "lock_001",
+    "distractor_targets": [ "lock_002", "lock_003" ],
+    "repair_hint": "If the exit does not open, keep searching. One key helps you explore, one key gets you out."
+  },
+  "validation_flags": {
+    "has_fixed_first_task": true,
+    "has_fixed_final_task": true,
+    "has_planning_task": true,
+    "has_error_risk_task": true,
+    "anchor_only_placement": true,
+    "clue_text_limited": true
+  }
+}

@@ -21280,6 +21280,17 @@ MonoBehaviour:
   triggerThreshold: 0.75
   releaseDebounceSeconds: 0.15
   logRecordingState: 1
+  debugSpeechDiagnostics: 1
+  minimumRecordingMs: 350
+  nearSilentRmsThreshold: 0.005
+  nearSilentPeakThreshold: 0.02
+  restartMicrophoneOnZeroSignal: 1
+  restartMicrophoneOnNearSilentCapture: 1
+  maxAutoMicRecoveryAttempts: 2
+  microphoneRecoveryCooldownSeconds: 1
+  nearSilentRecoveryMinimumRecordingMs: 800
+  nearSilentRecoveryRmsThreshold: 0.0005
+  nearSilentRecoveryPeakThreshold: 0.003
   networkId:
     a: 0
     b: 98
@@ -21844,19 +21855,19 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9194007299222736981, guid: c2e57ac18c36e3c448c9e6e6d37310c7, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.6830127
+      value: 0.7071068
       objectReference: {fileID: 0}
     - target: {fileID: 9194007299222736981, guid: c2e57ac18c36e3c448c9e6e6d37310c7, type: 3}
       propertyPath: m_LocalRotation.x
-      value: -0.18301274
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 9194007299222736981, guid: c2e57ac18c36e3c448c9e6e6d37310c7, type: 3}
       propertyPath: m_LocalRotation.y
-      value: -0.6830127
+      value: -0.7071068
       objectReference: {fileID: 0}
     - target: {fileID: 9194007299222736981, guid: c2e57ac18c36e3c448c9e6e6d37310c7, type: 3}
       propertyPath: m_LocalRotation.z
-      value: 0.18301274
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 9194007299222736981, guid: c2e57ac18c36e3c448c9e6e6d37310c7, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -21868,7 +21879,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9194007299222736981, guid: c2e57ac18c36e3c448c9e6e6d37310c7, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
-      value: 30
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -21931,8 +21942,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 3.3290389, y: 4.3394012, z: 0.18127874}
-  m_Center: {x: 0, y: 0, z: -0.07477379}
+  m_Size: {x: 2.1047451, y: 2.148027, z: 0.18127872}
+  m_Center: {x: 0.0126111135, y: 0.016430119, z: -0.07477379}
 --- !u!1 &1916914937
 GameObject:
   m_ObjectHideFlags: 0

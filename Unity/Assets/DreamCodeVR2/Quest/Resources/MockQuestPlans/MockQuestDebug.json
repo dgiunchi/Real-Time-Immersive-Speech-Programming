@@ -1,0 +1,74 @@
+{
+  "quest_id": "mock_debug_001",
+  "mode": "manual_debug",
+  "title": "Manual Debug Scenario",
+  "summary": "A compact debug setup that keeps the same quest constraints while simplifying inspection.",
+  "final_key": "key_002",
+  "drawer_key": "key_001",
+  "tasks": [
+    {
+      "step": 1,
+      "type": "StraightenObject",
+      "target": "painting_001",
+      "description": "Straighten the painting."
+    },
+    {
+      "step": 2,
+      "type": "ReadClue",
+      "target": "clue_note_002",
+      "description": "Read the secondary clue and inspect the setup."
+    },
+    {
+      "step": 3,
+      "type": "UnlockExitDoor",
+      "target": "door_001",
+      "key": "key_002",
+      "lock": "lock_001",
+      "description": "Use the intended final key on the exit door."
+    }
+  ],
+  "initial_setup": [
+    {
+      "action": "ResetCreatedObject",
+      "object": "soccer_ball_001"
+    },
+    {
+      "action": "ResetCreatedObject",
+      "object": "colored_cube_001"
+    },
+    {
+      "action": "PlaceObject",
+      "object": "key_001",
+      "anchor": "table_001.desk_surface_anchor",
+      "parent": "table_001"
+    },
+    {
+      "action": "PlaceObject",
+      "object": "key_002",
+      "anchor": "cabinet_001.cabinet_top_anchor",
+      "parent": "cabinet_001"
+    },
+    {
+      "action": "PlaceObject",
+      "object": "clue_note_002",
+      "anchor": "table_drawer_002.drawer_inside_anchor",
+      "parent": "table_drawer_002"
+    }
+  ],
+  "clues": [
+    {
+      "object": "clue_note_002",
+      "text": "Debug setup active. Follow the clue flow, then test the exit key.",
+      "style": "debug",
+      "text_target": "TMP_Text"
+    }
+  ],
+  "validation_flags": {
+    "has_fixed_first_task": true,
+    "has_fixed_final_task": true,
+    "has_planning_task": false,
+    "has_error_risk_task": false,
+    "anchor_only_placement": true,
+    "clue_text_limited": true
+  }
+}

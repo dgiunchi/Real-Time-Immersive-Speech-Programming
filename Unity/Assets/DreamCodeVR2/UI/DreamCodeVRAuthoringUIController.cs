@@ -9,6 +9,7 @@ namespace DreamCodeVR2.UI
     public class DreamCodeVRAuthoringUIController : MonoBehaviour
     {
         [Header("Compact")]
+        public TMP_Text compactScenarioText;
         public TMP_Text compactPointedText;
         public TMP_Text compactSelectedText;
         public TMP_Text compactSpeechText;
@@ -18,8 +19,6 @@ namespace DreamCodeVR2.UI
         public TMP_Text objectNameText;
         public TMP_Text objectIdText;
         public TMP_Text objectDescriptionText;
-        public TMP_Text objectLabelsText;
-        public TMP_Text possibleActionsText;
 
         [Header("Speech")]
         public CanvasGroup speechCardGroup;
@@ -39,6 +38,7 @@ namespace DreamCodeVR2.UI
         [Header("Data Sources")]
         public InteractionContextProvider interactionContextProvider;
         public SelectObjectRay selectObjectRay;
+        public DreamCodeVRSpeechStatusBridge speechStatusBridge;
         public Transform followTarget;
 
         [Header("Layout")]
@@ -51,43 +51,38 @@ namespace DreamCodeVR2.UI
         [Header("Behavior")]
         public bool debugAlwaysShowAllPanels = false;
         public float pollIntervalSeconds = 0.15f;
-        public float speechCardHideDelay = 6f;
         public float feedbackHideDelay = 5f;
 
         private AIEditableObject lastPointedObject;
         private AIEditableObject lastSelectedObject;
         private AIEditableObject lastInspectObject;
-        private string lastTranscript;
+        private string lastScenarioMode = "Fixed Scenario";
         private string lastStatusMessage;
         private string lastUndoHint;
         private bool hasUndoAvailable;
         private bool hasPlanPreview;
         private bool hasPlacedUi;
         private float nextPollTime;
-        private float lastTranscriptTime = float.NegativeInfinity;
         private float lastFeedbackTime = float.NegativeInfinity;
 
         private void OnEnable()
         {
-            TranscriptionCollector.TranscriptReceived += OnTranscriptReceived;
+            SubscribeSpeechBridge();
             ApplyDefaults();
         }
 
         private void OnDisable()
         {
-            TranscriptionCollector.TranscriptReceived -= OnTranscriptReceived;
+            UnsubscribeSpeechBridge();
         }
 
         private void Start()
         {
             ResolveSources();
+            SubscribeSpeechBridge();
             ApplyDefaults();
             UpdateTransform(true);
-
-            if (!string.IsNullOrWhiteSpace(TranscriptionCollector.LatestTranscript))
-            {
-                SetTranscript(TranscriptionCollector.LatestTranscript);
-            }
+            RefreshSpeechUi();
         }
 
         private void Update()
@@ -110,9 +105,12 @@ namespace DreamCodeVR2.UI
         public void SetPointedObject(AIEditableObject obj)
         {
             var objectId = obj ? obj.objectId : "none";
-            compactPointedText.text = obj
-                ? $"Pointed: {DisplayNameOrObjectId(obj)}"
-                : "Pointed: none";
+            if (compactPointedText)
+            {
+                compactPointedText.text = obj
+                    ? $"Pointed: {DisplayNameOrObjectId(obj)}"
+                    : "Pointed: none";
+            }
 
             if (lastPointedObject != obj)
             {
@@ -124,9 +122,12 @@ namespace DreamCodeVR2.UI
         public void SetSelectedObject(AIEditableObject obj)
         {
             var objectId = obj ? obj.objectId : "none";
-            compactSelectedText.text = obj
-                ? $"Selected: {DisplayNameOrObjectId(obj)}"
-                : "Selected: none";
+            if (compactSelectedText)
+            {
+                compactSelectedText.text = obj
+                    ? $"Selected: {DisplayNameOrObjectId(obj)}"
+                    : "Selected: none";
+            }
 
             if (lastSelectedObject != obj)
             {
@@ -135,49 +136,28 @@ namespace DreamCodeVR2.UI
             }
         }
 
-        public void SetTranscript(string transcript)
-        {
-            lastTranscript = transcript;
-            lastTranscriptTime = Time.unscaledTime;
-
-            var hasTranscript = !string.IsNullOrWhiteSpace(transcript);
-            compactSpeechText.text = hasTranscript
-                ? $"Speech: {TruncateInline(transcript, 28)}"
-                : "Speech: waiting";
-
-            transcriptText.text = hasTranscript
-                ? transcript
-                : "Waiting for speech...";
-        }
-
-        public void SetIntentDebug(string intent, string policy, float confidence)
-        {
-            intentText.text = string.IsNullOrWhiteSpace(intent)
-                ? "Intent: waiting for server-side interpretation..."
-                : $"Intent: {intent}\nPolicy: {policy}\nConfidence: {confidence:0.00}";
-        }
-
         public void SetInspectInfo(AIEditableObject obj)
         {
-            objectNameText.text = obj
-                ? DisplayNameOrObjectId(obj)
-                : "No object in focus.";
+            if (objectNameText)
+            {
+                objectNameText.text = obj
+                    ? DisplayNameOrObjectId(obj)
+                    : "No object in focus.";
+            }
 
-            objectIdText.text = obj
-                ? $"ID: {obj.objectId}"
-                : "ID: none";
+            if (objectIdText)
+            {
+                objectIdText.text = obj
+                    ? obj.objectId
+                    : "none";
+            }
 
-            objectDescriptionText.text = obj && !string.IsNullOrWhiteSpace(obj.description)
-                ? obj.description
-                : "Point at an interactive object to inspect its metadata.";
-
-            objectLabelsText.text = obj && obj.labels != null && obj.labels.Length > 0
-                ? $"Labels: {TruncateInline(string.Join(", ", obj.labels), 54)}"
-                : "Labels: none";
-
-            possibleActionsText.text = obj
-                ? $"Possible actions: inspect, reference, describe{BuildActionSuffix(obj)}"
-                : "Possible actions: inspect";
+            if (objectDescriptionText)
+            {
+                objectDescriptionText.text = obj && !string.IsNullOrWhiteSpace(obj.description)
+                    ? TruncateMultiline(obj.description, 180)
+                    : "Point at an interactive object to inspect its metadata.";
+            }
 
             if (lastInspectObject != obj)
             {
@@ -193,18 +173,47 @@ namespace DreamCodeVR2.UI
                 : steps.Where(step => !string.IsNullOrWhiteSpace(step)).ToList();
 
             hasPlanPreview = filteredSteps.Count > 0;
-            planTitleText.text = string.IsNullOrWhiteSpace(title) ? "Plan Preview" : title;
-            planStepsText.text = hasPlanPreview
-                ? string.Join("\n", filteredSteps.Select((step, index) => $"{index + 1}. {step}"))
-                : "No pending plan.";
+            if (planTitleText)
+            {
+                planTitleText.text = string.IsNullOrWhiteSpace(title) ? "Plan Preview" : title;
+            }
+
+            if (planStepsText)
+            {
+                planStepsText.text = hasPlanPreview
+                    ? string.Join("\n", filteredSteps.Select((step, index) => $"{index + 1}. {step}"))
+                    : "No pending plan.";
+            }
+        }
+
+        public void SetScenarioMode(string mode)
+        {
+            lastScenarioMode = string.IsNullOrWhiteSpace(mode) ? "Fixed Scenario" : mode.Trim();
+            if (compactScenarioText)
+            {
+                compactScenarioText.text = $"Scenario: {lastScenarioMode}";
+            }
+        }
+
+        public void SetQuestPreview(string title, IEnumerable<string> steps)
+        {
+            SetPlanPreview(title, steps);
+        }
+
+        public void SetQuestSetupStatus(string message)
+        {
+            SetStatus(message);
         }
 
         public void SetStatus(string message)
         {
             lastStatusMessage = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
-            statusText.text = string.IsNullOrWhiteSpace(lastStatusMessage)
-                ? "Status: Ready."
-                : $"Status: {lastStatusMessage}";
+            if (statusText)
+            {
+                statusText.text = string.IsNullOrWhiteSpace(lastStatusMessage)
+                    ? "Status: Ready."
+                    : $"Status: {lastStatusMessage}";
+            }
 
             if (!string.IsNullOrWhiteSpace(lastStatusMessage))
             {
@@ -216,11 +225,14 @@ namespace DreamCodeVR2.UI
         {
             hasUndoAvailable = available;
             lastUndoHint = string.IsNullOrWhiteSpace(hint) ? null : hint.Trim();
-            undoHintText.text = available
-                ? $"Undo: {lastUndoHint ?? "Undo available."}"
-                : string.IsNullOrWhiteSpace(lastUndoHint)
-                    ? "Undo: No undoable action yet."
-                    : $"Undo: {lastUndoHint}";
+            if (undoHintText)
+            {
+                undoHintText.text = available
+                    ? $"Undo: {lastUndoHint ?? "Undo available."}"
+                    : string.IsNullOrWhiteSpace(lastUndoHint)
+                        ? "Undo: No undoable action yet."
+                        : $"Undo: {lastUndoHint}";
+            }
 
             if (available || !string.IsNullOrWhiteSpace(lastUndoHint))
             {
@@ -234,11 +246,26 @@ namespace DreamCodeVR2.UI
             SetPointedObject(null);
             SetSelectedObject(null);
             SetInspectInfo(null);
-            SetTranscript(string.IsNullOrWhiteSpace(lastTranscript) ? null : lastTranscript);
-            SetIntentDebug(null, null, 0f);
+            SetScenarioMode(lastScenarioMode);
             SetPlanPreview(null, null);
             SetStatus(null);
             SetUndoAvailable(false, null);
+
+            if (compactSpeechText)
+            {
+                compactSpeechText.text = "Speech: Initializing...";
+            }
+
+            if (transcriptText)
+            {
+                transcriptText.text = "Speech: Initializing...";
+            }
+
+            if (intentText)
+            {
+                intentText.text = "Waiting for microphone initialization.";
+            }
+
             UpdatePanelVisibility();
         }
 
@@ -258,6 +285,29 @@ namespace DreamCodeVR2.UI
             {
                 selectObjectRay = FindFirstObjectByType<SelectObjectRay>();
             }
+
+            if (!speechStatusBridge)
+            {
+                speechStatusBridge = FindFirstObjectByType<DreamCodeVRSpeechStatusBridge>();
+            }
+        }
+
+        private void SubscribeSpeechBridge()
+        {
+            ResolveSources();
+            if (speechStatusBridge)
+            {
+                speechStatusBridge.StateChanged -= OnSpeechStateChanged;
+                speechStatusBridge.StateChanged += OnSpeechStateChanged;
+            }
+        }
+
+        private void UnsubscribeSpeechBridge()
+        {
+            if (speechStatusBridge)
+            {
+                speechStatusBridge.StateChanged -= OnSpeechStateChanged;
+            }
         }
 
         private void UpdateSelectionState()
@@ -275,6 +325,35 @@ namespace DreamCodeVR2.UI
             SetInspectInfo(selectedObject ? selectedObject : pointedObject);
         }
 
+        private void RefreshSpeechUi()
+        {
+            if (!speechStatusBridge)
+            {
+                return;
+            }
+
+            if (compactSpeechText)
+            {
+                compactSpeechText.text = speechStatusBridge.CompactSpeechText;
+            }
+
+            if (transcriptText)
+            {
+                transcriptText.text = speechStatusBridge.DetailedSpeechText;
+            }
+
+            if (intentText)
+            {
+                intentText.text = speechStatusBridge.DiagnosticsSummaryText;
+            }
+            UpdatePanelVisibility();
+        }
+
+        private void OnSpeechStateChanged()
+        {
+            RefreshSpeechUi();
+        }
+
         private void UpdatePanelVisibility()
         {
             var inspectVisible = debugAlwaysShowAllPanels || lastPointedObject || lastSelectedObject;
@@ -290,12 +369,13 @@ namespace DreamCodeVR2.UI
 
         private bool ShouldShowSpeechCard()
         {
-            if (string.IsNullOrWhiteSpace(lastTranscript))
+            if (!speechStatusBridge)
             {
                 return false;
             }
 
-            return Time.unscaledTime - lastTranscriptTime <= speechCardHideDelay;
+            return speechStatusBridge.CurrentState != SpeechUiState.Ready
+                && speechStatusBridge.CurrentState != SpeechUiState.Initializing;
         }
 
         private bool ShouldShowFeedbackCard()
@@ -355,11 +435,6 @@ namespace DreamCodeVR2.UI
             transform.localScale = Vector3.one * uiScale;
         }
 
-        private void OnTranscriptReceived(string transcript)
-        {
-            SetTranscript(transcript);
-        }
-
         private static void SetCanvasGroupVisible(CanvasGroup group, bool visible)
         {
             if (!group)
@@ -381,39 +456,20 @@ namespace DreamCodeVR2.UI
             return string.IsNullOrWhiteSpace(obj.displayName) ? obj.objectId : obj.displayName;
         }
 
-        private static string TruncateInline(string value, int maxLength)
+        private static string TruncateMultiline(string value, int maxLength)
         {
-            if (string.IsNullOrWhiteSpace(value) || value.Length <= maxLength)
+            if (string.IsNullOrWhiteSpace(value))
             {
                 return value;
             }
 
-            return value.Substring(0, maxLength - 3) + "...";
-        }
-
-        private static string BuildActionSuffix(AIEditableObject obj)
-        {
-            if (obj.labels == null || obj.labels.Length == 0)
+            var normalized = value.Replace('\n', ' ').Replace('\r', ' ');
+            if (normalized.Length <= maxLength)
             {
-                return string.Empty;
+                return normalized;
             }
 
-            if (obj.labels.Contains("openable") || obj.labels.Contains("container"))
-            {
-                return ", open";
-            }
-
-            if (obj.labels.Contains("readable"))
-            {
-                return ", read";
-            }
-
-            if (obj.labels.Contains("lock") || obj.labels.Contains("lockable"))
-            {
-                return ", unlock";
-            }
-
-            return string.Empty;
+            return normalized.Substring(0, maxLength - 3) + "...";
         }
     }
 }

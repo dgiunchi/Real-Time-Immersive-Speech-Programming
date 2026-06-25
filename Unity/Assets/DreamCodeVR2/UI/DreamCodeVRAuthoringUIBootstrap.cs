@@ -1,4 +1,5 @@
 using DreamCodeVR2.ContextBridge;
+using DreamCodeVR2.Quest;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -82,15 +83,27 @@ namespace DreamCodeVR2.UI
 
             var root = new GameObject(AuthoringUiRootName);
             var controller = root.AddComponent<DreamCodeVRAuthoringUIController>();
+            var speechStatusBridge = root.AddComponent<DreamCodeVRSpeechStatusBridge>();
+            var runtimeCreatableObjectCatalog = root.AddComponent<RuntimeCreatableObjectCatalog>();
+            var questPlanApplier = root.AddComponent<QuestPlanApplier>();
+            var questPlannerClient = root.AddComponent<QuestPlannerClient>();
+            var questScenarioController = root.AddComponent<QuestScenarioController>();
             controller.enabled = false;
             controller.interactionContextProvider = Object.FindFirstObjectByType<InteractionContextProvider>();
             controller.selectObjectRay = Object.FindFirstObjectByType<SelectObjectRay>();
+            controller.speechStatusBridge = speechStatusBridge;
             controller.followTarget = mainCamera.transform;
             controller.distanceFromCamera = 1.42f;
             controller.horizontalOffset = 0.58f;
             controller.verticalOffset = 0.04f;
             controller.uiScale = 0.00118f;
             controller.followSmoothing = 7f;
+            speechStatusBridge.microphoneCapture = Object.FindFirstObjectByType<MicrophoneCapture>();
+            questPlanApplier.authoringUiController = controller;
+            questPlanApplier.runtimeCreatableObjectCatalog = runtimeCreatableObjectCatalog;
+            questScenarioController.authoringUiController = controller;
+            questScenarioController.questPlanApplier = questPlanApplier;
+            questScenarioController.questPlannerClient = questPlannerClient;
 
             var canvasObject = new GameObject("Canvas");
             canvasObject.transform.SetParent(root.transform, false);
@@ -122,9 +135,10 @@ namespace DreamCodeVR2.UI
             SetPreferredWidth(compactCard.gameObject, 360f);
             ConfigureCardLayout(compactCard.gameObject, 18, 18, 14, 14, 6f);
             CreateText("CompactTitle", compactCard, "DreamCodeVR Authoring", 22f, FontStyles.Bold, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
+            controller.compactScenarioText = CreateText("CompactScenarioText", compactCard, "Scenario: Fixed Scenario", 16f, FontStyles.Normal, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
             controller.compactPointedText = CreateText("CompactPointedText", compactCard, "Pointed: none", 16f, FontStyles.Normal, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
             controller.compactSelectedText = CreateText("CompactSelectedText", compactCard, "Selected: none", 16f, FontStyles.Normal, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
-            controller.compactSpeechText = CreateText("CompactSpeechText", compactCard, legacyMenuHidden ? "Speech: waiting" : "Speech: menu fallback active", 16f, FontStyles.Normal, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
+            controller.compactSpeechText = CreateText("CompactSpeechText", compactCard, "Speech: Initializing...", 16f, FontStyles.Normal, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
 
             var inspectCard = CreateCard("InspectCard", layoutRoot, new Color(0.08f, 0.10f, 0.14f, 0.96f));
             SetPreferredWidth(inspectCard.gameObject, 380f);
@@ -132,10 +146,8 @@ namespace DreamCodeVR2.UI
             controller.inspectCardGroup = inspectCard.gameObject.AddComponent<CanvasGroup>();
             CreateText("InspectHeader", inspectCard, "Inspect", 18f, FontStyles.Bold, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
             controller.objectNameText = CreateText("ObjectNameText", inspectCard, "No object in focus.", 18f, FontStyles.Bold, TextAlignmentOptions.Left, 2, TextOverflowModes.Ellipsis);
-            controller.objectIdText = CreateText("ObjectIdText", inspectCard, "ID: none", 14f, FontStyles.Normal, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
+            controller.objectIdText = CreateText("ObjectIdText", inspectCard, "none", 13f, FontStyles.Italic, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
             controller.objectDescriptionText = CreateText("ObjectDescriptionText", inspectCard, "Point at an interactive object to inspect its metadata.", 15f, FontStyles.Normal, TextAlignmentOptions.TopLeft, 4, TextOverflowModes.Ellipsis);
-            controller.objectLabelsText = CreateText("ObjectLabelsText", inspectCard, "Labels: none", 14f, FontStyles.Normal, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
-            controller.possibleActionsText = CreateText("PossibleActionsText", inspectCard, "Possible actions: inspect", 14f, FontStyles.Normal, TextAlignmentOptions.Left, 2, TextOverflowModes.Ellipsis);
 
             var speechCard = CreateCard("SpeechCard", layoutRoot, new Color(0.07f, 0.09f, 0.13f, 0.96f));
             SetPreferredWidth(speechCard.gameObject, 420f);
@@ -149,8 +161,8 @@ namespace DreamCodeVR2.UI
             SetPreferredWidth(planCard.gameObject, 430f);
             ConfigureCardLayout(planCard.gameObject, 18, 18, 14, 14, 5f);
             controller.planCardGroup = planCard.gameObject.AddComponent<CanvasGroup>();
-            CreateText("PlanHeader", planCard, "Plan Preview", 18f, FontStyles.Bold, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
-            controller.planTitleText = CreateText("PlanTitleText", planCard, "Plan Preview", 16f, FontStyles.Bold, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
+            CreateText("PlanHeader", planCard, "Quest Preview", 18f, FontStyles.Bold, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
+            controller.planTitleText = CreateText("PlanTitleText", planCard, "Quest Preview", 16f, FontStyles.Bold, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
             controller.planStepsText = CreateText("PlanStepsText", planCard, "No pending plan.", 14f, FontStyles.Normal, TextAlignmentOptions.TopLeft, 6, TextOverflowModes.Ellipsis);
 
             var feedbackCard = CreateCard("FeedbackCard", layoutRoot, new Color(0.10f, 0.13f, 0.18f, 0.97f));
@@ -222,7 +234,7 @@ namespace DreamCodeVR2.UI
             tmp.fontStyle = fontStyle;
             tmp.color = new Color(0.96f, 0.98f, 1f, 1f);
             tmp.alignment = alignment;
-            tmp.enableWordWrapping = maxVisibleLines > 1;
+            tmp.textWrappingMode = maxVisibleLines > 1 ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
             tmp.overflowMode = overflowMode;
             tmp.maxVisibleLines = maxVisibleLines;
             tmp.margin = new Vector4(0f, 0f, 4f, 0f);
