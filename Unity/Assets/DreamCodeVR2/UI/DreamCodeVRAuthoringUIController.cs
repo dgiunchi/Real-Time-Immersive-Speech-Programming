@@ -13,6 +13,9 @@ namespace DreamCodeVR2.UI
         public TMP_Text compactPointedText;
         public TMP_Text compactSelectedText;
         public TMP_Text compactSpeechText;
+        public TMP_Text compactQuestText;
+        public TMP_Text compactObjectiveText;
+        public TMP_Text compactFeedbackText;
 
         [Header("Inspect")]
         public CanvasGroup inspectCardGroup;
@@ -50,6 +53,8 @@ namespace DreamCodeVR2.UI
 
         [Header("Behavior")]
         public bool debugAlwaysShowAllPanels = false;
+        public bool showDebugQuestDetails = false;
+        public bool showInspectPanel = false;
         public float pollIntervalSeconds = 0.15f;
         public float feedbackHideDelay = 5f;
 
@@ -207,12 +212,19 @@ namespace DreamCodeVR2.UI
 
         public void SetStatus(string message)
         {
-            lastStatusMessage = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
+            lastStatusMessage = SimplifyStatusMessage(message);
             if (statusText)
             {
                 statusText.text = string.IsNullOrWhiteSpace(lastStatusMessage)
-                    ? "Status: Ready."
-                    : $"Status: {lastStatusMessage}";
+                    ? "Feedback: Ready."
+                    : $"Feedback: {lastStatusMessage}";
+            }
+
+            if (compactFeedbackText)
+            {
+                compactFeedbackText.text = string.IsNullOrWhiteSpace(lastStatusMessage)
+                    ? "Feedback: Ready."
+                    : $"Feedback: {TruncateMultiline(lastStatusMessage, 52)}";
             }
 
             if (!string.IsNullOrWhiteSpace(lastStatusMessage))
@@ -240,6 +252,33 @@ namespace DreamCodeVR2.UI
             }
         }
 
+        public void SetQuestRuntimeInfo(int currentTaskNumber, int totalTasks, string instruction, string lastResult)
+        {
+            var displayInstruction = string.IsNullOrWhiteSpace(instruction) ? "No active task." : instruction.Trim();
+            var safeTotalTasks = Mathf.Max(0, totalTasks);
+            var safeCurrentTask = Mathf.Clamp(currentTaskNumber, 0, safeTotalTasks);
+
+            if (compactQuestText)
+            {
+                compactQuestText.text = $"Current task: {safeCurrentTask} / {safeTotalTasks}";
+            }
+
+            if (compactObjectiveText)
+            {
+                compactObjectiveText.text = TruncateMultiline(displayInstruction, 90);
+            }
+
+            if (!string.IsNullOrWhiteSpace(lastResult))
+            {
+                SetStatus(lastResult);
+            }
+        }
+
+        public void ClearQuestRuntimeInfo()
+        {
+            SetQuestRuntimeInfo(0, 0, "No active task.", null);
+        }
+
         private void ApplyDefaults()
         {
             transform.localScale = Vector3.one * uiScale;
@@ -250,6 +289,7 @@ namespace DreamCodeVR2.UI
             SetPlanPreview(null, null);
             SetStatus(null);
             SetUndoAvailable(false, null);
+            ClearQuestRuntimeInfo();
 
             if (compactSpeechText)
             {
@@ -264,6 +304,11 @@ namespace DreamCodeVR2.UI
             if (intentText)
             {
                 intentText.text = "Waiting for microphone initialization.";
+            }
+
+            if (compactFeedbackText)
+            {
+                compactFeedbackText.text = "Feedback: Ready.";
             }
 
             UpdatePanelVisibility();
@@ -356,15 +401,17 @@ namespace DreamCodeVR2.UI
 
         private void UpdatePanelVisibility()
         {
-            var inspectVisible = debugAlwaysShowAllPanels || lastPointedObject || lastSelectedObject;
-            var speechVisible = debugAlwaysShowAllPanels || ShouldShowSpeechCard();
-            var planVisible = debugAlwaysShowAllPanels || hasPlanPreview;
-            var feedbackVisible = debugAlwaysShowAllPanels || ShouldShowFeedbackCard();
+            var inspectVisible = debugAlwaysShowAllPanels || (showInspectPanel && (lastPointedObject || lastSelectedObject));
+            var speechVisible = debugAlwaysShowAllPanels || showDebugQuestDetails;
+            var planVisible = debugAlwaysShowAllPanels || (showDebugQuestDetails && hasPlanPreview);
+            var feedbackVisible = debugAlwaysShowAllPanels || showDebugQuestDetails;
 
             SetCanvasGroupVisible(inspectCardGroup, inspectVisible);
             SetCanvasGroupVisible(speechCardGroup, speechVisible);
             SetCanvasGroupVisible(planCardGroup, planVisible);
             SetCanvasGroupVisible(feedbackCardGroup, feedbackVisible);
+            SetTextVisible(compactScenarioText, showDebugQuestDetails || debugAlwaysShowAllPanels);
+            SetTextVisible(compactSelectedText, showDebugQuestDetails || debugAlwaysShowAllPanels);
         }
 
         private bool ShouldShowSpeechCard()
@@ -449,6 +496,90 @@ namespace DreamCodeVR2.UI
             {
                 group.gameObject.SetActive(visible);
             }
+        }
+
+        private static void SetTextVisible(TMP_Text text, bool visible)
+        {
+            if (!text)
+            {
+                return;
+            }
+
+            if (text.gameObject.activeSelf != visible)
+            {
+                text.gameObject.SetActive(visible);
+            }
+        }
+
+        private static string SimplifyStatusMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return null;
+            }
+
+            var trimmed = message.Trim();
+            if (trimmed.StartsWith("Quest preview ready:"))
+            {
+                return "Quest received.";
+            }
+
+            if (trimmed.StartsWith("Quest received:"))
+            {
+                return "Quest received.";
+            }
+
+            if (trimmed.StartsWith("Quest applied with warnings:"))
+            {
+                return "Quest applied.";
+            }
+
+            if (trimmed.StartsWith("Quest applied:"))
+            {
+                return "Quest applied.";
+            }
+
+            if (trimmed.StartsWith("Applied with warnings:"))
+            {
+                return "Quest applied.";
+            }
+
+            if (trimmed.StartsWith("Applied quest setup:"))
+            {
+                return "Quest applied.";
+            }
+
+            if (trimmed.StartsWith("Task completed:"))
+            {
+                return "Task completed.";
+            }
+
+            if (trimmed.StartsWith("Started quest:"))
+            {
+                return "Quest applied.";
+            }
+
+            if (trimmed.StartsWith("Current objective:"))
+            {
+                return "Task updated.";
+            }
+
+            if (trimmed.StartsWith("Quest completed:"))
+            {
+                return "Quest completed.";
+            }
+
+            if (trimmed.StartsWith("Quest request failed:"))
+            {
+                return trimmed.Contains("status=0") ? "Server unavailable." : "Try again.";
+            }
+
+            if (trimmed.StartsWith("Quest apply failed:"))
+            {
+                return "Try again.";
+            }
+
+            return TruncateMultiline(trimmed, 120);
         }
 
         private static string DisplayNameOrObjectId(AIEditableObject obj)

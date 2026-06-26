@@ -10,7 +10,11 @@ namespace DreamCodeVR2.Quest
         public DreamCodeVRAuthoringUIController authoringUiController;
         public QuestPlanApplier questPlanApplier;
         public QuestPlannerClient questPlannerClient;
+        public QuestRuntimeState questRuntimeState;
         public QuestScenarioMode currentMode = QuestScenarioMode.FixedScenario;
+        public KeyCode printQuestProgressKey = KeyCode.F2;
+        public KeyCode completeCurrentTaskKey = KeyCode.F3;
+        public KeyCode resetQuestProgressKey = KeyCode.F4;
         public bool previewOnStart;
         public KeyCode cycleModeKey = KeyCode.F6;
         public KeyCode previewModeKey = KeyCode.F7;
@@ -29,6 +33,7 @@ namespace DreamCodeVR2.Quest
         public string serverQuestTemplate = string.Empty;
 
         private QuestPlan lastServerQuestPlan;
+        private readonly QuestTaskValidator questTaskValidator = new QuestTaskValidator();
 
         private void Start()
         {
@@ -44,6 +49,21 @@ namespace DreamCodeVR2.Quest
 
         private void Update()
         {
+            if (Input.GetKeyDown(printQuestProgressKey))
+            {
+                PrintQuestProgress();
+            }
+
+            if (Input.GetKeyDown(completeCurrentTaskKey))
+            {
+                CompleteCurrentTaskAndAdvance();
+            }
+
+            if (Input.GetKeyDown(resetQuestProgressKey))
+            {
+                ResetActiveQuestProgress();
+            }
+
             if (Input.GetKeyDown(cycleModeKey))
             {
                 CycleScenarioMode();
@@ -156,6 +176,8 @@ namespace DreamCodeVR2.Quest
             {
                 authoringUiController?.SetQuestSetupStatus($"Applied with warnings: {validation.warnings[0]}");
             }
+
+            StartQuestRuntime(plan);
         }
 
         public void RequestServerQuestPreview()
@@ -246,6 +268,11 @@ namespace DreamCodeVR2.Quest
             {
                 questPlannerClient = FindFirstObjectByType<QuestPlannerClient>();
             }
+
+            if (!questRuntimeState)
+            {
+                questRuntimeState = FindFirstObjectByType<QuestRuntimeState>();
+            }
         }
 
         private void LoadDefaultMockAssets()
@@ -294,6 +321,8 @@ namespace DreamCodeVR2.Quest
                 authoringUiController?.SetQuestSetupStatus($"Server contract apply failed: {firstError}");
                 return;
             }
+
+            StartQuestRuntime(plan);
         }
 
         private void ApplyServerQuestPlan(QuestPlan plan, string sourceLabel)
@@ -330,10 +359,151 @@ namespace DreamCodeVR2.Quest
             if (validation.warnings.Count > 0)
             {
                 authoringUiController?.SetQuestSetupStatus($"Quest applied with warnings: {validation.warnings[0]}");
+                StartQuestRuntime(plan);
                 return;
             }
 
             authoringUiController?.SetQuestSetupStatus($"Quest applied: {GetDisplayTitle(plan)} ({sourceLabel})");
+            StartQuestRuntime(plan);
+        }
+
+        private void StartQuestRuntime(QuestPlan plan)
+        {
+            if (plan == null)
+            {
+                return;
+            }
+
+            if (!questRuntimeState)
+            {
+                Debug.LogWarning("[QuestRuntime] QuestRuntimeState not available; runtime progress tracking skipped.");
+                return;
+            }
+
+            questRuntimeState.StartQuest(plan);
+            var currentTask = questRuntimeState.GetCurrentTask();
+
+            Debug.Log($"[QuestRuntime] Started quest {plan.quest_id} title=\"{GetDisplayTitle(plan)}\"");
+            if (currentTask != null)
+            {
+                Debug.Log($"[QuestRuntime] Current task {questRuntimeState.CurrentTaskIndex + 1}/{questRuntimeState.TaskEntries.Count}: {FormatTaskObjective(currentTask)}");
+            }
+
+            RefreshQuestRuntimeUi();
+        }
+
+        private void PrintQuestProgress()
+        {
+            ResolveReferences();
+            if (!questRuntimeState || questRuntimeState.ActiveQuestPlan == null)
+            {
+                Debug.Log("[QuestRuntime] Quest inactive.");
+                authoringUiController?.SetQuestSetupStatus("Quest inactive.");
+                return;
+            }
+
+            var validatorReason = string.Empty;
+            var currentTask = questRuntimeState.GetCurrentTask();
+            if (currentTask != null && questTaskValidator.IsTaskComplete(currentTask, out validatorReason))
+            {
+                Debug.Log($"[QuestRuntime] Current task validator reports complete: {validatorReason}");
+            }
+            else if (!string.IsNullOrWhiteSpace(validatorReason))
+            {
+                Debug.Log($"[QuestRuntime] Validator: {validatorReason}");
+            }
+
+            var summary = questRuntimeState.GetProgressSummary();
+            Debug.Log($"[QuestRuntime] {summary}");
+            authoringUiController?.SetQuestSetupStatus(summary);
+            RefreshQuestRuntimeUi();
+        }
+
+        private void CompleteCurrentTaskAndAdvance()
+        {
+            ResolveReferences();
+            if (!questRuntimeState || questRuntimeState.ActiveQuestPlan == null)
+            {
+                authoringUiController?.SetQuestSetupStatus("No active quest to advance.");
+                return;
+            }
+
+            var currentTask = questRuntimeState.GetCurrentTask();
+            if (currentTask == null)
+            {
+                authoringUiController?.SetQuestSetupStatus("Quest has no active task.");
+                RefreshQuestRuntimeUi();
+                return;
+            }
+
+            if (!questRuntimeState.MarkCurrentTaskCompleted("Manual debug completion (F3)"))
+            {
+                authoringUiController?.SetQuestSetupStatus("Could not complete current task.");
+                return;
+            }
+
+            Debug.Log($"[QuestRuntime] Completed task {questRuntimeState.CompletedTaskCount}/{questRuntimeState.TaskEntries.Count}: {FormatTaskObjective(currentTask)}");
+            var advanced = questRuntimeState.AdvanceToNextTask();
+            if (advanced)
+            {
+                var nextTask = questRuntimeState.GetCurrentTask();
+                Debug.Log($"[QuestRuntime] Current task {questRuntimeState.CurrentTaskIndex + 1}/{questRuntimeState.TaskEntries.Count}: {FormatTaskObjective(nextTask)}");
+            }
+            else
+            {
+                Debug.Log($"[QuestRuntime] Quest completed: {questRuntimeState.GetQuestDisplayTitle()}");
+            }
+
+            RefreshQuestRuntimeUi();
+        }
+
+        private void ResetActiveQuestProgress()
+        {
+            ResolveReferences();
+            if (!questRuntimeState)
+            {
+                authoringUiController?.SetQuestSetupStatus("QuestRuntimeState not available.");
+                return;
+            }
+
+            questRuntimeState.ResetQuest();
+            Debug.Log("[QuestRuntime] Quest progress reset.");
+            authoringUiController?.SetQuestSetupStatus("Quest progress reset.");
+            authoringUiController?.ClearQuestRuntimeInfo();
+        }
+
+        private void RefreshQuestRuntimeUi()
+        {
+            if (!authoringUiController)
+            {
+                return;
+            }
+
+            if (!questRuntimeState || questRuntimeState.ActiveQuestPlan == null)
+            {
+                authoringUiController.ClearQuestRuntimeInfo();
+                return;
+            }
+
+            var totalTasks = questRuntimeState.TaskEntries.Count;
+            var currentTaskNumber = totalTasks == 0
+                ? 0
+                : Mathf.Clamp(questRuntimeState.CurrentTaskIndex + 1, 1, totalTasks);
+
+            if (questRuntimeState.IsQuestCompleted)
+            {
+                currentTaskNumber = totalTasks;
+            }
+
+            var instruction = questRuntimeState.IsQuestCompleted
+                ? "Quest completed."
+                : GetUserFacingTaskInstruction(questRuntimeState.GetCurrentTask());
+
+            authoringUiController.SetQuestRuntimeInfo(
+                currentTaskNumber,
+                totalTasks,
+                instruction,
+                questRuntimeState.LastTaskResult);
         }
 
         private static IEnumerable<string> BuildPreviewSteps(QuestPlan plan)
@@ -386,6 +556,50 @@ namespace DreamCodeVR2.Quest
                     return "LLM Generated Scenario";
                 default:
                     return "Manual Debug Scenario";
+            }
+        }
+
+        private static string FormatTaskObjective(QuestTaskSpec task)
+        {
+            if (task == null)
+            {
+                return "Unknown task";
+            }
+
+            if (!string.IsNullOrWhiteSpace(task.description))
+            {
+                return task.description.Trim();
+            }
+
+            return string.IsNullOrWhiteSpace(task.target)
+                ? task.type
+                : $"{task.type} target={task.target}";
+        }
+
+        private static string GetUserFacingTaskInstruction(QuestTaskSpec task)
+        {
+            if (task == null)
+            {
+                return "No active task.";
+            }
+
+            if (!string.IsNullOrWhiteSpace(task.description))
+            {
+                return task.description.Trim();
+            }
+
+            switch (task.type)
+            {
+                case "StraightenAndMovePainting":
+                    return "Straighten the painting and move it into place.";
+                case "ReadClue":
+                    return "Read the clue note.";
+                case "CreateTextureAndPlaceObject":
+                    return "Create the required object and place it in the target area.";
+                case "UnlockDoorWithKey":
+                    return "Use the correct key on the exit door.";
+                default:
+                    return "Complete the current task.";
             }
         }
     }

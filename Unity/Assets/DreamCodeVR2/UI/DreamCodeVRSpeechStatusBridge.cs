@@ -115,7 +115,7 @@ namespace DreamCodeVR2.UI
             {
                 SetState(
                     SpeechUiState.EmptyAudioBuffer,
-                    "Speech: Empty audio buffer",
+                    "Speech: No speech detected",
                     "Speech: Empty audio buffer",
                     BuildDiagnosticsSummary(LatestDiagnostics));
                 return;
@@ -125,7 +125,7 @@ namespace DreamCodeVR2.UI
             {
                 SetState(
                     SpeechUiState.Error,
-                    "Speech: Mic retrying...",
+                    "Speech: Error",
                     "Speech: Mic retrying...",
                     BuildDiagnosticsSummary(LatestDiagnostics));
                 return;
@@ -164,7 +164,7 @@ namespace DreamCodeVR2.UI
                 {
                     SetState(
                         SpeechUiState.EmptyAudioBuffer,
-                        "Speech: Empty audio buffer",
+                        "Speech: No speech detected",
                         "Speech: Empty audio buffer",
                         DiagnosticsSummaryText);
                 }
@@ -172,7 +172,7 @@ namespace DreamCodeVR2.UI
                 {
                     SetState(
                         SpeechUiState.Error,
-                        "Speech: Mic retrying...",
+                        "Speech: Error",
                         "Speech: Mic retrying...",
                         DiagnosticsSummaryText);
                 }
@@ -199,7 +199,7 @@ namespace DreamCodeVR2.UI
                 {
                     SetState(
                         SpeechUiState.EmptyAudioBuffer,
-                        "Speech: Empty audio buffer",
+                        "Speech: No speech detected",
                         "Speech: Empty audio buffer",
                         DiagnosticsSummaryText);
                     return;
@@ -209,7 +209,7 @@ namespace DreamCodeVR2.UI
                 {
                     SetState(
                         SpeechUiState.Error,
-                        "Speech: Mic retrying...",
+                        "Speech: Error",
                         "Speech: Mic retrying...",
                         DiagnosticsSummaryText);
                     return;
@@ -227,7 +227,7 @@ namespace DreamCodeVR2.UI
 
                 SetState(
                     SpeechUiState.EmptyTranscript,
-                    "Speech: Empty transcription",
+                    "Speech: No speech detected",
                     "Speech: Empty transcription",
                     DiagnosticsSummaryText);
                 return;
@@ -236,7 +236,7 @@ namespace DreamCodeVR2.UI
             var trimmed = transcript.Trim();
             SetState(
                 SpeechUiState.Heard,
-                $"Heard: \"{TruncateInline(trimmed, 28)}\"",
+                $"Speech: Heard: \"{TruncateInline(trimmed, 22)}\"",
                 trimmed,
                 DiagnosticsSummaryText);
         }

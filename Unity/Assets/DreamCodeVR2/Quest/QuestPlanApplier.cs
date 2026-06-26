@@ -70,11 +70,11 @@ namespace DreamCodeVR2.Quest
             {
                 ValidateObjectReference(result, plan.error_risk.correct_key, "error_risk.correct_key");
                 ValidateObjectReference(result, plan.error_risk.wrong_key, "error_risk.wrong_key");
-                ValidateObjectReference(result, plan.error_risk.target, "error_risk.target");
-                ValidateObjectReference(result, plan.error_risk.correct_target, "error_risk.correct_target");
+                ValidateRuntimeCreatableCapableReference(result, plan, plan.error_risk.target, "error_risk.target");
+                ValidateAnchorOrObjectReference(result, plan, plan.error_risk.correct_target, "error_risk.correct_target");
                 foreach (var distractor in plan.error_risk.distractor_targets ?? new List<string>())
                 {
-                    ValidateObjectReference(result, distractor, "error_risk.distractor_targets");
+                    ValidateAnchorOrObjectReference(result, plan, distractor, "error_risk.distractor_targets");
                 }
             }
 
@@ -431,6 +431,51 @@ namespace DreamCodeVR2.Quest
             result.AddError($"Missing anchor reference for {fieldName}: {anchorName}");
         }
 
+        private void ValidateRuntimeCreatableCapableReference(QuestValidationResult result, QuestPlan plan, string objectId, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(objectId))
+            {
+                return;
+            }
+
+            if (ResolveEditableObject(objectId))
+            {
+                return;
+            }
+
+            if (IsRuntimeCreatableReference(plan, objectId))
+            {
+                return;
+            }
+
+            result.AddError($"Missing object reference for {fieldName}: {objectId}");
+        }
+
+        private void ValidateAnchorOrObjectReference(QuestValidationResult result, QuestPlan plan, string reference, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(reference))
+            {
+                return;
+            }
+
+            if (ResolveEditableObject(reference))
+            {
+                return;
+            }
+
+            if (IsRuntimeCreatableReference(plan, reference))
+            {
+                return;
+            }
+
+            if (ResolveAnchor(reference))
+            {
+                return;
+            }
+
+            result.AddError($"Missing anchor or object reference for {fieldName}: {reference}");
+        }
+
         private void ValidateUniqueVariablePlacementAnchors(QuestPlan plan, QuestValidationResult result)
         {
             var variablePlacementsByLocation = new Dictionary<string, List<string>>();
@@ -542,6 +587,42 @@ namespace DreamCodeVR2.Quest
             }
 
             return clueTextByObject;
+        }
+
+        private bool IsRuntimeCreatableReference(QuestPlan plan, string objectId)
+        {
+            if (string.IsNullOrWhiteSpace(objectId))
+            {
+                return false;
+            }
+
+            if (runtimeCreatableObjectCatalog && runtimeCreatableObjectCatalog.IsSupportedObjectId(objectId))
+            {
+                return true;
+            }
+
+            foreach (var task in plan.tasks ?? new List<QuestTaskSpec>())
+            {
+                if (!string.IsNullOrWhiteSpace(task.object_to_create) && task.object_to_create == objectId)
+                {
+                    return true;
+                }
+            }
+
+            foreach (var action in plan.initial_setup ?? new List<QuestInitialSetupAction>())
+            {
+                if (action == null || action.action != "ResetCreatedObject")
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(action.ObjectReference) && action.ObjectReference == objectId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

@@ -6,13 +6,15 @@ using Ubiq.Networking;
 using Ubiq.Rooms;
 using UnityEngine;
 using UnityEngine.Networking;
+using static System.Net.WebRequestMethods;
 
 namespace DreamCodeVR2.Quest
 {
     public class QuestPlannerClient : MonoBehaviour
     {
         [Header("Server")]
-        public string serverBaseUrl = "http://localhost:3002";
+        //public string serverBaseUrl = "http://localhost:3002";
+        public string serverBaseUrl = "http://130.136.2.161:50001";
         public string endpointPath = "/api/quest/generate";
         public string defaultMode = "llm_generated_v1";
         public string defaultTemplate = string.Empty;
