@@ -1,0 +1,12 @@
+{
+    "name": "UnitySceneBridge",
+    "host": "localhost",
+    "roomGuid": "6765c52b-3ad6-4fb0-9030-2c9a05dc4731",
+    "roomserver": {
+        "tcp": {
+            "port": 8009
+        }
+    },
+    "connectTimeoutMs": 8000,
+    "defaultTimeoutMs": 8000
+}

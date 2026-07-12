@@ -1,0 +1,51 @@
+"use strict";
+
+const { randomUUID } = require("crypto");
+
+// NetworkId scheme shared with Unity. See docs/agentic-xr-architecture.md §2.1.
+// 94/98 are the pre-existing DreamCodeVR channels (code_runtime_generator) and
+// are left untouched here - this bridge only owns the new range below.
+const CHANNELS = Object.freeze({
+    AUDIO_IN: 98, // existing: Unity -> Server, push-to-talk audio (not used here)
+    CODE_GENERATED_LEGACY: 94, // existing: Server -> Unity, single-shot compiled code
+    SCENE_DELTA: 95, // Unity -> Server: scene state pushes (focus + halo, diffs)
+    SCENE_QUERY: 96, // Server -> Unity: on-demand detail request
+    AGENT_UTTERANCE: 97, // Server -> Unity: coordinator speech/text/emote (streamed)
+    ARTIFACT_CHANNEL: 99, // Server -> Unity: ArtifactProposal (see note below)
+    USER_DECISION: 100, // Unity -> Server: UserDecision *and* the final ArtifactResult ack
+    AGENT_PRESENCE: 101, // both directions: heartbeat
+});
+
+// Clarification vs. the architecture doc's channel table: 99 always carries an
+// "ArtifactProposal" envelope (authoringMode tells Unity whether to show a
+// confirm UI or apply immediately). Unity always answers on 100 with a final
+// "ArtifactResult" envelope (status: committed|rejected|error) sharing the same
+// correlationId, whether or not a human was in the loop. Explicit user
+// approve/reject clicks may also appear on 100 as "UserDecision" envelopes for
+// telemetry, but callers of proposeArtifact() only ever wait on "ArtifactResult".
+
+const SCHEMA_VERSION = "1.0";
+
+function makeEnvelope({ type, sessionId, correlationId, originAgent, targetObjectId, authoringMode, priority, payload }) {
+    if (!type) {
+        throw new Error("makeEnvelope requires a 'type'");
+    }
+    return {
+        schemaVersion: SCHEMA_VERSION,
+        type,
+        sessionId: sessionId || null,
+        correlationId: correlationId || randomUUID(),
+        originAgent: originAgent || "unity_scene_bridge",
+        targetObjectId: targetObjectId || null,
+        authoringMode: authoringMode || null,
+        priority: priority || "normal",
+        timestamp: Date.now(),
+        payload: payload || {},
+    };
+}
+
+function isEnvelope(obj) {
+    return !!obj && typeof obj === "object" && typeof obj.type === "string" && typeof obj.correlationId === "string";
+}
+
+module.exports = { CHANNELS, SCHEMA_VERSION, makeEnvelope, isEnvelope };

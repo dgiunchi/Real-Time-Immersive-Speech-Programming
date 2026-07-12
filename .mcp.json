@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "unity-scene-bridge": {
+      "command": "node",
+      "args": ["Server/mcp/unity_scene_bridge/server.js"]
+    }
+  }
+}
