@@ -1,0 +1,50 @@
+# GitLab CI: the offline Rust quality gate, mirroring the local verification and the
+# GitHub Actions workflow (.github/workflows/ci.yml). No secrets, no paid APIs, no
+# Unity/Quest, no Docker/gVisor, no generated-C# execution, no external services.
+# Pinned to Rust 1.96.0 (rust-toolchain.toml / Cargo.toml rust-version = "1.96").
+
+stages:
+  - validate
+
+# One pipeline per push, plus merge-request pipelines, without duplicating a branch
+# pipeline when a merge request is already open for that branch.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+default:
+  image: rust:1.96.0
+  interruptible: true
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - .cargo/registry/index/
+      - .cargo/registry/cache/
+      - .cargo/git/db/
+
+variables:
+  CARGO_TERM_COLOR: "always"
+  CARGO_INCREMENTAL: "0"
+  CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+
+rust_quality_gate:
+  stage: validate
+  timeout: 30m
+  before_script:
+    - rustc --version
+    - cargo --version
+    - rustup component add rustfmt clippy
+    - cargo install cargo-deny --version 0.19.9 --locked
+    - cargo deny --version
+  script:
+    - cargo fmt --all -- --check
+    - cargo check --workspace --locked
+    - cargo clippy --workspace --all-targets -- -D warnings
+    - cargo test --workspace --locked
+    - cargo build --workspace --release --locked
+    - cargo deny check
