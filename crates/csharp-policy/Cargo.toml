@@ -1,0 +1,19 @@
+[package]
+name = "dcvr-csharp-policy"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Static (lexical+structural) validator for LLM-generated C#, plus C#/action-plan consistency."
+
+[dependencies]
+tree-sitter = "0.25"
+tree-sitter-c-sharp = "0.23"
+thiserror = { workspace = true }
+dcvr-behaviour-dsl = { workspace = true }
+
+[dev-dependencies]
+dcvr-behaviour-dsl = { workspace = true }
+
+[lints]
+workspace = true

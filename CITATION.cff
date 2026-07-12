@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use DreamCodeVR+, please cite it as below."
+title: "DreamCodeVR+: Safe-by-Construction Speech Programming for Immersive VR"
+type: software
+authors:
+  - given-names: "Sandeep"
+    family-names: "Rai"
+    affiliation: "University of Birmingham"
+abstract: >-
+  DreamCodeVR+ extends UCL's DreamCodeVR with a Rust safety backend that turns
+  spoken VR commands into a bounded action-plan (executed without runtime code
+  compilation) or validator-gated C#. It adds fail-closed validation, a
+  two-layer intent screen, optional .NET Roslyn semantic checks, a Docker/gVisor
+  sandbox, observability, an admin panel, and personalization.
+keywords:
+  - virtual-reality
+  - speech-programming
+  - LLM-code-generation
+  - rust
+  - safety
+license: Apache-2.0
+# This work derives from UCL's DreamCodeVR (Giunchi et al., 2024). See NOTICE.
+references:
+  - type: software
+    title: "DreamCodeVR (original)"
+    authors:
+      - name: "Virtual Environments and Computer Graphics Group, University College London"
+    notes: "Original system extended by DreamCodeVR+. Apache-2.0."

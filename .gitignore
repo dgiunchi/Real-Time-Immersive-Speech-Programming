@@ -1,0 +1,73 @@
+# ---- Secrets / local env ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ---- Rust ----
+target/
+**/target/
+**/*.rs.bk
+Cargo.lock.orig
+
+# ---- .NET ----
+**/bin/
+**/obj/
+*.dll
+*.pdb
+
+# ---- Unity ----
+**/Library/
+**/Temp/
+**/Logs/
+**/UserSettings/
+**/MemoryCaptures/
+**/Build/
+**/Builds/
+*.apk
+*.aab
+
+# ---- Node ----
+**/node_modules/
+
+# ---- Python ----
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+
+# ---- Runtime data (never commit) ----
+# NOTE: runtime personalization records live under .dcvr-data/personalization/ and
+# are covered by the .dcvr-data rules below. Do NOT add a bare `personalization/`
+# rule — it would also exclude the authored source crate `crates/personalization/`.
+.dcvr-data/
+**/.dcvr-data/
+.run-logs/
+/recordings/
+/transcripts/
+*.jsonl
+
+# ---- Generated red-team output (regenerate with redteam/corpus_gen.py + run_campaign.py) ----
+redteam/results*.json
+redteam/corpus.json
+redteam/*.log
+
+# ---- Logs / temp ----
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- Local tooling / editor ----
+.claude/
+.vscode/
+.idea/

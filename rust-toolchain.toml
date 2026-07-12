@@ -1,0 +1,6 @@
+# Pins the toolchain the workspace is validated with (Cargo.toml: rust-version = "1.96").
+# rustup reads this automatically so `cargo`/`rustc` select 1.96.0 in this repo.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

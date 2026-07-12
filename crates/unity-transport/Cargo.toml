@@ -1,0 +1,23 @@
+[package]
+name = "dcvr-unity-transport"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ubiq-compatible service peer: connect to the RoomServer, JOIN the room, receive NID 98 / send NID 94."
+
+[dependencies]
+dcvr-protocol = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+# Audited HMAC-SHA256 (already in the dependency tree via rustls) for the per-peer
+# admission tokens that defend against Casey's (2021) Man-in-the-Room attack.
+ring = "0.17"
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

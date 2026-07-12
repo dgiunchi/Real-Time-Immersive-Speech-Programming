@@ -1,0 +1,31 @@
+[package]
+name = "dreamcodevr-server"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "DreamCodeVR+ backend: async Ubiq-like server, STT->LLM->validate, emits NID 94."
+
+[dependencies]
+dcvr-protocol = { workspace = true }
+dcvr-behaviour-dsl = { workspace = true }
+dcvr-command-router = { workspace = true }
+dcvr-observability = { workspace = true }
+dcvr-config = { workspace = true }
+secrecy = { workspace = true }
+dcvr-admin = { workspace = true }
+dcvr-personalization = { workspace = true }
+dcvr-control = { workspace = true }
+dcvr-csharp-policy = { workspace = true }
+async-trait = { workspace = true }
+dcvr-unity-transport = { workspace = true }
+dcvr-roslyn-client = { workspace = true }
+dcvr-stt-client = { workspace = true }
+dcvr-llm-client = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DreamCodeVR+ — Admin / Debug Panel</title>
+<style>
+  :root{ --bg:#0e1116; --panel:#161b22; --panel2:#1c2230; --bd:#2a3240; --tx:#e6edf3; --mut:#8b949e;
+         --ok:#3fb950; --bad:#f85149; --warn:#d29922; --acc:#58a6ff; --acc2:#bc8cff; }
+  *{ box-sizing:border-box; } html,body{ margin:0; height:100%; }
+  body{ background:var(--bg); color:var(--tx); font:14px/1.45 ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif; }
+  header{ display:flex; align-items:center; gap:14px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--bd); position:sticky; top:0; z-index:5; }
+  header h1{ font-size:16px; margin:0; } header .tag{ color:var(--acc2); font-weight:600; }
+  header .dot{ width:9px;height:9px;border-radius:50%;background:var(--mut); display:inline-block; margin-right:5px; }
+  header .dot.on{ background:var(--ok); } header .spacer{ flex:1; }
+  header input{ background:var(--panel2); border:1px solid var(--bd); color:var(--tx); border-radius:6px; padding:5px 8px; }
+  header button{ background:var(--panel2); color:var(--tx); border:1px solid var(--bd); border-radius:6px; padding:6px 10px; cursor:pointer; }
+  header button:hover{ border-color:var(--acc); }
+  .wrap{ display:grid; grid-template-columns:340px 1fr; gap:0; height:calc(100% - 49px); }
+  .side{ border-right:1px solid var(--bd); overflow:auto; padding:12px; background:var(--panel); }
+  .main{ overflow:auto; padding:14px; }
+  .card{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; padding:12px; margin-bottom:12px; }
+  .card h2{ font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin:0 0 10px; }
+  label{ display:block; font-size:12px; color:var(--mut); margin:8px 0 3px; }
+  input[type=number],input[type=text],select,textarea{ width:100%; background:var(--panel2); color:var(--tx); border:1px solid var(--bd); border-radius:6px; padding:6px 8px; font-family:inherit; }
+  textarea{ font:12px/1.4 ui-monospace,Menlo,Consolas,monospace; min-height:90px; resize:vertical; }
+  .row{ display:flex; gap:8px; align-items:center; } .row.sb{ justify-content:space-between; }
+  .toggle{ display:flex; align-items:center; gap:8px; margin:6px 0; }
+  .toggle input{ width:auto; }
+  button.act{ background:var(--acc); color:#04101f; border:none; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+  button.act:hover{ filter:brightness(1.1); } button.ghost{ background:var(--panel2); color:var(--tx); border:1px solid var(--bd); }
+  .stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .stat{ background:var(--panel2); border:1px solid var(--bd); border-radius:8px; padding:10px; }
+  .stat .n{ font-size:22px; font-weight:700; } .stat .l{ font-size:11px; color:var(--mut); }
+  .tabs{ display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .tabs button{ background:var(--panel2); color:var(--mut); border:1px solid var(--bd); border-radius:999px; padding:5px 12px; cursor:pointer; }
+  .tabs button.sel{ color:var(--tx); border-color:var(--acc); }
+  .tabpane{ display:none; } .tabpane.sel{ display:block; }
+  .req{ background:var(--panel); border:1px solid var(--bd); border-radius:10px; margin-bottom:10px; overflow:hidden; }
+  .req .hd{ padding:8px 12px; background:var(--panel2); font-size:12px; color:var(--mut); display:flex; justify-content:space-between; }
+  .stage{ padding:7px 12px; border-top:1px solid var(--bd); display:flex; gap:10px; align-items:flex-start; cursor:pointer; }
+  .stage:hover{ background:var(--panel2); }
+  .stage .ic{ width:20px; text-align:center; } .stage .sm{ flex:1; } .stage .ms{ color:var(--mut); font-size:12px; }
+  .stage.ok .sm{ color:var(--tx); } .stage.bad .sm{ color:var(--bad); font-weight:600; }
+  .stage pre{ display:none; margin:6px 0 0; padding:8px; background:#0a0d12; border:1px solid var(--bd); border-radius:6px; white-space:pre-wrap; word-break:break-word; font:12px/1.4 ui-monospace,monospace; color:#cdd9e5; max-height:340px; overflow:auto; }
+  .stage.open pre{ display:block; }
+  .pill{ font-size:11px; padding:2px 7px; border-radius:999px; border:1px solid var(--bd); }
+  .pill.ok{ color:var(--ok); border-color:var(--ok); } .pill.bad{ color:var(--bad); border-color:var(--bad); }
+  .muted{ color:var(--mut); } .mono{ font-family:ui-monospace,monospace; }
+  body.present .side{ display:none; } body.present .wrap{ grid-template-columns:1fr; }
+  body.present{ font-size:17px; }
+  .hint{ font-size:11px; color:var(--mut); margin-top:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>DreamCodeVR+ <span class="tag">Admin</span></h1>
+  <span id="health" class="muted"><span class="dot" id="hdot"></span>connecting…</span>
+  <span class="spacer"></span>
+  <input id="token" placeholder="admin token (if set)" style="width:160px" />
+  <button id="exportBtn">Export report</button>
+  <button id="presentBtn">Presentation mode</button>
+</header>
+
+<div class="wrap">
+  <!-- LEFT: controls + tools -->
+  <div class="side">
+    <div class="card">
+      <h2>Runtime config</h2>
+      <label>Model</label>
+      <select id="cfg_model">
+        <option>gpt-5.5</option><option>gpt-4.1-nano</option><option>gpt-4o-mini</option><option>gpt-4.1-mini</option>
+      </select>
+      <div class="row" style="gap:10px">
+        <div style="flex:1"><label>Max C# chars</label><input type="number" id="cfg_chars" /></div>
+        <div style="flex:1"><label>Max C# lines</label><input type="number" id="cfg_lines" /></div>
+      </div>
+      <div class="row" style="gap:10px">
+        <div style="flex:1"><label>Max objects</label><input type="number" id="cfg_objects" /></div>
+        <div style="flex:1"><label>RAG top-K</label><input type="number" id="cfg_topk" /></div>
+      </div>
+      <div class="row" style="gap:10px">
+        <div style="flex:1"><label>Reasoning effort</label>
+          <select id="cfg_effort">
+            <option value="minimal">minimal (fastest)</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high (best quality)</option>
+          </select>
+        </div>
+        <div style="flex:1"><label>Verbosity</label>
+          <select id="cfg_verbosity">
+            <option value="default">default (richest)</option>
+            <option value="low">low (terser/faster)</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="gap:10px">
+        <div style="flex:1"><label>Max output tokens</label><input type="number" id="cfg_maxtok" /></div>
+        <div style="flex:1"></div>
+      </div>
+      <div class="toggle"><input type="checkbox" id="cfg_stt"><label style="margin:0">Speech-to-text (STT)</label></div>
+      <div class="toggle"><input type="checkbox" id="cfg_rag"><label style="margin:0">Personalization / RAG</label></div>
+      <div class="toggle"><input type="checkbox" id="cfg_modea"><label style="margin:0">Mode A (runtime C# compile)</label></div>
+      <div class="toggle"><input type="checkbox" id="cfg_guard"><label style="margin:0">Safety guardrails</label></div>
+      <div class="row" style="margin-top:10px; gap:8px">
+        <button class="act" id="applyCfg">Apply</button>
+        <button class="ghost" id="resetCfg">Reset defaults</button>
+      </div>
+      <div class="hint">Changes take effect on the next command.</div>
+    </div>
+
+    <div class="card">
+      <h2>Manual command</h2>
+      <input type="text" id="cmd" placeholder='e.g. "make a small house"' />
+      <button class="act" id="runCmd" style="margin-top:8px">Run through pipeline</button>
+      <div class="hint" id="cmdOut">Runs the real backend pipeline (if wired).</div>
+    </div>
+
+    <div class="card">
+      <h2>Validate C# (paste)</h2>
+      <textarea id="vcode" placeholder="paste a C# MonoBehaviour…"></textarea>
+      <button class="act" id="runVal" style="margin-top:8px">Check against guardrail</button>
+      <div id="valOut" class="hint"></div>
+    </div>
+
+    <div class="card">
+      <h2>Red-team</h2>
+      <button class="act" id="runRt">Fire malicious samples</button>
+      <div id="rtOut" class="hint">Confirms the guardrail blocks malicious code.</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: live + tabs -->
+  <div class="main">
+    <div class="stat-grid" style="margin-bottom:12px">
+      <div class="stat"><div class="n" id="s_req">0</div><div class="l">requests</div></div>
+      <div class="stat"><div class="n" id="s_app" style="color:var(--ok)">0</div><div class="l">approved</div></div>
+      <div class="stat"><div class="n" id="s_rej" style="color:var(--bad)">0</div><div class="l">rejected</div></div>
+      <div class="stat"><div class="n" id="s_mal" style="color:var(--warn)">0</div><div class="l">malicious blocked</div></div>
+      <div class="stat"><div class="n" id="s_lat">0<span style="font-size:12px">ms</span></div><div class="l">avg LLM</div></div>
+      <div class="stat"><div class="n" id="s_neu" style="color:var(--acc2)">0</div><div class="l">neutralized</div></div>
+      <div class="stat"><div class="n" id="s_calls">0</div><div class="l">LLM calls</div></div>
+      <div class="stat"><div class="n">$<span id="s_cost">0</span></div><div class="l">est. cost</div></div>
+    </div>
+
+    <div class="tabs">
+      <button data-tab="live" class="sel">Live pipeline</button>
+      <button data-tab="safety">Safety log</button>
+      <button data-tab="profiles">RAG profiles</button>
+      <button data-tab="sandbox">Sandbox</button>
+      <button data-tab="gallery">Gallery</button>
+    </div>
+
+    <div class="tabpane sel" id="tab-live">
+      <div class="row sb"><span class="muted">newest first · click a stage to expand</span><button class="ghost" id="clearLive">Clear</button></div>
+      <div id="live" style="margin-top:10px"></div>
+    </div>
+    <div class="tabpane" id="tab-safety"><div id="safety"></div></div>
+    <div class="tabpane" id="tab-profiles">
+      <div class="row" style="gap:8px"><button class="ghost" id="reloadProf">Reload users</button><span class="muted" id="profCount"></span></div>
+      <div id="profiles" style="margin-top:10px"></div>
+      <pre id="profDetail" class="mono" style="display:none"></pre>
+    </div>
+    <div class="tabpane" id="tab-sandbox">
+      <div class="card"><h2>Mode-D sandbox</h2>
+        <textarea id="sbcode" placeholder="untrusted C# to run inside the hardened container…"></textarea>
+        <button class="act" id="runSb" style="margin-top:8px">Run in sandbox</button>
+        <pre id="sbOut" class="mono" style="display:none"></pre>
+      </div>
+    </div>
+    <div class="tabpane" id="tab-gallery">
+      <div class="row sb"><span class="muted">recent generations (newest first)</span><button class="ghost" id="reloadGal">Reload</button></div>
+      <div id="gallery" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const ICON = { transcript:'🎤', prompt_sent:'🧠→', llm_reply:'🧠←', validation:'🛡️', compile:'🧩', safety:'🚫', error:'❌', info:'ℹ️' };
+function fmtMs(ms){ ms=+ms||0; if(ms<1000) return ms+' ms'; if(ms<60000){ const s=ms/1000; return (s<10?s.toFixed(1):Math.round(s))+' s'; } const m=Math.floor(ms/60000), s=Math.round((ms%60000)/1000); return m+' min '+s+' s'; }
+function token(){ return $('#token').value.trim(); }
+function hdrs(){ const h={'Content-Type':'application/json'}; if(token()) h['X-Admin-Token']=token(); return h; }
+
+// ---- live pipeline (SSE) ----
+// Human narration for each stage of the pipeline.
+function stageLabel(ev){
+  if(ev.stage==='transcript')  return `<b>🗣️ You said:</b> "${esc(ev.summary)}"`;
+  if(ev.stage==='prompt_sent') return `<span class="muted">${esc(ev.summary)}</span>`;
+  if(ev.stage==='llm_reply')   return `<b>AI wrote the code</b> — ${esc(ev.summary)}${ev.detail?' <span class="muted">· click to view code</span>':''}`;
+  if(ev.stage==='validation'){
+    if(!ev.ok) return `<b>Guardrail:</b> <span style="color:var(--bad);font-weight:700">${esc(ev.summary)}</span>${ev.detail?` — <span style="color:#ffcf6b">${esc(ev.detail.split('\n').filter(Boolean).join(' · '))}</span>`:''}`;
+    return `<b>Guardrail:</b> <span style="color:#4ade80">${esc(ev.summary)}</span>`;
+  }
+  if(ev.stage==='compile')     return `<b>Unity:</b> ${esc(ev.summary)}`;
+  if(ev.stage==='safety'){
+    if(/malicious intent/i.test(ev.summary)) return `<b>🛡️ Safety:</b> <span style="color:#ffb020;font-weight:700">${esc(ev.summary)}</span>`;
+    return `<b>Safety:</b> <span style="color:var(--bad)">${esc(ev.summary)}</span>`;
+  }
+  if(ev.stage==='info')        return `<b>${esc(ev.summary)}</b>`;
+  return esc(ev.summary);
+}
+const reqs = {}; // request_id -> element
+function addEvent(ev){
+  let card = reqs[ev.request_id];
+  if(!card){
+    card = document.createElement('div'); card.className='req';
+    card.innerHTML = `<div class="hd"><span>req ${ev.request_id.slice(0,8)} · peer ${(ev.peer||'').slice(0,8)}</span><span class="t"></span></div>`;
+    reqs[ev.request_id]=card; const live=$('#live'); live.insertBefore(card, live.firstChild);
+    // cap cards
+    while(live.children.length>40){ const last=live.lastChild; delete reqs[Object.keys(reqs).find(k=>reqs[k]===last)]; live.removeChild(last); }
+  }
+  const row=document.createElement('div'); row.className='stage '+(ev.ok?'ok':'bad');
+  row.innerHTML = `<span class="ic">${ICON[ev.stage]||'•'}</span><div class="sm">${stageLabel(ev)}</div><span class="ms">${ev.ms>0?fmtMs(ev.ms):''}</span>`;
+  if(ev.detail){ const pre=document.createElement('pre'); pre.textContent=ev.detail; row.appendChild(pre);
+    row.addEventListener('click',()=>row.classList.toggle('open'));
+    if(!ev.ok) row.classList.add('open'); }   // auto-expand rejections so the reason is visible
+  card.appendChild(row);
+  // Flag the whole request card so catches/rejections are obvious at a glance.
+  const t=card.querySelector('.hd .t');
+  if(!ev.ok && ev.stage==='safety' && /malicious intent/i.test(ev.summary)){
+    // A malicious request that was caught and defused — positive-security framing (amber), NOT a failure.
+    card.style.borderLeft='3px solid #ffb020';
+    if(t) t.innerHTML='<span style="color:#ffb020;font-weight:700">🛡️ MALICIOUS INTENT — CAUGHT & NEUTRALIZED</span>';
+  } else if(!ev.ok && (ev.stage==='validation'||ev.stage==='safety') && !(t&&t.innerHTML)){
+    card.style.borderLeft='3px solid var(--bad)';
+    const why=esc((ev.detail||ev.summary||'').split('\n').filter(Boolean)[0]||'').slice(0,90);
+    if(t) t.innerHTML=`<span style="color:var(--bad);font-weight:700">✕ REJECTED${why?' — '+why:''}</span>`;
+  }
+}
+function esc(s){ return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function startSSE(){ const es=new EventSource('/events'); es.onmessage=e=>{ try{ addEvent(JSON.parse(e.data)); }catch{} }; es.onerror=()=>{}; }
+$('#clearLive').onclick=()=>{ $('#live').innerHTML=''; for(const k in reqs) delete reqs[k]; };
+
+// ---- config ----
+async function loadConfig(){ const c=await (await fetch('/api/config')).json();
+  $('#cfg_model').value=c.model; $('#cfg_chars').value=c.max_csharp_chars; $('#cfg_lines').value=c.max_csharp_lines;
+  $('#cfg_objects').value=c.max_objects; $('#cfg_topk').value=c.rag_top_k;
+  $('#cfg_stt').checked=c.enable_stt; $('#cfg_rag').checked=c.enable_rag; $('#cfg_modea').checked=c.enable_mode_a; $('#cfg_guard').checked=c.enable_guardrails;
+  $('#cfg_effort').value=c.llm_reasoning_effort||'medium'; $('#cfg_verbosity').value=c.llm_verbosity||'default'; $('#cfg_maxtok').value=c.llm_max_completion_tokens||24000; }
+function cfgFromForm(){ return { model:$('#cfg_model').value, max_csharp_chars:+$('#cfg_chars').value, max_csharp_lines:+$('#cfg_lines').value,
+  max_objects:+$('#cfg_objects').value, rag_top_k:+$('#cfg_topk').value, enable_stt:$('#cfg_stt').checked, enable_rag:$('#cfg_rag').checked,
+  enable_mode_a:$('#cfg_modea').checked, enable_guardrails:$('#cfg_guard').checked,
+  llm_reasoning_effort:$('#cfg_effort').value, llm_verbosity:$('#cfg_verbosity').value, llm_max_completion_tokens:+$('#cfg_maxtok').value }; }
+$('#applyCfg').onclick=async()=>{ const r=await fetch('/api/config',{method:'POST',headers:hdrs(),body:JSON.stringify(cfgFromForm())});
+  $('#applyCfg').textContent = r.ok?'Applied ✓':'Failed'; setTimeout(()=>$('#applyCfg').textContent='Apply',1200); };
+$('#resetCfg').onclick=async()=>{ const d={model:'gpt-5.5',max_csharp_chars:16384,max_csharp_lines:400,max_objects:40,rag_top_k:1,enable_stt:true,enable_rag:true,enable_mode_a:false,enable_guardrails:true,llm_reasoning_effort:'medium',llm_verbosity:'default',llm_max_completion_tokens:24000};
+  await fetch('/api/config',{method:'POST',headers:hdrs(),body:JSON.stringify(d)}); loadConfig(); };
+
+// ---- stats + health (poll) ----
+async function poll(){
+  try{ const s=await (await fetch('/api/stats')).json();
+    $('#s_req').textContent=s.requests; $('#s_app').textContent=s.approved; $('#s_rej').textContent=s.rejected;
+    $('#s_mal').textContent=s.malicious_blocked; $('#s_lat').textContent=fmtMs(s.avg_llm_ms);
+    $('#s_neu').textContent=s.neutralized; $('#s_calls').textContent=s.llm_calls; $('#s_cost').textContent=s.est_cost_usd; }catch{}
+  try{ const h=await (await fetch('/api/health')).json();
+    $('#hdot').classList.toggle('on',!!h.ok);
+    $('#health').lastChild.textContent = ` ${h.model} · ${h.mode_a?'Mode A':'Mode C'} · RAG ${h.rag?'on':'off'} · guardrails ${h.guardrails?'on':'off'}`; }catch{}
+}
+
+// ---- tabs ----
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('sel')); b.classList.add('sel');
+  document.querySelectorAll('.tabpane').forEach(p=>p.classList.remove('sel')); $('#tab-'+b.dataset.tab).classList.add('sel');
+  if(b.dataset.tab==='safety') loadSafety(); if(b.dataset.tab==='profiles') loadProfiles(); if(b.dataset.tab==='gallery') loadGallery();
+});
+
+// ---- gallery + export ----
+async function loadGallery(){ const ev=await (await fetch('/api/recent')).json(); const el=$('#gallery');
+  const items=ev.filter(e=>e.stage==='llm_reply'||e.stage==='compile').slice().reverse();
+  el.innerHTML = items.length? '' : '<div class="muted">No generations yet — send a command.</div>';
+  items.forEach(e=>{ const d=document.createElement('div'); d.className='card';
+    d.innerHTML=`<div class="row sb"><b>${e.stage==='compile'?'🧩':'🧠'} ${esc(e.summary)}</b><span class="muted">${e.ms?fmtMs(e.ms):''}</span></div>`
+      +(e.detail?`<pre class="mono" style="white-space:pre-wrap;max-height:200px;overflow:auto;margin-top:6px">${esc(e.detail.slice(0,1500))}</pre>`:''); el.appendChild(d); }); }
+$('#reloadGal').onclick=loadGallery;
+$('#exportBtn').onclick=async()=>{ const md=await (await fetch('/api/report')).text();
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([md],{type:'text/markdown'})); a.download='dreamcodevr-report.md'; a.click(); };
+
+// ---- safety log ----
+async function loadSafety(){ const items=await (await fetch('/api/safety')).json(); const el=$('#safety');
+  el.innerHTML = items.length? '' : '<div class="muted">No safety events yet — try a malicious command or the red-team button.</div>';
+  items.slice().reverse().forEach(ev=>{ const d=document.createElement('div'); d.className='card';
+    d.innerHTML=`<div class="row sb"><b>🚫 ${esc(ev.summary)}</b><span class="muted mono">req ${ev.request_id.slice(0,8)}</span></div><pre class="mono" style="white-space:pre-wrap;margin-top:8px">${esc(ev.detail)}</pre>`; el.appendChild(d); }); }
+
+// ---- profiles ----
+async function loadProfiles(){ const peers=await (await fetch('/api/profiles')).json(); const el=$('#profiles');
+  $('#profCount').textContent = peers.length+' user(s)';
+  el.innerHTML = peers.length? '' : '<div class="muted">No learned profiles yet (enable RAG, generate, then 👍).</div>';
+  peers.forEach(p=>{ const b=document.createElement('button'); b.className='ghost'; b.style.margin='3px'; b.textContent=p.slice(0,12);
+    b.onclick=async()=>{ const d=await (await fetch('/api/profile?peer='+encodeURIComponent(p))).json();
+      const pd=$('#profDetail'); pd.style.display='block'; pd.textContent=JSON.stringify(d,null,2); }; el.appendChild(b); }); }
+$('#reloadProf').onclick=loadProfiles;
+
+// ---- tools ----
+$('#runVal').onclick=async()=>{ const r=await (await fetch('/api/validate',{method:'POST',headers:hdrs(),body:JSON.stringify({csharp:$('#vcode').value})})).json();
+  $('#valOut').innerHTML = r.approved? `<span class="pill ok">APPROVED</span> ${r.chars} chars / ${r.lines} lines`
+    : `<span class="pill bad">REJECTED</span> ${esc((r.violations||[]).join(', '))}`; };
+$('#runRt').onclick=async()=>{ const r=await (await fetch('/api/redteam',{method:'POST',headers:hdrs()})).json();
+  $('#rtOut').innerHTML = (r.all_correct?'<span class="pill ok">ALL CORRECT</span> ':'<span class="pill bad">CHECK</span> ') +
+    r.results.map(x=>`<div>${x.correct?'✓':'✗'} ${esc(x.name)} — ${x.blocked?'blocked':'allowed'}</div>`).join(''); };
+$('#runCmd').onclick=async()=>{ $('#cmdOut').textContent='running…';
+  const r=await fetch('/api/command',{method:'POST',headers:hdrs(),body:JSON.stringify({command:$('#cmd').value})});
+  if(r.status===503){ $('#cmdOut').textContent='command runner not wired (start backend with the panel)'; return; }
+  const j=await r.json(); $('#cmdOut').textContent=j.result||JSON.stringify(j); };
+$('#runSb').onclick=async()=>{ const o=$('#sbOut'); o.style.display='block'; o.textContent='running…';
+  const r=await fetch('/api/sandbox',{method:'POST',headers:hdrs(),body:JSON.stringify({code:$('#sbcode').value})});
+  if(r.status===503){ o.textContent='sandbox runner not wired'; return; } const j=await r.json(); o.textContent=j.report||JSON.stringify(j); };
+
+// ---- presentation mode ----
+$('#presentBtn').onclick=()=>document.body.classList.toggle('present');
+$('#token').value = localStorage.getItem('dcvr_token')||''; $('#token').oninput=()=>localStorage.setItem('dcvr_token',token());
+
+startSSE(); loadConfig(); poll(); setInterval(poll, 2000);
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/protocol",
+    "crates/behaviour-dsl",
+    "crates/code-policy",
+    "crates/command-router",
+    "crates/observability",
+    "crates/config",
+    "crates/stt-client",
+    "crates/llm-client",
+    "crates/csharp-policy",
+    "crates/roslyn-client",
+    "crates/sandbox",
+    "crates/unity-transport",
+    "crates/personalization",
+    "crates/control",
+    "crates/admin",
+    "apps/dreamcodevr-server",
+    "apps/fake-quest-client",
+    "apps/ubiq-probe",
+    "apps/sandbox-runner",
+    "tests",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.96"
+license = "Apache-2.0"
+# repository: omitted until the DreamCodeVR+ publication repo exists; add the real
+# URL in a follow-up commit. (Upstream provenance is recorded in NOTICE / CITATION.cff.)
+
+# Single source of truth for dependency versions across the workspace.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+uuid = { version = "1", features = ["v4"] }
+proptest = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "time", "sync", "process"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }
+secrecy = "0.10"
+async-trait = "0.1"
+axum = "0.7"
+tokio-stream = { version = "0.1", features = ["sync"] }
+# Internal crates (path deps) referenced by name where needed.
+dcvr-protocol = { path = "crates/protocol", version = "0.1.0" }
+dcvr-behaviour-dsl = { path = "crates/behaviour-dsl", version = "0.1.0" }
+dcvr-code-policy = { path = "crates/code-policy", version = "0.1.0" }
+dcvr-command-router = { path = "crates/command-router", version = "0.1.0" }
+dcvr-observability = { path = "crates/observability", version = "0.1.0" }
+dcvr-config = { path = "crates/config", version = "0.1.0" }
+dreamcodevr-server = { path = "apps/dreamcodevr-server", version = "0.1.0" }
+dcvr-stt-client = { path = "crates/stt-client", version = "0.1.0" }
+dcvr-llm-client = { path = "crates/llm-client", version = "0.1.0" }
+dcvr-csharp-policy = { path = "crates/csharp-policy", version = "0.1.0" }
+dcvr-roslyn-client = { path = "crates/roslyn-client", version = "0.1.0" }
+dcvr-sandbox = { path = "crates/sandbox", version = "0.1.0" }
+dcvr-unity-transport = { path = "crates/unity-transport", version = "0.1.0" }
+dcvr-personalization = { path = "crates/personalization", version = "0.1.0" }
+dcvr-control = { path = "crates/control", version = "0.1.0" }
+dcvr-admin = { path = "crates/admin", version = "0.1.0" }
+
+# Centralised lint policy. Every crate opts in with `[lints] workspace = true`.
+# These enforce the Phase-1 invariants mechanically (stronger than code review).
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[profile.release]
+lto = "thin"

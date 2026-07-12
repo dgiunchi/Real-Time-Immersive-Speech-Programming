@@ -1,0 +1,21 @@
+[package]
+name = "dcvr-admin"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Axum web admin/debug panel: live pipeline (SSE), runtime config controls, stats, safety log, C# validator tester, red-team runner, per-user RAG profiles."
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+dcvr-control = { workspace = true }
+dcvr-personalization = { workspace = true }
+dcvr-csharp-policy = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,30 @@
+# cargo-deny policy. Run with `cargo deny check` (see scripts/security-audit.sh).
+# Goal: minimal, audited dependency surface (a core dissertation claim).
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Internal path/workspace crates legitimately have no version req.
+allow-wildcard-paths = true
+
+[licenses]
+version = 2
+# Only permissive licenses are allowed into the dependency tree.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    # webpki-roots ships the Mozilla CA bundle under this permissive data license.
+    "CDLA-Permissive-2.0",
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

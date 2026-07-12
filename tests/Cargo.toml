@@ -1,0 +1,20 @@
+[package]
+name = "dcvr-integration-tests"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Cross-crate integration tests for DreamCodeVR+."
+
+[dev-dependencies]
+dcvr-protocol = { workspace = true }
+dcvr-code-policy = { workspace = true }
+dcvr-config = { workspace = true }
+dreamcodevr-server = { workspace = true }
+dcvr-llm-client = { workspace = true }
+dcvr-csharp-policy = { workspace = true }
+dcvr-behaviour-dsl = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

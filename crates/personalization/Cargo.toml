@@ -1,0 +1,21 @@
+[package]
+name = "dcvr-personalization"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Personalization / RAG: per-user preference profile + liked-history memory with embedding retrieval, injected as untrusted aesthetic guidance into the LLM prompt."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+secrecy = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

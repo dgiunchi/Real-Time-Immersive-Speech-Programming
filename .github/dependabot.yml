@@ -1,0 +1,20 @@
+# Dependabot policy for a dissertation research snapshot.
+#
+# This project is a fixed research artifact, so routine version-bump PRs against
+# the Rust (Cargo) and .NET (NuGet) dependency graphs are intentionally NOT
+# enabled here — they would churn the reproducible snapshot documented in the
+# thesis. If this repository later becomes actively maintained, add `cargo` and
+# `nuget` ecosystems below.
+#
+# Passive Dependabot *security alerts* (no PRs unless a real advisory lands)
+# should be enabled in the repository settings; they do not require this file.
+#
+# What IS enabled: keeping the CI action versions patched — low risk, and it
+# does not touch application dependencies or Cargo.lock.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

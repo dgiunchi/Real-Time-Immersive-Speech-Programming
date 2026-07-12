@@ -1,0 +1,16 @@
+[package]
+name = "dcvr-protocol"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ubiq-compatible frame codec and NetworkId constants for DreamCodeVR+ (Phase 1)."
+
+[dependencies]
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

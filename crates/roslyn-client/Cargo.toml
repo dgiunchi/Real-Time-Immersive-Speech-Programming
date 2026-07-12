@@ -1,0 +1,19 @@
+[package]
+name = "dcvr-roslyn-client"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Client for the external .NET Roslyn semantic analyzer (deep allow-list layer for generated C#)."
+
+[dependencies]
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

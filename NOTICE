@@ -1,0 +1,62 @@
+DreamCodeVR+
+============
+
+This repository contains DreamCodeVR+, a research/dissertation prototype that
+extends the original DreamCodeVR system. It is distributed under the Apache
+License 2.0 (see LICENSE).
+
+--------------------------------------------------------------------------------
+Original work (not authored here)
+--------------------------------------------------------------------------------
+
+DreamCodeVR and the Ubiq / Ubiq-Genie platform:
+
+    Copyright 2023 the Virtual Environments and Computer Graphics Group,
+    University College London (UCL).
+    Licensed under the Apache License, Version 2.0.
+
+The original UCL DreamCodeVR Node.js backend (`Server/`), the original Unity
+project, and the Ubiq packages are the work of UCL and are NOT authored as part
+of DreamCodeVR+. They are referenced, integrated with, or replaced by this work.
+
+--------------------------------------------------------------------------------
+Statement of changes (Apache-2.0 Section 4b)
+--------------------------------------------------------------------------------
+
+DreamCodeVR+ modifies and extends the original work as follows:
+
+  * Replaces the original Node.js "Ubiq-Genie" backend with a new Rust workspace
+    (`crates/`, `apps/`) that joins the same Ubiq room as a service peer.
+  * Adds a fail-closed action-plan validator and a bounded action-plan IR
+    (Mode C) that runs without runtime code compilation.
+  * Adds static/lexical + optional .NET Roslyn validation of generated C#
+    (Mode B) and a Docker/gVisor sandbox harness for untrusted code (Mode D).
+  * Adds a two-layer intent screen, observability, an admin/debug panel,
+    personalization/RAG, and a reproducible red-team harness.
+  * Adds authored Unity C# integration scripts under `unity/` and
+    `unity-examples/`.
+  * The original runtime-C# path is retained as Mode A, now gated by the
+    validator, and is OFF by default.
+
+Newly authored DreamCodeVR+ components in this repository are
+Copyright 2026 Sandeep Rai. This copyright covers the DreamCodeVR+ additions and
+modifications ONLY — not the original UCL DreamCodeVR, the Ubiq / Ubiq-Genie
+platform, or any third-party component (see above). See CITATION.cff.
+
+--------------------------------------------------------------------------------
+Third-party components NOT included here
+--------------------------------------------------------------------------------
+
+  * RoslynCSharp (Trivial Interactive) — a PROPRIETARY Unity Asset Store asset
+    used by the original Mode-A runtime-compile path. It is NOT redistributed
+    in this repository. Obtain it separately under its own licence if needed.
+  * The Ubiq RoomServer is NOT vendored here; see docs/REPRODUCIBILITY.md for
+    how to obtain and run it.
+
+--------------------------------------------------------------------------------
+Dependencies
+--------------------------------------------------------------------------------
+
+Rust dependencies (see Cargo.toml / Cargo.lock) and the .NET
+Microsoft.CodeAnalysis.CSharp package are used under their respective licences,
+verified permissive by `cargo deny check` (advisories/bans/licenses/sources ok).

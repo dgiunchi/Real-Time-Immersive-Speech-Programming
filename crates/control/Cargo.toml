@@ -1,0 +1,15 @@
+[package]
+name = "dcvr-control"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared runtime control plane: live-tunable RuntimeConfig, pipeline event bus, and stats counters. Lightweight (no web deps) so the pipeline crates can depend on it."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

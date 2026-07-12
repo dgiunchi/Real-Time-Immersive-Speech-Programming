@@ -1,0 +1,15 @@
+[package]
+name = "fake-quest-client"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Headless test client that speaks the DreamCodeVR+ protocol without a Meta Quest."
+
+[dependencies]
+dcvr-protocol = { workspace = true }
+dcvr-unity-transport = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

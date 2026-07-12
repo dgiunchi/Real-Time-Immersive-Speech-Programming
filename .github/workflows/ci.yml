@@ -1,0 +1,58 @@
+name: CI
+
+# Runs the same Rust gate that is verified locally. Offline only:
+# no OpenAI/paid APIs, no Docker/gVisor, no untrusted C# execution, no Unity/Quest.
+# Tests use the built-in mocks and pass with no secrets configured.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least-privilege: CI only needs to read the repository.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-gate:
+    name: Rust gate (fmt · check · clippy · test · deny)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pinned to the workspace MSRV (Cargo.toml: rust-version = "1.96").
+      # Can be SHA-pinned for stricter supply-chain control if desired.
+      - name: Install Rust 1.96 (rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96"
+          components: rustfmt, clippy
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Type check
+        run: cargo check --workspace
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test (offline mocks)
+        run: cargo test --workspace
+
+      # Prebuilt binary install (robust; avoids compiling cargo-deny from source).
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: Dependency policy (advisories · bans · licenses · sources)
+        run: cargo deny check
