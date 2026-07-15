@@ -1,18 +1,20 @@
 "use strict";
 
 // "Sensors" = Unity-side scene components (proximity/collision triggers, gaze/ray
-// hits, hand-tracking events) that continuously publish observations into Shared XR
-// Memory - this is the concrete mechanism by which SceneController.cs is meant to
-// populate the Visual and Semantic layers, per the clarified scope for this pass.
+// hits, hand-tracking events, locomotion/region crossings) that continuously publish
+// observations into Shared XR Memory - this is the concrete mechanism by which
+// SceneController.cs is meant to populate the Visual, Semantic, and region-context
+// state, per the paper's sensor-as-memory-update-source sentence (main.tex, Shared
+// XR Memory and Experimental Space; docs/paper-sync-timelines-and-modes.md §1.3).
 // No new NetworkId: sensor events ride inside the existing SceneDelta (95) envelope's
 // payload.sensorEvents array, kept optional so existing plain SceneDelta payloads
 // (e.g. from earlier versions of mock_unity_peer.js) remain valid without it.
 //
 // Unity-side sensor *components* (the C# MonoBehaviours that actually detect
-// proximity/gaze/collision) are NOT built in this pass - this module defines the
-// server-side contract and normalizer they will eventually feed.
+// proximity/gaze/collision/locomotion) are NOT built in this pass - this module
+// defines the server-side contract and normalizer they will eventually feed.
 
-const KNOWN_SENSOR_TYPES = Object.freeze(["proximity", "collision", "gaze", "handTracking", "gesture"]);
+const KNOWN_SENSOR_TYPES = Object.freeze(["proximity", "collision", "gaze", "handTracking", "gesture", "locomotion"]);
 
 const RELATION_BY_SENSOR_TYPE = Object.freeze({
     proximity: "near",
@@ -20,12 +22,15 @@ const RELATION_BY_SENSOR_TYPE = Object.freeze({
     gaze: "observed-by",
     handTracking: "reachable-from",
     gesture: "reachable-from",
+    // locomotion is intentionally absent here - it updates region context
+    // (regionStore), not an object-to-object relation. See _ingestOne below.
 });
 
 class SensorRegistry {
-    constructor({ visualStore, sceneGraphStore, maxRecent = 200 } = {}) {
+    constructor({ visualStore, sceneGraphStore, regionStore, maxRecent = 200 } = {}) {
         this.visualStore = visualStore;
         this.sceneGraphStore = sceneGraphStore;
+        this.regionStore = regionStore;
         this.recent = [];
         this.maxRecent = maxRecent;
     }
@@ -51,6 +56,13 @@ class SensorRegistry {
 
         this.recent.push(event);
         if (this.recent.length > this.maxRecent) this.recent.shift();
+
+        if (event.sensorType === "locomotion") {
+            // Discrete region entry/exit, not an object relation - route separately
+            // and skip the relation-derivation logic below.
+            if (this.regionStore) this.regionStore.ingestLocomotionEvent(event);
+            return;
+        }
 
         if (this.visualStore && event.targetObjectId) {
             this.visualStore.ingestSensorEvent(event);

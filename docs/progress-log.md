@@ -144,6 +144,133 @@ the orchestrator with a real API key (none available in this environment) — th
 verification is documented as the user's next manual step in
 `Server/orchestrator/README.md`, not claimed as done here.
 
+**2026-07-12 — Paper re-sync: terminology and taxonomy have moved on.**
+Re-read the full paper (read-only) and found it had been substantially revised since
+the last sync — new title ("Worlds That Think With Us: Toward Symbiotic AgenticXR"),
+rewritten abstract, and renamed core terms: "Two Clocks" is now "Two Timelines and
+Perceived Synchronicity" (`XR Interaction Timeline` / `Agentic Deliberation
+Timeline`), the sensor definition is now far more precise (six named update paths:
+speech→intent, gaze/ray/hand→focus, locomotion→region context, transforms/components→
+visual+script/context, scene graph changes→semantic, confirmations/rejections/undo/
+results→temporal+person), and the five interaction modes (L1-L5) are now a fully
+formalized table (`tab:modes`: Trigger/Agent role/User control/Gate) rather than a
+loose sketch. Authored `docs/paper-sync-timelines-and-modes.md`: a precise
+concept restatement plus a gap analysis and a prioritized (not yet implemented) code
+modification plan - stale-proposal rejection logic, L1-L5 alignment for
+`authoringMode` (two options, needs a decision - not made unilaterally), sensor scope
+expansion (speech→intent and locomotion→region context are entirely unmodeled today),
+`person_policy.js` never actually updates from session events despite the paper now
+saying it should, and timeline instrumentation gaps for memory-tool calls and
+`simulate_artifact` specifically. Also flagged the reverse drift: the paper's own
+Implementation Status section (`sec:implementation`) now **understates** what's
+built - it still describes the bridge as not storing Shared XR Memory and lists only
+4 MCP tools, both of which were true before the 2026-07-12 memory/orchestrator work
+above but are no longer accurate. This is a planning pass only - no code changed.
+
+**2026-07-12 — Executed `docs/next-build-prompt.md`: all 7 items built and verified.**
+Terminology renamed to match the paper throughout (`timeline_registry.js`,
+`agentic-xr-architecture.md`; redeployed the timeline chart as
+https://lucid.app/lucidchart/09ee5cdd-7f30-42c7-8a7c-1615e0ca6412/edit, since the
+Lucid connector has no in-place replace and a new document was required — old one
+kept for history). Added `interactionMode` (L1-L5) as a field alongside
+`authoringMode` throughout the envelope/tools/orchestrator, per the prompt's decision
+to keep them separate (who-initiates vs. who-controls-execution). Built
+`Server/memory/region_store.js` (discrete `locomotion` sensor type, distinct from
+continuous `proximity`) and a `get_region_context` tool. Extended `person_policy.js`
+with `recordEvent()`/`priorDecisions`, wired into `propose_artifact`,
+`simulate_artifact`, and `commit_memory_event`. Built `Server/memory/intent_store.js`
+plus a `record_intent` tool, scoped down exactly as planned — the orchestrator records
+its own CLI intent string as a stand-in, explicitly not claiming real speech capture.
+Instrumented the 6 remaining memory tools with optional `correlationId` marking
+(`memory_retrieval:<toolName>` on the `deliberation` timeline), and gave
+`simulate_artifact` its own distinct `experimental`-timeline event
+(`SimulateArtifact`) instead of being indistinguishable from a real commit. Built
+stale-proposal rejection: `scene_bridge_client.js` now tracks a per-session
+`sessionFocus` map (updated on every `query_scene` call with a `sessionId`), tags
+every `ArtifactResult` with a `staleness` object before resolving, and emits a
+`stale_proposal` event that `server.js` logs to both the artifact log and person
+policy. Documented `sessionId` as a required convention (not schema-enforced) in
+`Server/orchestrator/README.md`.
+
+**Verified, not just written:** rewrote `smoketest_client.mjs` to exercise every new
+behavior in one session against the live room server + mock peer (which now also
+emits a synthetic `locomotion` sensor event). Confirmed: `interactionMode: "L4"`
+round-trips into `get_artifact_history`; `get_region_context` correctly reports
+`workshop-entrance`; `get_person_policy` shows a non-empty `priorDecisions` after a
+`propose_artifact` call; `get_timeline_metrics` shows interleaved
+`memory_retrieval:*` events on the `deliberation` lane and a distinct `experimental`
+lane event (`SimulateArtifact`, 292ms) separate from the real commit
+(`ArtifactResult`, 1516ms) for a different correlationId; and the stale-proposal test
+(query object A, query object B same session, propose for A) correctly returned
+`staleness: { isStale: true, focusObjectIdAtArrival: "obj-stale-b" }` and logged a
+distinct `stale_proposal` entry alongside the normal `propose_artifact` entry in
+`get_artifact_history`. Hit one real bug during testing (unrelated to the new code):
+two leftover Node processes from an earlier session were still holding ports
+3000/8009/8010, causing a confusing `EADDRINUSE` crash on the first restart attempt —
+resolved by explicitly enumerating and stopping them before retrying; not a defect in
+this pass's code.
+
+**2026-07-15 — Cache Exchange Layer implemented (backend) and scaffolded (Unity).**
+Checked the paper fresh again before building - found it had moved further since the
+2026-07-12 sync: "Experimental Space" is now "Verification Space" throughout, and a
+new "Cache Exchange Layer" subsection exists with an exact channel/envelope-field
+table matching the request's spec almost verbatim (confirms `rag/prompts/cache_exchange_agenticxr_prompt.md`
+as the source prompt). Grounded the whole implementation in that table rather than
+inventing channel numbers - every new message type fits onto the 6 channels the
+bridge already owns (95-97, 99-101), no new NetworkIds allocated. One documented,
+deliberate deviation from the paper's compressed table: `DeltaAck`/`DeltaNack` sent
+Server→Unity on 101, not Unity→Server on 100 as the table's shorthand suggests,
+because the receiver of a `SceneDelta` is the backend - see
+`docs/cache-exchange-layer.md` for the full rationale.
+
+Built `Server/cache/` (`protocol.js`, `event_journal.js`, `agent_working_cache.js`,
+`cache_reconciler.js`, `proposal_gate.js`, `index.js`) and wired it into
+`scene_bridge_client.js` (new outbound methods, channel 101's listener now routes
+everything through `#handleInbound` instead of only heartbeats, `#awaitReply` accepts
+an array of acceptable reply types for the two-outcome `CommitRequest`) and
+`server.js` (8 new MCP tools). Found and fixed a real correctness bug before it
+shipped: an initial high-water-mark-only duplicate check would have wrongly discarded
+a legitimately-recovered backfilled delta once a later live delta had already
+advanced past it - fixed with a per-session `seenSet` plus a monotonic-safety-net
+merge in `agent_working_cache.js` so a late backfill can't regress newer state either.
+
+**Verified, not just written**: extended `mock_unity_peer.js` to simulate Unity's
+authoritative side (snapshot, four deltas with `deltaSeq` 3 deliberately dropped on
+the wire but kept in its own history, and its own freshness check on
+`CommitRequest`/`RollbackRequest`), and ran the full flow end to end
+(`Server/mcp/unity_scene_bridge/cache_test_flow.mjs`, new). Confirmed: live deltas 1
+and 2 accepted in real time; delta 4's arrival correctly detected the gap
+(`fromSeq:3,toSeq:3`) and the reconciler *automatically* requested backfill without
+any manual trigger; the recovered delta 3 was accepted while delta 4 (already seen)
+was correctly ignored as a duplicate within the same backfill batch; final state
+correctly reflects revision 5 (the newer live delta), not regressed by the
+later-arriving older backfilled one; a second, fully manual re-backfill from
+`lastSeenSeq=0` showed all four as duplicates (idempotence proven); a commit against
+the current revision was accepted by the mock peer's own authoritative check; a
+commit against a deliberately stale revision was rejected by the *backend's*
+pre-flight `ProposalGate` before ever reaching Unity; a commit with a stale
+`snapshotTakenAt` under `automatic` mode's tight budget was separately rejected for
+that reason. Hit and fixed one process-hygiene issue along the way, unrelated to the
+cache logic: two `node app.js` room-server processes (one three days old) were never
+caught by earlier cleanup passes because their WMI command line was the bare relative
+invocation `node app.js` with no `dcvr_agentic` substring in it, which every prior
+`-match 'dcvr_agentic'` cleanup filter silently missed - found instead by checking
+which PID actually owned port 3000. Worth remembering for future cleanups: filter by
+port ownership when a command-line substring match comes up empty but the port is
+still busy.
+
+Scaffolded the Unity C# side (`Unity/Assets/AgenticCache/`: `CacheEnvelope.cs`,
+`LocalXRCache.cs`, `CachePublisher.cs`, `CacheChannelRelay.cs`,
+`CacheExchangeManager.cs` with all 10 required handlers, including the real
+compare-and-swap logic in `HandleCommitRequest`) written against the exact patterns
+proven in `CodeGenerationManager.cs`/`MicrophoneCapture.cs`/`SelectRay.cs`. **Not
+compiled or run** - no Unity Editor available in this environment. Also surfaced (not
+fixed) a real, previously-latent issue: Unity's `JsonUtility` cannot deserialize a
+nested JSON payload object, which affects the three legacy message types
+(`SceneQuery`, `AgentUtterance`, `ArtifactProposal`) whose payloads are not yet
+pre-stringified on the Node side - documented in detail, with the fix path, in
+`docs/cache-exchange-layer.md`'s "Wire format and the JsonUtility payload problem".
+
 ## Current implementation status
 
 | Component | Status | Evidence |
@@ -165,6 +292,15 @@ verification is documented as the user's next manual step in
 | Shared XR Memory (5 layers, ported from paper) | **Implemented and tested** server-side; Unity-side sensor publishing **not implemented** (mock peer emits synthetic events) | `Server/memory/*.js`, `docs/shared-memory-and-experimental-space.md` |
 | Timelines & perceived synchronicity | **Implemented and tested** (`xr`/`deliberation`/`experimental` lanes; `timeToValidatedExecutionMs` verified against mock peer) | `Server/memory/timeline_registry.js` |
 | Experimental Space real staging-clone dry-run | `simulate_artifact` tool + channel plumbing implemented; actual Unity clone execution **not implemented** | `Server/mcp/unity_scene_bridge/server.js`, `docs/shared-memory-and-experimental-space.md` §2 |
+| `interactionMode` (L1-L5, per paper `tab:modes`) | **Implemented and tested**, additive alongside `authoringMode` | `protocol.js`, `orchestrator/app.js` validator_critic |
+| Region context (`locomotion` sensor → named regions) | **Implemented and tested**, static region lookup, empty rule set by default | `Server/memory/region_store.js` |
+| Intent memory (`speech → intent`) | Store + tool **implemented and tested**; real speech input **not wired** (CLI stand-in only) | `Server/memory/intent_store.js` |
+| Person policy mutation from session events | **Implemented and tested** (`priorDecisions` updates from propose/simulate/commit/stale events) | `Server/memory/person_policy.js` |
+| Memory-tool timeline instrumentation | **Implemented and tested** (`memory_retrieval:*` marks; `simulate_artifact` gets its own `experimental`-lane event) | `Server/mcp/unity_scene_bridge/server.js` |
+| Stale-proposal rejection | **Implemented and tested** (session-focus tracking + `staleness` tagging + logging); requires callers to pass `sessionId` consistently (convention, not enforced) | `Server/mcp/unity_scene_bridge/scene_bridge_client.js` |
+| Cache Exchange Layer - backend (journal, working cache, reconciler, proposal gate) | **Implemented and tested** (gap detection, automatic backfill, idempotent dedup, monotonic safety net, two-stage commit gate) | `Server/cache/*.js` |
+| Cache Exchange Layer - Unity (local cache, publisher, exchange manager, all 10 handlers) | **Scaffolded, not compiled or run** - no Unity Editor available | `Unity/Assets/AgenticCache/*.cs` |
+| Unity JsonUtility nested-payload parsing (SceneQuery/AgentUtterance/ArtifactProposal) | **Known gap, documented, not fixed** | `docs/cache-exchange-layer.md` |
 | Quantitative evaluation / user study | **Not started** | — |
 
 ## Explicit gaps (say these plainly in any status update — don't let "designed" read as "done")
@@ -260,11 +396,14 @@ as the system is used:
 - Design: `docs/agentic-xr-architecture.md`
 - Framework decision + diagrams: `docs/agent-framework-and-communication.md`
 - Shared XR Memory & Experimental Space (ported from the paper): `docs/shared-memory-and-experimental-space.md`
+- Paper re-sync + code modification plan (2026-07-12, not yet implemented): `docs/paper-sync-timelines-and-modes.md`
+- Next build prompt (2026-07-12, resolves the two open decisions, ready to execute): `docs/next-build-prompt.md`
+- Cache Exchange Layer (2026-07-15, backend implemented+tested, Unity scaffolded): `docs/cache-exchange-layer.md`
 - Reference chart (channels + envelope, formatted): https://lucid.app/lucidchart/a069924a-8d7a-4c8c-af2f-197c9c2a4004/edit
 - Architecture/topology diagram: https://lucid.app/lucidchart/d726923b-11d8-47c9-a6ba-21215e606157/edit
 - Sequence diagram (confirm-mode flow): https://lucid.app/lucidchart/b92b8d55-9c9e-4da9-b22d-9ba2063ad920/edit
 - Shared XR Memory & Experimental Space chart: https://lucid.app/lucidchart/2067773e-def4-4940-992c-6f9ea55a59d5/edit
-- Two Clocks chart (interaction/deliberation/experimental, with a real measured trace): https://lucid.app/lucidchart/a8ff07bd-4189-4795-bb51-5286db5bab64/edit
+- Two Timelines chart (interaction/deliberation/experimental, with a real measured trace, terminology aligned to the current paper): https://lucid.app/lucidchart/09ee5cdd-7f30-42c7-8a7c-1615e0ca6412/edit — supersedes the earlier "Two Clocks" version (https://lucid.app/lucidchart/a8ff07bd-4189-4795-bb51-5286db5bab64/edit, kept for history only; the Lucid connector has no in-place "replace content" call, only granular edits, so terminology updates create a new document rather than updating the old one)
 - Implementation (transport + memory): `Server/mcp/unity_scene_bridge/README.md`
 - Implementation (orchestrator, how to test, API keys needed): `Server/orchestrator/README.md`
 - MCP client registration: `.mcp.json`

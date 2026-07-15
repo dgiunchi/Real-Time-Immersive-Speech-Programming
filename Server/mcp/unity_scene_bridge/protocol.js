@@ -26,7 +26,19 @@ const CHANNELS = Object.freeze({
 
 const SCHEMA_VERSION = "1.0";
 
-function makeEnvelope({ type, sessionId, correlationId, originAgent, targetObjectId, authoringMode, priority, payload }) {
+// The paper's five interaction modes (main.tex, tab:modes) - who *initiates* an
+// authoring episode. Distinct from authoringMode, which answers who *controls
+// execution* (docs/next-build-prompt.md §1.1). Optional, additive: existing
+// authoringMode routing is unchanged by this field's presence or absence.
+const INTERACTION_MODES = Object.freeze({
+    L1: "L1", // Proactive automatic authoring
+    L2: "L2", // Context-triggered automatic authoring
+    L3: "L3", // Clarification-driven authoring
+    L4: "L4", // Confirmation-gated authoring
+    L5: "L5", // Conversational co-authoring
+});
+
+function makeEnvelope({ type, sessionId, correlationId, originAgent, targetObjectId, authoringMode, interactionMode, priority, payload }) {
     if (!type) {
         throw new Error("makeEnvelope requires a 'type'");
     }
@@ -38,6 +50,7 @@ function makeEnvelope({ type, sessionId, correlationId, originAgent, targetObjec
         originAgent: originAgent || "unity_scene_bridge",
         targetObjectId: targetObjectId || null,
         authoringMode: authoringMode || null,
+        interactionMode: interactionMode || null,
         priority: priority || "normal",
         timestamp: Date.now(),
         payload: payload || {},
@@ -48,4 +61,4 @@ function isEnvelope(obj) {
     return !!obj && typeof obj === "object" && typeof obj.type === "string" && typeof obj.correlationId === "string";
 }
 
-module.exports = { CHANNELS, SCHEMA_VERSION, makeEnvelope, isEnvelope };
+module.exports = { CHANNELS, SCHEMA_VERSION, INTERACTION_MODES, makeEnvelope, isEnvelope };

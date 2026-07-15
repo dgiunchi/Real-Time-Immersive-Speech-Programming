@@ -11,6 +11,8 @@ const { ArtifactLog } = require("./artifact_log");
 const { PersonPolicyStore } = require("./person_policy");
 const { TimelineRegistry } = require("./timeline_registry");
 const { SensorRegistry } = require("./sensor_registry");
+const { RegionStore } = require("./region_store");
+const { IntentStore } = require("./intent_store");
 
 class SharedMemory {
     constructor({ artifactLogPath } = {}) {
@@ -19,7 +21,9 @@ class SharedMemory {
         this.artifactLog = new ArtifactLog({ filePath: artifactLogPath });
         this.personPolicy = new PersonPolicyStore();
         this.timeline = new TimelineRegistry();
-        this.sensors = new SensorRegistry({ visualStore: this.visual, sceneGraphStore: this.sceneGraph });
+        this.region = new RegionStore();
+        this.intent = new IntentStore();
+        this.sensors = new SensorRegistry({ visualStore: this.visual, sceneGraphStore: this.sceneGraph, regionStore: this.region });
     }
 
     // Subscribes to every envelope (inbound and outbound) a SceneBridgeClient sees.

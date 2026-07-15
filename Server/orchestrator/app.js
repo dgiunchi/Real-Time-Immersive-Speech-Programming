@@ -36,12 +36,17 @@ const AGENTS = {
             "Grounds an authoring intent in the current XR scene using Shared XR Memory. Always call this " +
             "first, before any code is drafted.",
         prompt:
-            "You are the Scene Analyst for AgenticXR. Given a target object id and correlationId, call " +
-            `${bridgeTool("query_scene")}, ${bridgeTool("query_visual_memory")}, ${bridgeTool("query_scene_graph")}, and ${bridgeTool("query_affordances")} ` +
-            "for that object (pass the given correlationId to query_scene so this turn's timeline stays " +
-            "correlated). Summarize, in under 150 words, what the target object is, what is near or related to " +
-            "it, and what actions it affords. State plainly if scene data is unavailable (e.g. the query times " +
-            "out) rather than inventing scene contents. Do not propose or write any code.",
+            "You are the Scene Analyst for AgenticXR. Given a target object id, sessionId, and correlationId, " +
+            `call ${bridgeTool("query_scene")} with ALL THREE of objectId, sessionId, and correlationId - the ` +
+            "sessionId is required for stale-proposal detection (a later query_scene for a different object in " +
+            "the same session will mark this object's still-pending proposal as stale, which is intentional). " +
+            `Also call ${bridgeTool("query_visual_memory")}, ${bridgeTool("query_scene_graph")}, and ` +
+            `${bridgeTool("query_affordances")} for that object, passing the given correlationId to every one ` +
+            "of those calls so the whole turn's timeline stays correlated (see " +
+            "Server/memory/timeline_registry.js). Summarize, in under 150 words, what the target object is, " +
+            "what is near or related to it, and what actions it affords. State plainly if scene data is " +
+            "unavailable (e.g. the query times out) rather than inventing scene contents. Do not propose or " +
+            "write any code.",
         tools: [bridgeTool("query_scene"), bridgeTool("query_visual_memory"), bridgeTool("query_scene_graph"), bridgeTool("query_affordances"), bridgeTool("get_script_context")],
         mcpServers: [BRIDGE_SERVER_NAME],
         model: "sonnet",
@@ -64,13 +69,20 @@ const AGENTS = {
         prompt:
             "You are the Validator/Critic for AgenticXR - an independent reviewer, not the code's author, and " +
             "you must not simply trust the generator's own framing of what it wrote. Given the candidate C# " +
-            "code, the original intent, and the scene grounding summary: (1) check it only uses UnityEngine " +
-            "APIs and none of the denied namespaces (System.IO, System.Net, System.Diagnostics, reflection); " +
-            "(2) check it plausibly matches the stated intent and the object it targets; (3) assign a riskScore " +
-            "from 0 (cosmetic, reversible, single-object) to 1 (destructive, persistent, shared-state, " +
-            "multi-object); (4) recommend authoringMode: 'automatic' only if riskScore < 0.3 AND the change is " +
-            "cosmetic/parametric on a single object, otherwise 'semi_auto_confirm'. Respond with ONLY a single " +
-            "compact JSON object: {\"pass\": boolean, \"riskScore\": number, \"authoringMode\": string, " +
+            "code, the original intent, the scene grounding summary, and how this turn was triggered: " +
+            "(1) check it only uses UnityEngine APIs and none of the denied namespaces (System.IO, System.Net, " +
+            "System.Diagnostics, reflection); (2) check it plausibly matches the stated intent and the object " +
+            "it targets; (3) assign a riskScore from 0 (cosmetic, reversible, single-object) to 1 (destructive, " +
+            "persistent, shared-state, multi-object); (4) recommend authoringMode: 'automatic' only if " +
+            "riskScore < 0.3 AND the change is cosmetic/parametric on a single object, otherwise " +
+            "'semi_auto_confirm'; (5) classify interactionMode using the paper's five modes (main.tex tab:modes) " +
+            "- these describe who INITIATED this turn, separate from authoringMode's execution gate: " +
+            "'L1' if the system itself proposed this from a low-risk opportunity with no explicit user request; " +
+            "'L2' if triggered by ordinary user motion/context rather than a command; 'L3' if a required detail " +
+            "was missing and had to be clarified first; 'L4' if the user's request is complete but the effect " +
+            "is persistent/shared and needs confirmation; 'L5' if the user explicitly asked for this function " +
+            "through speech, possibly iterating on it. Respond with ONLY a single compact JSON object: " +
+            "{\"pass\": boolean, \"riskScore\": number, \"authoringMode\": string, \"interactionMode\": string, " +
             "\"reason\": string}. No prose outside the JSON.",
         tools: [],
         model: "sonnet",
@@ -107,6 +119,10 @@ yourself - you delegate every step to a named subagent via the Task tool, in thi
 order, and pass the given correlationId to every subagent so the whole turn shares one
 timeline (see Server/memory/timeline_registry.js):
 
+0. Call ${bridgeTool("record_intent")} yourself with the given intent text, sessionId,
+   and correlationId, before delegating to any subagent. This is a stand-in for real
+   speech capture (not wired into this pipeline yet - see docs/next-build-prompt.md
+   §1.3), not a claim that live speech was transcribed.
 1. scene_analyst - ground the request in the current scene.
 2. code_generator - draft a candidate artifact from the grounded intent.
 3. validator_critic - independently review the candidate; read its JSON verdict.
@@ -115,7 +131,8 @@ timeline (see Server/memory/timeline_registry.js):
    If decision is not "proceed", stop and explain why instead of proceeding.
 5. Call ${bridgeTool("propose_artifact")} yourself (this call belongs to you, the
    router, not a subagent) with the candidate code, targetObjectId, intent,
-   authoringMode from the validator's verdict, and the shared correlationId.
+   authoringMode AND interactionMode from the validator's verdict, sessionId, and the
+   shared correlationId.
 6. version_memory - confirm the outcome is logged.
 
 Narrate each step in one short sentence before moving to the next. If any stage fails,

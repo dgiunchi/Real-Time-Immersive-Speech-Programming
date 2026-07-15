@@ -1,13 +1,13 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import path from "path";
 
 const serverPath = "C:\\Users\\giunchid\\Downloads\\dcvr\\dcvr_agentic\\Server\\mcp\\unity_scene_bridge\\server.js";
 
 const transport = new StdioClientTransport({ command: "node", args: [serverPath] });
-const client = new Client({ name: "smoketest", version: "0.0.1" });
+const client = new Client({ name: "smoketest", version: "0.0.2" });
 await client.connect(transport);
 
+const sessionId = "smoketest-session-1";
 const correlationId = "smoketest-correlation-1";
 const targetObjectId = "obj-test-42";
 
@@ -16,11 +16,14 @@ function log(label, result) {
     console.log(`\n=== ${label} ===\n${text}`);
 }
 
-log("query_scene", await client.callTool({ name: "query_scene", arguments: { objectId: targetObjectId, correlationId } }));
-log("query_visual_memory", await client.callTool({ name: "query_visual_memory", arguments: { objectId: targetObjectId } }));
-log("query_scene_graph", await client.callTool({ name: "query_scene_graph", arguments: { objectId: targetObjectId } }));
-log("query_affordances", await client.callTool({ name: "query_affordances", arguments: { objectId: targetObjectId } }));
-log("get_script_context", await client.callTool({ name: "get_script_context", arguments: { objectId: targetObjectId } }));
+// --- Core round trip, with sessionId + interactionMode + region/intent (docs/next-build-prompt.md) ---
+log("record_intent", await client.callTool({ name: "record_intent", arguments: { text: "make this sphere pulse red when I touch it", sessionId, correlationId } }));
+log("query_scene", await client.callTool({ name: "query_scene", arguments: { objectId: targetObjectId, sessionId, correlationId } }));
+log("get_region_context", await client.callTool({ name: "get_region_context", arguments: { sessionId } }));
+log("query_visual_memory", await client.callTool({ name: "query_visual_memory", arguments: { objectId: targetObjectId, correlationId } }));
+log("query_scene_graph", await client.callTool({ name: "query_scene_graph", arguments: { objectId: targetObjectId, correlationId } }));
+log("query_affordances", await client.callTool({ name: "query_affordances", arguments: { objectId: targetObjectId, correlationId } }));
+log("get_script_context", await client.callTool({ name: "get_script_context", arguments: { objectId: targetObjectId, correlationId } }));
 
 log(
     "propose_artifact",
@@ -31,22 +34,42 @@ log(
             targetObjectId,
             intent: "make it bounce",
             authoringMode: "semi_auto_confirm",
+            interactionMode: "L4",
+            sessionId,
             correlationId,
         },
     })
 );
 
-log("get_artifact_history", await client.callTool({ name: "get_artifact_history", arguments: { objectId: targetObjectId } }));
-log("get_person_policy", await client.callTool({ name: "get_person_policy", arguments: {} }));
+log("get_artifact_history", await client.callTool({ name: "get_artifact_history", arguments: { objectId: targetObjectId, correlationId } }));
+log("get_person_policy (expect non-empty priorDecisions)", await client.callTool({ name: "get_person_policy", arguments: { sessionId, correlationId } }));
 log("get_timeline_metrics", await client.callTool({ name: "get_timeline_metrics", arguments: { correlationId } }));
 
 log(
-    "simulate_artifact",
+    "simulate_artifact (expect an 'experimental' lane event in a later get_timeline_metrics)",
     await client.callTool({
         name: "simulate_artifact",
-        arguments: { code: "public class Bounce2 : MonoBehaviour {}", targetObjectId, intent: "make it bounce higher" },
+        arguments: { code: "public class Bounce2 : MonoBehaviour {}", targetObjectId, intent: "make it bounce higher", sessionId, correlationId: "smoketest-correlation-2" }
     })
 );
+log("get_timeline_metrics (simulate correlationId - look for an 'experimental' timeline event)", await client.callTool({ name: "get_timeline_metrics", arguments: { correlationId: "smoketest-correlation-2" } }));
+
+// --- Stale-proposal rejection (docs/next-build-prompt.md §2.7) ---
+// Query object A, then object B (same session) - the pending idea is "the user moved
+// on" - then propose for A: expect ArtifactResult.staleness.isStale === true.
+const objectA = "obj-stale-a";
+const objectB = "obj-stale-b";
+const staleCorrelationId = "smoketest-stale-1";
+log("query_scene(A)", await client.callTool({ name: "query_scene", arguments: { objectId: objectA, sessionId, correlationId: "smoketest-stale-query-a" } }));
+log("query_scene(B) - session focus moves to B", await client.callTool({ name: "query_scene", arguments: { objectId: objectB, sessionId, correlationId: "smoketest-stale-query-b" } }));
+log(
+    "propose_artifact(A) - expect staleness.isStale === true since session focus is now B",
+    await client.callTool({
+        name: "propose_artifact",
+        arguments: { code: "public class Stale : MonoBehaviour {}", targetObjectId: objectA, intent: "stale test", sessionId, correlationId: staleCorrelationId },
+    })
+);
+log("get_artifact_history(A) - expect a stale_proposal eventType entry", await client.callTool({ name: "get_artifact_history", arguments: { objectId: objectA } }));
 
 await client.close();
 process.exit(0);

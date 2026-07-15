@@ -14,6 +14,7 @@ const nconf = require("nconf");
 const { z } = require("zod");
 const { SceneBridgeClient } = require("./scene_bridge_client");
 const { SharedMemory } = require("../../memory");
+const { CacheExchangeLayer } = require("../../cache");
 
 async function main() {
     const configPath = process.argv[2] || path.join(__dirname, "config.json");
@@ -27,6 +28,37 @@ async function main() {
     const bridge = new SceneBridgeClient(config);
     const memory = new SharedMemory();
     memory.attach(bridge);
+    const cacheExchange = new CacheExchangeLayer();
+    cacheExchange.attach(bridge);
+
+    // Stale-proposal rejection (docs/next-build-prompt.md §2.7): the ArtifactResult
+    // still resolves to whoever asked for it either way (see
+    // SceneBridgeClient#annotateStaleness) - this listener only logs the event so
+    // RQ4's "stale applications" measure has something to count.
+    bridge.on("stale_proposal", (envelope) => {
+        memory.artifactLog.append({
+            eventType: "stale_proposal",
+            targetObjectId: envelope.targetObjectId,
+            correlationId: envelope.correlationId,
+            staleness: envelope.staleness,
+        });
+        memory.personPolicy.recordEvent({
+            sessionId: envelope.sessionId,
+            eventType: "stale_proposal",
+            targetObjectId: envelope.targetObjectId,
+            at: envelope.timestamp,
+        });
+        console.error(`[unity_scene_bridge] stale proposal detected: correlationId=${envelope.correlationId} target=${envelope.targetObjectId} focusWas=${envelope.staleness.focusObjectIdAtArrival}`);
+    });
+
+    // Memory-tool calls are synchronous/in-process (near-zero real latency by
+    // construction) so there is no meaningful "duration" to instrument - what
+    // matters for the paper's "memory retrieval latency" measure is marking WHEN
+    // each retrieval happens within a turn's deliberation timeline. Only marks if
+    // the caller supplied a correlationId (docs/next-build-prompt.md §2.6).
+    function markMemoryRetrieval(correlationId, toolName) {
+        if (correlationId) memory.timeline.mark(correlationId, "deliberation", `memory_retrieval:${toolName}`);
+    }
 
     // @modelcontextprotocol/sdk ships ESM-only; this package is CommonJS, so
     // it is loaded via dynamic import rather than require().
@@ -48,13 +80,14 @@ async function main() {
             inputSchema: {
                 objectId: z.string().optional().describe("Stable scene object id to focus on"),
                 filter: z.string().optional().describe("Filter expression, e.g. tag:game or componentType:Light"),
+                sessionId: z.string().optional().describe("Required (as a convention, not enforced) for stale-proposal detection - see get_timeline_metrics and Server/orchestrator/README.md"),
                 correlationId: z.string().optional().describe("Reuse an existing correlationId to thread this call into the same authoring-turn timeline as prior/later calls"),
                 timeoutMs: z.number().int().positive().optional(),
             },
         },
-        async ({ objectId, filter, correlationId, timeoutMs }) => {
+        async ({ objectId, filter, sessionId, correlationId, timeoutMs }) => {
             try {
-                const result = await bridge.querySceneFocus({ objectId, filter, correlationId, timeoutMs });
+                const result = await bridge.querySceneFocus({ objectId, filter, sessionId, correlationId, timeoutMs });
                 return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
             } catch (err) {
                 return { content: [{ type: "text", text: `query_scene failed: ${err.message}` }], isError: true };
@@ -78,23 +111,26 @@ async function main() {
                 targetObjectId: z.string().describe("Stable scene object id this artifact attaches to"),
                 intent: z.string().optional().describe("Original natural-language intent, shown in the confirmation UI"),
                 authoringMode: z.enum(["automatic", "semi_auto_confirm", "semi_auto_steer"]).optional(),
+                interactionMode: z.enum(["L1", "L2", "L3", "L4", "L5"]).optional().describe("Which of the paper's five interaction modes initiated this turn (main.tex tab:modes) - separate from authoringMode, which controls the execution gate"),
                 sessionId: z.string().optional(),
                 correlationId: z.string().optional().describe("Reuse an existing correlationId to thread this call into the same authoring-turn timeline as prior/later calls"),
                 timeoutMs: z.number().int().positive().optional(),
             },
         },
-        async ({ code, targetObjectId, intent, authoringMode, sessionId, correlationId, timeoutMs }) => {
+        async ({ code, targetObjectId, intent, authoringMode, interactionMode, sessionId, correlationId, timeoutMs }) => {
             try {
-                const result = await bridge.proposeArtifact({ code, targetObjectId, intent, authoringMode, sessionId, correlationId, timeoutMs });
+                const result = await bridge.proposeArtifact({ code, targetObjectId, intent, authoringMode, interactionMode, sessionId, correlationId, timeoutMs });
                 memory.artifactLog.append({
                     eventType: "propose_artifact",
                     targetObjectId,
                     correlationId: result.correlationId,
                     intent: intent || null,
                     authoringMode: authoringMode || null,
+                    interactionMode: interactionMode || null,
                     status: result.payload && result.payload.status,
                     artifactId: result.payload && result.payload.artifactId,
                 });
+                memory.personPolicy.recordEvent({ sessionId, eventType: `propose_artifact:${result.payload && result.payload.status}`, targetObjectId, at: Date.now() });
                 return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
             } catch (err) {
                 return { content: [{ type: "text", text: `propose_artifact failed: ${err.message}` }], isError: true };
@@ -117,21 +153,27 @@ async function main() {
                 code: z.string().describe("Full C# source of the candidate artifact"),
                 targetObjectId: z.string().describe("Stable scene object id the artifact would attach to"),
                 intent: z.string().optional(),
+                interactionMode: z.enum(["L1", "L2", "L3", "L4", "L5"]).optional(),
                 sessionId: z.string().optional(),
                 correlationId: z.string().optional(),
                 timeoutMs: z.number().int().positive().optional(),
             },
         },
-        async ({ code, targetObjectId, intent, sessionId, correlationId, timeoutMs }) => {
+        async ({ code, targetObjectId, intent, interactionMode, sessionId, correlationId, timeoutMs }) => {
             try {
-                const result = await bridge.proposeArtifact({ code, targetObjectId, intent, sessionId, correlationId, timeoutMs, simulate: true });
+                const result = await bridge.proposeArtifact({ code, targetObjectId, intent, interactionMode, sessionId, correlationId, timeoutMs, simulate: true });
                 memory.artifactLog.append({
                     eventType: "simulate_artifact",
                     targetObjectId,
                     correlationId: result.correlationId,
                     intent: intent || null,
+                    interactionMode: interactionMode || null,
                     status: result.payload && result.payload.status,
                 });
+                memory.personPolicy.recordEvent({ sessionId, eventType: `simulate_artifact:${result.payload && result.payload.status}`, targetObjectId, at: Date.now() });
+                if (result.payload && result.payload.status === "simulated") {
+                    memory.timeline.mark(result.correlationId, "experimental", "SimulateArtifact", result.timestamp);
+                }
                 return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
             } catch (err) {
                 return { content: [{ type: "text", text: `simulate_artifact failed: ${err.message}` }], isError: true };
@@ -183,9 +225,13 @@ async function main() {
             inputSchema: {
                 objectId: z.string().optional(),
                 filter: z.string().optional(),
+                correlationId: z.string().optional().describe("Marks this retrieval on the shared turn timeline; see get_timeline_metrics"),
             },
         },
-        async ({ objectId, filter }) => ({ content: [{ type: "text", text: JSON.stringify(memory.visual.query({ objectId, filter }), null, 2) }] })
+        async ({ objectId, filter, correlationId }) => {
+            markMemoryRetrieval(correlationId, "query_visual_memory");
+            return { content: [{ type: "text", text: JSON.stringify(memory.visual.query({ objectId, filter }), null, 2) }] };
+        }
     );
 
     server.registerTool(
@@ -197,9 +243,12 @@ async function main() {
                 "plus sensor-derived relations (touching, observed-by, reachable-from). Real relations like " +
                 "on/inside/attached-to/supports require Unity to publish hierarchy data, not implemented yet - " +
                 "this is a naive approximation, documented as such per docs/shared-memory-and-experimental-space.md §4.2.",
-            inputSchema: { objectId: z.string().optional() },
+            inputSchema: { objectId: z.string().optional(), correlationId: z.string().optional() },
         },
-        async ({ objectId }) => ({ content: [{ type: "text", text: JSON.stringify(memory.sceneGraph.queryGraph({ objectId }), null, 2) }] })
+        async ({ objectId, correlationId }) => {
+            markMemoryRetrieval(correlationId, "query_scene_graph");
+            return { content: [{ type: "text", text: JSON.stringify(memory.sceneGraph.queryGraph({ objectId }), null, 2) }] };
+        }
     );
 
     server.registerTool(
@@ -210,9 +259,12 @@ async function main() {
                 "Retrieve inferred usable actions for an object beyond simple proximity, e.g. 'usable' for a " +
                 "Grabbable component. This is a static tag/component lookup table, NOT learned semantic " +
                 "reasoning - do not describe it as inference in the paper without changing the implementation.",
-            inputSchema: { objectId: z.string() },
+            inputSchema: { objectId: z.string(), correlationId: z.string().optional() },
         },
-        async ({ objectId }) => ({ content: [{ type: "text", text: JSON.stringify(memory.sceneGraph.queryAffordances({ objectId }), null, 2) }] })
+        async ({ objectId, correlationId }) => {
+            markMemoryRetrieval(correlationId, "query_affordances");
+            return { content: [{ type: "text", text: JSON.stringify(memory.sceneGraph.queryAffordances({ objectId }), null, 2) }] };
+        }
     );
 
     server.registerTool(
@@ -222,9 +274,10 @@ async function main() {
             description:
                 "Retrieve components, recent artifact history, and the static capability policy (allowed/denied " +
                 "namespaces) for an object - what generated code touching this object can and cannot do.",
-            inputSchema: { objectId: z.string() },
+            inputSchema: { objectId: z.string(), correlationId: z.string().optional() },
         },
-        async ({ objectId }) => {
+        async ({ objectId, correlationId }) => {
+            markMemoryRetrieval(correlationId, "get_script_context");
             const visualEntry = memory.visual.byObjectId.get(objectId);
             const result = {
                 objectId,
@@ -248,9 +301,13 @@ async function main() {
             inputSchema: {
                 objectId: z.string().optional(),
                 limit: z.number().int().positive().optional(),
+                correlationId: z.string().optional(),
             },
         },
-        async ({ objectId, limit }) => ({ content: [{ type: "text", text: JSON.stringify(memory.artifactLog.history({ objectId, limit }), null, 2) }] })
+        async ({ objectId, limit, correlationId }) => {
+            markMemoryRetrieval(correlationId, "get_artifact_history");
+            return { content: [{ type: "text", text: JSON.stringify(memory.artifactLog.history({ objectId, limit }), null, 2) }] };
+        }
     );
 
     server.registerTool(
@@ -258,11 +315,29 @@ async function main() {
         {
             title: "Query the Person/multi-user memory layer",
             description:
-                "Retrieve roles, permissions, and consent policy for a session. Currently a static single-owner " +
-                "stub (docs/shared-memory-and-experimental-space.md §4.2) - not a real multi-user policy engine.",
+                "Retrieve roles, permissions, consent policy, and priorDecisions for a session. Role/permissions " +
+                "are a static single-owner stub (docs/shared-memory-and-experimental-space.md §4.2); " +
+                "priorDecisions now updates from real session events (docs/next-build-prompt.md §2.4).",
+            inputSchema: { sessionId: z.string().optional(), correlationId: z.string().optional() },
+        },
+        async ({ sessionId, correlationId }) => {
+            markMemoryRetrieval(correlationId, "get_person_policy");
+            return { content: [{ type: "text", text: JSON.stringify(memory.personPolicy.getPolicy({ sessionId }), null, 2) }] };
+        }
+    );
+
+    server.registerTool(
+        "get_region_context",
+        {
+            title: "Query current region context (locomotion sensor)",
+            description:
+                "Not one of the paper's eight named memory operations - reports which named region a session " +
+                "is currently inside, derived from discrete 'locomotion' sensor events (region entry/exit), " +
+                "per the paper's 'locomotion updates region context' sentence " +
+                "(docs/paper-sync-timelines-and-modes.md §1.3, §2.3).",
             inputSchema: { sessionId: z.string().optional() },
         },
-        async ({ sessionId }) => ({ content: [{ type: "text", text: JSON.stringify(memory.personPolicy.getPolicy({ sessionId }), null, 2) }] })
+        async ({ sessionId }) => ({ content: [{ type: "text", text: JSON.stringify(memory.region.getCurrentRegion(sessionId), null, 2) }] })
     );
 
     server.registerTool(
@@ -270,19 +345,47 @@ async function main() {
         {
             title: "Record a memory event",
             description:
-                "Writes an arbitrary result, rollback, or decision to the Temporal memory layer / artifact log, " +
-                "outside the automatic logging propose_artifact/simulate_artifact already do. Use for events " +
-                "like an undo, a rejected clarification, or a conflict-resolution decision.",
+                "Writes an arbitrary result, rollback, or decision to BOTH the Temporal memory layer " +
+                "(artifact log) and the Person memory layer (priorDecisions) - the paper's own sentence is " +
+                "'confirmations, rejections, undo events, and agent results update temporal AND person memory' " +
+                "(main.tex, Shared XR Memory). Outside the automatic logging propose_artifact/simulate_artifact " +
+                "already do. Use for events like an undo, a rejected clarification, or a conflict-resolution " +
+                "decision.",
             inputSchema: {
                 targetObjectId: z.string(),
                 eventType: z.string().describe("e.g. 'rollback', 'clarification_rejected', 'conflict_decision'"),
+                sessionId: z.string().optional(),
                 correlationId: z.string().optional(),
                 data: z.record(z.string(), z.unknown()).optional(),
             },
         },
-        async ({ targetObjectId, eventType, correlationId, data }) => {
+        async ({ targetObjectId, eventType, sessionId, correlationId, data }) => {
             const record = memory.artifactLog.append({ targetObjectId, eventType, correlationId, ...(data || {}) });
+            memory.personPolicy.recordEvent({ sessionId, eventType, targetObjectId, at: record.loggedAt });
             return { content: [{ type: "text", text: JSON.stringify(record, null, 2) }] };
+        }
+    );
+
+    server.registerTool(
+        "record_intent",
+        {
+            title: "Record a speech/text intent",
+            description:
+                "Not one of the paper's eight named memory operations - records an utterance into the intent " +
+                "memory concept from the paper's sensor sentence ('speech updates intent'). Not object-scoped " +
+                "(intent capture happens before scene grounding), so this is separate from commit_memory_event " +
+                "rather than reusing it. IMPORTANT: real speech-to-text is not wired into this pipeline yet - " +
+                "today this is fed by whatever text the caller provides (e.g. the orchestrator's CLI argument), " +
+                "not a live transcript. See docs/next-build-prompt.md §1.3.",
+            inputSchema: {
+                text: z.string(),
+                sessionId: z.string().optional(),
+                correlationId: z.string().optional(),
+            },
+        },
+        async ({ text, sessionId, correlationId }) => {
+            const entry = memory.intent.record({ sessionId, text, correlationId });
+            return { content: [{ type: "text", text: JSON.stringify(entry, null, 2) }] };
         }
     );
 
@@ -299,6 +402,190 @@ async function main() {
             inputSchema: { correlationId: z.string() },
         },
         async ({ correlationId }) => ({ content: [{ type: "text", text: JSON.stringify(memory.timeline.synchronicity(correlationId), null, 2) }] })
+    );
+
+    // --- Cache Exchange Layer tools (docs/cache-exchange-layer.md) ---
+    // Backend agents may READ the Agent Working Cache and issue backfill/snapshot/
+    // commit/rollback REQUESTS - they never mutate live XR state directly. Unity's
+    // (unimplemented) handler is the authoritative gate on commit/rollback; these
+    // tools only reach the pre-flight ProposalGate check and the wire send.
+
+    server.registerTool(
+        "query_agent_cache",
+        {
+            title: "Query the Agent Working Cache",
+            description:
+                "Read the backend's mirror of recently ACCEPTED scene deltas - NOT authoritative for live " +
+                "commits (docs/cache-exchange-layer.md). Look up by exactly one of stableObjectId, " +
+                "correlationId, label, region, or artifactId.",
+            inputSchema: {
+                stableObjectId: z.string().optional(),
+                correlationId: z.string().optional(),
+                label: z.string().optional(),
+                region: z.string().optional(),
+                artifactId: z.string().optional(),
+            },
+        },
+        async ({ stableObjectId, correlationId, label, region, artifactId }) => {
+            let result;
+            if (stableObjectId) result = cacheExchange.workingCache.getByObjectId(stableObjectId);
+            else if (correlationId) result = cacheExchange.workingCache.getByCorrelationId(correlationId);
+            else if (label) result = cacheExchange.workingCache.queryByLabel(label);
+            else if (region) result = cacheExchange.workingCache.queryByRegion(region);
+            else if (artifactId) result = cacheExchange.workingCache.getByArtifactId(artifactId);
+            else return { content: [{ type: "text", text: "query_agent_cache requires one of: stableObjectId, correlationId, label, region, artifactId" }], isError: true };
+            return { content: [{ type: "text", text: JSON.stringify({ sceneEpoch: cacheExchange.workingCache.getSceneEpoch(), result }, null, 2) }] };
+        }
+    );
+
+    server.registerTool(
+        "request_backfill",
+        {
+            title: "Request missing deltas from Unity's event history",
+            description: "Recovers a deltaSeq range after a detected gap, reconnect, or restart. lastSeenSeq=0 means 'send everything you have'.",
+            inputSchema: { sessionId: z.string(), lastSeenSeq: z.number().int().min(0).optional(), correlationId: z.string().optional(), timeoutMs: z.number().int().positive().optional() },
+        },
+        async ({ sessionId, lastSeenSeq, correlationId, timeoutMs }) => {
+            try {
+                const result = await bridge.requestBackfill({ sessionId, lastSeenSeq, correlationId, timeoutMs });
+                return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+            } catch (err) {
+                return { content: [{ type: "text", text: `request_backfill failed: ${err.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "request_snapshot",
+        {
+            title: "Request a fresh CacheSnapshot from Unity",
+            description: "Used when the working cache is stale, epoch-conflicted, or missing an object entirely - asks Unity to restate full state rather than patch it.",
+            inputSchema: { sessionId: z.string(), correlationId: z.string().optional(), timeoutMs: z.number().int().positive().optional() },
+        },
+        async ({ sessionId, correlationId, timeoutMs }) => {
+            try {
+                const result = await bridge.requestSnapshot({ sessionId, correlationId, timeoutMs });
+                return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+            } catch (err) {
+                return { content: [{ type: "text", text: `request_snapshot failed: ${err.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "check_proposal_gate",
+        {
+            title: "Pre-flight compare-and-swap freshness check (advisory)",
+            description:
+                "Runs the backend's ProposalGate BEFORE sending a CommitRequest to Unity - catches obviously " +
+                "stale proposals fast, with structured reasons. This is advisory only: Unity's own handler is " +
+                "the authoritative gate and re-checks at commit time regardless of this result.",
+            inputSchema: {
+                correlationId: z.string(),
+                targetObjectId: z.string(),
+                sceneEpoch: z.string().optional(),
+                objectRevision: z.number().optional(),
+                snapshotId: z.string().optional(),
+                snapshotTakenAt: z.number().optional(),
+                authoringMode: z.enum(["automatic", "semi_auto_confirm", "semi_auto_steer"]).optional(),
+                consentRoute: z.string().optional(),
+                validationState: z.string().optional(),
+            },
+        },
+        async (args) => ({ content: [{ type: "text", text: JSON.stringify(cacheExchange.proposalGate.checkProposal(args), null, 2) }] })
+    );
+
+    server.registerTool(
+        "request_commit",
+        {
+            title: "Phase 2: ask Unity to authoritatively commit a proposal",
+            description:
+                "Runs check_proposal_gate first (rejects fast, without a round trip, if already stale), then " +
+                "sends CommitRequest to Unity on NetworkId 99 and awaits CommitAccepted/CommitRejected on 100. " +
+                "Unity's decision is authoritative regardless of the pre-flight result.",
+            inputSchema: {
+                correlationId: z.string(),
+                targetObjectId: z.string(),
+                snapshotId: z.string(),
+                objectRevision: z.number().optional(),
+                sceneEpoch: z.string().optional(),
+                snapshotTakenAt: z.number().optional(),
+                authoringMode: z.enum(["automatic", "semi_auto_confirm", "semi_auto_steer"]).optional(),
+                consentRoute: z.string().optional(),
+                validationState: z.string().optional(),
+                sessionId: z.string().optional(),
+                timeoutMs: z.number().int().positive().optional(),
+            },
+        },
+        async (args) => {
+            const preflight = cacheExchange.proposalGate.checkProposal(args);
+            cacheExchange.journal.append(args.sessionId, "validation", { correlationId: args.correlationId, preflight });
+            if (!preflight.accepted) {
+                return { content: [{ type: "text", text: JSON.stringify({ committed: false, stage: "preflight", ...preflight }, null, 2) }] };
+            }
+            cacheExchange.reconciler.markProposalPending(args.correlationId, args.sessionId);
+            try {
+                const result = await bridge.sendCommitRequest(args);
+                cacheExchange.reconciler.resolvePending(args.correlationId);
+                cacheExchange.journal.append(args.sessionId, "commit", result);
+                if (result.type === "CommitAccepted") {
+                    cacheExchange.workingCache.recordArtifactOutcome(result.payload && result.payload.artifactId, { correlationId: args.correlationId, targetObjectId: args.targetObjectId, status: "committed" });
+                }
+                return { content: [{ type: "text", text: JSON.stringify({ committed: result.type === "CommitAccepted", stage: "unity", envelope: result }, null, 2) }] };
+            } catch (err) {
+                cacheExchange.reconciler.resolvePending(args.correlationId);
+                return { content: [{ type: "text", text: `request_commit failed: ${err.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "request_rollback",
+        {
+            title: "Ask Unity to roll back a previously committed artifact",
+            inputSchema: {
+                correlationId: z.string(),
+                targetObjectId: z.string(),
+                artifactId: z.string().optional(),
+                sessionId: z.string().optional(),
+                timeoutMs: z.number().int().positive().optional(),
+            },
+        },
+        async ({ correlationId, targetObjectId, artifactId, sessionId, timeoutMs }) => {
+            try {
+                const result = await bridge.sendRollbackRequest({ correlationId, targetObjectId, artifactId, sessionId, timeoutMs });
+                cacheExchange.journal.append(sessionId, "rollback", result);
+                return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+            } catch (err) {
+                return { content: [{ type: "text", text: `request_rollback failed: ${err.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "send_cache_invalidation",
+        {
+            title: "Tell Unity a cached object/region/proposal is stale",
+            inputSchema: { sessionId: z.string().optional(), correlationId: z.string().optional(), targetObjectId: z.string().optional(), reason: z.string() },
+        },
+        async ({ sessionId, correlationId, targetObjectId, reason }) => {
+            if (correlationId) cacheExchange.reconciler.invalidateProposal(correlationId, reason);
+            const sentCorrelationId = bridge.sendCacheInvalidation({ sessionId, correlationId, targetObjectId, reason });
+            return { content: [{ type: "text", text: JSON.stringify({ sent: true, correlationId: sentCorrelationId }, null, 2) }] };
+        }
+    );
+
+    server.registerTool(
+        "send_agent_status",
+        {
+            title: "Push a structured agent status update",
+            description: "state is one of: thinking, querying_memory, validating, repairing, waiting_for_user, ready_to_preview, failed.",
+            inputSchema: { sessionId: z.string().optional(), correlationId: z.string().optional(), state: z.string(), detail: z.string().optional() },
+        },
+        async ({ sessionId, correlationId, state, detail }) => {
+            const sentCorrelationId = bridge.sendAgentStatus({ sessionId, correlationId, state, detail });
+            return { content: [{ type: "text", text: JSON.stringify({ sent: true, correlationId: sentCorrelationId }, null, 2) }] };
+        }
     );
 
     await bridge.connect();

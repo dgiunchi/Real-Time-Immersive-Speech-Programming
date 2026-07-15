@@ -62,11 +62,14 @@ the gap this document closes. Every section below maps back to one of those bull
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Two clocks, one transport. The **Coordinator** must feel real-time (sub-second
-acknowledgement, streaming speech/text) because it's embodied in front of the user.
-The **backend agents** are allowed to take seconds because their output is always
-gated through validation before it touches the scene. Both sides talk over the same
-Ubiq `NetworkScene`, but never block on the same message.
+Two timelines, one transport. The **XR Interaction Timeline** (the Coordinator) must
+feel real-time (sub-second acknowledgement, streaming speech/text) because it's
+embodied in front of the user. The **Agentic Deliberation Timeline** (the backend
+agents) is allowed to take seconds because their output is always gated through
+validation before it touches the scene — this is what the paper calls designing for
+*perceived synchronicity* rather than forcing frame-synchronous agents
+(`docs/paper-sync-timelines-and-modes.md` §1.1). Both sides talk over the same Ubiq
+`NetworkScene`, but never block on the same message.
 
 ## 2. Communication strategy (the part you asked me to just decide)
 

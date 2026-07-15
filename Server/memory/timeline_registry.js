@@ -1,20 +1,21 @@
 "use strict";
 
 // Implements "timelines and perceived synchronicity": an explicit generalization of
-// the paper's existing two-clock model (main.tex, "Two Clocks" - interaction clock vs.
-// deliberation clock). The system has (at least) three named timelines that do not
-// tick at the same rate or start at the same moment:
-//   - xr:           the live scene, wall-clock, driven by envelope timestamps Unity
-//                    actually sends (SceneDelta/SceneQuery).
-//   - deliberation:  per-agent reasoning, one lane per correlationId, spans however
-//                     long backend agents actually take (ArtifactProposal/Result,
-//                     AgentUtterance).
-//   - experimental:  Experimental Space dry-run ticks, which are simulated and NOT
-//                     wall-clock (see docs/shared-memory-and-experimental-space.md §2)
-//                     - not populated by this pass since simulate_artifact currently
-//                     round-trips through the same real-time channel; kept as a named
-//                     timeline so a future headless/batch simulator can report ticks
-//                     that are explicitly NOT comparable to wall-clock ms.
+// the paper's own framing (main.tex, "Two Timelines and Perceived Synchronicity" -
+// the XR Interaction Timeline vs. the Agentic Deliberation Timeline). The system has
+// (at least) three named timelines that do not tick at the same rate or start at the
+// same moment:
+//   - xr:           the XR Interaction Timeline - the live scene, wall-clock, driven
+//                    by envelope timestamps Unity actually sends (SceneDelta/SceneQuery).
+//   - deliberation:  the Agentic Deliberation Timeline - per-agent reasoning, one lane
+//                     per correlationId, spans however long backend agents actually
+//                     take (ArtifactProposal/Result, AgentUtterance).
+//   - experimental:  Experimental Space dry-run activity, marked distinctly from a
+//                     real commit even though it currently round-trips through the
+//                     same real-time channel (see
+//                     docs/shared-memory-and-experimental-space.md §2) - kept as a
+//                     named timeline so a future headless/batch simulator can report
+//                     ticks that are explicitly NOT comparable to wall-clock ms.
 //
 // "Perceived synchronicity" is not one number - it's the gap between when something
 // *appears* to happen on the xr timeline (first AgentUtterance) and when it is
