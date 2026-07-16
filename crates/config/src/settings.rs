@@ -27,6 +27,50 @@ impl RunMode {
     }
 }
 
+/// Explicit deployment security posture — the primary safety switch (spec §6),
+/// replacing ad-hoc booleans. `Hardened` fails closed: if a required control is
+/// missing it refuses to start rather than silently downgrading, and it never
+/// falls back to `Legacy` behaviour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SecurityProfile {
+    /// Original-compatible research path. New controls may be off; insecure by
+    /// design for local/single-user use and logged as such. DEFAULT, so existing
+    /// deployments and the baseline test-suite behave exactly as before.
+    #[default]
+    Legacy,
+    /// Multi-user deployment posture: authentication + replay protection + real
+    /// semantic analysis + admin auth + a secure message profile are mandatory;
+    /// the backend fails closed when any required control is unavailable.
+    Hardened,
+    /// Deterministic CI/integration posture: loopback-only, mock STT/LLM allowed,
+    /// deterministic local keys, no external providers.
+    Test,
+}
+
+impl SecurityProfile {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SecurityProfile::Legacy => "legacy",
+            SecurityProfile::Hardened => "hardened",
+            SecurityProfile::Test => "test",
+        }
+    }
+
+    /// Parse a profile token (public so it is unit-testable without env mutation).
+    pub fn from_token(s: &str) -> Result<Self, ConfigError> {
+        match s.trim().to_lowercase().as_str() {
+            "legacy" => Ok(SecurityProfile::Legacy),
+            "hardened" => Ok(SecurityProfile::Hardened),
+            "test" => Ok(SecurityProfile::Test),
+            other => Err(ConfigError::InvalidSecurityProfile(other.to_string())),
+        }
+    }
+
+    pub fn is_hardened(&self) -> bool {
+        matches!(self, SecurityProfile::Hardened)
+    }
+}
+
 /// Resolved backend settings.
 ///
 /// Secrets are wrapped in [`SecretString`] (redacted in `Debug`, zeroized on
@@ -37,6 +81,8 @@ impl RunMode {
 pub struct Settings {
     pub listen_addr: SocketAddr,
     pub mode: RunMode,
+    /// Deployment security posture (spec §6). Default `Legacy` (back-compat).
+    pub security_profile: SecurityProfile,
     pub stt_http_url: Option<String>,
     pub openai_api_key: Option<SecretString>,
     pub openai_model: String,
@@ -86,6 +132,11 @@ pub struct Settings {
     /// Shared HMAC secret for per-peer admission tokens. Env-only (never sent to the
     /// admin panel). `DCVR_PEER_AUTH_SECRET`. Required when `require_peer_auth`.
     pub peer_auth_secret: Option<String>,
+    /// Backend Ed25519 signing seed as 64-char hex (32 bytes), for signing NID-94
+    /// code decisions (backend -> Unity). Env-only: `DCVR_BACKEND_SIGNING_SEED`.
+    /// Required in the `hardened` profile (fail-closed). The matching public key is
+    /// provisioned to the Unity `BackendVerifier`.
+    pub backend_signing_seed_hex: Option<String>,
 }
 
 impl Default for Settings {
@@ -93,6 +144,7 @@ impl Default for Settings {
         Self {
             listen_addr: SocketAddr::from(([127, 0, 0, 1], 9098)),
             mode: RunMode::ActionPlanFast,
+            security_profile: SecurityProfile::Legacy,
             stt_http_url: None,
             openai_api_key: None,
             openai_model: "gpt-4o-mini".to_string(),
@@ -118,6 +170,7 @@ impl Default for Settings {
             perceptual_hardening: false,
             require_peer_auth: false,
             peer_auth_secret: None,
+            backend_signing_seed_hex: None,
         }
     }
 }
@@ -143,6 +196,11 @@ impl Settings {
         }
         if let Ok(mode) = env::var("DCVR_MODE") {
             s.mode = RunMode::from_token(&mode)?;
+        }
+        if let Ok(p) = env::var("DCVR_SECURITY_PROFILE") {
+            if !p.trim().is_empty() {
+                s.security_profile = SecurityProfile::from_token(&p)?;
+            }
         }
         if let Ok(url) = env::var("DCVR_STT_HTTP_URL") {
             if !url.trim().is_empty() {
@@ -253,7 +311,30 @@ impl Settings {
                 s.peer_auth_secret = Some(v.to_string());
             }
         }
-        Ok(s)
+        if let Ok(v) = env::var("DCVR_BACKEND_SIGNING_SEED") {
+            let v = v.trim();
+            if !v.is_empty() {
+                s.backend_signing_seed_hex = Some(v.to_string());
+            }
+        }
+        s.enforce_profile_invariants()
+    }
+
+    /// Apply fail-closed invariants for the selected [`SecurityProfile`]. Public so
+    /// the fail-closed behaviour is unit-testable without env mutation. In the
+    /// `hardened` profile, peer authentication is mandatory and a missing required
+    /// control is a startup error rather than a silent downgrade (spec §6).
+    pub fn enforce_profile_invariants(mut self) -> Result<Self, ConfigError> {
+        if self.security_profile.is_hardened() {
+            self.require_peer_auth = true;
+            if self.peer_auth_secret.is_none() {
+                return Err(ConfigError::HardenedMissingControl("peer_auth_secret"));
+            }
+            if self.backend_signing_seed_hex.is_none() {
+                return Err(ConfigError::HardenedMissingControl("backend_signing_seed"));
+            }
+        }
+        Ok(self)
     }
 
     /// True when no real STT endpoint is configured (offline mock in use).
@@ -309,5 +390,99 @@ mod tests {
         assert!(parse_bool_flag("TRUE"));
         assert!(parse_bool_flag(" true "));
         assert!(!parse_bool_flag("FALSE"));
+    }
+
+    #[test]
+    fn security_profile_defaults_to_legacy() {
+        // Back-compat: unset profile keeps today's behaviour.
+        assert_eq!(
+            Settings::default().security_profile,
+            SecurityProfile::Legacy
+        );
+        assert_eq!(SecurityProfile::default(), SecurityProfile::Legacy);
+    }
+
+    #[test]
+    fn security_profile_parses_all_tokens_case_and_space_insensitive() {
+        assert_eq!(
+            SecurityProfile::from_token("legacy"),
+            Ok(SecurityProfile::Legacy)
+        );
+        assert_eq!(
+            SecurityProfile::from_token(" Hardened "),
+            Ok(SecurityProfile::Hardened)
+        );
+        assert_eq!(
+            SecurityProfile::from_token("TEST"),
+            Ok(SecurityProfile::Test)
+        );
+        assert!(matches!(
+            SecurityProfile::from_token("open"),
+            Err(ConfigError::InvalidSecurityProfile(_))
+        ));
+    }
+
+    #[test]
+    fn is_hardened_only_for_hardened() {
+        assert!(SecurityProfile::Hardened.is_hardened());
+        assert!(!SecurityProfile::Legacy.is_hardened());
+        assert!(!SecurityProfile::Test.is_hardened());
+    }
+
+    #[test]
+    fn hardened_without_secret_fails_closed() {
+        // Fail-closed: hardened mode must refuse to start without its required
+        // admission secret, never silently downgrade to insecure legacy behaviour.
+        let s = Settings {
+            security_profile: SecurityProfile::Hardened,
+            ..Default::default()
+        };
+        assert_eq!(
+            s.enforce_profile_invariants().err(),
+            Some(ConfigError::HardenedMissingControl("peer_auth_secret"))
+        );
+    }
+
+    #[test]
+    fn hardened_without_signing_seed_fails_closed() {
+        // Hardened also requires the backend Ed25519 signing seed (to sign NID-94
+        // code decisions). Present the admission secret but omit the seed.
+        let s = Settings {
+            security_profile: SecurityProfile::Hardened,
+            peer_auth_secret: Some("deterministic-test-secret".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            s.enforce_profile_invariants().err(),
+            Some(ConfigError::HardenedMissingControl("backend_signing_seed"))
+        );
+    }
+
+    #[test]
+    fn hardened_with_all_controls_forces_peer_auth_on() {
+        // Even if peer-auth was explicitly disabled, hardened re-enables it: there
+        // is no "hardened but unauthenticated" configuration. Requires BOTH the
+        // admission secret and the backend signing seed.
+        let s = Settings {
+            security_profile: SecurityProfile::Hardened,
+            require_peer_auth: false,
+            peer_auth_secret: Some("deterministic-test-secret".to_string()),
+            backend_signing_seed_hex: Some("aa".repeat(32)),
+            ..Default::default()
+        };
+        let s = s
+            .enforce_profile_invariants()
+            .expect("hardened + all controls should be valid");
+        assert!(s.require_peer_auth, "hardened must force peer auth on");
+    }
+
+    #[test]
+    fn legacy_profile_leaves_flags_untouched() {
+        // Legacy stays permissive: no invariant flips its defaults.
+        let s = Settings::default()
+            .enforce_profile_invariants()
+            .expect("legacy always valid");
+        assert!(!s.require_peer_auth);
+        assert_eq!(s.security_profile, SecurityProfile::Legacy);
     }
 }

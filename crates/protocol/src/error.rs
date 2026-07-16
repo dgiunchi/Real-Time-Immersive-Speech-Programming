@@ -22,4 +22,11 @@ pub enum ProtocolError {
     /// buffers that passed the length checks, but handled rather than panicking).
     #[error("malformed frame header")]
     MalformedHeader,
+
+    /// An authenticated envelope could not be parsed, exceeded a field bound, or
+    /// carried trailing bytes. Fail-closed: a message whose envelope is malformed
+    /// is rejected, never processed as if it were unauthenticated. The `&'static
+    /// str` names the offending field for diagnostics (never attacker-controlled).
+    #[error("malformed authenticated envelope: {0}")]
+    MalformedEnvelope(&'static str),
 }

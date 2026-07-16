@@ -80,6 +80,10 @@ pub struct Services {
     /// the same client the audio path would (NID-94 `peer` field). `None` until a
     /// headset has spoken.
     pub last_client_peer: Arc<tokio::sync::RwLock<Option<String>>>,
+    /// Phase-1 authentication seam (spec §10). Inert in the `legacy` profile
+    /// (byte-identical to today); signs NID-94 + verifies client envelopes in
+    /// `hardened`/`test`. Shared read-only across connection tasks.
+    pub auth: Arc<crate::auth_gate::ServerAuth>,
 }
 
 impl std::fmt::Debug for Services {

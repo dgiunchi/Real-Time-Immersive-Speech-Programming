@@ -6,5 +6,6 @@
 //! loopback server without spawning a subprocess.
 
 pub mod app;
+pub mod auth_gate;
 pub mod mock_generation;
 pub mod server;

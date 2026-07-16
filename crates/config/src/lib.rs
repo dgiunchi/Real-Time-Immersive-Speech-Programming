@@ -10,4 +10,4 @@ mod errors;
 mod settings;
 
 pub use errors::ConfigError;
-pub use settings::{RunMode, Settings};
+pub use settings::{RunMode, SecurityProfile, Settings};

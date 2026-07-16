@@ -10,11 +10,15 @@
 //!   `p` with `p.len() <= MAX_PAYLOAD_LEN` (round-trip; property-tested).
 //! * A payload larger than [`MAX_PAYLOAD_LEN`] is never encoded or decoded.
 
+mod envelope;
 mod error;
 mod frame;
 mod network_id;
 mod payload;
 
+pub use envelope::{
+    AuthEnvelope, ENVELOPE_HASH_LEN, ENVELOPE_VERSION, MAX_ENVELOPE_FIELD_LEN, MAX_TAG_LEN,
+};
 pub use error::ProtocolError;
 pub use frame::{
     decode_frame, encode_frame, DecodedFrame, NetworkFrame, HEADER_LEN, LENGTH_PREFIX_LEN,

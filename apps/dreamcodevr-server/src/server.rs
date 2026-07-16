@@ -24,6 +24,9 @@ use crate::app::{App, HandleResult, Services};
 /// Build the STT/LLM service bundle from settings. With no endpoint/key
 /// configured, the offline mock clients are selected (keyless local demo).
 pub fn services_from_settings(settings: Settings) -> Services {
+    // Phase-1 auth seam: built from the profile + keys before `settings` is
+    // consumed by the client constructors below. Legacy => inert (byte-identical).
+    let auth = std::sync::Arc::new(crate::auth_gate::ServerAuth::from_settings(&settings));
     // Capture values needed AFTER `settings` fields are moved into clients below.
     let model = settings.openai_model.clone();
     let perso_dir = settings.personalization_dir.clone();
@@ -96,6 +99,7 @@ pub fn services_from_settings(settings: Settings) -> Services {
         personalization_store: Some(store),
         ubiq_sender: Arc::new(tokio::sync::RwLock::new(None)),
         last_client_peer: Arc::new(tokio::sync::RwLock::new(None)),
+        auth,
     }
 }
 
@@ -398,7 +402,22 @@ fn spawn_utterance(
                         "data": cs.candidate,
                     })
                     .to_string();
-                    let _ = sender.send(NID_BACKEND_OUTPUT, msg.as_bytes()).await;
+                    // Legacy: bytes unchanged. Hardened: Ed25519-signed envelope
+                    // bound to peer+request+code-hash; fail-closed (do not send
+                    // unsigned code) if signing is unavailable.
+                    match services.auth.sign_nid94(
+                        msg.as_bytes(),
+                        &peer_id,
+                        &outcome.request_id,
+                        crate::auth_gate::now_unix(),
+                    ) {
+                        Ok(bytes) => {
+                            let _ = sender.send(NID_BACKEND_OUTPUT, &bytes).await;
+                        }
+                        Err(e) => eprintln!(
+                            "[mode-a] refusing to send unsigned NID-94 (fail-closed): {e}"
+                        ),
+                    }
                 }
                 Some(cs) => {
                     eprintln!(
@@ -532,10 +551,18 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                             "data": cs.candidate,
                         })
                         .to_string();
-                        delivered = sender
-                            .send(NID_BACKEND_OUTPUT, msg.as_bytes())
-                            .await
-                            .is_ok();
+                        delivered = match self.services.auth.sign_nid94(
+                            msg.as_bytes(),
+                            &target,
+                            &outcome.request_id,
+                            crate::auth_gate::now_unix(),
+                        ) {
+                            Ok(bytes) => sender.send(NID_BACKEND_OUTPUT, &bytes).await.is_ok(),
+                            Err(e) => {
+                                eprintln!("[manual-cmd] refusing to send unsigned NID-94: {e}");
+                                false
+                            }
+                        };
                     }
                 }
                 if delivered {
