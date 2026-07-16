@@ -125,20 +125,54 @@ pub fn router(state: AdminState) -> Router {
         .with_state(state)
 }
 
-/// Bind and serve the admin panel until the process exits.
+/// Bind and serve the admin panel until the process exits. Fail-closed: refuses to
+/// bind a non-loopback interface unless an admin token is configured.
 pub async fn serve(addr: std::net::SocketAddr, state: AdminState) -> std::io::Result<()> {
+    if !bind_allowed(addr.ip(), state.token.is_some()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to bind the admin panel to non-loopback {addr} without an admin token; \
+                 set DCVR_ADMIN_TOKEN (fail-closed)"
+            ),
+        ));
+    }
     let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!("[admin] panel on http://{addr}");
     axum::serve(listener, router(state)).await
 }
 
+/// Constant-time byte comparison (no early-exit on the first mismatch) so admin
+/// token verification does not leak the token through response timing (attack A122).
+/// A length difference short-circuits (only the length, never the bytes, can leak).
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 fn authed(st: &AdminState, headers: &HeaderMap) -> bool {
     match &st.token {
         None => true,
-        Some(tok) => {
-            headers.get("x-admin-token").and_then(|v| v.to_str().ok()) == Some(tok.as_str())
-        }
+        Some(tok) => headers
+            .get("x-admin-token")
+            .and_then(|v| v.to_str().ok())
+            .map(|got| ct_eq(got.as_bytes(), tok.as_bytes()))
+            .unwrap_or(false),
     }
+}
+
+/// Whether binding the admin panel to `ip` is permitted. Loopback is always fine;
+/// any other (publicly reachable) interface requires an admin token to be set —
+/// otherwise we refuse to start (fail-closed). Closes the "admin panel exposed
+/// off-loopback without a token" exposure (attack A122, the family's only true P0).
+pub fn bind_allowed(ip: std::net::IpAddr, has_token: bool) -> bool {
+    ip.is_loopback() || has_token
 }
 
 async fn index() -> Html<&'static str> {
@@ -395,5 +429,41 @@ mod tests {
                 "redteam sample misclassified: {name}"
             );
         }
+    }
+
+    #[test]
+    fn ct_eq_matches_only_equal_bytes() {
+        assert!(ct_eq(b"secret-token", b"secret-token"));
+        assert!(ct_eq(b"", b""));
+        assert!(!ct_eq(b"secret-token", b"secret-toke")); // length differs
+        assert!(!ct_eq(b"secret-token", b"secret-tokeX")); // last byte differs
+        assert!(!ct_eq(b"", b"x"));
+    }
+
+    #[test]
+    fn bind_refused_off_loopback_without_token() {
+        use std::net::{IpAddr, Ipv4Addr};
+        let loopback = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let public = IpAddr::V4(Ipv4Addr::UNSPECIFIED); // 0.0.0.0
+        assert!(bind_allowed(loopback, false)); // loopback, no token -> OK
+        assert!(bind_allowed(loopback, true));
+        assert!(!bind_allowed(public, false)); // public, no token -> REFUSED
+        assert!(bind_allowed(public, true)); // public + token -> OK
+    }
+
+    #[test]
+    fn authed_open_without_token_but_enforced_when_set() {
+        use axum::http::HeaderMap;
+        let st_open = AdminState::new(ControlBus::new(RuntimeConfig::default()));
+        let mut h = HeaderMap::new();
+        assert!(authed(&st_open, &h), "no token configured -> open (legacy)");
+
+        let st = AdminState::new(ControlBus::new(RuntimeConfig::default()))
+            .with_token(Some("t0ken".to_string()));
+        assert!(!authed(&st, &h), "token set, none provided -> denied");
+        h.insert("x-admin-token", "wrong".parse().unwrap());
+        assert!(!authed(&st, &h), "wrong token -> denied");
+        h.insert("x-admin-token", "t0ken".parse().unwrap());
+        assert!(authed(&st, &h), "correct token -> allowed");
     }
 }
