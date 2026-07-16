@@ -58,8 +58,8 @@ envelope      = signing_input || [u16 tag_len][tag]
 ### Status & residual
 
 - **Implemented + tested (Rust):** profiles, envelope codec, HMAC + Ed25519,
-  replay guard, server signing seam. 199 unit/integration tests, clippy `-D
-  warnings` clean.
+  replay guard, server signing seam. Part of the full **242-test** suite, clippy
+  `-D warnings` clean.
 - **Source complete (Unity, on-device pending):** `BackendVerifier.cs`
   (byte-matched to the Rust signer; Ed25519 primitive is a pluggable seam).
 - **Deferred:** live-Quest end-to-end reproduction (no hardware until 2026-07-23);
@@ -71,9 +71,35 @@ envelope      = signing_input || [u16 tag_len][tag]
   integrity) — addressed by later containment/perceptual phases, and honestly
   documented as contained-not-prevented.
 
-## Later phases (planned)
+## Later phases — status
 
-2 Admin & privacy hygiene · 3 Fail-closed C# validation · 4 Per-peer concurrency ·
-5 Runtime provenance/cleanup/recovery · 6 Aggregate perceptual safety · 7 Voice
-confirmation · 8 Adversarial evaluation. See `AUTOPILOT_TODO.md` in the external
-control directory for live task status.
+- **Phase 2 Admin & privacy — DONE.** Constant-time admin token + fail-closed
+  off-loopback bind (all profiles); profile erasure, `0600`, TTL purge, and optional
+  ChaCha20-Poly1305 encryption-at-rest (`DCVR_PROFILE_ENC_KEY`).
+- **Phase 3 Fail-closed C# validation — DONE (Rust).** Hardened Mode A/B requires a
+  real Roslyn analyzer (no approve-all mock) + per-request timeout; the DeployHardened
+  perceptual denylist covers the unambiguous device/rig/haptics/webcam + XR
+  device-enumeration surface (dual-use MR/interaction APIs are deliberately left to
+  runtime enforcement). Unity `RoslynCSharpSettings.asset` parity is on-device pending.
+- **Phase 4 Per-peer concurrency — SAFE SUBSET DONE.** Every external `.await` held
+  under the shared router lock is bounded (`screen_intent` + RAG embeds fail-open;
+  OpenAI clients get transport timeouts) and an opt-in fail-closed
+  `DCVR_UTTERANCE_TIMEOUT_MS` umbrella exists — closing the one-hung-connection-stalls-
+  every-peer DoS. The full lock refactor (drop the lock across the network awaits) is
+  **still open**: it rewrites live cancellation semantics and needs on-device
+  validation, so it is held pending a Quest + risk sign-off; the timeouts already bound
+  the stall regardless.
+- **Phase 5 Runtime provenance/cleanup — Rust part DONE** (Mode-D `nofile`/`nproc`
+  ulimits). OS watchdog + Unity registry are on-device pending.
+- **Phase 6 Aggregate perceptual safety — Unity AUTHORED, on-device pending**
+  (`PerceptualDisclosureHud` + `DisclosureFeed`, `DisclosureBackendForwarder` on NID 97;
+  default-off, EditMode-tested, no runtime claim).
+- **Phase 7 Voice confirmation — Rust + Unity AUTHORED.** Hardened STT `AudioBounds`
+  input validation (Rust, done) + `VoiceCompileConfirmationGate` (Unity, authored,
+  default-off, on-device pending).
+- **Phase 8 Adversarial evaluation — DONE.** Cross-crate campaign (0% bypass / 0% FPR),
+  wire-parser fuzz corpora, and a 12-skeptic adversarial-verify pass over the new
+  controls (which caught + fixed a denylist over-block and a non-exercising test).
+
+See `CURRENT_HANDOFF.md` / `PHASE_STATUS.json` in the external control directory for
+live task status.
