@@ -50,6 +50,11 @@ pub trait PersonalizationStore: Send + Sync {
     fn list_peers(&self) -> Vec<String> {
         Vec::new()
     }
+    /// Erase a user's stored data (GDPR Art. 17 right to erasure). Returns true if
+    /// anything was removed. Default: no-op for stores that keep nothing durable.
+    fn delete(&self, _peer: &str) -> bool {
+        false
+    }
 }
 
 /// In-memory store (tests / ephemeral demos).
@@ -75,6 +80,12 @@ impl PersonalizationStore for InMemoryStore {
             .lock()
             .map(|m| m.keys().cloned().collect())
             .unwrap_or_default()
+    }
+    fn delete(&self, peer: &str) -> bool {
+        self.map
+            .lock()
+            .map(|mut m| m.remove(peer).is_some())
+            .unwrap_or(false)
     }
 }
 
@@ -105,6 +116,34 @@ impl FilePersonalizationStore {
             .collect();
         self.dir.join(format!("{safe}.json"))
     }
+
+    /// Delete profile files not modified within `ttl_secs` (data-minimisation /
+    /// retention limit, GDPR Art. 5(1)(e)). Uses filesystem mtime, so there is no
+    /// schema change. Returns the number of files purged. `now` is injected for
+    /// deterministic testing.
+    pub fn purge_expired(&self, ttl_secs: u64, now: std::time::SystemTime) -> usize {
+        let _g = self.write_lock.lock();
+        let mut purged = 0;
+        if let Ok(entries) = std::fs::read_dir(&self.dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|e| e.to_str()) != Some("json") {
+                    continue;
+                }
+                let expired = entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|mtime| now.duration_since(mtime).ok())
+                    .map(|age| age.as_secs() > ttl_secs)
+                    .unwrap_or(false);
+                if expired && std::fs::remove_file(&p).is_ok() {
+                    purged += 1;
+                }
+            }
+        }
+        purged
+    }
 }
 
 impl PersonalizationStore for FilePersonalizationStore {
@@ -124,6 +163,16 @@ impl PersonalizationStore for FilePersonalizationStore {
             Ok(s) => {
                 if let Err(e) = std::fs::write(self.path(peer), s) {
                     eprintln!("[personalization] write failed: {e}");
+                } else {
+                    // Personal data: restrict the file to owner read/write only.
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let _ = std::fs::set_permissions(
+                            self.path(peer),
+                            std::fs::Permissions::from_mode(0o600),
+                        );
+                    }
                 }
             }
             Err(e) => eprintln!("[personalization] serialize failed: {e}"),
@@ -142,6 +191,10 @@ impl PersonalizationStore for FilePersonalizationStore {
         }
         out.sort();
         out
+    }
+    fn delete(&self, peer: &str) -> bool {
+        let _g = self.write_lock.lock();
+        std::fs::remove_file(self.path(peer)).is_ok()
     }
 }
 
@@ -302,5 +355,66 @@ mod tests {
         // disliked memory is never offered as a style reference
         let ctx = p.context("peerA", "make a bright rainbow sphere").await;
         assert!(!ctx.contains("LIKED"));
+    }
+
+    // ---- Phase 2b privacy lifecycle ----
+
+    #[test]
+    fn inmemory_delete_erases_user() {
+        let s = InMemoryStore::default();
+        s.save(
+            "peerA",
+            &PeerData {
+                next_seq: 5,
+                ..Default::default()
+            },
+        );
+        assert_eq!(s.load("peerA").next_seq, 5);
+        assert!(s.delete("peerA"), "erasure reports removal");
+        assert_eq!(s.load("peerA").next_seq, 0, "erased -> default");
+        assert!(!s.delete("peerA"), "already gone");
+    }
+
+    #[test]
+    fn file_store_delete_and_owner_only_perms() {
+        let dir = std::env::temp_dir().join(format!("dcvr-perso-del-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let s = FilePersonalizationStore::new(&dir);
+        s.save(
+            "peer-x",
+            &PeerData {
+                next_seq: 9,
+                ..Default::default()
+            },
+        );
+        assert_eq!(s.load("peer-x").next_seq, 9);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(dir.join("peer-x.json"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600, "profile file must be owner read/write only");
+        }
+        assert!(s.delete("peer-x"));
+        assert_eq!(s.load("peer-x").next_seq, 0, "erased");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn purge_expired_removes_stale_profiles() {
+        let dir = std::env::temp_dir().join(format!("dcvr-perso-ttl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let s = FilePersonalizationStore::new(&dir);
+        s.save("old", &PeerData::default());
+        assert_eq!(s.list_peers(), vec!["old".to_string()]);
+        // A `now` a few seconds in the future makes the just-written file's age
+        // exceed a ttl of 0, so it is purged.
+        let future = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        assert_eq!(s.purge_expired(0, future), 1);
+        assert!(s.list_peers().is_empty(), "expired profile removed");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

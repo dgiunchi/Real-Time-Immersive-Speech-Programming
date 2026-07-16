@@ -120,6 +120,7 @@ pub fn router(state: AdminState) -> Router {
         .route("/api/redteam", post(post_redteam))
         .route("/api/profiles", get(get_profiles))
         .route("/api/profile", get(get_profile))
+        .route("/api/profile/delete", post(post_profile_delete))
         .route("/api/command", post(post_command))
         .route("/api/sandbox", post(post_sandbox))
         .with_state(state)
@@ -357,6 +358,25 @@ async fn get_profile(
 ) -> impl IntoResponse {
     match &st.store {
         Some(s) => Json(s.load(&q.peer)).into_response(),
+        None => (StatusCode::NOT_FOUND, "no personalization store").into_response(),
+    }
+}
+
+/// Erase one user's stored personalization data (GDPR Art. 17). Mutating, so it
+/// honours the admin token when one is configured.
+async fn post_profile_delete(
+    State(st): State<AdminState>,
+    headers: HeaderMap,
+    Query(q): Query<PeerQuery>,
+) -> impl IntoResponse {
+    if !authed(&st, &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    match &st.store {
+        Some(s) => {
+            let deleted = s.delete(&q.peer);
+            Json(serde_json::json!({ "peer": q.peer, "deleted": deleted })).into_response()
+        }
         None => (StatusCode::NOT_FOUND, "no personalization store").into_response(),
     }
 }
