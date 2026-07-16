@@ -101,6 +101,11 @@ pub struct Settings {
     pub embed_openai: bool,
     pub stt_timeout_ms: u64,
     pub llm_timeout_ms: u64,
+    /// Overall per-utterance wall-clock deadline (ms). `0` = disabled (default,
+    /// byte-identical legacy behaviour). When set, the whole STT→LLM→validate block
+    /// is bounded; on elapse the utterance fails closed (nothing is sent). This is a
+    /// belt-and-suspenders umbrella over the per-step timeouts.
+    pub utterance_timeout_ms: u64,
     /// Dev/research only: allow the validated-C# (Mode B) path. Default false.
     pub csharp_research_dev: bool,
     /// Mode A (original DreamCodeVR): instead of the action-plan reply, send the
@@ -161,6 +166,7 @@ impl Default for Settings {
             embed_openai: false,
             stt_timeout_ms: 10_000,
             llm_timeout_ms: 60_000,
+            utterance_timeout_ms: 0, // disabled by default (legacy byte-identical)
             csharp_research_dev: false,
             mode_a: false,
             ubiq_addr: None,
@@ -261,6 +267,11 @@ impl Settings {
         if let Ok(v) = env::var("DCVR_LLM_TIMEOUT_MS") {
             if let Ok(n) = v.parse() {
                 s.llm_timeout_ms = n;
+            }
+        }
+        if let Ok(v) = env::var("DCVR_UTTERANCE_TIMEOUT_MS") {
+            if let Ok(n) = v.parse() {
+                s.utterance_timeout_ms = n;
             }
         }
         if let Ok(v) = env::var("DCVR_CSHARP_RESEARCH") {
@@ -419,6 +430,12 @@ mod tests {
             SecurityProfile::Legacy
         );
         assert_eq!(SecurityProfile::default(), SecurityProfile::Legacy);
+    }
+
+    #[test]
+    fn utterance_timeout_defaults_to_disabled() {
+        // 0 = disabled = legacy byte-identical (no overall utterance bound applied).
+        assert_eq!(Settings::default().utterance_timeout_ms, 0);
     }
 
     #[test]

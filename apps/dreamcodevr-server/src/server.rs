@@ -96,6 +96,9 @@ pub fn services_from_settings(settings: Settings) -> Services {
         llm,
         stt_timeout: Duration::from_millis(settings.stt_timeout_ms),
         llm_timeout: Duration::from_millis(settings.llm_timeout_ms),
+        // 0 = disabled (legacy byte-identical); >0 = opt-in overall utterance bound.
+        utterance_timeout: (settings.utterance_timeout_ms > 0)
+            .then(|| Duration::from_millis(settings.utterance_timeout_ms)),
         csharp_research: settings.csharp_research_dev,
         mode_a: settings.mode_a,
         roslyn,
@@ -348,6 +351,21 @@ pub async fn run_ubiq_peer(
 /// Process one finalised utterance in its own task and emit NID 94. Keeps the
 /// receive loop free to keep accumulating audio for every peer concurrently.
 #[allow(clippy::too_many_arguments)]
+/// Run one utterance's processing under an OPTIONAL overall deadline. `None` (the
+/// legacy default) is byte-identical to running the future directly — it just wraps
+/// the result in `Some`. `Some(d)` bounds the whole STT→LLM→validate block; on elapse
+/// it returns `None` so the caller fails closed (sends nothing) instead of holding the
+/// router lock indefinitely. Belt-and-suspenders over the per-step timeouts.
+async fn bounded_utterance<F>(limit: Option<Duration>, fut: F) -> Option<F::Output>
+where
+    F: std::future::Future,
+{
+    match limit {
+        Some(d) => tokio::time::timeout(d, fut).await.ok(),
+        None => Some(fut.await),
+    }
+}
+
 fn spawn_utterance(
     router: std::sync::Arc<tokio::sync::Mutex<Router>>,
     jsonl: std::sync::Arc<tokio::sync::Mutex<JsonlWriter<std::io::Stdout>>>,
@@ -363,7 +381,12 @@ fn spawn_utterance(
         let audio = AudioUtterance::new_16k_mono(bytes);
         // Mode A and Mode B both need the dual path (to generate + validate the C#).
         let need_csharp = services.csharp_research || services.mode_a;
-        let outcome = {
+        // Optional overall deadline (None = legacy, byte-identical). On elapse we fail
+        // closed: log and return before any NID-94 send, so a wedged utterance can
+        // never hold the shared router lock forever. tokio's Mutex does not poison on
+        // the dropped guard, and the load-bearing counters move conservatively (rate
+        // limit recorded before work; spawn budget only after success).
+        let outcome = match bounded_utterance(services.utterance_timeout, async {
             let mut r = router.lock().await;
             if need_csharp {
                 r.process_audio_dual(
@@ -386,6 +409,16 @@ fn spawn_utterance(
                     services.llm_timeout,
                 )
                 .await
+            }
+        })
+        .await
+        {
+            Some(o) => o,
+            None => {
+                eprintln!(
+                    "[utterance] processing exceeded the configured deadline; failing closed (nothing sent)"
+                );
+                return;
             }
         };
         {
@@ -609,5 +642,44 @@ impl dcvr_admin::AdminHooks for ServerHooks {
         "validated OK. Full isolated execution runs in the Mode-D sandbox (Docker + \
          dcvr-sandbox-harness; see scripts/sandbox-run-docker.sh / sandbox-run-gvisor.sh)."
             .to_string()
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    // Unit 2: the umbrella is byte-identical when disabled (None just wraps in Some).
+    #[tokio::test]
+    async fn bounded_utterance_none_is_transparent_passthrough() {
+        let out = bounded_utterance(None, async { 42u32 }).await;
+        assert_eq!(out, Some(42));
+    }
+
+    // Unit 2: a fast future completes normally under a generous deadline.
+    #[tokio::test]
+    async fn bounded_utterance_fast_future_completes() {
+        let out = bounded_utterance(Some(Duration::from_secs(5)), async { 7u32 }).await;
+        assert_eq!(out, Some(7));
+    }
+
+    // Unit 2: a hung utterance fails closed (None) within the deadline, instead of
+    // holding the router lock forever — proven by a 30 s future bounded to 50 ms.
+    #[tokio::test]
+    async fn bounded_utterance_hung_future_fails_closed() {
+        let res = tokio::time::timeout(
+            Duration::from_secs(3),
+            bounded_utterance(Some(Duration::from_millis(50)), async {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                42u32
+            }),
+        )
+        .await;
+        assert_eq!(
+            res.expect("the bound must fire well before the 3s guard"),
+            None,
+            "a hung utterance must fail closed (None), not block"
+        );
     }
 }

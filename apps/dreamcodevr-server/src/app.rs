@@ -60,6 +60,10 @@ pub struct Services {
     pub llm: Arc<dyn LlmClient>,
     pub stt_timeout: Duration,
     pub llm_timeout: Duration,
+    /// Optional overall per-utterance deadline (belt-and-suspenders umbrella over the
+    /// per-step timeouts). `None` = disabled (default, legacy byte-identical); `Some`
+    /// = the whole STT→LLM→validate block is bounded and fails closed on elapse.
+    pub utterance_timeout: Option<Duration>,
     /// Dev/research only: route NID 98 through the validated-C# (Mode B) path.
     pub csharp_research: bool,
     /// Mode A: emit the validated generated C# (NID 94 `{type,peer,data}`) to the
@@ -91,6 +95,7 @@ impl std::fmt::Debug for Services {
         f.debug_struct("Services")
             .field("stt_timeout", &self.stt_timeout)
             .field("llm_timeout", &self.llm_timeout)
+            .field("utterance_timeout", &self.utterance_timeout)
             .field("csharp_research", &self.csharp_research)
             .finish()
     }
