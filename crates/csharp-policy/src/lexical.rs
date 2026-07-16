@@ -122,12 +122,27 @@ const PERCEPTUAL_BANNED_IDENTIFIERS: &[&str] = &[
     "OVRPlugin",
     "OVRBoundary",
     "OVRInput",
+    // XR input devices — closes the bare-identifier gap where `using UnityEngine.XR;`
+    // then `InputDevices.GetDevices(...)` never shows the [UnityEngine, XR] subsequence
+    // at the call site (the namespace ban alone would miss it).
+    "InputDevices",
+    "XRInputSubsystem",
     // haptics (the user's body — never content)
     "OVRHaptics",
     "SendHapticImpulse",
     "Vibrate",
+    // biometric capture: eye / face / hand tracking (the user's body — never content)
+    "OVREyeGaze",
+    "OVRFaceExpressions",
+    "OVRHand",
+    "OVRSkeleton",
+    // spatial / scene understanding: reads the user's real room (privacy — never content)
+    "OVRSceneManager",
+    "OVRSceneAnchor",
+    "OVRSpatialAnchor",
     // camera / passthrough capture (privacy exfiltration — never content)
     "WebCamTexture",
+    "OVRPassthroughLayer",
 ];
 
 /// The active ban sets for a profile: security always; perceptual when hardened.

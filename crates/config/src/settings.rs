@@ -348,6 +348,18 @@ impl Settings {
     /// control is a startup error rather than a silent downgrade (spec §6).
     pub fn enforce_profile_invariants(mut self) -> Result<Self, ConfigError> {
         if self.security_profile.is_hardened() {
+            // The C# perceptual/device denylist (DeployHardened) is a DELIBERATELY
+            // INDEPENDENT deploy choice, not implied by the security profile — a
+            // hardened deployment may still want full creative freedom. We do not
+            // couple them (that would change hardened behaviour); instead warn so an
+            // operator is not surprised the perceptual bans are still off.
+            if !self.perceptual_hardening {
+                eprintln!(
+                    "[config] note: security_profile=hardened does NOT enable the C# \
+                     perceptual/device denylist; set DCVR_PERCEPTUAL_HARDENING=true to also \
+                     ban XR rig / haptics / biometric / passthrough APIs in generated C#"
+                );
+            }
             self.require_peer_auth = true;
             if self.peer_auth_secret.is_none() {
                 return Err(ConfigError::HardenedMissingControl("peer_auth_secret"));
@@ -520,6 +532,29 @@ mod tests {
             .expect("legacy always valid");
         assert!(!s.require_peer_auth);
         assert_eq!(s.security_profile, SecurityProfile::Legacy);
+    }
+
+    #[test]
+    fn hardened_does_not_imply_perceptual_hardening() {
+        // Documented decoupling: hardening the deployment (auth/replay/analyzer) must
+        // NOT silently enable the C# perceptual/device denylist — that is an
+        // independent deploy choice (a hardened deployment may still want full creative
+        // freedom). enforce_profile_invariants forces peer-auth but leaves
+        // perceptual_hardening exactly as configured. (A startup note is logged.)
+        let s = Settings {
+            security_profile: SecurityProfile::Hardened,
+            perceptual_hardening: false,
+            peer_auth_secret: Some("deterministic-test-secret".to_string()),
+            backend_signing_seed_hex: Some("aa".repeat(32)),
+            ..Default::default()
+        }
+        .enforce_profile_invariants()
+        .expect("hardened + all controls should be valid");
+        assert!(
+            !s.perceptual_hardening,
+            "hardened must NOT auto-enable perceptual_hardening"
+        );
+        assert!(s.require_peer_auth, "but hardened DOES force peer auth on");
     }
 
     #[test]

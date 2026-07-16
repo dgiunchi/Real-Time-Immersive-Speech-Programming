@@ -300,6 +300,104 @@ async fn hung_rag_embedder_does_not_stall_the_router() {
     assert_eq!(out.decision, Decision::ApproveActionPlan);
 }
 
+// Unit 4: an LLM that emits C# touching an unambiguous device API (OVRHaptics). The
+// C# is otherwise a valid MonoBehaviour, so the ONLY thing that can change its
+// approval is the perceptual-hardening profile the router selects from the bus.
+struct HapticsCsharpLlm;
+#[async_trait::async_trait]
+impl dcvr_llm_client::LlmClient for HapticsCsharpLlm {
+    async fn generate_plan(
+        &self,
+        request_id: &str,
+        transcript: &str,
+    ) -> Result<dcvr_behaviour_dsl::ActionPlan, dcvr_llm_client::LlmError> {
+        dcvr_llm_client::LlmClient::generate_plan(
+            &dcvr_llm_client::MockLlmClient,
+            request_id,
+            transcript,
+        )
+        .await
+    }
+    async fn generate_dual(
+        &self,
+        request_id: &str,
+        transcript: &str,
+    ) -> Result<dcvr_llm_client::Generation, dcvr_llm_client::LlmError> {
+        let plan = dcvr_llm_client::LlmClient::generate_plan(
+            &dcvr_llm_client::MockLlmClient,
+            request_id,
+            transcript,
+        )
+        .await?;
+        Ok(dcvr_llm_client::Generation {
+            plan,
+            csharp_candidate: Some(
+                "public class GeneratedBehaviour : MonoBehaviour { \
+                 void Update() { OVRHaptics.RightChannel.Mix(default); } }"
+                    .to_string(),
+            ),
+        })
+    }
+}
+
+#[tokio::test]
+async fn perceptual_hardening_bus_flag_flips_deployhardened_at_the_csharp_gate() {
+    use dcvr_control::{ControlBus, RuntimeConfig};
+    use std::time::Duration;
+
+    // Default bus (perceptual_hardening = false) -> CreativeFreedom -> device API is
+    // free (the freedom contract: hardening never restricts by default).
+    let mut free = Router::new().with_bus(ControlBus::new(RuntimeConfig {
+        enable_mode_a: true,
+        ..RuntimeConfig::default()
+    }));
+    let out_free = free
+        .process_text_dual(
+            "p",
+            "buzz the controller",
+            &HapticsCsharpLlm,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
+            Duration::from_secs(5),
+        )
+        .await;
+    let cs_free = out_free.csharp.expect("dual path returns csharp");
+    assert!(
+        cs_free.approved,
+        "haptics C# is free under the default profile"
+    );
+
+    // Hardened bus (perceptual_hardening = true) -> DeployHardened -> device API is
+    // rejected. Proves the env->Settings->RuntimeConfig->bus->hardening_profile()
+    // chain actually reaches the C# gate (previously untested at router level).
+    let mut hard = Router::new().with_bus(ControlBus::new(RuntimeConfig {
+        enable_mode_a: true,
+        perceptual_hardening: true,
+        ..RuntimeConfig::default()
+    }));
+    let out_hard = hard
+        .process_text_dual(
+            "p",
+            "buzz the controller",
+            &HapticsCsharpLlm,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
+            Duration::from_secs(5),
+        )
+        .await;
+    let cs_hard = out_hard.csharp.expect("dual path returns csharp");
+    assert!(
+        !cs_hard.approved,
+        "once perceptual_hardening is on, the haptics device API must be rejected"
+    );
+    assert!(
+        cs_hard
+            .violations
+            .iter()
+            .any(|v| v.to_lowercase().contains("ovrhaptics") || v.contains("OVRHaptics")),
+        "the rejection should name the perceptual device token: {:?}",
+        cs_hard.violations
+    );
+}
+
 #[tokio::test]
 async fn session_spawn_budget_enforced_cumulatively() {
     use dcvr_stt_client::{AudioUtterance, MockSttClient};

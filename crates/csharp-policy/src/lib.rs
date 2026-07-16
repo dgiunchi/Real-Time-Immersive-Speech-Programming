@@ -263,4 +263,78 @@ public class GeneratedBehaviour : MonoBehaviour {
             HardeningProfile::DeployHardened
         )));
     }
+
+    // Parity: the biometric (eye/face/hand), scene-scan (spatial anchors), passthrough
+    // and XR-input device APIs the docstring claims DeployHardened covers. Each is an
+    // unambiguous device API with zero content-authoring use, so each must PASS under
+    // CreativeFreedom (freedom contract) and be BLOCKED under DeployHardened. One
+    // snippet per token so a failure names the exact leak.
+    #[test]
+    fn biometric_scene_and_passthrough_apis_only_blocked_when_hardened() {
+        let cases = [
+            ("eye-gaze", "var g = GetComponent<OVREyeGaze>();"),
+            ("face", "var f = GetComponent<OVRFaceExpressions>();"),
+            ("hand", "var h = GetComponent<OVRHand>();"),
+            ("skeleton", "var s = GetComponent<OVRSkeleton>();"),
+            ("scene-manager", "var m = GetComponent<OVRSceneManager>();"),
+            ("scene-anchor", "var a = GetComponent<OVRSceneAnchor>();"),
+            (
+                "spatial-anchor",
+                "var a = GetComponent<OVRSpatialAnchor>();",
+            ),
+            (
+                "passthrough",
+                "var p = GetComponent<OVRPassthroughLayer>();",
+            ),
+            ("xr-input-subsystem", "XRInputSubsystem x = default;"),
+        ];
+        for (name, body) in cases {
+            let code = format!(
+                "public class GeneratedBehaviour : MonoBehaviour {{ void Start() {{ {body} }} }}"
+            );
+            assert!(
+                approved(&validate_csharp_freeform_profile(
+                    &code,
+                    HardeningProfile::CreativeFreedom
+                )),
+                "{name}: must pass under CreativeFreedom (freedom contract)"
+            );
+            assert!(
+                !approved(&validate_csharp_freeform_profile(
+                    &code,
+                    HardeningProfile::DeployHardened
+                )),
+                "{name}: must be blocked under DeployHardened"
+            );
+        }
+    }
+
+    // Subsequence-gap regression: a BARE `InputDevices` with no `UnityEngine.XR`
+    // namespace visible at the call site. The namespace ban ([UnityEngine, XR]) never
+    // matches here, so only the identifier ban closes it. Freedom preserved by default.
+    const BARE_XR_INPUT: &str = r#"
+public class GeneratedBehaviour : MonoBehaviour {
+    void Update() {
+        InputDevices.GetDeviceAtXRNode(default);
+    }
+}
+"#;
+
+    #[test]
+    fn bare_xr_input_devices_identifier_is_caught_only_under_hardened() {
+        assert!(
+            approved(&validate_csharp_freeform_profile(
+                BARE_XR_INPUT,
+                HardeningProfile::CreativeFreedom
+            )),
+            "a bare InputDevices reference is not system access — free by default"
+        );
+        assert!(
+            !approved(&validate_csharp_freeform_profile(
+                BARE_XR_INPUT,
+                HardeningProfile::DeployHardened
+            )),
+            "the identifier ban must catch bare InputDevices even without the XR namespace"
+        );
+    }
 }
