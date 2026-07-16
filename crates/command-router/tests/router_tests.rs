@@ -269,11 +269,32 @@ impl dcvr_personalization::EmbeddingClient for HangingEmbedder {
 #[tokio::test]
 async fn hung_rag_embedder_does_not_stall_the_router() {
     use dcvr_control::{ControlBus, RuntimeConfig};
-    use dcvr_personalization::{InMemoryStore, PersonalizationStore, Personalizer};
+    use dcvr_personalization::{
+        InMemoryStore, MemoryRecord, PeerData, PersonalizationStore, Personalizer,
+    };
     use std::sync::Arc;
     use std::time::Duration;
 
     let store: Arc<dyn PersonalizationStore> = Arc::new(InMemoryStore::default());
+    // Seed a LIKED memory so Personalizer::context() actually reaches embed() on the
+    // AUGMENT path — it short-circuits (never embeds) when there is no liked memory.
+    // This makes the test exercise BOTH the augment AND record embed timeouts, so
+    // removing EITHER wrap makes it hang (verified). Precomputed embedding, so seeding
+    // needs no (hung) embedder.
+    store.save(
+        "p",
+        &PeerData {
+            memories: vec![MemoryRecord {
+                seq: 1,
+                command: "make it red".to_string(),
+                result: "ok".to_string(),
+                liked: Some(true),
+                embedding: vec![0.1; 8],
+            }],
+            next_seq: 1,
+            ..Default::default()
+        },
+    );
     let personalizer = Arc::new(Personalizer::new(store, Arc::new(HangingEmbedder)));
     let bus = ControlBus::new(RuntimeConfig {
         enable_rag: true,
@@ -296,7 +317,8 @@ async fn hung_rag_embedder_does_not_stall_the_router() {
     )
     .await;
     let out = res.expect("router must not hang when the RAG embedder hangs");
-    // Embed timed out -> fail-open (no context) -> pipeline still produced a decision.
+    // Both embed awaits timed out -> fail-open (no context / skipped record) -> the
+    // pipeline still produced a decision.
     assert_eq!(out.decision, Decision::ApproveActionPlan);
 }
 

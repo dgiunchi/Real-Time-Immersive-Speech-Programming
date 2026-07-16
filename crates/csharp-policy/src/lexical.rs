@@ -108,6 +108,16 @@ const PERCEPTUAL_BANNED_NAMESPACES: &[&[&str]] = &[
 /// the live rig, which a lexer cannot) and contained by the Mode-D sandbox. The lexical
 /// layer here is defence-in-depth for the unambiguous device surface only.
 ///
+/// Also intentionally NOT here (adversarial-verify finding): the Quest-3 MIXED-REALITY
+/// and body-interaction APIs — passthrough compositing (`OVRPassthroughLayer`), spatial
+/// anchors / scene model (`OVRSpatialAnchor`/`OVRSceneAnchor`/`OVRSceneManager`), and
+/// hand / eye / face tracking (`OVRHand`/`OVRSkeleton`/`OVREyeGaze`/`OVRFaceExpressions`).
+/// These are the standard primitives for *building* MR content ("show my room and anchor
+/// a lamp to my desk", gaze/hand-driven interaction), so banning them lexically over-blocks
+/// benign creative builds. Covert capture/manipulation via them is a RUNTIME/disclosure
+/// concern (Phase-6 monitors), and exfiltration is already blocked by the `System.Net`
+/// ban; merely *reading* them to author content is legitimate and stays free.
+///
 /// References: Casey 2021 (rig/boundary), Ishii 2016, Tseng 2022 (XR rig/tracking
 /// puppetry), Krauss 2024 (haptics), Casey 2021 (camera/passthrough capture).
 const PERCEPTUAL_BANNED_IDENTIFIERS: &[&str] = &[
@@ -122,27 +132,22 @@ const PERCEPTUAL_BANNED_IDENTIFIERS: &[&str] = &[
     "OVRPlugin",
     "OVRBoundary",
     "OVRInput",
-    // XR input devices — closes the bare-identifier gap where `using UnityEngine.XR;`
-    // then `InputDevices.GetDevices(...)` never shows the [UnityEngine, XR] subsequence
-    // at the call site (the namespace ban alone would miss it).
+    // XR device ENUMERATION (fingerprint the connected hardware — not content; same
+    // category as XRSettings/XRDevice above). The bare identifiers also close a
+    // subsequence gap: `using UnityEngine.XR; InputDevices.GetDevices(...)` never shows
+    // the [UnityEngine, XR] namespace at the call site, so the namespace ban misses it.
     "InputDevices",
     "XRInputSubsystem",
     // haptics (the user's body — never content)
     "OVRHaptics",
     "SendHapticImpulse",
     "Vibrate",
-    // biometric capture: eye / face / hand tracking (the user's body — never content)
-    "OVREyeGaze",
-    "OVRFaceExpressions",
-    "OVRHand",
-    "OVRSkeleton",
-    // spatial / scene understanding: reads the user's real room (privacy — never content)
-    "OVRSceneManager",
-    "OVRSceneAnchor",
-    "OVRSpatialAnchor",
-    // camera / passthrough capture (privacy exfiltration — never content)
+    // camera capture (privacy exfiltration — never content)
     "WebCamTexture",
-    "OVRPassthroughLayer",
+    // NOTE: OVRPassthroughLayer / OVRSpatialAnchor / OVRSceneAnchor / OVRSceneManager /
+    // OVRHand / OVRSkeleton / OVREyeGaze / OVRFaceExpressions are DELIBERATELY NOT here —
+    // they are dual-use MR content-authoring / interaction primitives (see the docstring
+    // above). Banning them lexically over-blocks benign creative MR builds.
 ];
 
 /// The active ban sets for a profile: security always; perceptual when hardened.
