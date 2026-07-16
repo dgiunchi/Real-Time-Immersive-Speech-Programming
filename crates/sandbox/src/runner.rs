@@ -215,7 +215,11 @@ impl DockerSandboxRunner {
             self.cpus.clone(),
             "--pids-limit".into(),
             self.pids_limit.to_string(), // anti fork-bomb
-            "--read-only".into(),        // immutable rootfs
+            "--ulimit".into(),
+            "nofile=256:256".into(), // bound open file descriptors (anti fd-exhaustion)
+            "--ulimit".into(),
+            "nproc=64:64".into(), // bound processes (defence-in-depth beside --pids-limit)
+            "--read-only".into(), // immutable rootfs
             "--tmpfs".into(),
             "/tmp:rw,noexec,nosuid,size=64m".into(), // small writable scratch
             "--security-opt".into(),
@@ -349,6 +353,8 @@ mod docker_args_tests {
             "--memory-swap 256m",
             "--cpus 1.0",
             "--pids-limit 128",
+            "--ulimit nofile=256:256",
+            "--ulimit nproc=64:64",
             "--read-only",
             "no-new-privileges",
             "--cap-drop ALL",
