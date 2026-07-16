@@ -15,6 +15,9 @@ Cargo.lock.orig
 
 # ---- .NET ----
 **/bin/
+# ...but Rust `src/bin/` is SOURCE (CLI binaries), not build output — keep it tracked.
+!**/src/bin/
+!**/src/bin/**
 **/obj/
 *.dll
 *.pdb
