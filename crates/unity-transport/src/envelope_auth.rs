@@ -50,6 +50,16 @@ pub fn payload_hash(body: &[u8]) -> [u8; ENVELOPE_HASH_LEN] {
     out
 }
 
+/// Generate 32 cryptographically-random bytes — for admission secrets, backend
+/// signing seeds, and profile-encryption keys (see the `keygen` utility). `None`
+/// only if the OS RNG fails.
+pub fn random_32() -> Option<[u8; 32]> {
+    use ring::rand::{SecureRandom, SystemRandom};
+    let mut b = [0u8; 32];
+    SystemRandom::new().fill(&mut b).ok()?;
+    Some(b)
+}
+
 fn check_version(env: &AuthEnvelope) -> Result<(), EnvelopeAuthError> {
     if env.version != ENVELOPE_VERSION {
         return Err(EnvelopeAuthError::UnsupportedVersion(env.version));
@@ -317,5 +327,13 @@ mod tests {
         assert_eq!(payload_hash(b"x"), payload_hash(b"x"));
         assert_ne!(payload_hash(b"x"), payload_hash(b"y"));
         assert_eq!(payload_hash(b"x").len(), ENVELOPE_HASH_LEN);
+    }
+
+    #[test]
+    fn random_32_is_fresh_each_call() {
+        let a = random_32().unwrap();
+        let b = random_32().unwrap();
+        assert_ne!(a, b, "two random keys must differ");
+        assert_eq!(a.len(), 32);
     }
 }

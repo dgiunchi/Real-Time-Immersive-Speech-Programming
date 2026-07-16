@@ -14,7 +14,8 @@ mod peer;
 
 pub use auth::{AuthError, PeerAuthenticator};
 pub use envelope_auth::{
-    payload_hash, BackendSigner, BackendVerifier, EnvelopeAuthError, EnvelopeMac, SessionSequence,
+    payload_hash, random_32, BackendSigner, BackendVerifier, EnvelopeAuthError, EnvelopeMac,
+    SessionSequence,
 };
 pub use error::TransportError;
 pub use ids::{NetworkIdJson, PeerInfo};
