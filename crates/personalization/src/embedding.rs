@@ -77,11 +77,21 @@ pub struct OpenAiEmbeddingClient {
 
 impl OpenAiEmbeddingClient {
     pub fn new(api_key: SecretString, model: impl Into<String>) -> Self {
+        // Transport-level bounds: `reqwest::Client::new()` has no default timeout, so a
+        // hung embeddings endpoint would stall the RAG await — which runs under the
+        // router lock. A short connect timeout + generous overall backstop bound it;
+        // the router also wraps this call in RAG_EMBED_TIMEOUT. Mock embedder is pure
+        // CPU and never uses reqwest, so legacy/test behaviour is unchanged.
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             api_key,
             model: model.into(),
             base_url: "https://api.openai.com/v1".to_string(),
-            client: reqwest::Client::new(),
+            client,
         }
     }
 

@@ -75,11 +75,23 @@ pub struct OpenAiLlmClient {
 
 impl OpenAiLlmClient {
     pub fn new(api_key: SecretString, model: impl Into<String>) -> Self {
+        // Transport-level bounds (defence-in-depth). `reqwest::Client::new()` has NO
+        // default timeout, so a connection that is accepted but never answered hangs
+        // forever — and on the live path that await is held under the router lock.
+        // A short connect timeout catches a dead/hung peer fast; a generous overall
+        // timeout is only a backstop far above any legitimate GPT-5 high-effort
+        // generation (the router applies the real per-call llm_timeout on top). Mock
+        // clients do not use reqwest, so the keyless/legacy path is unaffected.
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             api_key,
             model: model.into(),
             base_url: "https://api.openai.com/v1".to_string(),
-            client: reqwest::Client::new(),
+            client,
         }
     }
 

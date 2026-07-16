@@ -24,6 +24,8 @@ thiserror = { workspace = true }
 async-trait = { workspace = true }
 dcvr-behaviour-dsl = { workspace = true }
 dcvr-code-policy = { workspace = true }
+dcvr-control = { workspace = true }
+dcvr-personalization = { workspace = true }
 dcvr-stt-client = { workspace = true }
 dcvr-llm-client = { workspace = true }
 dcvr-csharp-policy = { workspace = true }

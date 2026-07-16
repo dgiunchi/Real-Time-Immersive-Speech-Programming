@@ -20,6 +20,13 @@ use crate::mock::mock_generate;
 use crate::request::{Mode, RequestId};
 use crate::session::{AdmitDecision, PeerSession, SessionState};
 
+/// Upper bound on a single RAG embedding round-trip. The `augment`/`record` embed
+/// awaits run while the shared router `Mutex` is held, so a hung embeddings endpoint
+/// would stall every peer. On timeout we fail open (no context / skip the record),
+/// exactly as an empty or failed embedding does today. Generous so a real embedding
+/// call never trips it; never fires for the mock embedder (returns instantly).
+const RAG_EMBED_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Outcome of the Phase-1 synchronous mock path (`process_transcript`).
 #[derive(Debug, Clone)]
 pub struct RouterOutcome {
@@ -71,6 +78,9 @@ pub struct Router {
     bus: Option<ControlBus>,
     /// Personalization / RAG. When `None`, no context is injected.
     personalizer: Option<Arc<Personalizer>>,
+    /// Upper bound on a RAG embedding round-trip (fail-open on elapse). Defaults to
+    /// [`RAG_EMBED_TIMEOUT`]; overridable for tests via [`Router::with_rag_embed_timeout`].
+    rag_embed_timeout: Duration,
 }
 
 impl std::fmt::Debug for Router {
@@ -97,12 +107,21 @@ impl Router {
             mode: Mode::ActionPlanFast,
             bus: None,
             personalizer: None,
+            rag_embed_timeout: RAG_EMBED_TIMEOUT,
         }
     }
 
     /// Attach the runtime control bus (live config: RAG on/off, C# size limits).
     pub fn with_bus(mut self, bus: ControlBus) -> Self {
         self.bus = Some(bus);
+        self
+    }
+
+    /// Override the RAG embedding round-trip bound (default [`RAG_EMBED_TIMEOUT`]).
+    /// Exists so a test can drive the fail-open-on-timeout path without a 30 s wait;
+    /// production keeps the generous default.
+    pub fn with_rag_embed_timeout(mut self, d: Duration) -> Self {
+        self.rag_embed_timeout = d;
         self
     }
 
@@ -240,9 +259,18 @@ impl Router {
     async fn augment(&self, peer_id: &str, transcript: &str) -> String {
         if self.rag_enabled() {
             if let Some(p) = &self.personalizer {
-                let ctx = p.context(peer_id, transcript).await;
-                if !ctx.is_empty() {
-                    return format!("{transcript}{ctx}");
+                // Bound the embedding round-trip: this await runs while the shared
+                // router Mutex is held, so a hung embeddings endpoint would stall
+                // EVERY peer. On timeout we fail open to "no context" — identical to
+                // an empty or failed context today (OpenAiEmbeddingClient also has its
+                // own transport timeout as defence-in-depth). Legacy/mock embedders
+                // return instantly, so this never fires off the network path.
+                if let Ok(ctx) =
+                    timeout(self.rag_embed_timeout, p.context(peer_id, transcript)).await
+                {
+                    if !ctx.is_empty() {
+                        return format!("{transcript}{ctx}");
+                    }
                 }
             }
         }
@@ -494,7 +522,14 @@ impl Router {
     async fn record(&self, peer_id: &str, command: &str, result: &str) {
         if self.rag_enabled() {
             if let Some(p) = &self.personalizer {
-                p.record_generation(peer_id, command, result).await;
+                // Best-effort + bounded: recording embeds under the router lock, so a
+                // hung embeddings endpoint must not stall the pipeline. A timeout is
+                // dropped silently, exactly as a failed record is today.
+                let _ = timeout(
+                    self.rag_embed_timeout,
+                    p.record_generation(peer_id, command, result),
+                )
+                .await;
             }
         }
     }
@@ -733,8 +768,12 @@ impl Router {
         // with a harmless visual; the malicious command never reaches the generator.
         let screen_reason = match classify_intent(&transcript) {
             Some(r) => Some(r),
-            None => match llm.screen_intent(&rid, &transcript).await {
-                Ok(v) if v.malicious => Some(if v.reason.is_empty() {
+            // The LLM screen is fail-OPEN by design (the C# validator is the hard
+            // gate). Bound it with llm_timeout so a hung classifier cannot hold the
+            // router lock forever; a timeout maps to the SAME `None` as a screen
+            // error today — byte-identical behaviour, just no longer unbounded.
+            None => match timeout(llm_timeout, llm.screen_intent(&rid, &transcript)).await {
+                Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() {
                     v.category
                 } else {
                     v.reason
@@ -920,8 +959,9 @@ impl Router {
         // classifier -> caught commands are neutralized to a harmless visual.
         let screen_reason = match classify_intent(transcript) {
             Some(r) => Some(r),
-            None => match llm.screen_intent(&rid, transcript).await {
-                Ok(v) if v.malicious => Some(if v.reason.is_empty() {
+            // Fail-open + bounded, exactly as the voice path above.
+            None => match timeout(llm_timeout, llm.screen_intent(&rid, transcript)).await {
+                Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() {
                     v.category
                 } else {
                     v.reason

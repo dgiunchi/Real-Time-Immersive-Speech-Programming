@@ -191,6 +191,115 @@ impl dcvr_llm_client::LlmClient for SpawnyLlmClient {
     }
 }
 
+// Unit 1: a hung Layer-1 screen classifier must NOT stall the router. The router
+// holds a global Mutex across this await (server side), so an unbounded screen call
+// would wedge every peer. screen_intent is fail-OPEN, so a timeout maps to `None`
+// and generation proceeds — bounded by llm_timeout, never the classifier's hang.
+struct HangingScreenLlm;
+#[async_trait::async_trait]
+impl dcvr_llm_client::LlmClient for HangingScreenLlm {
+    async fn generate_plan(
+        &self,
+        request_id: &str,
+        transcript: &str,
+    ) -> Result<dcvr_behaviour_dsl::ActionPlan, dcvr_llm_client::LlmError> {
+        // Delegate to the deterministic mock so a valid command is approved.
+        dcvr_llm_client::LlmClient::generate_plan(
+            &dcvr_llm_client::MockLlmClient,
+            request_id,
+            transcript,
+        )
+        .await
+    }
+    async fn screen_intent(
+        &self,
+        _request_id: &str,
+        _command: &str,
+    ) -> Result<dcvr_llm_client::IntentVerdict, dcvr_llm_client::LlmError> {
+        // Hangs far longer than any test timeout. If it EVER returned it would flag
+        // malicious — so a non-neutralized outcome proves the timeout (not the
+        // verdict) let generation proceed.
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        Ok(dcvr_llm_client::IntentVerdict {
+            malicious: true,
+            category: "would-block".to_string(),
+            reason: "would-block".to_string(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn hung_screen_classifier_does_not_stall_the_router() {
+    use std::time::Duration;
+    let mut router = Router::new();
+    // llm_timeout is 100 ms; the screen sleeps 30 s. An unbounded screen would block
+    // the router for 30 s; the 3 s outer guard proves it does not.
+    let res = tokio::time::timeout(
+        Duration::from_secs(3),
+        router.process_text_dual(
+            "p",
+            "make this cube red",
+            &HangingScreenLlm,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
+            Duration::from_millis(100),
+        ),
+    )
+    .await;
+    let out = res.expect("router must not hang when the Layer-1 screen classifier hangs");
+    // Screen timed out -> fail-open None -> generation proceeded (NOT neutralized).
+    assert_eq!(out.decision, Decision::ApproveActionPlan);
+    assert!(
+        out.caught_reason.is_none(),
+        "a timed-out fail-open screen must not neutralize the command"
+    );
+}
+
+// Unit 1: a hung RAG embedder must NOT stall augment/record either. Same pattern:
+// the embed await runs under the router lock and must fail open (no context) on a
+// bounded timeout. with_rag_embed_timeout lets us drive it without a 30 s wait.
+struct HangingEmbedder;
+#[async_trait::async_trait]
+impl dcvr_personalization::EmbeddingClient for HangingEmbedder {
+    async fn embed(&self, _text: &str) -> Result<Vec<f32>, dcvr_personalization::EmbedError> {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        Ok(vec![0.0; 8])
+    }
+}
+
+#[tokio::test]
+async fn hung_rag_embedder_does_not_stall_the_router() {
+    use dcvr_control::{ControlBus, RuntimeConfig};
+    use dcvr_personalization::{InMemoryStore, PersonalizationStore, Personalizer};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let store: Arc<dyn PersonalizationStore> = Arc::new(InMemoryStore::default());
+    let personalizer = Arc::new(Personalizer::new(store, Arc::new(HangingEmbedder)));
+    let bus = ControlBus::new(RuntimeConfig {
+        enable_rag: true,
+        ..RuntimeConfig::default()
+    });
+    let mut router = Router::new()
+        .with_bus(bus)
+        .with_personalizer(personalizer)
+        .with_rag_embed_timeout(Duration::from_millis(100)); // tiny bound for the test
+
+    let res = tokio::time::timeout(
+        Duration::from_secs(3),
+        router.process_text_dual(
+            "p",
+            "make this cube red",
+            &dcvr_llm_client::MockLlmClient,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
+            Duration::from_secs(5),
+        ),
+    )
+    .await;
+    let out = res.expect("router must not hang when the RAG embedder hangs");
+    // Embed timed out -> fail-open (no context) -> pipeline still produced a decision.
+    assert_eq!(out.decision, Decision::ApproveActionPlan);
+}
+
 #[tokio::test]
 async fn session_spawn_budget_enforced_cumulatively() {
     use dcvr_stt_client::{AudioUtterance, MockSttClient};
