@@ -1,10 +1,24 @@
-# Phase 6/7 client security drop-ins (authored — ON-DEVICE PENDING)
+# Phase 6/7 client security drop-ins (EditMode-verified — ON-DEVICE PENDING)
 
-These are **authored, default-off** Unity C# components for the client side of the
-hardened profile. **None of them has been run on a device** (no Quest until
-2026-07-23; Mode A is Mono/Quest-1-2 only). No runtime claim is made here — only the
-**pure logic** is verified, in the Unity Test Runner (EditMode), which is *not* part
-of the Rust `cargo` gate.
+These are **default-off** Unity C# components for the client side of the hardened
+profile. The **pure logic is now verified**: on 2026-07-16 these four files + the
+EditMode tests were compiled and run headless in **Unity 6000.5.1f1**
+(`-runTests -testPlatform EditMode`) — **11/11 tests passed, 0 compile errors**. So
+the code compiles and the confirmation state machine, disclosure feed, and JSON
+encoder behave as specified.
+
+**Still ON-DEVICE PENDING** (no Quest until 2026-07-23; Mode A is Mono/Quest-1-2
+only): the MonoBehaviour lifecycle, the actual runtime compile path, HUD rendering,
+and the Ed25519 signature leg. The EditMode run is *not* part of the Rust `cargo`
+gate — reproduce it with:
+
+```
+Unity -runTests -batchmode -nographics -projectPath <proj> \
+      -testPlatform EditMode -testResults results.xml
+```
+
+(a minimal project with these `Runtime/` files + `Editor/Phase67SecurityTests.cs`,
+built-in `com.unity.test-framework`).
 
 Everything defaults OFF, so dropping these into a scene changes nothing until armed:
 the current unsigned/unconfirmed demo path stays byte-identical.
@@ -45,7 +59,9 @@ so the verified Quest build is untouched. To arm the hardened client behaviour l
 
 ## Honest status
 
-- Verified: the pure state machine, ring/coalescing feed, and JSON encoder (EditMode).
-- NOT verified: any MonoBehaviour lifecycle, the compile path, the HUD rendering, the
-  Ed25519 signature leg, and end-to-end backend delivery — all require a Quest and are
-  deferred to the on-device pass (≥ 2026-07-23).
+- **Verified (2026-07-16, Unity 6000.5.1f1 headless EditMode, 11/11 passed):** these
+  four files compile, and the confirmation state machine, ring/coalescing disclosure
+  feed, and JSON encoder behave as specified.
+- **NOT verified:** any MonoBehaviour lifecycle, the runtime compile path, HUD
+  rendering, the Ed25519 signature leg, and end-to-end backend delivery — all require
+  a Quest and are deferred to the on-device pass (≥ 2026-07-23).
