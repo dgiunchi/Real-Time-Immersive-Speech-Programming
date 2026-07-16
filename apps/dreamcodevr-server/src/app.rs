@@ -64,6 +64,8 @@ pub struct Services {
     /// per-step timeouts). `None` = disabled (default, legacy byte-identical); `Some`
     /// = the whole STT→LLM→validate block is bounded and fails closed on elapse.
     pub utterance_timeout: Option<Duration>,
+    /// Max concurrent in-flight utterances per peer (backpressure vs task-flood DoS).
+    pub max_inflight_per_peer: usize,
     /// Dev/research only: route NID 98 through the validated-C# (Mode B) path.
     pub csharp_research: bool,
     /// Mode A: emit the validated generated C# (NID 94 `{type,peer,data}`) to the

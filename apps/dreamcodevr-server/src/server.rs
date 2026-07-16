@@ -115,6 +115,7 @@ pub fn services_from_settings(settings: Settings) -> Services {
         // 0 = disabled (legacy byte-identical); >0 = opt-in overall utterance bound.
         utterance_timeout: (settings.utterance_timeout_ms > 0)
             .then(|| Duration::from_millis(settings.utterance_timeout_ms)),
+        max_inflight_per_peer: settings.max_inflight_per_peer,
         csharp_research: settings.csharp_research_dev,
         mode_a: settings.mode_a,
         roslyn,
@@ -233,6 +234,8 @@ pub async fn run_ubiq_peer(
     let mut accum: HashMap<String, Vec<u8>> = HashMap::new();
     // Per-peer replay state for the incoming auth gate (used only in hardened mode).
     let mut seqs: HashMap<String, SessionSequence> = HashMap::new();
+    // Per-peer in-flight backpressure (bounds concurrent utterance tasks per peer).
+    let mut peer_sems: HashMap<String, Arc<tokio::sync::Semaphore>> = HashMap::new();
 
     while let Some(frame) = peer.recv().await {
         // Incoming authentication gate. Legacy: inert — this is byte-identical to
@@ -284,14 +287,25 @@ pub async fn run_ubiq_peer(
                                 "stop" => {
                                     let bytes = accum.remove(&peer_uuid).unwrap_or_default();
                                     if !bytes.is_empty() {
-                                        spawn_utterance(
-                                            router.clone(),
-                                            jsonl.clone(),
-                                            sender.clone(),
-                                            services.clone(),
-                                            peer_uuid.clone(),
-                                            bytes,
-                                        );
+                                        match acquire_inflight(
+                                            &mut peer_sems,
+                                            &peer_uuid,
+                                            services.max_inflight_per_peer,
+                                        ) {
+                                            Some(permit) => spawn_utterance(
+                                                router.clone(),
+                                                jsonl.clone(),
+                                                sender.clone(),
+                                                services.clone(),
+                                                peer_uuid.clone(),
+                                                bytes,
+                                                permit,
+                                            ),
+                                            None => eprintln!(
+                                                "[ubiq-peer] peer {peer_uuid} at max in-flight \
+                                                 utterances; dropping (backpressure)"
+                                            ),
+                                        }
                                     }
                                 }
                                 other => eprintln!("[ubiq-peer] unknown STT control: {other}"),
@@ -308,14 +322,25 @@ pub async fn run_ubiq_peer(
                         "[ubiq-peer] utterance for {peer_uuid} exceeded {MAX_UTTERANCE_BYTES} \
                          bytes without a stop control; auto-finalizing"
                     );
-                    spawn_utterance(
-                        router.clone(),
-                        jsonl.clone(),
-                        sender.clone(),
-                        services.clone(),
-                        peer_uuid,
-                        bytes,
-                    );
+                    match acquire_inflight(
+                        &mut peer_sems,
+                        &peer_uuid,
+                        services.max_inflight_per_peer,
+                    ) {
+                        Some(permit) => spawn_utterance(
+                            router.clone(),
+                            jsonl.clone(),
+                            sender.clone(),
+                            services.clone(),
+                            peer_uuid,
+                            bytes,
+                            permit,
+                        ),
+                        None => eprintln!(
+                            "[ubiq-peer] peer {peer_uuid} at max in-flight utterances; \
+                             dropping overflow (backpressure)"
+                        ),
+                    }
                 }
             }
             95 => {
@@ -409,6 +434,23 @@ where
     }
 }
 
+/// Per-peer backpressure: acquire one in-flight slot for `peer`, creating that peer's
+/// semaphore (capacity `cap`) on first use. Returns `None` when the peer already has
+/// `cap` concurrent utterances in flight, so the caller drops the new one fail-closed.
+/// The generous default cap means a single push-to-talk speaker never hits it, so real
+/// use is byte-identical; only a flood is bounded.
+fn acquire_inflight(
+    sems: &mut HashMap<String, Arc<tokio::sync::Semaphore>>,
+    peer: &str,
+    cap: usize,
+) -> Option<tokio::sync::OwnedSemaphorePermit> {
+    let sem = sems
+        .entry(peer.to_string())
+        .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(cap.max(1))))
+        .clone();
+    sem.try_acquire_owned().ok()
+}
+
 fn spawn_utterance(
     router: std::sync::Arc<tokio::sync::Mutex<Router>>,
     jsonl: std::sync::Arc<tokio::sync::Mutex<JsonlWriter<std::io::Stdout>>>,
@@ -416,8 +458,12 @@ fn spawn_utterance(
     services: Services,
     peer_id: String,
     bytes: Vec<u8>,
+    permit: tokio::sync::OwnedSemaphorePermit,
 ) {
     tokio::spawn(async move {
+        // Hold the per-peer in-flight slot for this task's whole lifetime; it is released
+        // (drop-safe) when the task completes or is cancelled.
+        let _permit = permit;
         // Remember which headset just issued a command so a subsequent MANUAL COMMAND
         // from the admin panel is delivered to the same client (NID-94 `peer`).
         *services.last_client_peer.write().await = Some(peer_id.clone());
@@ -705,6 +751,31 @@ mod tests {
     async fn bounded_utterance_fast_future_completes() {
         let out = bounded_utterance(Some(Duration::from_secs(5)), async { 7u32 }).await;
         assert_eq!(out, Some(7));
+    }
+
+    // Phase-4 backpressure: the per-peer in-flight cap bounds concurrent utterances,
+    // is per-peer, releases a slot when a permit is dropped, and treats 0 as 1.
+    #[test]
+    fn acquire_inflight_caps_per_peer_and_releases_on_drop() {
+        let mut sems: std::collections::HashMap<String, Arc<tokio::sync::Semaphore>> =
+            std::collections::HashMap::new();
+        let p1 = acquire_inflight(&mut sems, "a", 2);
+        let p2 = acquire_inflight(&mut sems, "a", 2);
+        assert!(p1.is_some() && p2.is_some(), "first two within cap");
+        assert!(
+            acquire_inflight(&mut sems, "a", 2).is_none(),
+            "third exceeds the per-peer cap"
+        );
+        drop(p1);
+        assert!(
+            acquire_inflight(&mut sems, "a", 2).is_some(),
+            "a slot frees when a permit is dropped (task completes)"
+        );
+        // A different peer has its own independent budget.
+        assert!(acquire_inflight(&mut sems, "b", 2).is_some());
+        // A misconfigured cap of 0 is treated as 1 (never "never admit").
+        let mut s2 = std::collections::HashMap::new();
+        assert!(acquire_inflight(&mut s2, "x", 0).is_some());
     }
 
     // Unit 2: a hung utterance fails closed (None) within the deadline, instead of

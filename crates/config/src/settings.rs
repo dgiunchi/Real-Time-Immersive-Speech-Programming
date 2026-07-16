@@ -106,6 +106,11 @@ pub struct Settings {
     /// is bounded; on elapse the utterance fails closed (nothing is sent). This is a
     /// belt-and-suspenders umbrella over the per-step timeouts.
     pub utterance_timeout_ms: u64,
+    /// Max concurrent in-flight utterances PER PEER (backpressure vs task-flood DoS,
+    /// A017/A023). A single push-to-talk speaker has ~1 in flight, so the generous
+    /// default never trips real use; only a flood is bounded (excess dropped
+    /// fail-closed). Env `DCVR_MAX_INFLIGHT_PER_PEER`.
+    pub max_inflight_per_peer: usize,
     /// Dev/research only: allow the validated-C# (Mode B) path. Default false.
     pub csharp_research_dev: bool,
     /// Mode A (original DreamCodeVR): instead of the action-plan reply, send the
@@ -167,6 +172,7 @@ impl Default for Settings {
             stt_timeout_ms: 10_000,
             llm_timeout_ms: 60_000,
             utterance_timeout_ms: 0, // disabled by default (legacy byte-identical)
+            max_inflight_per_peer: 8, // generous: never trips a single human speaker
             csharp_research_dev: false,
             mode_a: false,
             ubiq_addr: None,
@@ -272,6 +278,13 @@ impl Settings {
         if let Ok(v) = env::var("DCVR_UTTERANCE_TIMEOUT_MS") {
             if let Ok(n) = v.parse() {
                 s.utterance_timeout_ms = n;
+            }
+        }
+        if let Ok(v) = env::var("DCVR_MAX_INFLIGHT_PER_PEER") {
+            if let Ok(n) = v.parse::<usize>() {
+                if n >= 1 {
+                    s.max_inflight_per_peer = n;
+                }
             }
         }
         if let Ok(v) = env::var("DCVR_CSHARP_RESEARCH") {
@@ -448,6 +461,12 @@ mod tests {
     fn utterance_timeout_defaults_to_disabled() {
         // 0 = disabled = legacy byte-identical (no overall utterance bound applied).
         assert_eq!(Settings::default().utterance_timeout_ms, 0);
+    }
+
+    #[test]
+    fn max_inflight_per_peer_defaults_generous() {
+        // Generous default so a single push-to-talk speaker never trips backpressure.
+        assert_eq!(Settings::default().max_inflight_per_peer, 8);
     }
 
     #[test]
