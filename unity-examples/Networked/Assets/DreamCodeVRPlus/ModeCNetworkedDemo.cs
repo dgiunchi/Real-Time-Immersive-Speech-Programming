@@ -62,6 +62,12 @@ namespace DreamCodeVRPlus
         // Mode-agnostic perceptual monitor (TRACK U2). Monitor-only: disclosures only,
         // never blocks. Off by default (discloseEnabled=false) so free creation is quiet.
         private GeneratedContentMonitor _monitor;
+        // Phase-7 confirm-before-compile gate + Phase-6 out-of-process disclosure
+        // forwarder. Both present but DISARMED by default (requireConfirmation=false /
+        // forwardToBackend=false), so the runtime path is byte-identical until a
+        // deployment flips them on. See unity/Runtime/README-PHASE6-7-SECURITY.md.
+        private VoiceCompileConfirmationGate _confirmGate;
+        private DisclosureBackendForwarder _forwarder;
 
         private TcpClient _tcp;
         private NetworkStream _stream;
@@ -124,6 +130,10 @@ namespace DreamCodeVRPlus
             _monitor = gameObject.AddComponent<GeneratedContentMonitor>();
             _monitor.confinementRoot = _cube.transform;
             _monitor.drift = gameObject.AddComponent<UserDisplacementTracker>();
+            // Phase 6/7 security components, present but DISARMED by default so runtime
+            // behaviour is unchanged until a deploy flips their flags in the Inspector.
+            _confirmGate = gameObject.AddComponent<VoiceCompileConfirmationGate>();
+            _forwarder = gameObject.AddComponent<DisclosureBackendForwarder>();
 
             if (Microphone.devices != null && Microphone.devices.Length > 0)
             {
@@ -245,35 +255,20 @@ namespace DreamCodeVRPlus
                 if (mtype == "code")
                 {
                     string code = TryGetData(json);
-                    // Only wipe the scene for a NEW build (one that creates primitives).
-                    // Modifier commands (spin / scale / colour) attach on top so they act on the
-                    // EXISTING structure — e.g. "spin this house" spins the house, not a fresh cube.
-                    bool isBuild = !string.IsNullOrEmpty(code) && code.Contains("CreatePrimitive");
-                    if (isBuild) { ResetTarget(); }
-                    var sw = System.Diagnostics.Stopwatch.StartNew();
-                    bool ok = RuntimeCSharpCompiler.CompileAndAttach(code, _cube, out string err);
-                    sw.Stop();
-                    long compileMs = sw.ElapsedMilliseconds;
-                    Debug.Log(ok
-                        ? "[Mode-A] compiled + attached generated C# ✓"
-                        : "[Mode-A] compile/attach FAILED: " + err);
-                    _status = ok
-                        ? "Mode A: compiled C# at runtime in Unity ✓ (cube changed)"
-                        : "Mode A FAILED — " + err;
-                    // Report the compile outcome + duration to the admin panel (NID 96).
-                    _ctrlOut.Enqueue((NID_COMPILE_B, ok
-                        ? "{\"ok\":true,\"ms\":" + compileMs + "}"
-                        : "{\"ok\":false,\"ms\":" + compileMs + ",\"error\":\"" + JsonEscape(err) + "\"}"));
-                    if (ok)
+                    // Phase-7 confirm-before-compile (A011/A052/A093). Default OFF: with the
+                    // gate disarmed, SubmitOrPassthrough returns true and we compile now —
+                    // byte-identical to before. When armed, the code is stashed and we wait
+                    // for an explicit user confirm (OnGUI / voice 'yes') before running it,
+                    // so a spoofed "run this" cannot auto-execute.
+                    if (_confirmGate == null || _confirmGate.SubmitOrPassthrough(code, NowMs()))
                     {
-                        // Mode-A/B provenance: stamp the visible synthetic marker on every
-                        // object the generated C# produced (SP-02; defeats disguise/false-
-                        // affordance regardless of mode). Then run the mode-agnostic monitor
-                        // over the result (disclosures only; never blocks).
-                        SafeBehaviourRegistry.MarkGeneratedHierarchy(_cube);
-                        _monitor.ScanGenerated(contentInMotion: !isBuild || code.Contains("Update"));
+                        CompileGeneratedCode(code);
                     }
-                    _hasResult = true;
+                    else
+                    {
+                        _status = "Generated code received — press Confirm to run it.";
+                        _hasResult = true;
+                    }
                 }
                 else if (mtype == "undo")
                 {
@@ -291,6 +286,57 @@ namespace DreamCodeVRPlus
                     _hasResult = true;
                 }
             }
+
+            // Phase-7: drop stale unconfirmed code (fail-closed). No-op when disarmed.
+            if (_confirmGate != null) { _confirmGate.ExpireIfStale(NowMs()); }
+            // Phase-6: forward any queued perceptual disclosures off-headset to the
+            // backend safety log (NID 97). No-op unless the forwarder is armed.
+            if (_forwarder != null)
+            {
+                while (_forwarder.TryDequeue(out string disc))
+                {
+                    _ctrlOut.Enqueue((DisclosureBackendForwarder.NidDisclosure, disc));
+                }
+            }
+        }
+
+        // Run the backend-approved generated C# at runtime (Mode A). Extracted so the
+        // Phase-7 confirmation gate can defer it to an explicit user confirm.
+        private void CompileGeneratedCode(string code)
+        {
+            // Only wipe the scene for a NEW build (one that creates primitives). Modifier
+            // commands (spin / scale / colour) attach on top so they act on the EXISTING
+            // structure — e.g. "spin this house" spins the house, not a fresh cube.
+            bool isBuild = !string.IsNullOrEmpty(code) && code.Contains("CreatePrimitive");
+            if (isBuild) { ResetTarget(); }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            bool ok = RuntimeCSharpCompiler.CompileAndAttach(code, _cube, out string err);
+            sw.Stop();
+            long compileMs = sw.ElapsedMilliseconds;
+            Debug.Log(ok
+                ? "[Mode-A] compiled + attached generated C# ✓"
+                : "[Mode-A] compile/attach FAILED: " + err);
+            _status = ok
+                ? "Mode A: compiled C# at runtime in Unity ✓ (cube changed)"
+                : "Mode A FAILED — " + err;
+            // Report the compile outcome + duration to the admin panel (NID 96).
+            _ctrlOut.Enqueue((NID_COMPILE_B, ok
+                ? "{\"ok\":true,\"ms\":" + compileMs + "}"
+                : "{\"ok\":false,\"ms\":" + compileMs + ",\"error\":\"" + JsonEscape(err) + "\"}"));
+            if (ok)
+            {
+                // Mode-A/B provenance: stamp the visible synthetic marker on every object
+                // the generated C# produced (SP-02), then run the monitor (disclose-only).
+                SafeBehaviourRegistry.MarkGeneratedHierarchy(_cube);
+                _monitor.ScanGenerated(contentInMotion: !isBuild || code.Contains("Update"));
+            }
+            _hasResult = true;
+        }
+
+        // Monotonic-ish millisecond clock for the confirmation gate (main thread only).
+        private static long NowMs()
+        {
+            return (long)(Time.realtimeSinceStartup * 1000f);
         }
 
         // Reset the target cube to a clean state before each Mode-A command, so
@@ -716,6 +762,24 @@ namespace DreamCodeVRPlus
             var label = new GUIStyle(GUI.skin.label) { fontSize = 15, richText = true, wordWrap = true };
             GUI.Label(new Rect(14, 10, Screen.width - 28, 60),
                 "<b>DreamCodeVR+ — Path B (networked Mode-C)</b>\n" + _status, label);
+
+            // Phase-7: when the confirm gate is armed AND holding pending code, show an
+            // explicit Confirm / Cancel affordance. Disarmed => HasPending is always false,
+            // so this draws nothing and the UI is unchanged.
+            if (_confirmGate != null && _confirmGate.HasPending)
+            {
+                GUI.Box(new Rect(Screen.width - 320, 10, 306, 74), "Run generated code?");
+                if (GUI.Button(new Rect(Screen.width - 312, 40, 140, 34), "Confirm run"))
+                {
+                    string c = _confirmGate.Confirm();
+                    if (c != null) { CompileGeneratedCode(c); }
+                }
+                if (GUI.Button(new Rect(Screen.width - 162, 40, 140, 34), "Cancel"))
+                {
+                    _confirmGate.ResetPending();
+                    _status = "Generated code discarded (not run).";
+                }
+            }
 
             float y = 78f;
 
