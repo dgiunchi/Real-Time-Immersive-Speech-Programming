@@ -19,6 +19,7 @@
 //! PRIVACY: state is per-user and local (JSON file or in-memory); see the DPIA note in
 //! the dissertation.
 
+mod crypto;
 mod embedding;
 mod memory;
 mod profile;
@@ -93,6 +94,8 @@ impl PersonalizationStore for InMemoryStore {
 pub struct FilePersonalizationStore {
     dir: PathBuf,
     write_lock: Mutex<()>,
+    /// Optional AEAD cipher; `Some` => profiles are encrypted at rest.
+    cipher: Option<crypto::ProfileCipher>,
 }
 
 impl FilePersonalizationStore {
@@ -100,7 +103,22 @@ impl FilePersonalizationStore {
         Self {
             dir: dir.into(),
             write_lock: Mutex::new(()),
+            cipher: None,
         }
+    }
+
+    /// Enable ChaCha20-Poly1305 encryption at rest using a 64-hex-char key. An
+    /// invalid key is logged and leaves encryption OFF (plaintext) rather than
+    /// panicking, so a misconfiguration never crashes the backend.
+    pub fn with_encryption_key_hex(mut self, hex: &str) -> Self {
+        match crypto::ProfileCipher::from_hex(hex) {
+            Some(c) => self.cipher = Some(c),
+            None => eprintln!(
+                "[personalization] invalid DCVR_PROFILE_ENC_KEY (need 64 hex chars); \
+                 profiles will NOT be encrypted"
+            ),
+        }
+        self
     }
 
     fn path(&self, peer: &str) -> PathBuf {
@@ -148,10 +166,29 @@ impl FilePersonalizationStore {
 
 impl PersonalizationStore for FilePersonalizationStore {
     fn load(&self, peer: &str) -> PeerData {
-        match std::fs::read_to_string(self.path(peer)) {
-            Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
-            Err(_) => PeerData::default(),
-        }
+        let bytes = match std::fs::read(self.path(peer)) {
+            Ok(b) => b,
+            Err(_) => return PeerData::default(),
+        };
+        // Encrypted files carry the magic prefix; plaintext (legacy) files do not.
+        let json = if crypto::is_encrypted(&bytes) {
+            match &self.cipher {
+                Some(c) => match c.decrypt(&bytes) {
+                    Some(pt) => pt,
+                    None => {
+                        eprintln!("[personalization] profile decrypt failed (wrong key/tampered)");
+                        return PeerData::default();
+                    }
+                },
+                None => {
+                    eprintln!("[personalization] profile is encrypted but no key is configured");
+                    return PeerData::default();
+                }
+            }
+        } else {
+            bytes
+        };
+        serde_json::from_slice(&json).unwrap_or_default()
     }
     fn save(&self, peer: &str, data: &PeerData) {
         let _g = self.write_lock.lock();
@@ -161,7 +198,18 @@ impl PersonalizationStore for FilePersonalizationStore {
         }
         match serde_json::to_string_pretty(data) {
             Ok(s) => {
-                if let Err(e) = std::fs::write(self.path(peer), s) {
+                // Encrypt at rest when a key is configured; otherwise plaintext JSON.
+                let bytes: Vec<u8> = match &self.cipher {
+                    Some(c) => match c.encrypt(s.as_bytes()) {
+                        Some(ct) => ct,
+                        None => {
+                            eprintln!("[personalization] encryption failed; profile not written");
+                            return;
+                        }
+                    },
+                    None => s.into_bytes(),
+                };
+                if let Err(e) = std::fs::write(self.path(peer), &bytes) {
                     eprintln!("[personalization] write failed: {e}");
                 } else {
                     // Personal data: restrict the file to owner read/write only.
@@ -415,6 +463,35 @@ mod tests {
         let future = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
         assert_eq!(s.purge_expired(0, future), 1);
         assert!(s.list_peers().is_empty(), "expired profile removed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn file_store_encrypts_at_rest_and_reads_back() {
+        let dir = std::env::temp_dir().join(format!("dcvr-perso-enc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let s = FilePersonalizationStore::new(&dir).with_encryption_key_hex(&"e".repeat(64));
+        s.save(
+            "peer-e",
+            &PeerData {
+                next_seq: 42,
+                ..Default::default()
+            },
+        );
+        // On disk it is ciphertext (magic prefix), not readable JSON.
+        let raw = std::fs::read(dir.join("peer-e.json")).unwrap();
+        assert!(raw.starts_with(b"DCVRENC1\n"), "encrypted at rest");
+        assert!(
+            !raw.windows(8).any(|w| w == b"next_seq"),
+            "no plaintext field on disk"
+        );
+        // Same key round-trips.
+        assert_eq!(s.load("peer-e").next_seq, 42);
+        // A store WITHOUT the key fails soft to default (never leaks, never crashes).
+        assert_eq!(
+            FilePersonalizationStore::new(&dir).load("peer-e").next_seq,
+            0
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

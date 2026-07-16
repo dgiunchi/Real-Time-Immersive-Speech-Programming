@@ -137,6 +137,10 @@ pub struct Settings {
     /// Required in the `hardened` profile (fail-closed). The matching public key is
     /// provisioned to the Unity `BackendVerifier`.
     pub backend_signing_seed_hex: Option<String>,
+    /// Optional 64-char hex (32-byte) key to encrypt personalization profiles at
+    /// rest with ChaCha20-Poly1305. Env-only: `DCVR_PROFILE_ENC_KEY`. Unset =
+    /// plaintext files (back-compat); set = AEAD-encrypted at rest.
+    pub profile_enc_key_hex: Option<String>,
 }
 
 impl Default for Settings {
@@ -171,6 +175,7 @@ impl Default for Settings {
             require_peer_auth: false,
             peer_auth_secret: None,
             backend_signing_seed_hex: None,
+            profile_enc_key_hex: None,
         }
     }
 }
@@ -315,6 +320,12 @@ impl Settings {
             let v = v.trim();
             if !v.is_empty() {
                 s.backend_signing_seed_hex = Some(v.to_string());
+            }
+        }
+        if let Ok(v) = env::var("DCVR_PROFILE_ENC_KEY") {
+            let v = v.trim();
+            if !v.is_empty() {
+                s.profile_enc_key_hex = Some(v.to_string());
             }
         }
         s.enforce_profile_invariants()

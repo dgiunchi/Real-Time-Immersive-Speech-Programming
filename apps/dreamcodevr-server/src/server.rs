@@ -30,6 +30,7 @@ pub fn services_from_settings(settings: Settings) -> Services {
     // Capture values needed AFTER `settings` fields are moved into clients below.
     let model = settings.openai_model.clone();
     let perso_dir = settings.personalization_dir.clone();
+    let profile_enc = settings.profile_enc_key_hex.clone();
     let embed_openai = settings.embed_openai;
     let embed_key = settings
         .openai_api_key
@@ -80,7 +81,11 @@ pub fn services_from_settings(settings: Settings) -> Services {
         ..RuntimeConfig::default()
     };
     let bus = ControlBus::new(cfg);
-    let store: Arc<dyn PersonalizationStore> = Arc::new(FilePersonalizationStore::new(perso_dir));
+    let mut file_store = FilePersonalizationStore::new(perso_dir);
+    if let Some(hex) = &profile_enc {
+        file_store = file_store.with_encryption_key_hex(hex);
+    }
+    let store: Arc<dyn PersonalizationStore> = Arc::new(file_store);
     let embedder: Arc<dyn EmbeddingClient> = match (embed_openai, embed_key) {
         (true, Some(k)) => Arc::new(OpenAiEmbeddingClient::new(k, "text-embedding-3-small")),
         _ => Arc::new(MockEmbeddingClient::default()),

@@ -13,6 +13,8 @@ async-trait = { workspace = true }
 reqwest = { workspace = true }
 secrecy = { workspace = true }
 thiserror = { workspace = true }
+# Audited AEAD (ChaCha20-Poly1305) for optional profile encryption at rest.
+ring = "0.17"
 
 [dev-dependencies]
 tokio = { workspace = true }
