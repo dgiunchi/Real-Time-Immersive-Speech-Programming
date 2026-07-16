@@ -26,6 +26,29 @@ unifies code-safety with perceptual-safety in one gate. **That coupling is the n
 
 ---
 
+## 0b. Implementation status (2026-07-17) — BUILT & TESTED
+
+The novel core is now implemented, not just designed:
+
+- **★ Age-adaptive coupling (Rust, in the live backend):** `crates/config/src/age.rs`
+  (`AgeBand` + `AgeSafetyPosture` — one band tightens both planes; Unknown→child
+  fail-safe) wired through `control::RuntimeConfig` + `router.hardening_profile()` so a
+  detected **minor alone flips the C# validator to hardened** (opt-in via
+  `DCVR_AGE_GATING` / `DCVR_AGE_BAND`; off = byte-identical). Proven by
+  `age_minor_forces_hardened_csharp_gate`. **263 Rust tests green.**
+- **ML #1 — voice age gate (`ml/age_gate/`, numpy-only, runs today):** real DSP
+  features + logistic-regression + temperature calibration (ECE 0.05→0.012) + the
+  fail-safe `AgeGate`. `python3 -m unittest discover -s ml/age_gate/tests` (17 OK);
+  `train.py`/`evaluate.py` run end-to-end — session fail-safe gives **child-leaked-to-
+  adult = 0.000**. wav2vec2 upgrade documented (`wav2vec2_features.py`).
+- **ML #2 — adaptive attack analyzer (`ml/attack_analyzer/`, numpy-only, runs today):**
+  PCA-autoencoder open-set anomaly (**AUC 1.00**), ADWIN2 drift, and an Auto-RT-style
+  red-team loop that **grows the vector store (→164)** and **red-teams the age gate
+  (100% spoof-rate)**. `python3 -m unittest discover -s ml/attack_analyzer/tests` (21 OK).
+- **Viva prep:** `VIVA_QA.md` (~40 defence Q&As + all 128 vectors with direct answers).
+
+Remaining = on-device (real audio + Quest) + the documented deep upgrades. See §10.
+
 ## 1. What we already have (the platform this builds on)
 
 - Speech → STT → LLM → **Rust safety validator** (lexical + perceptual denylist) →
