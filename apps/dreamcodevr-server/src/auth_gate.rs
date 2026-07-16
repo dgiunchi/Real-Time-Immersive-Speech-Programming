@@ -191,6 +191,24 @@ impl ServerAuth {
             body: body.to_vec(),
         })
     }
+
+    /// The per-peer bucket key for replay state, chosen BEFORE verification (because
+    /// [`Self::verify_incoming`] needs the caller to supply that peer's
+    /// [`SessionSequence`]). Legacy: the self-asserted uuid (used only as a map key;
+    /// legacy enforces no replay). Hardened: the CLAIMED `authenticated_peer_id` from
+    /// the envelope — untrusted, used ONLY to pick the bucket. A forged claim cannot
+    /// advance that bucket, because `verify_incoming` rejects it (bad MAC / hash /
+    /// domain) before `SessionSequence::accept` ever runs. Returns `None` when the
+    /// frame is unparseable, so the caller drops it.
+    pub fn incoming_peer_key(&self, payload: &[u8]) -> Option<String> {
+        if !self.active {
+            return split_peer_payload(payload).ok().map(|pp| pp.peer_uuid);
+        }
+        let (env_bytes, _body) = unframe(payload)?;
+        AuthEnvelope::from_bytes(env_bytes)
+            .ok()
+            .map(|e| e.authenticated_peer_id)
+    }
 }
 
 fn profile_tag(p: SecurityProfile) -> u8 {
@@ -420,5 +438,57 @@ mod tests {
         assert_eq!(decode_hex32(SEED_HEX), Some([0xaau8; 32]));
         assert_eq!(decode_hex32("zz"), None);
         assert_eq!(decode_hex32(&"a".repeat(63)), None); // wrong length
+    }
+
+    // ---- incoming_peer_key: the per-peer replay-bucket selector used by the recv loop ----
+
+    #[test]
+    fn incoming_peer_key_legacy_is_self_asserted_uuid() {
+        let a = legacy();
+        let payload = join_peer_payload(&"z".repeat(36), b"body");
+        assert_eq!(a.incoming_peer_key(&payload), Some("z".repeat(36)));
+    }
+
+    #[test]
+    fn incoming_peer_key_hardened_is_the_claimed_authenticated_id() {
+        let a = active();
+        let msg = make_client_message(98, 1, b"x", 2_000_000_000);
+        // The envelope's authenticated_peer_id is used to pick the replay bucket.
+        assert_eq!(
+            a.incoming_peer_key(&msg),
+            Some("peer-authenticated".to_string())
+        );
+    }
+
+    #[test]
+    fn incoming_peer_key_none_on_garbage() {
+        // Unparseable frames key to None so the recv loop drops them.
+        assert_eq!(legacy().incoming_peer_key(&[0x00, 0x01]), None);
+        assert_eq!(active().incoming_peer_key(&[0xFF; 3]), None);
+    }
+
+    #[test]
+    fn recv_gate_pair_accepts_then_rejects_replay_in_the_same_bucket() {
+        // Mirrors the recv loop: pick the bucket with incoming_peer_key, then verify
+        // with that peer's SessionSequence. An identical replayed frame in the SAME
+        // bucket is rejected — proving per-peer replay state works end to end.
+        let a = active();
+        let mut buckets: std::collections::HashMap<String, SessionSequence> =
+            std::collections::HashMap::new();
+        let msg = make_client_message(98, 7, b"audio", 2_000_000_000);
+
+        let key = a.incoming_peer_key(&msg).expect("keyed");
+        let seq = buckets.entry(key.clone()).or_default();
+        assert!(
+            a.verify_incoming(98, &msg, seq, 1000).is_ok(),
+            "first accepted"
+        );
+
+        let key2 = a.incoming_peer_key(&msg).expect("keyed");
+        let seq2 = buckets.entry(key2).or_default(); // same bucket
+        assert!(
+            a.verify_incoming(98, &msg, seq2, 1000).is_err(),
+            "replay in the same peer bucket must be rejected"
+        );
     }
 }

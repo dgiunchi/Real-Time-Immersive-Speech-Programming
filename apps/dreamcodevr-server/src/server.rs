@@ -187,9 +187,9 @@ async fn handle_connection<W: std::io::Write>(
 use std::collections::HashMap;
 
 use dcvr_command_router::{AudioOutcome, Router};
-use dcvr_protocol::{split_peer_payload, NID_BACKEND_OUTPUT};
+use dcvr_protocol::NID_BACKEND_OUTPUT;
 use dcvr_stt_client::AudioUtterance;
-use dcvr_unity_transport::{TransportError, UbiqServicePeer};
+use dcvr_unity_transport::{SessionSequence, TransportError, UbiqServicePeer};
 
 use crate::app::backend_decision_json;
 
@@ -231,37 +231,65 @@ pub async fn run_ubiq_peer(
     *services.ubiq_sender.write().await = Some(sender.clone());
     // Per-peer push-to-talk accumulation buffers (touched only by the recv loop).
     let mut accum: HashMap<String, Vec<u8>> = HashMap::new();
+    // Per-peer replay state for the incoming auth gate (used only in hardened mode).
+    let mut seqs: HashMap<String, SessionSequence> = HashMap::new();
 
     while let Some(frame) = peer.recv().await {
-        let pp = match split_peer_payload(&frame.payload) {
-            Ok(pp) => pp,
-            Err(_) => continue,
+        // Incoming authentication gate. Legacy: inert — this is byte-identical to
+        // `split_peer_payload` (self-asserted uuid + body). Hardened: verify the
+        // client HMAC envelope (identity + freshness + payload hash + domain +
+        // strict-monotonic replay) and use the PROVEN peer id; an unverifiable frame
+        // is dropped fail-closed. Incoming enforcement therefore activates the moment
+        // the Unity client starts emitting envelopes; until then legacy is unchanged.
+        let peer_key = match services.auth.incoming_peer_key(&frame.payload) {
+            Some(k) => k,
+            None => continue,
         };
+        let seq = seqs.entry(peer_key).or_default();
+        let verified = match services.auth.verify_incoming(
+            frame.network_id.b,
+            &frame.payload,
+            seq,
+            crate::auth_gate::now_unix(),
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                if services.auth.is_active() {
+                    eprintln!(
+                        "[auth] dropped unverifiable NID-{} frame: {e}",
+                        frame.network_id.b
+                    );
+                }
+                continue;
+            }
+        };
+        let peer_uuid = verified.peer_id;
+        let body = verified.body;
         match frame.network_id.b {
             93 => {
-                let selected = String::from_utf8_lossy(&pp.body).to_string();
+                let selected = String::from_utf8_lossy(&body).to_string();
                 router
                     .lock()
                     .await
-                    .set_selected_object(&pp.peer_uuid, selected);
+                    .set_selected_object(&peer_uuid, selected);
             }
             98 => {
-                if pp.body.len() <= 64 {
-                    if let Ok(text) = std::str::from_utf8(&pp.body) {
+                if body.len() <= 64 {
+                    if let Ok(text) = std::str::from_utf8(&body) {
                         if let Some(action) = text.strip_prefix(STT_CONTROL_PREFIX) {
                             match action {
                                 "start" => {
-                                    accum.insert(pp.peer_uuid.clone(), Vec::new());
+                                    accum.insert(peer_uuid.clone(), Vec::new());
                                 }
                                 "stop" => {
-                                    let bytes = accum.remove(&pp.peer_uuid).unwrap_or_default();
+                                    let bytes = accum.remove(&peer_uuid).unwrap_or_default();
                                     if !bytes.is_empty() {
                                         spawn_utterance(
                                             router.clone(),
                                             jsonl.clone(),
                                             sender.clone(),
                                             services.clone(),
-                                            pp.peer_uuid.clone(),
+                                            peer_uuid.clone(),
                                             bytes,
                                         );
                                     }
@@ -272,9 +300,8 @@ pub async fn run_ubiq_peer(
                         }
                     }
                 }
-                let peer_uuid = pp.peer_uuid;
                 let buf = accum.entry(peer_uuid.clone()).or_default();
-                buf.extend_from_slice(&pp.body);
+                buf.extend_from_slice(&body);
                 if buf.len() > MAX_UTTERANCE_BYTES {
                     let bytes = accum.remove(&peer_uuid).unwrap_or_default();
                     eprintln!(
@@ -294,12 +321,12 @@ pub async fn run_ubiq_peer(
             95 => {
                 // Personalization feedback (👍/👎). Body: JSON {"liked":bool} or "like"/"dislike".
                 if let Some(p) = &services.personalizer {
-                    let liked = std::str::from_utf8(&pp.body)
+                    let liked = std::str::from_utf8(&body)
                         .ok()
                         .and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok())
                         .and_then(|v| v.get("liked").and_then(|b| b.as_bool()))
                         .or_else(|| {
-                            let t = String::from_utf8_lossy(&pp.body).to_lowercase();
+                            let t = String::from_utf8_lossy(&body).to_lowercase();
                             if t.contains("dislike") {
                                 Some(false)
                             } else if t.contains("like") {
@@ -309,10 +336,10 @@ pub async fn run_ubiq_peer(
                             }
                         });
                     if let Some(liked) = liked {
-                        p.feedback(&pp.peer_uuid, liked).await;
+                        p.feedback(&peer_uuid, liked).await;
                         services.bus.publish(PipelineEvent::new(
                             "feedback",
-                            &pp.peer_uuid,
+                            &peer_uuid,
                             Stage::Info,
                             if liked {
                                 "👍 user liked the last result"
@@ -325,7 +352,7 @@ pub async fn run_ubiq_peer(
             }
             96 => {
                 // Unity reports the Mode-A runtime compile result -> show it in the panel.
-                let v = std::str::from_utf8(&pp.body)
+                let v = std::str::from_utf8(&body)
                     .ok()
                     .and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok());
                 let ok = v
@@ -344,7 +371,7 @@ pub async fn run_ubiq_peer(
                 services.bus.publish(
                     PipelineEvent::new(
                         "compile",
-                        &pp.peer_uuid,
+                        &peer_uuid,
                         Stage::Compile,
                         if ok {
                             "compiled the C# at runtime ✓".to_string()
