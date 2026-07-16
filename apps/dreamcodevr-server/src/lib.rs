@@ -9,3 +9,4 @@ pub mod app;
 pub mod auth_gate;
 pub mod mock_generation;
 pub mod server;
+pub mod watchdog;
