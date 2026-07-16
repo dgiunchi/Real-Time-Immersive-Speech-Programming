@@ -33,9 +33,12 @@ the red-team: `using` **namespace aliases**, **Unicode-escape identifiers**, and
 `dynamic` late-binding. An optional .NET **Roslyn** semantic check
 (`services/roslyn-analyzer`) adds a second layer.
 
-- **Important default:** if the Roslyn service is not wired, a mock analyzer
-  **approves**, so the Rust lexical layer is the effective gate. Enable and
-  require the real analyzer for a stronger Mode-B posture.
+- **Important default (`legacy`):** if the Roslyn service is not wired, a mock
+  analyzer **approves**, so the Rust lexical layer is the effective gate. Enable
+  and require the real analyzer for a stronger Mode-B posture.
+- **`hardened` profile:** Mode A/B **requires a real Roslyn analyzer URL** and
+  fails closed — the approve-all mock is refused — and each analyzer request is
+  bounded by a timeout so a hung analyzer cannot stall the pipeline.
 - The lexical guard is a **denylist**: thorough and adversarially tested, but
   completeness is not guaranteed.
 
@@ -43,10 +46,12 @@ the red-team: `using` **namespace aliases**, **Unicode-escape identifiers**, and
 
 `DCVR_MODE_A=false` by default. When enabled, validator-approved C# is sent
 (NID 94) to the client for runtime compilation. This widens the trust surface:
-the Unity handler runs whatever code arrives on NID 94, and (in this release)
-peers are not authenticated — so with Mode A on and no peer auth, a malicious
-room member could get code compiled on a client. Keep Mode A for research/demos
-on trusted networks only.
+the Unity handler runs whatever code arrives on NID 94. In the **`legacy`**
+profile peers are not authenticated, so with Mode A on a malicious room member
+could get code compiled on a client — keep it to trusted-network research/demos.
+The **`hardened`** profile closes this: NID-94 is **Ed25519-signed by the
+backend** and the Unity `BackendVerifier` compiles only backend-approved code, so
+a room member cannot inject compileable C# even with Mode A on.
 
 ## Mode D — sandbox for untrusted C#
 
@@ -62,16 +67,33 @@ on the live speech path.
 
 Binds to **loopback by default**. Mutating routes honour an optional
 `X-Admin-Token`; **if no token is set, mutating routes are unauthenticated** — so
-never bind to `0.0.0.0` without a token. The `/api/sandbox` route **validates**
-C# only (it does not execute code on the host). Token comparison is a plain
-string equality (not constant-time).
+the panel now **refuses to bind to a non-loopback address without a token**
+(fail-closed; `bind_allowed`, all profiles). The `/api/sandbox` route
+**validates** C# only (it does not execute code on the host). Token comparison is
+**constant-time** (`ct_eq`), so a set token cannot be recovered by timing. An
+authenticated `POST /api/profile/delete` route erases a stored profile.
 
-## Peer authentication (present, not wired by default)
+## Peer authentication — two profiles
 
-An HMAC admission-token module exists in `crates/unity-transport` but is **not
-invoked** in this release; the Ubiq channel is plaintext and peers self-assert
-identity. Wiring per-peer auth + TLS/WSS is required before any untrusted-network
-deployment.
+Peer authentication is **profile-gated** (`DCVR_SECURITY_PROFILE`):
+
+- **`legacy` (default):** byte-identical to the original build — peers self-assert
+  identity and the Ubiq channel is plaintext. This is what the current Quest demo
+  runs; nothing on the wire changes.
+- **`hardened` (opt-in):** a versioned, canonical **`AuthEnvelope`** binds every
+  message to its identity, sequence, expiry, domain (`NetworkId.b`) and a SHA-256
+  payload hash. Two directions of cryptography (audited `ring 0.17`):
+  **client→backend HMAC-SHA256** admission and **backend→Unity Ed25519**
+  signatures, so a leaked client secret cannot forge backend-approved code. A
+  strict-monotonic sequence guard rejects replay/reorder. Outgoing NID-94 is
+  signed on the live path; **incoming envelope verification activates once the
+  Unity client emits envelopes** (the Rust verifier and its adversarial tests are
+  already in place). The backend **refuses to start** if hardened is selected
+  without its keys (fail-closed, no silent downgrade).
+
+See [`HARDENING.md`](HARDENING.md) for the design and [`DEPLOYMENT.md`](DEPLOYMENT.md)
+to run it. **TLS/WSS is still a separate transport step**; message auth already
+gives end-to-end integrity through an untrusted relay.
 
 ## Privacy
 
@@ -79,3 +101,8 @@ Telemetry is JSONL carrying ids/timestamps/decisions/reason-codes/counts —
 **never** audio or transcripts (a test asserts no `audio`/`transcript`/`secret`
 field can appear). Personalization state is stored locally and is treated as
 untrusted context in prompts (it may nudge aesthetics, never override safety).
+Stored profiles are written **owner-only (`0600`)**, support **erasure** (trait
+`delete` + admin route) and **TTL purge** of stale records, and — when
+`DCVR_PROFILE_ENC_KEY` is set — are **encrypted at rest** with ChaCha20-Poly1305
+AEAD (`ring`). With no key the on-disk format is unchanged (plaintext), so the
+default behaviour is preserved.

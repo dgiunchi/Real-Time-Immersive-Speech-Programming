@@ -34,9 +34,10 @@ bash -n scripts/*.sh
 
 Results (this snapshot):
 
-- **`cargo test --workspace`: 164 passed, 0 failed, 0 ignored** — the offline test path
-  needs **only Rust** and uses mock STT/LLM/Roslyn clients (no key, no network). (Was 160;
-  4 boolean-env-parser tests were added in this release.)
+- **`cargo test --workspace`: 226 passed, 0 failed, 0 ignored** — the offline test path
+  needs **only Rust** and uses mock STT/LLM/Roslyn clients (no key, no network). (The
+  0.1.0 baseline was 164; the hardened-profile auth stack, the adversarial campaign, and
+  the two wire-parser fuzz corpora add the rest — all still fully offline.)
 - **Clippy: 0 warnings** (`-D warnings`); `cargo fmt --check`: clean.
 - **`cargo deny check`: ok** (advisories / bans / licenses / sources).
 - **.NET analyzer + sandbox harness: build with 0 warnings / 0 errors.**
@@ -55,7 +56,7 @@ external/university host, and no generated C# on the host** are involved.
 ## Offline smoke test
 
 ```bash
-cargo test --workspace --locked              # 164 tests, offline
+cargo test --workspace --locked              # 226 tests, offline
 cargo run -p dreamcodevr-server &            # backend with mock STT/LLM (127.0.0.1:9098)
 cargo run -p fake-quest-client               # built-in demo scenario -> validated decision
 ```

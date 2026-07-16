@@ -42,8 +42,12 @@ it, and dispatches a safe result back to Unity.
 
 ### Known limitations (details in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md))
 
-- **Peer authentication is present but not wired** into the live path — Ubiq peers
-  currently self-assert identity and the channel is plaintext (no TLS).
+- **Peer authentication is profile-gated.** The default `legacy` profile is
+  byte-identical to the original (peers self-assert; plaintext channel). An opt-in
+  **`hardened`** profile adds cryptographic peer auth (HMAC admission +
+  Ed25519-signed backend output + replay guard); outgoing NID-94 signing is on the
+  live path, incoming verification activates once Unity emits envelopes, and
+  TLS/WSS remains a deployment step. See [`docs/HARDENING.md`](docs/HARDENING.md).
 - **Quest 3 / Store (IL2CPP, ARM64) deployment is future work.** Mode A is
   demonstrated on sideloaded Quest 1/2 (Mono); **Mode C is the deployable path.**
 - **Mode B semantic enforcement is off by default** (see the note above).
@@ -60,7 +64,7 @@ bash scripts/doctor.sh
 
 # 1. build + test the Rust workspace (reproducible from Cargo.lock)
 cargo build --workspace --locked
-cargo test --workspace --locked     # 164 tests, fully offline
+cargo test --workspace --locked     # 226 tests, fully offline
 
 # 2. run the backend (offline mocks by default)
 cargo run -p dreamcodevr-server
@@ -113,6 +117,8 @@ docs/           architecture, security model, protocol, reproducibility, limitat
 - [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md) — offline smoke test, live loop, red-team regeneration
 - [docs/UNITY_INTEGRATION.md](docs/UNITY_INTEGRATION.md) — authored Unity drop-ins (no proprietary asset)
 - [docs/LIMITATIONS.md](docs/LIMITATIONS.md) — honest scope and unfinished areas
+- [docs/HARDENING.md](docs/HARDENING.md) — the opt-in **hardened** security profile (auth, replay, fail-closed)
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — running the hardened profile (`keygen`, env vars, Unity provisioning)
 - [SECURITY.md](SECURITY.md) — security policy & vulnerability reporting · [CHANGELOG.md](CHANGELOG.md) — release notes
 - Component: [services/roslyn-analyzer/README.md](services/roslyn-analyzer/README.md) — Mode-B .NET analyzer setup & `/analyze` API
 

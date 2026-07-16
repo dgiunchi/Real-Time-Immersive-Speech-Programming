@@ -184,9 +184,10 @@ cargo build --workspace --release --locked
 cargo deny check            # optional; needs cargo-deny
 ```
 
-Expected: **164 tests pass, 0 failed, 0 ignored, 0 Clippy warnings.** (Was 160 before
-this release added 4 config boolean-parser tests.) A one-shot equivalent:
-`bash scripts/verify-fresh-build.sh`.
+Expected: **226 tests pass, 0 failed, 0 ignored, 0 Clippy warnings.** (The 0.1.0
+baseline was 164; the opt-in hardened-profile auth stack, the adversarial campaign,
+and the wire-parser fuzz corpora add the rest — still fully offline.) A one-shot
+equivalent: `bash scripts/verify-fresh-build.sh`.
 
 ## 12. Run the offline / mock demonstration
 
