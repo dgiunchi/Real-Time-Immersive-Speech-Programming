@@ -604,6 +604,168 @@ evidence*, honestly bounded — not a claim of deployable, production-grade secu
 - **ISO/IEC 27566-1:2025**; **IEEE 2089.1-2024**; **Meta Quest** age-group API (Apr 2024, authoritative)
 - **BOXRR-23** — arXiv:2310.00430 (adult-skewed, no child labels); position paper — arXiv:2605.17347 (*contested*)
 
+---
+
+# (I) The 128 attack vectors — each with its direct answer
+
+If an examiner points at any single vector, this is the one-line attack + our exact defence + status. Grouped by the five families. Status: ✅ Solved (built & tested) · 🟡 Partial · 📐 Designed (planned; mostly on-device) · ⚪ N/A (doesn't apply). Full plain-English map also rendered as a filterable page in the security field guide.
+
+**Tally:** 33 Solved · 2 Partial · 80 Designed · 13 N/A (of 128).
+
+
+## Network & identity (24)
+
+| ID | Vector | Status | The attack → our answer |
+|---|---|---|---|
+| A001 | Impersonation | ✅ Solved | **Attack:** Anyone can claim to be another user, because the "who are you" tag is just a plain-text label they type themselves. **Answer:** Every user proves their identity with a secret-key stamp on each message; messages whose claimed name doesn't match the proven one are dropped. |
+| A002 | Man-in-the-Room | ✅ Solved | **Attack:** Simply being in the shared room let you act as if you were authorised — the room's address is fixed and shouted publicly. **Answer:** You need an admission token to join, every frame is re-checked, and the backend ignores anyone not properly admitted. |
+| A003 | Session hijacking | ✅ Solved | **Attack:** Nothing tied your messages to your specific session, so someone could slip into your conversation. **Answer:** Each message is bound to a session id and a counter that only moves forward, so a hijacker's messages don't fit. |
+| A004 | Message forgery | ✅ Solved | **Attack:** Messages carried no signature, so anyone could fabricate one from scratch. **Answer:** Every message carries a cryptographic fingerprint and stamp; a forged one won't match. |
+| A005 | Message tampering | ✅ Solved | **Attack:** Someone in the middle could quietly alter a message in transit. **Answer:** A fingerprint over the contents makes any change detectable (and TLS will hide the contents entirely). |
+| A006 | Replay | ✅ Solved | **Attack:** Capture a valid message and re-send it later to repeat an action. **Answer:** Each message has a one-time number, a timestamp, and an ever-increasing counter, so a re-sent copy is rejected. |
+| A007 | Cross-user command confusion | ✅ Solved | **Attack:** A command from one person ran on everyone's screen, because the app ignored who it was for. **Answer:** Commands are addressed to a specific person, and a client only applies the ones meant for it. |
+| A008 | Selection spoofing | ✅ Solved | **Attack:** The "which object I picked" channel was unauthenticated and separate, so it could be faked. **Answer:** That channel is authenticated and tied to the same request as your voice command. |
+| A009 | Audio-message spoofing | ✅ Solved | **Attack:** Nothing proved where a voice-audio packet actually came from. **Answer:** Audio packets carry the same identity, counter, and stamp as everything else. |
+| A010 | Backend-decision spoofing | ✅ Solved | **Attack:** Unity couldn't tell a trusted backend message from another player pretending to be the backend. **Answer:** The backend signs its messages; Unity checks the signature (and that the code matches) before acting. |
+| A011 | Malicious code injection | ✅ Solved | **Attack:** Because messages weren't authenticated, an attacker could hand the headset code directly, bypassing the safety checker. **Answer:** The headset only compiles code carrying the backend's signature — which means it went through the validator. |
+| A012 | Feedback spoofing | ✅ Solved | **Attack:** The thumbs-up/down channel, if used, could let anyone write into someone else's taste profile. **Answer:** Feedback is authenticated and bound to its author and request before it's accepted. |
+| A013 | Compile-result spoofing | ✅ Solved | **Attack:** Fake "it compiled OK" reports could pollute the logs. **Answer:** Those reports are authenticated and rate-limited. |
+| A014 | Unauthorised room joining | ✅ Solved | **Attack:** The room address was guessable and broadcast, so uninvited people could join. **Answer:** Joining requires an admission token; the backend won't process anyone without one. |
+| A015 | Peer-ID collision | ✅ Solved | **Attack:** Two users could end up with the same id, causing confusion. **Answer:** Each id is bound to a unique session at admission; duplicates are rejected. |
+| A016 | Peer-ID self-assertion | ✅ Solved | **Attack:** Identity was whatever you claimed — no proof required. **Answer:** An id is only accepted with a valid admission token and stamp. |
+| A017 | Denial of service | 📐 Designed | **Attack:** Flood the system with requests (or fake identities) to grind it to a halt. **Answer:** Planned: global rate limits, concurrency caps, per-user queues and memory budgets on top of identity checks. (Partly done — we already bound slow calls so one can't hang the server.) |
+| A018 | Head-of-line blocking | 📐 Designed | **Attack:** One slow request holds a shared lock and stalls everyone else. **Answer:** Planned: give each user their own lane so no one can block others. (Partly done — slow calls are now time-bounded.) |
+| A019 | Network interception | ✅ Solved | **Attack:** The channel wasn't encrypted, so traffic could be read on the wire. **Answer:** End-to-end message authentication now; full encryption (TLS) is the deployment step. |
+| A020 | Downgrade abuse | ✅ Solved | **Attack:** Trick the system into falling back to its weaker, "off" settings. **Answer:** The security level is baked into the signed message, and a secure deployment profile pins the protections on. |
+| A021 | Discovery spoofing | ✅ Solved | **Attack:** The "here I am" beacon was unauthenticated and leaked the room address in the clear. **Answer:** The beacon is signed and uses an opaque handle instead of the raw address. |
+| A022 | Malicious relay server | ✅ Solved | **Attack:** The relay server in the middle could itself be hostile. **Answer:** We treat it as untrusted: end-to-end signatures, admission, and the Unity verifier mean a bad relay can't forge or alter anything. |
+| A023 | Malicious peer coordination | ✅ Solved | **Attack:** Several attackers team up to exhaust shared budgets. **Answer:** Global budgets sit above per-user limits, and identity checks stop them faking many identities. |
+| A024 | Stale-session reuse | ✅ Solved | **Attack:** Reuse an old, expired session or token. **Answer:** Tokens expire and idle sessions are cleaned up. |
+
+## Generated code (33)
+
+| ID | Vector | Status | The attack → our answer |
+|---|---|---|---|
+| A025 | Prompt injection | 📐 Designed | **Attack:** Sneak instructions into your words to trick the AI into writing something harmful. **Answer:** Planned: treat the AI's OUTPUT as the trust boundary, make the pre-screen fail-closed, and detect loops. (We already validate every output and neutralise malicious intent.) |
+| A026 | Indirect prompt injection | 📐 Designed | **Attack:** Poison the stored "taste" data so it steers the AI over time. **Answer:** Planned: keep validating outputs and authenticate who can write to a profile. |
+| A027 | Malicious generated C# | 📐 Designed | **Attack:** The AI writes genuinely dangerous code. **Answer:** Planned: the full stack — a real semantic analyzer, minimal references, and runtime monitors. |
+| A028 | Validation bypass | 📐 Designed | **Attack:** Craft code that slips past the static checker (in theory always possible). **Answer:** Planned: back static checks with runtime monitoring and a sandbox for anything risky. |
+| A029 | Namespace-alias evasion | 📐 Designed | **Attack:** Rename a banned library to disguise it. **Answer:** Our Rust checker already resolves aliases; the remaining work is matching that in the Unity asset. |
+| A030 | Unicode-escape evasion | 📐 Designed | **Attack:** Hide banned words using unicode escape codes. **Answer:** Our checker already decodes them; extend the Unity asset to match. |
+| A031 | Dynamic-dispatch evasion | 📐 Designed | **Attack:** Use late-binding tricks to hide a banned call. **Answer:** Planned: resolve symbols and bound what the code can reach. |
+| A032 | Reflection abuse | 📐 Designed | **Attack:** Use "reflection" to reach forbidden capabilities indirectly. **Answer:** The Rust checker already bans reflection entry points; add the same in the Unity asset. |
+| A033 | Filesystem access | 📐 Designed | **Attack:** Read or write files on the machine. **Answer:** Already blocked; add belt-and-suspenders parity in Unity. |
+| A034 | Network access | 📐 Designed | **Attack:** Have the generated code phone home or exfiltrate data. **Answer:** The Rust checker blocks networking; add the same ban in the Unity asset and strip network libraries. |
+| A035 | Process execution | 📐 Designed | **Attack:** Launch other programs on the machine. **Answer:** Ban the process libraries in the Unity asset (the Rust checker already does). |
+| A036 | Native / PInvoke | 📐 Designed | **Attack:** Call raw native OS functions. **Answer:** Already blocked; add asset parity for depth. |
+| A037 | Unsafe code | 📐 Designed | **Attack:** Use "unsafe" direct-memory operations. **Answer:** Already banned; maintained. |
+| A038 | Resource exhaustion | 📐 Designed | **Attack:** Code that hogs CPU/GPU and tanks the frame rate. **Answer:** Planned: a runtime frame-time monitor that disables a slow component, plus a watchdog backstop. |
+| A039 | Infinite loops | 📐 Designed | **Attack:** A never-ending loop that freezes the headset. **Answer:** Planned: detect loops before running, plus an external watchdog that kills and restarts. |
+| A040 | Main-thread blocking | 📐 Designed | **Attack:** A big synchronous operation that hangs the render loop. **Answer:** Planned: static detection, a watchdog, and a bounded compile time. |
+| A041 | Memory exhaustion | 📐 Designed | **Attack:** Allocate memory until the app crashes. **Answer:** Planned: an OS-level memory limit and restart (memory can't be fully contained inside the same process). |
+| A042 | Thread exhaustion | 📐 Designed | **Attack:** Spawn endless threads or coroutines. **Answer:** Planned: ban threading libraries and cap coroutines. |
+| A043 | Persistent malicious behaviour | 📐 Designed | **Attack:** Code that keeps running every frame and can't be removed. **Answer:** Planned: a registry of generated components with a "remove all" kill switch. |
+| A044 | Assembly leakage | 📐 Designed | **Attack:** Endlessly loading new code balloons memory. **Answer:** Planned: periodically recycle the compiler's domain at safe moments. |
+| A045 | Validator tampering | 📐 Designed | **Attack:** Mess with the analyzer's settings or limits. **Answer:** Planned: make the real analyzer mandatory, verify its identity, and audit config changes. |
+| A046 | Guard tampering | 📐 Designed | **Attack:** Generated code disables the in-app safety guard it lives next to. **Answer:** Planned: move the authoritative guard OUT of the app, into a separate process. |
+| A047 | Scene destruction | 📐 Designed | **Attack:** Delete or wreck the entire scene. **Answer:** Planned: protect critical objects, snapshot &amp; restore, and restart. |
+| A048 | Irreversible side effects | 📐 Designed | **Attack:** Do something that can't be undone. **Answer:** Planned: block the escape routes (network) and snapshot before compiling. |
+| A049 | Ransomware-like sabotage | 📐 Designed | **Attack:** Lock the user out of their own scene. **Answer:** Planned: snapshot/restore, a kill switch, and restart. |
+| A050 | Data exfiltration | 📐 Designed | **Attack:** Steal data out through the network. **Answer:** Planned: close the network gap in the Unity asset and turn on the hardened profile. |
+| A051 | Side-channel leak | 📐 Designed | **Attack:** Leak information through subtle timing or covert channels. **Answer:** Planned: accept some residual risk; sensor bans and rate monitoring reduce it. |
+| A052 | Application injection | ✅ Solved | **Attack:** With no authentication, push code straight to the headset to compile. **Answer:** The headset only accepts backend-signed, validated code (plus TLS, and no raw message subscription). |
+| A053 | Hot-reload bypass | 📐 Designed | **Attack:** Use Unity's hot-reload path to skip the code scan. **Answer:** Planned: turn the hot-reload security check on, and keep Mode-A off hot-reload. |
+| A054 | Analyzer fail-open | ✅ Solved | **Attack:** With no real analyzer configured, a stand-in "approves everything." **Answer:** Hardened Mode A refuses to run without a real analyzer wired in. |
+| A055 | Analyzer service compromise | 📐 Designed | **Attack:** Attack the separate analyzer service. **Answer:** Planned: loopback + mutual-TLS + auth, and treat unresolved symbols as fail-closed. |
+| A056 | Analyzer freeze | ✅ Solved | **Attack:** Make the analyzer hang to stall everything. **Answer:** The analyzer call is on a timeout and fails closed; the client has its own timeout too. |
+| A057 | Verdict spoofing | 📐 Designed | **Attack:** Fake a "safe" verdict from the analyzer. **Answer:** Planned: authenticate the analyzer and keep the Unity-side check. |
+
+## Immersive / VR (34)
+
+| ID | Vector | Status | The attack → our answer |
+|---|---|---|---|
+| A058 | Guardian boundary manipulation | 📐 Designed | **Attack:** Move or fake the safety boundary that stops you walking into a wall. **Answer:** Planned: treat the guardian as the platform/OS's job and re-reveal real objects. |
+| A059 | Hiding a real obstacle | 📐 Designed | **Attack:** Hide a real-world obstacle behind a virtual object so you trip. **Answer:** Planned: an out-of-process guard re-reveals registered real objects. |
+| A060 | Boundary drift | 📐 Designed | **Attack:** Slowly shift the play boundary over time so it no longer protects you. **Answer:** Planned: track drift over time, with out-of-process pose ownership. |
+| A061 | False safe-space cues | 📐 Designed | **Attack:** Draw a fake "you're safe here" marker. **Answer:** Planned: mark provenance, disclose it, and only trust registered safe zones. |
+| A062 | False obstacle placement | 📐 Designed | **Attack:** Put a fake obstacle to make you dodge into a real one. **Answer:** Planned: personal-space rules, provenance, and disclosure. |
+| A063 | Human joystick (herding) | 📐 Designed | **Attack:** Nudge the visuals so the person physically walks where the attacker wants. **Answer:** Planned: the compositor (out of process) owns the real pose, plus a running movement ledger. |
+| A064 | Rig / pose spoofing | 📐 Designed | **Attack:** Move the camera rig so the whole world lurches. **Answer:** Planned: out-of-process pose ownership, so the app can't move the rig. |
+| A065 | Locomotion drift | 📐 Designed | **Attack:** Slowly slide the user through space without them noticing. **Answer:** Planned: cap camera-relative displacement, with out-of-process pose. |
+| A066 | Vection sickness | 📐 Designed | **Attack:** Big moving visual fields that induce nausea and imbalance. **Answer:** Planned: a coherent-motion budget and a rate cap. |
+| A067 | Projectile steering | 📐 Designed | **Attack:** Lead the user's head around with a moving object. **Answer:** Planned: limit how close projectiles get to the head, and disclose. |
+| A068 | Cumulative movement | 📐 Designed | **Attack:** Each command is "fine," but together they walk the user across the room. **Answer:** Planned: a running total (ledger) across commands, session, and room. |
+| A069 | Overlay occlusion | 📐 Designed | **Attack:** Stack overlays to blind the user. **Answer:** Planned: add up how much of the view is covered, and clamp it. |
+| A071 | Disorientation (spin) | 📐 Designed | **Attack:** Spin the world or camera to disorient. **Answer:** Planned: out-of-process pose ownership and a rate cap. |
+| A072 | Flash / strobing | 📐 Designed | **Attack:** Strobe or flash — a genuine seizure risk. **Answer:** Planned: an out-of-process flash clamp with auto-dim (on by default) to safe limits. |
+| A073 | View blackout | 📐 Designed | **Attack:** Black out the field of view. **Answer:** Planned: add up coverage, with a compositor dim clamp. |
+| A074 | Fake system panel | 📐 Designed | **Attack:** Draw a fake "system" dialog to trick the user. **Answer:** Planned: mark provenance and disclose it's generated content. |
+| A075 | False affordance | 📐 Designed | **Attack:** Make something look interactive or safe when it isn't. **Answer:** Planned: provenance, disclosure, and consent. |
+| A076 | Combined occlusion | 📐 Designed | **Attack:** No single object blinds you, but several together do. **Answer:** Planned: sum the total coverage across all objects. |
+| A077 | Persistent suggestion | 📐 Designed | **Attack:** Persistent content designed to subtly influence the user. **Answer:** Planned: provenance, disclosure, and consent. |
+| A078 | Camera manipulation | 📐 Designed | **Attack:** Directly write to the camera to move the user's viewpoint. **Answer:** Planned: out-of-process pose ownership. |
+| A079 | XR-rig manipulation | 📐 Designed | **Attack:** Manipulate the XR rig underneath the user. **Answer:** Planned: hardened profile by default, plus out-of-process pose. |
+| A080 | In-your-face spawns | 📐 Designed | **Attack:** Spawn things locked right in front of the eyes. **Answer:** Planned: a "safe bubble" and personal-space enforcement. |
+| A081 | Giant-object blackout | 📐 Designed | **Attack:** Blow an object up huge to black out the view. **Answer:** Planned: a coverage cap and dim. |
+| A082 | Spawn flood | 📐 Designed | **Attack:** Spawn thousands of objects to overwhelm the scene. **Answer:** Planned: count after compile, a room budget, and a watchdog reset. |
+| A083 | Lighting manipulation | 📐 Designed | **Attack:** Plunge to darkness or blast to blinding light. **Answer:** Planned: an out-of-process brightness envelope with auto-adjust. |
+| A084 | Colour strobing | 📐 Designed | **Attack:** Strobe via fast colour flips. **Answer:** Planned: the out-of-process flash clamp. |
+| A085 | Projectile at head | 📐 Designed | **Attack:** Fling a physics object at the user's head. **Answer:** Planned: a head-distance limit and safe bubble. |
+| A086 | Fake floor / wall | 📐 Designed | **Attack:** Draw a fake solid surface to mislead the user. **Answer:** Planned: provenance, disclosure, and protecting registered surfaces. |
+| A087 | Cumulative harm | 📐 Designed | **Attack:** Individually-safe actions add up to real harm. **Answer:** Planned: aggregate the end result — view, movement, and brightness together. |
+| A088 | Coordinated multi-user harm | 📐 Designed | **Attack:** Several users each do "safe" things that combine to harm one person. **Answer:** Planned: room-level budgets and wired authentication. |
+| A089 | Temporal boundary drift | 📐 Designed | **Attack:** The boundary drifts over time. **Answer:** Planned: a time-based ledger and out-of-process pose. |
+| A090 | Relational harm | 📐 Designed | **Attack:** Harm that comes from how objects relate to each other. **Answer:** Planned: a relational monitor and disclosure. |
+| A091 | Provenance forgery | 📐 Designed | **Attack:** Strip or forge the "this is generated" marker on an object. **Answer:** Planned: backend-issued, tamper-evident provenance ids. |
+| A092 | Guard disablement | 📐 Designed | **Attack:** The generated code switches off the safety guard it lives next to. **Answer:** Planned: move enforcement out of process, with a liveness heartbeat. |
+
+## Voice & sensors (13)
+
+| ID | Vector | Status | The attack → our answer |
+|---|---|---|---|
+| A070 | Selection redirection | ✅ Solved | **Attack:** Redirect what the user is clicking or selecting. **Answer:** Authenticated identity plus a visual target confirm. |
+| A093 | Voice-command spoofing | 📐 Designed | **Attack:** Speak (or inject) a command the user didn't intend. **Answer:** Planned: show a preview, require a physical/visual confirm, add a delay, and allow cancel. |
+| A094 | Recorded-speech replay | 📐 Designed | **Attack:** Play back a recording of the user's voice to trigger actions. **Answer:** Planned: bind each request to a one-time number, plus push-to-talk liveness. |
+| A095 | Hidden / ultrasonic commands | 📐 Designed | **Attack:** Issue inaudible (ultrasonic) commands. **Answer:** Planned: band-limit the microphone at capture, plus a push-to-talk gate. |
+| A096 | Bystander capture | 📐 Designed | **Attack:** The microphone records people nearby who never consented. **Answer:** Planned: local speech-to-text, no bystander retention, and a recording indicator. |
+| A097 | Voiceprint exposure | 📐 Designed | **Attack:** Your unique voiceprint is exposed to a cloud provider. **Answer:** Planned: on-device speech-to-text, and never keep raw audio. |
+| A098 | Tracker spoofing (platform) | ⚪ N/A | **Attack:** Spoof the headset's trackers. **Answer:** Out of scope for the backend — this is the platform/OS's responsibility. |
+| A099 | Head-pose spoofing (platform) | ⚪ N/A | **Attack:** Spoof the reported head pose. **Answer:** Platform-level; the backend never sees raw pose. |
+| A100 | Controller-pose spoofing (platform) | ⚪ N/A | **Attack:** Spoof the reported controller pose. **Answer:** Platform-level; out of scope for the backend. |
+| A101 | Pointer-ray spoofing | ✅ Solved | **Attack:** Fake which object your pointer is aimed at. **Answer:** Authenticated identity plus a visual target confirm. |
+| A102 | Timing / order spoofing | ✅ Solved | **Attack:** Mess with the timing or order of messages. **Answer:** One-time numbers and a forward-only counter inside the signed envelope. |
+| A103 | Injected mic audio | ✅ Solved | **Attack:** Inject fake microphone audio into the pipeline. **Answer:** Authenticated audio — an identity stamp on every packet. |
+| A104 | Audio substitution | ✅ Solved | **Attack:** Swap one user's audio for another's. **Answer:** Authenticated audio origin, so a swap is detected. |
+
+## Privacy (24)
+
+| ID | Vector | Status | The attack → our answer |
+|---|---|---|---|
+| A105 | Gaze eavesdropping | ⚪ N/A | **Attack:** Read the user's gaze or eye-tracking telemetry. **Answer:** Gaze never enters the backend protocol; sensor-read APIs are banned under hardening. |
+| A106 | Motion profiling | ⚪ N/A | **Attack:** Profile the user from their body-motion patterns. **Answer:** Motion data isn't in the backend; sensor-read ban under hardening. |
+| A107 | Keystroke inference | ⚪ N/A | **Attack:** Infer typed keys. **Answer:** There's no keyboard — being voice-first removes this vector entirely. |
+| A108 | Gesture inference | ⚪ N/A | **Attack:** Infer information from hand gestures. **Answer:** Gesture data isn't in the backend; sensor-read ban under hardening. |
+| A109 | Room-map exfiltration | ⚪ N/A | **Attack:** Steal the 3-D map of your room. **Answer:** The room mesh never enters the protocol, and networking is already banned. |
+| A110 | Mesh re-identification | ⚪ N/A | **Attack:** Re-identify a person from their room's 3-D mesh. **Answer:** No mesh data is present, so there's nothing to leak. |
+| A111 | Bystander privacy | ⚪ N/A | **Attack:** Capture the privacy of people nearby. **Answer:** Owned by the study's consent protocol, not by the code. |
+| A112 | Adversarial stimuli | ⚪ N/A | **Attack:** Use adversarial visuals to manipulate perception. **Answer:** Covered by the perceptual-safety plan (the Immersive family above). |
+| A113 | Facial-expression eavesdropping | ⚪ N/A | **Attack:** Read the user's facial expressions. **Answer:** Kept out of the protocol; sensor-read ban under hardening. |
+| A114 | Voiceprint inference | 📐 Designed | **Attack:** A cloud provider infers your identity from your voice. **Answer:** Planned: local-first speech-to-text, consent and disclosure, and transcribe-then-delete. |
+| A115 | Transcript leakage | 🟡 Partial | **Attack:** Read your saved transcripts, e.g. via an unauthenticated admin page. **Answer:** Done: refuse to expose the panel off-loopback without a token, plus redaction and TTL. Remaining: authenticate the read-only pages. |
+| A116 | Prompt leakage | 📐 Designed | **Attack:** Your prompts leak to the cloud LLM provider. **Answer:** Planned: disclosure and consent, and prefer local models. |
+| A117 | Generated-code leakage | 🟡 Partial | **Attack:** Your generated code is exposed via an unauthenticated page. **Answer:** Done: bind refusal, opt-in retention, and TTL. Remaining: authenticate the read routes. |
+| A118 | Profile leakage | ✅ Solved | **Attack:** Your saved taste profile is read from disk or an open page. **Answer:** Encrypted at rest, owner-only file permissions, TTL, delete/export, and owner binding. |
+| A119 | Preference inference | 📐 Designed | **Attack:** The feature itself infers your private preferences. **Answer:** Planned: opt-in with notice, minimise to keyword counts, TTL, and deletion. |
+| A120 | Re-identification | 📐 Designed | **Attack:** Re-identify you from quasi-identifiers in stored data. **Answer:** Planned: redact transcripts, keyword-only history, pseudonymous ids, and TTL. |
+| A121 | Admin-log exposure | ✅ Solved | **Attack:** Read admin logs via an open panel, or time the token to guess it. **Answer:** Constant-time token compare, refuse off-loopback bind without a token, and redaction. |
+| A122 | Cross-session linkage | 📐 Designed | **Attack:** Link your activity across separate sessions. **Answer:** Planned: per-session pseudonyms by default, opt-in persistence, rotation, and TTL. |
+| A123 | Provider retention | 📐 Designed | **Attack:** The cloud provider keeps your data longer than you'd want. **Answer:** Planned: disclosure and consent, prefer self-hosted, and a per-provider privacy assessment. |
+| A124 | Debug-log leakage | 📐 Designed | **Attack:** Debug logs echo fragments of your code or transcripts. **Answer:** Planned: a redaction policy, and a test that logs never contain transcripts. |
+| A125 | Crash-report leakage | ⚪ N/A | **Attack:** A crash reporter ships your data to a third party. **Answer:** No third-party crash telemetry is added, so there's nothing to leak. |
+| A126 | Plaintext data files | ✅ Solved | **Attack:** Read the app's saved data files directly off disk. **Answer:** Encryption at rest, owner-only permissions, and TTL/deletion. |
+| A127 | Embeddings second-egress | 📐 Designed | **Attack:** Even "local" users may leak through the embeddings API. **Answer:** Planned: keep local embeddings by default, gate any egress behind the same consent, and cache. |
+| A128 | Fakeable profile keys | 📐 Designed | **Attack:** Profiles keyed by an id that can be faked. **Answer:** Planned: derive the profile key from the authenticated identity once peer-auth is enforced. |
+
 _Prepared as a viva-defence aid. Grounded in `RESEARCH_AND_ML_PLAN.md`. Every accuracy
 figure traces to a cited primary source; figures flagged "unverified" in the plan are
 deliberately excluded here._
