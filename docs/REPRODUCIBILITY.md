@@ -34,7 +34,7 @@ bash -n scripts/*.sh
 
 Results (this snapshot):
 
-- **`cargo test --workspace`: 226 passed, 0 failed, 0 ignored** — the offline test path
+- **`cargo test --workspace`: 242 passed, 0 failed, 0 ignored** — the offline test path
   needs **only Rust** and uses mock STT/LLM/Roslyn clients (no key, no network). (The
   0.1.0 baseline was 164; the hardened-profile auth stack, the adversarial campaign, and
   the two wire-parser fuzz corpora add the rest — all still fully offline.)
@@ -56,7 +56,7 @@ external/university host, and no generated C# on the host** are involved.
 ## Offline smoke test
 
 ```bash
-cargo test --workspace --locked              # 226 tests, offline
+cargo test --workspace --locked              # 242 tests, offline
 cargo run -p dreamcodevr-server &            # backend with mock STT/LLM (127.0.0.1:9098)
 cargo run -p fake-quest-client               # built-in demo scenario -> validated decision
 ```

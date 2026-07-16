@@ -64,7 +64,7 @@ bash scripts/doctor.sh
 
 # 1. build + test the Rust workspace (reproducible from Cargo.lock)
 cargo build --workspace --locked
-cargo test --workspace --locked     # 226 tests, fully offline
+cargo test --workspace --locked     # 242 tests, fully offline
 
 # 2. run the backend (offline mocks by default)
 cargo run -p dreamcodevr-server

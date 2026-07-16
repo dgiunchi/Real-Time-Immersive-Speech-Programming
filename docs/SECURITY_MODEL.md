@@ -95,6 +95,22 @@ See [`HARDENING.md`](HARDENING.md) for the design and [`DEPLOYMENT.md`](DEPLOYME
 to run it. **TLS/WSS is still a separate transport step**; message auth already
 gives end-to-end integrity through an untrusted relay.
 
+## Liveness & input bounds (live path)
+
+The per-utterance pipeline holds a shared router lock across its `.await`s, so one
+hung external call would stall **every** peer. Every external await is therefore
+bounded: STT and LLM generation already had per-step timeouts; the Layer-1
+`screen_intent` classifier and both RAG embedding calls are now wrapped too (they
+**fail open** — a timeout maps to the same "proceed / no context" the existing error
+path takes, so behaviour is unchanged, just no longer unbounded), and the OpenAI
+LLM/embedding clients carry connect + overall transport timeouts. An optional
+`DCVR_UTTERANCE_TIMEOUT_MS` adds a **fail-closed** overall per-utterance deadline
+(default off = byte-identical). Under the **hardened** profile, attacker-controlled
+NID-98 audio is additionally validated against `AudioBounds` (size / 16 kHz-mono-16-bit
+format / ≤30 s duration) before it reaches a paid/slow STT backend — composed so a
+short typed demo command still bypasses the bound. The Mode-D research sandbox adds
+`nofile`/`nproc` ulimits beside its existing memory/CPU/PID caps.
+
 ## Privacy
 
 Telemetry is JSONL carrying ids/timestamps/decisions/reason-codes/counts —

@@ -6,9 +6,9 @@ overclaim.
 
 ## What is verified
 
-- Rust workspace **builds, lints (`clippy -D warnings`), and tests (226 passing,
+- Rust workspace **builds, lints (`clippy -D warnings`), and tests (242 passing,
   0 ignored) fully offline** with mock STT/LLM/Roslyn; `cargo deny check` is
-  clean; the .NET analyzer builds. (226 includes the hardened-profile auth stack,
+  clean; the .NET analyzer builds. (242 includes the hardened-profile auth stack,
   a cross-crate adversarial campaign, and deterministic fuzz corpora for both wire
   parsers — see below.)
 - The safe **Mode-C** action-plan path and the validator-gated **Mode-A** path

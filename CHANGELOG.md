@@ -27,13 +27,39 @@ is pending hardware (2026-07-23)**.
 - **Admin hardening (all profiles):** constant-time token compare; refuse to bind
   off-loopback without a token.
 - **`keygen`** utility + `docs/HARDENING.md` / `docs/DEPLOYMENT.md`.
+- **Live-path liveness (all profiles):** every external `.await` under the shared
+  router lock is now bounded — the Layer-1 `screen_intent` classifier and both RAG
+  embed calls are wrapped in timeouts (fail-open, unchanged semantics), and the
+  OpenAI LLM/embedding clients get connect + overall reqwest timeouts. Closes a
+  full-server stall where one hung TCP connection wedged every peer. Optional
+  `DCVR_UTTERANCE_TIMEOUT_MS` adds a fail-closed per-utterance umbrella (default
+  off = byte-identical).
+- **STT input trust (hardened):** `AudioBounds` validates size/format/duration of
+  attacker-controlled NID-98 audio before it reaches the backend, via a
+  `BoundedSttClient` composed `Smart(Bounded(real))` (typed demo commands still
+  short-circuit; legacy unchanged).
+- **C# perceptual denylist (DeployHardened):** added the unambiguous XR
+  device-enumeration APIs (`InputDevices`/`XRInputSubsystem`); an adversarial pass
+  kept the dual-use Quest-3 MR / body-interaction APIs (passthrough, spatial
+  anchors, hand/eye/face) OUT of the lexer (runtime-enforced) to avoid over-blocking
+  creative MR builds. A router test pins the `perceptual_hardening` wiring.
+- **Mode-D sandbox:** added `nofile`/`nproc` ulimits to the container hardening.
+- **Unity Phase 6/7 (authored, on-device pending):** `VoiceCompileConfirmationGate`
+  (confirm before a Mode-A compile), `PerceptualDisclosureHud` (the missing consumer
+  for the disclosure channel), and `DisclosureBackendForwarder` (out-of-process
+  safety log, NID 97) — all default-off, IL2CPP-safe, with 11 EditMode tests over the
+  pure logic. No runtime claim (needs a Quest).
 
 ### Verification
 - Cross-crate **adversarial campaign**: 0% bypass, 0% false-positive across
   forge/tamper/expire/wrong-domain/downgrade/truncate/garbage/replay.
 - Deterministic **fuzz corpora** for both wire parsers (`AuthEnvelope::from_bytes`
   and `decode_frame`): never-panic, canonical, mutation-closed over ~95k inputs.
-- Full workspace **226 tests passing**, `clippy -D warnings` + `fmt` + `deny` clean.
+- A **12-skeptic adversarial-verify pass** over the live-path/STT/denylist controls:
+  legacy-byte-identical, fail-open/closed mapping, and cancellation-safety survived;
+  it caught (and this branch fixed) a denylist over-block and a test that did not
+  exercise the augment-embed path.
+- Full workspace **242 tests passing**, `clippy -D warnings` + `fmt` + `deny` clean.
 
 ## [0.1.0] — initial public-preparation snapshot
 

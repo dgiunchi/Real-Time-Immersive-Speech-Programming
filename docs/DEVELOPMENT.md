@@ -15,7 +15,7 @@ A pinned toolchain is recommended; add a `rust-toolchain.toml` with
 ```bash
 cargo check --workspace
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace          # 226 tests, fully offline
+cargo test --workspace          # 242 tests, fully offline
 cargo fmt --all                 # or: cargo fmt --all -- --check
 cargo build --workspace --release
 cargo deny check                # supply-chain policy
@@ -37,7 +37,7 @@ bash -n scripts/*.sh                                          # script syntax
 
 All of the following pass on the reference machine (Rust 1.96, .NET 10):
 `cargo fmt --check`, `cargo check`, `cargo clippy -D warnings` (0 warnings),
-`cargo test` (**226 passed, 0 failed, 0 ignored**), `cargo deny check`
+`cargo test` (**242 passed, 0 failed, 0 ignored**), `cargo deny check`
 (advisories/bans/licenses/sources ok), and the .NET analyzer build (0 warnings,
 0 errors). `cargo build --release` and `cargo audit` were not run in the
 preparation environment (the latter needs network for its advisory DB;
