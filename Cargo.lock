@@ -241,6 +241,7 @@ dependencies = [
  "dcvr-csharp-policy",
  "dcvr-llm-client",
  "dcvr-protocol",
+ "dcvr-unity-transport",
  "dreamcodevr-server",
  "tokio",
 ]

@@ -10,6 +10,7 @@ description = "Cross-crate integration tests for DreamCodeVR+."
 dcvr-protocol = { workspace = true }
 dcvr-code-policy = { workspace = true }
 dcvr-config = { workspace = true }
+dcvr-unity-transport = { workspace = true }
 dreamcodevr-server = { workspace = true }
 dcvr-llm-client = { workspace = true }
 dcvr-csharp-policy = { workspace = true }
