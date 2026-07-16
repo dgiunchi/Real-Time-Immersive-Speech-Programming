@@ -433,6 +433,33 @@ mod tests {
         );
     }
 
+    // Cross-language golden vector: the Unity `ClientEnvelopeSigner` MUST produce these
+    // exact bytes for the same inputs (unity/Editor/ClientEnvelopeSignerTests.cs), so a
+    // client-signed frame verifies against `verify_incoming`. Locks the wire format on
+    // the Rust side; an unmirrored change here would break hardened client auth.
+    #[test]
+    fn golden_client_envelope_is_stable() {
+        let secret = b"golden-secret";
+        let body = b"hi";
+        let mut env = AuthEnvelope {
+            version: ENVELOPE_VERSION,
+            profile: 2,
+            network_id_b: 98,
+            sequence_number: 1,
+            expiry_unix: 2_000_000_000,
+            session_id: "s".into(),
+            authenticated_peer_id: "p".into(),
+            request_id: "r".into(),
+            target_peer_id: String::new(),
+            payload_hash: payload_hash(body),
+            auth_tag: Vec::new(),
+        };
+        EnvelopeMac::new(secret).sign(&mut env).unwrap();
+        let f = frame(&env.to_bytes().unwrap(), body);
+        let hex: String = f.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(hex, "64000000010002620000000100000000000000009435770000000001007301007001007200008f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa42000296c78d32e2f229a0f1cd5a0cfd38ee0717342074be950fb93ccc7257d424c476869");
+    }
+
     #[test]
     fn hex_decode_roundtrip_and_rejects_bad() {
         assert_eq!(decode_hex32(SEED_HEX), Some([0xaau8; 32]));
