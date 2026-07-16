@@ -4,6 +4,7 @@
 //! default for tests and keyless local demos; [`HttpSttClient`] posts a WAV to a
 //! faster-whisper HTTP endpoint over rustls TLS. No endpoint is hardcoded.
 
+mod bounds;
 mod error;
 mod http;
 mod mock;
@@ -11,6 +12,7 @@ mod openai;
 mod smart;
 mod types;
 
+pub use bounds::{AudioBounds, BoundedSttClient};
 pub use error::SttError;
 pub use http::HttpSttClient;
 pub use mock::MockSttClient;

@@ -16,7 +16,10 @@ use dcvr_personalization::{
 };
 use dcvr_protocol::{decode_frame, ProtocolError};
 use dcvr_roslyn_client::{HttpRoslynAnalyzer, MockRoslynAnalyzer, RoslynAnalyzer};
-use dcvr_stt_client::{HttpSttClient, MockSttClient, OpenAiSttClient, SmartSttClient, SttClient};
+use dcvr_stt_client::{
+    AudioBounds, BoundedSttClient, HttpSttClient, MockSttClient, OpenAiSttClient, SmartSttClient,
+    SttClient,
+};
 use secrecy::{ExposeSecret, SecretString};
 
 use crate::app::{App, HandleResult, Services};
@@ -36,6 +39,18 @@ pub fn services_from_settings(settings: Settings) -> Services {
         .openai_api_key
         .as_ref()
         .map(|k| SecretString::from(k.expose_secret().to_string()));
+    // Hardened profile: validate attacker-controlled NID-98 audio against AudioBounds
+    // BEFORE it reaches a paid/slow backend. Composition MUST be Smart(Bounded(real))
+    // so a short typed demo command still short-circuits in SmartSttClient before any
+    // audio bound applies. Legacy takes the else-branch → byte-identical to today.
+    let stt_hardened = settings.security_profile.is_hardened();
+    let maybe_bound = |inner: Arc<dyn SttClient>| -> Arc<dyn SttClient> {
+        if stt_hardened {
+            Arc::new(BoundedSttClient::new(inner, AudioBounds::default()))
+        } else {
+            inner
+        }
+    };
     let stt: Arc<dyn SttClient> = if settings.stt_openai {
         // OpenAI Whisper STT. Reuse the OpenAI key (re-wrapped so the LLM can also
         // take ownership of the original below). Wrapped in SmartSttClient so a TYPED
@@ -44,15 +59,16 @@ pub fn services_from_settings(settings: Settings) -> Services {
         match &settings.openai_api_key {
             Some(key) => {
                 let stt_key = SecretString::from(key.expose_secret().to_string());
-                Arc::new(SmartSttClient::new(Arc::new(OpenAiSttClient::new(
-                    stt_key,
-                    settings.openai_stt_model.clone(),
+                Arc::new(SmartSttClient::new(maybe_bound(Arc::new(
+                    OpenAiSttClient::new(stt_key, settings.openai_stt_model.clone()),
                 ))))
             }
             None => Arc::new(MockSttClient),
         }
     } else if let Some(url) = settings.stt_http_url.clone() {
-        Arc::new(SmartSttClient::new(Arc::new(HttpSttClient::new(url))))
+        Arc::new(SmartSttClient::new(maybe_bound(Arc::new(
+            HttpSttClient::new(url),
+        ))))
     } else {
         Arc::new(MockSttClient)
     };
