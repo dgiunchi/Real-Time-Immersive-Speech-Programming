@@ -123,9 +123,14 @@ class ReconstructionAnomalyDetector:
     threshold(q)         -> a threshold at the q-quantile of the fitted benign errors.
     """
 
-    def __init__(self, n_components: int = 6, eps: float = 1e-9):
+    def __init__(self, n_components: int = 6, std_floor: float = 1e-2):
         self.n_components = int(n_components)
-        self.eps = float(eps)
+        # Floor the per-feature std so a dimension that is CONSTANT in benign data (e.g.
+        # an ATTACK_OP that never fires in a well-behaved session) does not blow the
+        # standardised attack signal up to ~1e16. With a 1e-2 floor a single unexpected
+        # attack op contributes an interpretable ~O(100) to the reconstruction error,
+        # cleanly separated from the benign ~O(10) baseline.
+        self.std_floor = float(std_floor)
         self.mean_ = None
         self.std_ = None
         self.components_ = None          # (k, d)
@@ -136,7 +141,7 @@ class ReconstructionAnomalyDetector:
         if X.ndim != 2 or X.shape[0] < 2:
             raise ValueError("fit expects a 2-D benign matrix with >=2 rows")
         self.mean_ = X.mean(axis=0)
-        self.std_ = X.std(axis=0) + self.eps
+        self.std_ = np.maximum(X.std(axis=0), self.std_floor)
         Z = (X - self.mean_) / self.std_
         # economy SVD: rows of Vt are the principal directions (optimal AE decoder rows).
         _, _, Vt = np.linalg.svd(Z, full_matrices=False)
