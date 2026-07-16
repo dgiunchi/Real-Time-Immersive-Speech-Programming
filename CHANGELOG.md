@@ -44,11 +44,24 @@ is pending hardware (2026-07-23)**.
   anchors, hand/eye/face) OUT of the lexer (runtime-enforced) to avoid over-blocking
   creative MR builds. A router test pins the `perceptual_hardening` wiring.
 - **Mode-D sandbox:** added `nofile`/`nproc` ulimits to the container hardening.
-- **Unity Phase 6/7 (authored, on-device pending):** `VoiceCompileConfirmationGate`
-  (confirm before a Mode-A compile), `PerceptualDisclosureHud` (the missing consumer
-  for the disclosure channel), and `DisclosureBackendForwarder` (out-of-process
-  safety log, NID 97) — all default-off, IL2CPP-safe, with 11 EditMode tests over the
-  pure logic. No runtime claim (needs a Quest).
+- **Unity Phase 6/7 (default-off; EditMode-verified, on-device pending):**
+  `VoiceCompileConfirmationGate` (confirm before a Mode-A compile), `PerceptualDisclosureHud`
+  (the missing consumer for the disclosure channel), and `DisclosureBackendForwarder`
+  (out-of-process safety log, NID 97) — all **wired into the demo default-off** and
+  **compile + EditMode verified headless in Unity 6000.5.1f1 (17/17)**. On-device runtime
+  still pending (Quest).
+- **Incoming envelope verification wired into the live recv loop** (`run_ubiq_peer` via
+  `ServerAuth::verify_incoming` + a per-peer `SessionSequence` replay bucket); legacy
+  byte-identical, hardened enforces once the client emits envelopes.
+- **Phase-5 liveness watchdog** (`bin/watchdog`): deadline-bounded end-to-end probe +
+  exponential-backoff restart; decision core unit-tested.
+- **Per-peer in-flight backpressure** (`DCVR_MAX_INFLIGHT_PER_PEER`, generous default) —
+  bounds a task-flood DoS (A017/A023) without changing single-user behaviour.
+- **Backend-signature gate on the client** (`BackendVerifier` brought into the repo +
+  default-off NID-94 verify hook) + **Ed25519 verifier adapters** (fail-closed
+  `NullEd25519Verifier` + guarded BouncyCastle adapter); 6 EditMode tests.
+- **On-device guides:** `docs/ROSLYNCSHARP_HARDENING.md` (compile-time denylist config)
+  and `docs/TLS_DEPLOYMENT.md` (transport confidentiality via a pinned-cert proxy).
 
 ### Verification
 - Cross-crate **adversarial campaign**: 0% bypass, 0% false-positive across
@@ -59,7 +72,9 @@ is pending hardware (2026-07-23)**.
   legacy-byte-identical, fail-open/closed mapping, and cancellation-safety survived;
   it caught (and this branch fixed) a denylist over-block and a test that did not
   exercise the augment-embed path.
-- Full workspace **242 tests passing**, `clippy -D warnings` + `fmt` + `deny` clean.
+- Full workspace **254 tests passing**, `clippy -D warnings` + `fmt` + `deny` clean.
+- **Unity headless EditMode: 17/17 passed** on Unity 6000.5.1f1, and the demo +
+  Phase 6/7 + BackendVerifier compile clean in batchmode (license verified active).
 
 ## [0.1.0] — initial public-preparation snapshot
 

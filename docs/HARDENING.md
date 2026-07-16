@@ -38,6 +38,10 @@ the audited `ring` crate.
 
 The server seam (`apps/dreamcodevr-server/auth_gate.rs`) signs outgoing NID-94 and
 verifies incoming envelopes, gated by the profile; `legacy` is an inert passthrough.
+Incoming verification is now **wired into the live receive loop** (`run_ubiq_peer`),
+with a per-peer `SessionSequence` bucket for replay — so in `hardened` it enforces
+identity/freshness/domain/hash/replay the moment the Unity client emits envelopes; in
+`legacy` it is exactly `split_peer_payload` (byte-identical).
 
 ### Enabling hardened mode
 
@@ -58,7 +62,7 @@ envelope      = signing_input || [u16 tag_len][tag]
 ### Status & residual
 
 - **Implemented + tested (Rust):** profiles, envelope codec, HMAC + Ed25519,
-  replay guard, server signing seam. Part of the full **242-test** suite, clippy
+  replay guard, server signing seam. Part of the full **254-test** suite, clippy
   `-D warnings` clean.
 - **Source complete (Unity, on-device pending):** `BackendVerifier.cs`
   (byte-matched to the Rust signer; Ed25519 primitive is a pluggable seam).
@@ -83,14 +87,17 @@ envelope      = signing_input || [u16 tag_len][tag]
   runtime enforcement). Unity `RoslynCSharpSettings.asset` parity is on-device pending.
 - **Phase 4 Per-peer concurrency — SAFE SUBSET DONE.** Every external `.await` held
   under the shared router lock is bounded (`screen_intent` + RAG embeds fail-open;
-  OpenAI clients get transport timeouts) and an opt-in fail-closed
-  `DCVR_UTTERANCE_TIMEOUT_MS` umbrella exists — closing the one-hung-connection-stalls-
-  every-peer DoS. The full lock refactor (drop the lock across the network awaits) is
-  **still open**: it rewrites live cancellation semantics and needs on-device
-  validation, so it is held pending a Quest + risk sign-off; the timeouts already bound
-  the stall regardless.
-- **Phase 5 Runtime provenance/cleanup — Rust part DONE** (Mode-D `nofile`/`nproc`
-  ulimits). OS watchdog + Unity registry are on-device pending.
+  OpenAI clients get transport timeouts) + an opt-in fail-closed
+  `DCVR_UTTERANCE_TIMEOUT_MS` umbrella, closing the one-hung-connection-stalls-every-peer
+  DoS. Plus a **per-peer in-flight cap** (`DCVR_MAX_INFLIGHT_PER_PEER`, generous default,
+  backpressure vs task-flood A017/A023). The full lock refactor (drop the lock across the
+  network awaits — head-of-line A018) is **still open**: it rewrites live cancellation
+  semantics and needs on-device validation, so it is held pending a Quest + risk sign-off;
+  the timeouts already bound the stall regardless.
+- **Phase 5 Runtime provenance/cleanup — Rust part DONE.** Mode-D `nofile`/`nproc`
+  ulimits + an **external liveness watchdog** (`bin/watchdog`: deadline-bounded
+  end-to-end probe + backoff restart; decision core unit-tested). Unity registry +
+  cgroups are on-device pending.
 - **Phase 6 Aggregate perceptual safety — Unity AUTHORED, on-device pending**
   (`PerceptualDisclosureHud` + `DisclosureFeed`, `DisclosureBackendForwarder` on NID 97;
   default-off, EditMode-tested, no runtime claim).
