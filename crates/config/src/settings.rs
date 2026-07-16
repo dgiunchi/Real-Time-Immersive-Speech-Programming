@@ -333,6 +333,14 @@ impl Settings {
             if self.backend_signing_seed_hex.is_none() {
                 return Err(ConfigError::HardenedMissingControl("backend_signing_seed"));
             }
+            // Fail-closed C# validation (Phase 3): Mode A in hardened mode must not
+            // silently fall back to the approve-all mock analyzer — require a real
+            // semantic analyzer endpoint.
+            if self.mode_a && self.roslyn_url.is_none() {
+                return Err(ConfigError::HardenedMissingControl(
+                    "roslyn_url (hardened Mode A requires a real semantic analyzer)",
+                ));
+            }
         }
         Ok(self)
     }
@@ -484,5 +492,35 @@ mod tests {
             .expect("legacy always valid");
         assert!(!s.require_peer_auth);
         assert_eq!(s.security_profile, SecurityProfile::Legacy);
+    }
+
+    #[test]
+    fn hardened_mode_a_without_real_analyzer_fails_closed() {
+        // Phase 3: hardened Mode A must not run on the approve-all mock analyzer.
+        let s = Settings {
+            security_profile: SecurityProfile::Hardened,
+            peer_auth_secret: Some("s".to_string()),
+            backend_signing_seed_hex: Some("aa".repeat(32)),
+            mode_a: true,
+            roslyn_url: None,
+            ..Default::default()
+        };
+        assert!(matches!(
+            s.enforce_profile_invariants(),
+            Err(ConfigError::HardenedMissingControl(m)) if m.contains("roslyn")
+        ));
+    }
+
+    #[test]
+    fn hardened_mode_a_with_real_analyzer_ok() {
+        let s = Settings {
+            security_profile: SecurityProfile::Hardened,
+            peer_auth_secret: Some("s".to_string()),
+            backend_signing_seed_hex: Some("aa".repeat(32)),
+            mode_a: true,
+            roslyn_url: Some("http://127.0.0.1:5099".to_string()),
+            ..Default::default()
+        };
+        assert!(s.enforce_profile_invariants().is_ok());
     }
 }

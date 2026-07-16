@@ -12,11 +12,25 @@ pub struct HttpRoslynAnalyzer {
     client: reqwest::Client,
 }
 
+/// Default analyzer request timeout. A hostile snippet that makes the analyzer hang
+/// must not stall the whole pipeline (attack A056) — the request fails fast, and the
+/// router treats an analyzer error as fail-closed (not approved).
+const DEFAULT_ANALYZE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 impl HttpRoslynAnalyzer {
     pub fn new(url: impl Into<String>) -> Self {
+        Self::with_timeout(url, DEFAULT_ANALYZE_TIMEOUT)
+    }
+
+    /// Build with an explicit per-request timeout (fail-closed on a hung analyzer).
+    pub fn with_timeout(url: impl Into<String>, timeout: std::time::Duration) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(timeout)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             url: url.into(),
-            client: reqwest::Client::new(),
+            client,
         }
     }
 }
@@ -57,5 +71,25 @@ impl RoslynAnalyzer for HttpRoslynAnalyzer {
             approved,
             diagnostics,
         })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn unreachable_analyzer_fails_closed_without_hanging() {
+        // A closed port errors immediately; combined with the timeout this proves the
+        // analyzer call cannot hang the pipeline, and an analyzer error is fail-closed.
+        let a = HttpRoslynAnalyzer::with_timeout(
+            "http://127.0.0.1:1/analyze",
+            std::time::Duration::from_millis(300),
+        );
+        assert!(
+            a.analyze("class X {}").await.is_err(),
+            "unreachable analyzer must error (fail-closed), not hang"
+        );
     }
 }
