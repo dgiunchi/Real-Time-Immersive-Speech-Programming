@@ -94,6 +94,10 @@ pub fn services_from_settings(settings: Settings) -> Services {
         min_plan_interval_ms: settings.min_plan_interval_ms,
         comfort_rotate_max_deg_s: settings.comfort_rotate_max_deg_s,
         perceptual_hardening: settings.perceptual_hardening,
+        // Age-adaptive coupling: a detected minor (or unknown = fail-safe) tightens the
+        // code plane when age gating is on. Only the coarse is_minor bit crosses over.
+        age_gating_enabled: settings.age_gating,
+        age_is_minor: settings.age_band.is_minor(),
         ..RuntimeConfig::default()
     };
     let bus = ControlBus::new(cfg);

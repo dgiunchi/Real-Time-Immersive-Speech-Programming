@@ -155,7 +155,13 @@ impl Router {
         let hardened = self
             .bus
             .as_ref()
-            .map(|b| b.config().perceptual_hardening)
+            .map(|b| {
+                let c = b.config();
+                // The age-adaptive coupling: the perceptual-hardening switch OR a
+                // detected minor (when age gating is on) selects the hardened code
+                // denylist. Age gating off => age has no effect (byte-identical).
+                c.perceptual_hardening || (c.age_gating_enabled && c.age_is_minor)
+            })
             .unwrap_or(false);
         if hardened {
             HardeningProfile::DeployHardened

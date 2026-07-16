@@ -135,6 +135,13 @@ pub struct Settings {
     /// freedom (system-access bans only). true = ALSO ban the perceptual/embodied-
     /// attack C# API surface. Set via `DCVR_PERCEPTUAL_HARDENING=true`. Opt-in.
     pub perceptual_hardening: bool,
+    /// Age-adaptive safety (opt-in). `DCVR_AGE_GATING=true` makes a detected MINOR
+    /// automatically tighten the code-safety plane. Default false => byte-identical.
+    pub age_gating: bool,
+    /// The user's age band (from the on-device ML gate / platform flag). `DCVR_AGE_BAND`
+    /// = child|teen|adult; anything else = Unknown (fail-safe = minor). Only consulted
+    /// when `age_gating` is on.
+    pub age_band: crate::age::AgeBand,
     /// Require a valid per-peer admission token before processing a peer's requests
     /// (defence vs Casey 2021 Man-in-the-Room). false (DEFAULT) = open (local /
     /// single-user). Set via `DCVR_REQUIRE_PEER_AUTH=true`.
@@ -184,6 +191,8 @@ impl Default for Settings {
             min_plan_interval_ms: 334,
             comfort_rotate_max_deg_s: 120.0,
             perceptual_hardening: false,
+            age_gating: false,
+            age_band: crate::age::AgeBand::Unknown,
             require_peer_auth: false,
             peer_auth_secret: None,
             backend_signing_seed_hex: None,
@@ -330,6 +339,12 @@ impl Settings {
         }
         if let Ok(v) = env::var("DCVR_PERCEPTUAL_HARDENING") {
             s.perceptual_hardening = parse_bool_flag(&v);
+        }
+        if let Ok(v) = env::var("DCVR_AGE_GATING") {
+            s.age_gating = parse_bool_flag(&v);
+        }
+        if let Ok(v) = env::var("DCVR_AGE_BAND") {
+            s.age_band = crate::age::AgeBand::from_token(&v);
         }
         if let Ok(v) = env::var("DCVR_REQUIRE_PEER_AUTH") {
             s.require_peer_auth = parse_bool_flag(&v);

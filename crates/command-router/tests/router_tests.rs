@@ -463,3 +463,52 @@ async fn session_spawn_budget_enforced_cumulatively() {
         .iter()
         .any(|e| e.contains("session_spawn_budget")));
 }
+
+// Age-adaptive coupling: a detected MINOR alone (age gating on, perceptual_hardening
+// OFF) must tighten the CODE plane — the OVRHaptics candidate is rejected — while age
+// gating off is byte-identical legacy freedom. Reuses HapticsCsharpLlm above.
+#[tokio::test]
+async fn age_minor_forces_hardened_csharp_gate() {
+    use dcvr_control::{ControlBus, RuntimeConfig};
+    use std::time::Duration;
+
+    let mut minor = Router::new().with_bus(ControlBus::new(RuntimeConfig {
+        enable_mode_a: true,
+        age_gating_enabled: true,
+        age_is_minor: true,
+        perceptual_hardening: false, // NOT set explicitly — the age band alone tightens it
+        ..RuntimeConfig::default()
+    }));
+    let out = minor
+        .process_text_dual(
+            "p",
+            "buzz the controller",
+            &HapticsCsharpLlm,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
+            Duration::from_secs(5),
+        )
+        .await;
+    assert!(
+        !out.csharp.expect("csharp").approved,
+        "a detected minor must get the hardened denylist (OVRHaptics rejected) — the coupling"
+    );
+
+    let mut adult = Router::new().with_bus(ControlBus::new(RuntimeConfig {
+        enable_mode_a: true,
+        age_gating_enabled: false, // gating off => age has no effect => legacy freedom
+        ..RuntimeConfig::default()
+    }));
+    let out2 = adult
+        .process_text_dual(
+            "p",
+            "buzz the controller",
+            &HapticsCsharpLlm,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
+            Duration::from_secs(5),
+        )
+        .await;
+    assert!(
+        out2.csharp.expect("csharp").approved,
+        "age gating off must be byte-identical legacy freedom"
+    );
+}

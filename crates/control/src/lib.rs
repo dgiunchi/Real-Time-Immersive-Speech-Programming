@@ -50,6 +50,15 @@ pub struct RuntimeConfig {
     /// shippable embodied-safe build. Opt-in; never limits creation by default.
     #[serde(default)]
     pub perceptual_hardening: bool,
+    /// Age-adaptive safety (opt-in). When true, a detected MINOR (`age_is_minor`)
+    /// automatically forces the hardened code-safety profile — the novel coupling of
+    /// the age signal to the code plane. Default false => byte-identical legacy.
+    #[serde(default)]
+    pub age_gating_enabled: bool,
+    /// Whether the current user's detected age band is a minor (child/teen), or
+    /// unknown (fail-safe = minor). Only consulted when `age_gating_enabled`.
+    #[serde(default)]
+    pub age_is_minor: bool,
     /// LLM reasoning effort for GPT-5 / o-series (minimal | low | medium | high).
     /// The dominant quality<->latency lever; tunable live from the admin panel.
     #[serde(default = "default_reasoning_effort")]
@@ -97,6 +106,9 @@ impl Default for RuntimeConfig {
             comfort_rotate_max_deg_s: 120.0,
             // FREEDOM DEFAULT: perceptual hardening OFF — full creative C# freedom.
             perceptual_hardening: false,
+            // Age-adaptive safety OFF by default => byte-identical legacy.
+            age_gating_enabled: false,
+            age_is_minor: false,
             // Sensible defaults: medium reasoning (see default_reasoning_effort), default verbosity — all user-tunable.
             llm_reasoning_effort: default_reasoning_effort(),
             llm_verbosity: default_verbosity(),
