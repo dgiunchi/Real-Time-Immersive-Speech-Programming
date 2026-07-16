@@ -388,6 +388,25 @@ impl Settings {
                     "roslyn_url (hardened Mode A requires a real semantic analyzer)",
                 ));
             }
+            // Transport confidentiality for the provider hops: any CUSTOM external
+            // endpoint (self-hosted STT, an OpenAI-compatible base URL, the Roslyn
+            // analyzer) must be https:// (or loopback) so transcripts / prompts /
+            // generated code never leave the host over plaintext http. The OpenAI
+            // defaults are already https. Loopback http is allowed for local dev.
+            for (field, url) in [
+                ("stt_http_url", &self.stt_http_url),
+                ("openai_base_url", &self.openai_base_url),
+                ("roslyn_url", &self.roslyn_url),
+            ] {
+                if let Some(u) = url {
+                    if !is_secure_endpoint(u) {
+                        return Err(ConfigError::HardenedInsecureUrl {
+                            field,
+                            url: u.clone(),
+                        });
+                    }
+                }
+            }
         }
         Ok(self)
     }
@@ -401,6 +420,24 @@ impl Settings {
     pub fn llm_is_mock(&self) -> bool {
         self.openai_api_key.is_none()
     }
+}
+
+/// True if `url` is transport-secure for the hardened profile: `https://`, or a
+/// loopback `http://` endpoint (local dev — traffic never leaves the host).
+fn is_secure_endpoint(url: &str) -> bool {
+    let u = url.trim();
+    if u.starts_with("https://") {
+        return true;
+    }
+    if let Some(rest) = u.strip_prefix("http://") {
+        let rest = rest.trim();
+        if rest.starts_with("[::1]") {
+            return true; // IPv6 loopback http://[::1]:port
+        }
+        let host = rest.split(['/', ':']).next().unwrap_or("");
+        return matches!(host, "127.0.0.1" | "localhost");
+    }
+    false
 }
 
 #[cfg(test)]
@@ -467,6 +504,50 @@ mod tests {
     fn max_inflight_per_peer_defaults_generous() {
         // Generous default so a single push-to-talk speaker never trips backpressure.
         assert_eq!(Settings::default().max_inflight_per_peer, 8);
+    }
+
+    #[test]
+    fn is_secure_endpoint_accepts_https_and_loopback_only() {
+        assert!(is_secure_endpoint("https://api.openai.com/v1"));
+        assert!(is_secure_endpoint("http://127.0.0.1:5099/analyze"));
+        assert!(is_secure_endpoint("http://localhost:8080"));
+        assert!(is_secure_endpoint("http://[::1]:9000/x"));
+        // Plaintext to a non-loopback host leaks transcripts/prompts/code.
+        assert!(!is_secure_endpoint("http://transcribe.example.com/stt"));
+        assert!(!is_secure_endpoint("http://10.0.0.5:5099"));
+        assert!(!is_secure_endpoint("ftp://x"));
+    }
+
+    #[test]
+    fn hardened_rejects_plaintext_external_endpoint() {
+        // A self-hosted STT over plaintext http would send transcripts in the clear.
+        let s = Settings {
+            security_profile: SecurityProfile::Hardened,
+            peer_auth_secret: Some("s".to_string()),
+            backend_signing_seed_hex: Some("aa".repeat(32)),
+            stt_http_url: Some("http://transcribe.example.com/stt".to_string()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            s.enforce_profile_invariants(),
+            Err(ConfigError::HardenedInsecureUrl {
+                field: "stt_http_url",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn hardened_accepts_https_and_loopback_endpoints() {
+        let s = Settings {
+            security_profile: SecurityProfile::Hardened,
+            peer_auth_secret: Some("s".to_string()),
+            backend_signing_seed_hex: Some("aa".repeat(32)),
+            stt_http_url: Some("https://stt.internal/transcribe".to_string()),
+            roslyn_url: Some("http://127.0.0.1:5099/analyze".to_string()),
+            ..Default::default()
+        };
+        assert!(s.enforce_profile_invariants().is_ok());
     }
 
     #[test]

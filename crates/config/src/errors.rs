@@ -13,4 +13,10 @@ pub enum ConfigError {
          (fail-closed: refusing to run insecurely)"
     )]
     HardenedMissingControl(&'static str),
+    #[error(
+        "hardened security profile requires a secure (https:// or loopback) endpoint for \
+         '{field}', but '{url}' is plaintext http (fail-closed: transcripts/prompts/code \
+         must not leave the host unencrypted)"
+    )]
+    HardenedInsecureUrl { field: &'static str, url: String },
 }
