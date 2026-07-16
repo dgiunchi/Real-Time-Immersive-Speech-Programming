@@ -68,6 +68,9 @@ namespace DreamCodeVRPlus
         // deployment flips them on. See unity/Runtime/README-PHASE6-7-SECURITY.md.
         private VoiceCompileConfirmationGate _confirmGate;
         private DisclosureBackendForwarder _forwarder;
+        // Phase-1: verifies the backend's Ed25519 signature on NID-94 before code reaches
+        // the compile path. DISARMED by default (RequireSignature=false => byte-identical).
+        private Security.BackendVerifier _verifier;
 
         private TcpClient _tcp;
         private NetworkStream _stream;
@@ -134,6 +137,9 @@ namespace DreamCodeVRPlus
             // behaviour is unchanged until a deploy flips their flags in the Inspector.
             _confirmGate = gameObject.AddComponent<VoiceCompileConfirmationGate>();
             _forwarder = gameObject.AddComponent<DisclosureBackendForwarder>();
+            // Disarmed backend-signature verifier: arming needs the backend Ed25519 public
+            // key + an IEd25519Verifier plugin (BouncyCastle/NaCl) provisioned on-device.
+            _verifier = new Security.BackendVerifier(new byte[32], null) { RequireSignature = false };
 
             if (Microphone.devices != null && Microphone.devices.Length > 0)
             {
@@ -339,6 +345,12 @@ namespace DreamCodeVRPlus
             return (long)(Time.realtimeSinceStartup * 1000f);
         }
 
+        // Wall-clock unix seconds for envelope freshness checks (thread-safe; net thread).
+        private static long NowUnix()
+        {
+            return System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+
         // Reset the target cube to a clean state before each Mode-A command, so
         // generated behaviours and built structures don't pile up across commands.
         private void ResetTarget()
@@ -498,8 +510,27 @@ namespace DreamCodeVRPlus
                     buf.RemoveRange(0, consumed);
                     if (b == NID_OUTPUT_B)
                     {
-                        _inbound.Enqueue(Encoding.UTF8.GetString(payload));
-                        _status = "backend replied (NID 94) — applied to the cube ✓";
+                        // Phase-1: when armed, verify the backend signature BEFORE the code
+                        // reaches the compile path (A010/A011). Disarmed => legacy passthrough,
+                        // byte-identical. TryVerify is pure, so it is safe on the net thread.
+                        if (_verifier != null && _verifier.RequireSignature)
+                        {
+                            var vr = _verifier.TryVerify(payload, NowUnix());
+                            if (vr.Ok)
+                            {
+                                _inbound.Enqueue(vr.Body);
+                                _status = "backend replied (NID 94, signature verified) ✓";
+                            }
+                            else
+                            {
+                                Debug.Log("[verify] dropped unverifiable NID-94: " + vr.Reason);
+                            }
+                        }
+                        else
+                        {
+                            _inbound.Enqueue(Encoding.UTF8.GetString(payload));
+                            _status = "backend replied (NID 94) — applied to the cube ✓";
+                        }
                     }
                 }
 
