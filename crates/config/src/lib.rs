@@ -6,8 +6,10 @@
 //! `secrecy::SecretString` (redacted `Debug`, zeroized on drop) and is never
 //! written to disk or logs.
 
+pub mod age;
 mod errors;
 mod settings;
 
+pub use age::{AgeBand, AgeSafetyPosture};
 pub use errors::ConfigError;
 pub use settings::{RunMode, SecurityProfile, Settings};
