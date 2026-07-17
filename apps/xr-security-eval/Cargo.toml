@@ -3,6 +3,7 @@ name = "xr-security-eval"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 
 [lib]
 name = "xr_security_eval"
@@ -15,6 +16,10 @@ path = "src/main.rs"
 [[bin]]
 name = "xr-security-demo"
 path = "src/bin/demo.rs"
+
+[[bin]]
+name = "xr-latency"
+path = "src/bin/latency.rs"
 
 [dependencies]
 dcvr-csharp-policy = { workspace = true }
