@@ -111,6 +111,12 @@ pub struct Settings {
     /// default never trips real use; only a flood is bounded (excess dropped
     /// fail-closed). Env `DCVR_MAX_INFLIGHT_PER_PEER`.
     pub max_inflight_per_peer: usize,
+    /// Opt-in: give each peer its OWN router (its own `Mutex<Router>`), so a slow
+    /// STT/LLM call for one peer no longer blocks another peer's pipeline. Default
+    /// false = one shared router for all peers (byte-identical to the original
+    /// serialised design; a peer only ever touches its own session either way).
+    /// Env `DCVR_PER_PEER_ROUTING`.
+    pub per_peer_routing: bool,
     /// Dev/research only: allow the validated-C# (Mode B) path. Default false.
     pub csharp_research_dev: bool,
     /// Mode A (original DreamCodeVR): instead of the action-plan reply, send the
@@ -180,6 +186,7 @@ impl Default for Settings {
             llm_timeout_ms: 60_000,
             utterance_timeout_ms: 0, // disabled by default (legacy byte-identical)
             max_inflight_per_peer: 8, // generous: never trips a single human speaker
+            per_peer_routing: false, // one shared router (legacy byte-identical)
             csharp_research_dev: false,
             mode_a: false,
             ubiq_addr: None,
@@ -295,6 +302,9 @@ impl Settings {
                     s.max_inflight_per_peer = n;
                 }
             }
+        }
+        if let Ok(v) = env::var("DCVR_PER_PEER_ROUTING") {
+            s.per_peer_routing = parse_bool_flag(&v);
         }
         if let Ok(v) = env::var("DCVR_CSHARP_RESEARCH") {
             s.csharp_research_dev = parse_bool_flag(&v);
@@ -519,6 +529,12 @@ mod tests {
     fn max_inflight_per_peer_defaults_generous() {
         // Generous default so a single push-to-talk speaker never trips backpressure.
         assert_eq!(Settings::default().max_inflight_per_peer, 8);
+    }
+
+    #[test]
+    fn per_peer_routing_defaults_off() {
+        // Off = one shared router = legacy byte-identical serialised design.
+        assert!(!Settings::default().per_peer_routing);
     }
 
     #[test]

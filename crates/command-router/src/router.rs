@@ -173,6 +173,16 @@ impl Router {
     /// Push the live admin-panel LLM knobs (reasoning effort / verbosity / output
     /// budget) to the LLM client so they take effect on THIS request — no restart
     /// needed. With no bus, the client keeps its defaults (high effort).
+    ///
+    /// NOTE (per-peer routing): this writes a process-global tuning cell. Under
+    /// `DCVR_PER_PEER_ROUTING` the push→generate pair is no longer serialised across
+    /// peers, so peer B's push can land between peer A's push and A's in-flight
+    /// generate. This is benign: every peer derives the same values from the shared
+    /// `ControlBus` config, so all writes are value-identical; a divergence is possible
+    /// only transiently during a live admin config edit, where both the old and new
+    /// values are valid under the existing "takes effect next command" contract. If
+    /// per-request determinism is ever required, thread `LlmTuning` through the
+    /// `generate_*` arguments instead of this global cell.
     fn push_llm_tuning(&self) {
         if let Some(b) = &self.bus {
             let c = b.config();

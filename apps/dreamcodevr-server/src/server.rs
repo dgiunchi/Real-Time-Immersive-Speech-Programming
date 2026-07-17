@@ -120,6 +120,7 @@ pub fn services_from_settings(settings: Settings) -> Services {
         utterance_timeout: (settings.utterance_timeout_ms > 0)
             .then(|| Duration::from_millis(settings.utterance_timeout_ms)),
         max_inflight_per_peer: settings.max_inflight_per_peer,
+        per_peer_routing: settings.per_peer_routing,
         csharp_research: settings.csharp_research_dev,
         mode_a: settings.mode_a,
         roslyn,
@@ -209,6 +210,45 @@ const STT_CONTROL_PREFIX: &str = "__STT_CONTROL__:";
 /// ~8 MiB ≈ 4 min of 16 kHz mono PCM — generous, but bounded (fail-closed).
 const MAX_UTTERANCE_BYTES: usize = 8 * 1024 * 1024;
 
+/// How peers map to routers on the live Ubiq path. `Shared` (default, legacy
+/// byte-identical) puts EVERY peer behind one `Mutex<Router>`, so utterances across
+/// peers serialise on that single lock — unchanged from the original design.
+/// `PerPeer` (opt-in via `DCVR_PER_PEER_ROUTING`) gives each peer its OWN
+/// `Mutex<Router>`, so a slow STT/LLM call for one peer no longer blocks another
+/// peer's pipeline. Correctness is preserved because a peer only ever touches its
+/// own session, and the control bus + personalizer are internally synchronised and
+/// shared by reference in both modes — only the lock granularity differs.
+enum RouterRegistry {
+    Shared(std::sync::Arc<tokio::sync::Mutex<Router>>),
+    PerPeer {
+        routers: std::sync::Arc<
+            tokio::sync::Mutex<
+                std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<Router>>>,
+            >,
+        >,
+        build: std::sync::Arc<dyn Fn() -> Router + Send + Sync>,
+    },
+}
+
+impl RouterRegistry {
+    /// The `Mutex<Router>` that serves `peer`. `Shared` returns the one router for all
+    /// peers (a cheap `Arc` clone — byte-identical to the original `router.clone()`);
+    /// `PerPeer` returns that peer's router, creating it on first use under a brief lock
+    /// of the (small) registry map. The same peer always maps to the same router, so its
+    /// selected-object and per-peer rate/spawn state persist across utterances.
+    async fn for_peer(&self, peer: &str) -> std::sync::Arc<tokio::sync::Mutex<Router>> {
+        match self {
+            RouterRegistry::Shared(r) => r.clone(),
+            RouterRegistry::PerPeer { routers, build } => routers
+                .lock()
+                .await
+                .entry(peer.to_string())
+                .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(build())))
+                .clone(),
+        }
+    }
+}
+
 pub async fn run_ubiq_peer(
     addr: &str,
     room_guid: &str,
@@ -220,15 +260,34 @@ pub async fn run_ubiq_peer(
     let mut peer = UbiqServicePeer::connect_and_join(addr, room_guid).await?;
     eprintln!("dreamcodevr-server: joined Ubiq room {room_guid} at {addr} (service peer)");
 
-    // Shared, briefly-locked state. Per-utterance processing runs in spawned tasks
-    // so the receive loop NEVER blocks on STT/LLM — one peer can no longer stall
-    // another's audio. (Processing serialises on the router lock; true per-peer
-    // STT/LLM parallelism is a documented future refinement.)
-    let mut base_router = Router::new().with_bus(services.bus.clone());
-    if let Some(p) = &services.personalizer {
-        base_router = base_router.with_personalizer(p.clone());
-    }
-    let router = Arc::new(Mutex::new(base_router));
+    // Per-utterance processing runs in spawned tasks so the receive loop NEVER blocks
+    // on STT/LLM. A per-peer router builder (captures the control bus + personalizer,
+    // both cheaply shareable and internally synchronised) backs both routing modes.
+    let build_router = {
+        let bus = services.bus.clone();
+        let personalizer = services.personalizer.clone();
+        Arc::new(move || {
+            let mut r = Router::new().with_bus(bus.clone());
+            if let Some(p) = &personalizer {
+                r = r.with_personalizer(p.clone());
+            }
+            r
+        }) as Arc<dyn Fn() -> Router + Send + Sync>
+    };
+    // Off (default): ONE shared router — utterances serialise on its lock, byte-identical
+    // to the original design. On (`DCVR_PER_PEER_ROUTING`): each peer gets its own router,
+    // so a slow STT/LLM call for one peer no longer blocks another peer's pipeline.
+    let registry = if services.per_peer_routing {
+        eprintln!(
+            "dreamcodevr-server: per-peer routing ENABLED (peers no longer serialise on one router lock)"
+        );
+        RouterRegistry::PerPeer {
+            routers: Arc::new(Mutex::new(HashMap::new())),
+            build: build_router,
+        }
+    } else {
+        RouterRegistry::Shared(Arc::new(Mutex::new(build_router())))
+    };
     let jsonl = Arc::new(Mutex::new(JsonlWriter::new(std::io::stdout())));
     let sender = peer.sender();
     // Publish the live sender so the admin panel's MANUAL COMMAND box can dispatch
@@ -275,7 +334,9 @@ pub async fn run_ubiq_peer(
         match frame.network_id.b {
             93 => {
                 let selected = String::from_utf8_lossy(&body).to_string();
-                router
+                registry
+                    .for_peer(&peer_uuid)
+                    .await
                     .lock()
                     .await
                     .set_selected_object(&peer_uuid, selected);
@@ -296,15 +357,18 @@ pub async fn run_ubiq_peer(
                                             &peer_uuid,
                                             services.max_inflight_per_peer,
                                         ) {
-                                            Some(permit) => spawn_utterance(
-                                                router.clone(),
-                                                jsonl.clone(),
-                                                sender.clone(),
-                                                services.clone(),
-                                                peer_uuid.clone(),
-                                                bytes,
-                                                permit,
-                                            ),
+                                            Some(permit) => {
+                                                let r = registry.for_peer(&peer_uuid).await;
+                                                spawn_utterance(
+                                                    r,
+                                                    jsonl.clone(),
+                                                    sender.clone(),
+                                                    services.clone(),
+                                                    peer_uuid.clone(),
+                                                    bytes,
+                                                    permit,
+                                                );
+                                            }
                                             None => eprintln!(
                                                 "[ubiq-peer] peer {peer_uuid} at max in-flight \
                                                  utterances; dropping (backpressure)"
@@ -331,15 +395,18 @@ pub async fn run_ubiq_peer(
                         &peer_uuid,
                         services.max_inflight_per_peer,
                     ) {
-                        Some(permit) => spawn_utterance(
-                            router.clone(),
-                            jsonl.clone(),
-                            sender.clone(),
-                            services.clone(),
-                            peer_uuid,
-                            bytes,
-                            permit,
-                        ),
+                        Some(permit) => {
+                            let r = registry.for_peer(&peer_uuid).await;
+                            spawn_utterance(
+                                r,
+                                jsonl.clone(),
+                                sender.clone(),
+                                services.clone(),
+                                peer_uuid,
+                                bytes,
+                                permit,
+                            );
+                        }
                         None => eprintln!(
                             "[ubiq-peer] peer {peer_uuid} at max in-flight utterances; \
                              dropping overflow (backpressure)"
@@ -798,6 +865,76 @@ mod tests {
             res.expect("the bound must fire well before the 3s guard"),
             None,
             "a hung utterance must fail closed (None), not block"
+        );
+    }
+
+    // --- Phase-4 per-peer routing (DCVR_PER_PEER_ROUTING) --------------------------
+
+    fn shared_registry() -> RouterRegistry {
+        RouterRegistry::Shared(std::sync::Arc::new(tokio::sync::Mutex::new(Router::new())))
+    }
+
+    fn per_peer_registry() -> RouterRegistry {
+        RouterRegistry::PerPeer {
+            routers: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            build: std::sync::Arc::new(Router::new)
+                as std::sync::Arc<dyn Fn() -> Router + Send + Sync>,
+        }
+    }
+
+    // Legacy/off: every peer maps to the SAME router (byte-identical serialisation).
+    #[tokio::test]
+    async fn shared_registry_returns_one_router_for_all_peers() {
+        let reg = shared_registry();
+        let a = reg.for_peer("peer-a").await;
+        let b = reg.for_peer("peer-b").await;
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "shared mode must hand every peer one router"
+        );
+        // ...and because it is one lock, holding it for peer-a blocks peer-b (the
+        // original serialised behaviour, preserved exactly when the flag is off).
+        let _held = a.lock().await;
+        assert!(
+            b.try_lock().is_err(),
+            "shared mode: one peer's work serialises every other peer (unchanged)"
+        );
+    }
+
+    // On: distinct peers get distinct routers, so one peer's held lock does NOT block
+    // another peer — this is the whole point of the refactor.
+    #[tokio::test]
+    async fn per_peer_registry_does_not_block_across_peers() {
+        let reg = per_peer_registry();
+        let a = reg.for_peer("peer-a").await;
+        let b = reg.for_peer("peer-b").await;
+        assert!(
+            !Arc::ptr_eq(&a, &b),
+            "per-peer mode must give distinct peers distinct routers"
+        );
+        let _held = a.lock().await; // peer-a busy in a long STT/LLM call...
+        assert!(
+            b.try_lock().is_ok(),
+            "per-peer mode: peer-b must NOT be blocked by peer-a's in-flight work"
+        );
+    }
+
+    // On: the SAME peer always maps to the SAME router, so its per-peer state
+    // (selected object, rate-limit window, spawn budget) persists across utterances
+    // and its own utterances still serialise (correct per-peer ordering).
+    #[tokio::test]
+    async fn per_peer_registry_is_stable_and_serial_for_one_peer() {
+        let reg = per_peer_registry();
+        let first = reg.for_peer("peer-a").await;
+        let again = reg.for_peer("peer-a").await;
+        assert!(
+            Arc::ptr_eq(&first, &again),
+            "same peer must reuse its own router"
+        );
+        let _held = first.lock().await;
+        assert!(
+            again.try_lock().is_err(),
+            "one peer's concurrent utterances must still serialise (ordering preserved)"
         );
     }
 }

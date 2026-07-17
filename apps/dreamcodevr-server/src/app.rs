@@ -66,6 +66,9 @@ pub struct Services {
     pub utterance_timeout: Option<Duration>,
     /// Max concurrent in-flight utterances per peer (backpressure vs task-flood DoS).
     pub max_inflight_per_peer: usize,
+    /// Opt-in: give each peer its own router so peers don't serialise on one lock.
+    /// Default false = one shared router (legacy byte-identical). Env `DCVR_PER_PEER_ROUTING`.
+    pub per_peer_routing: bool,
     /// Dev/research only: route NID 98 through the validated-C# (Mode B) path.
     pub csharp_research: bool,
     /// Mode A: emit the validated generated C# (NID 94 `{type,peer,data}`) to the
