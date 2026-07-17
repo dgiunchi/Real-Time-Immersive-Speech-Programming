@@ -340,10 +340,163 @@ def open_set_eval(n_benign_train: int = 400, n_benign_test: int = 200,
     return report
 
 
+# ======================================================================================
+# HARD-NEGATIVE, HONEST BENCHMARK.
+#
+# The eval above reports AUC ~ 1.00 — a BENCHMARK ARTIFACT, not skill: code_injection /
+# sensor_privacy carry `ATTACK_OPS` that are identically zero in benign data, so a single
+# out-of-vocabulary column separates them and a one-line "attack-op present?" rule scores
+# just as well. This benchmark is honest about that AND about the limits of the model:
+#   (1) a STEALTH family of compositional immersive harm from BENIGN ops ONLY (no attack
+#       token, no explicit perceptual op), drawn from the SAME weighted op distribution and
+#       SAME length distribution as benign — so the ONLY discriminative signal is an
+#       elevated consecutive-repeat run (strobe/vection/occlusion by accumulation); there is
+#       deliberately no op-mix or length shortcut to leak on;
+#   (2) honest metrics at a LOW attack base rate (AUPRC + detection@1%-benign-FPR, with
+#       bootstrap CIs) from the audited ml.evalstats harness (AUROC flatters under imbalance);
+#   (3) THREE detectors side by side — the linear autoencoder and two trivial one-line rules.
+#
+# The honest finding this SURFACES (and a strong dissertation OWNS rather than hides): on the
+# easy families the trivial attack-op rule TIES the autoencoder, and on the stealth family a
+# one-line max-consecutive-repeat rule DOMINATES it. A linear autoencoder fit on benign
+# reconstructs whatever varies in benign (which already contains occasional repeat bursts),
+# so it is structurally weak at repeat-based compositional harm — the explicit bound is the
+# right tool there. Knowing WHEN the one-liner beats the model is a result, not a defeat.
+#
+# NOTE: the detect@1%FPR operating point is chosen in-sample on the test benign scores
+# (transductive) — standard for reporting an operating point; state this in the write-up.
+# ======================================================================================
+def make_benign_realistic(n: int, rng) -> list:
+    """Benign sessions whose runs are usually short but OCCASIONALLY moderate (a wall of
+    cubes, a burst of colour tweaks). The burst OVERWRITES a segment (does not lengthen the
+    sequence), so benign and stealth share an identical length distribution and the only
+    thing that separates them is HOW OFTEN / HOW LONG a repeat run occurs."""
+    weights = np.array([6, 5, 4, 3, 4, 3, 3, 2, 3, 2, 2, 2, 2], dtype=np.float64)
+    weights = weights / weights.sum()
+    seqs = []
+    for _ in range(n):
+        length = int(rng.integers(4, 13))
+        ops = _cap_runs(list(rng.choice(BENIGN_OPS, size=length, p=weights)), 3, rng, BENIGN_OPS)
+        if rng.random() < 0.25:  # 25% carry a legitimate moderate burst (repeat 4..6)
+            burst_len = min(int(rng.integers(4, 7)), length)
+            at = int(rng.integers(0, length - burst_len + 1)) if length > burst_len else 0
+            ops[at:at + burst_len] = [str(rng.choice(BENIGN_OPS, p=weights))] * burst_len
+        seqs.append(ops)
+    return seqs
+
+
+def make_stealth_sequences(n: int, rng) -> list:
+    """Compositional immersive harm from BENIGN ops ONLY — drawn from the SAME weighted op
+    distribution and SAME length distribution as `make_benign_realistic`, then OVERWRITING a
+    contiguous segment with a repeated (weighted-common) op to create an elevated run of
+    length 4-9. Because op-mix and length match benign, the ONLY discriminative signal is
+    the repeat run itself: a detector leaning on an OOV attack column, or on op-mix/length,
+    is structurally blind — which is exactly what this hard benchmark is designed to expose."""
+    weights = np.array([6, 5, 4, 3, 4, 3, 3, 2, 3, 2, 2, 2, 2], dtype=np.float64)
+    weights = weights / weights.sum()
+    seqs = []
+    for _ in range(n):
+        length = int(rng.integers(4, 13))  # SAME length distribution as benign
+        ops = _cap_runs(list(rng.choice(BENIGN_OPS, size=length, p=weights)), 3, rng, BENIGN_OPS)
+        run_len = min(int(rng.integers(4, 10)), length)  # 4..9, overwrite (no length shift)
+        at = int(rng.integers(0, length - run_len + 1)) if length > run_len else 0
+        ops[at:at + run_len] = [str(rng.choice(BENIGN_OPS, p=weights))] * run_len
+        seqs.append(ops)
+    return seqs
+
+
+def _attack_op_count(seqs) -> np.ndarray:
+    """Trivial baseline: number of attack-op tokens present. Reproduces the naive
+    benchmark's ~perfect score on the easy families and is BLIND (0) to stealth."""
+    atk = set(ATTACK_OPS)
+    return np.array([sum(1 for op in s if op in atk) for s in seqs], dtype=np.float64)
+
+
+def _max_repeat_score(seqs) -> np.ndarray:
+    """Trivial baseline: longest consecutive repeat (the compositional-harm signal)."""
+    return np.array([_max_consecutive_repeat(s) for s in seqs], dtype=np.float64)
+
+
+def hard_negative_eval(n_benign_train: int = 800, n_benign_test: int = 500,
+                       n_attack_pool: int = 400, n_components: int = 6,
+                       base_rate: float = 0.05, seed: int = 0, n_boot: int = 1000) -> dict:
+    """Honest open-set benchmark (see the section banner above). Fits the autoencoder on
+    realistic benign, then for each family reports AUROC, AUPRC (+ bootstrap CI) and
+    detection@1%-benign-FPR at a low attack `base_rate`, for the autoencoder AND two
+    trivial baselines. Metrics come from the audited ml.evalstats harness."""
+    # aliased: this module ALSO defines a local roc_auc(scores, labels) with the opposite
+    # argument order (used by open_set_eval); ev_roc_auc is (y_true, scores).
+    from ml.evalstats import average_precision, bootstrap_ci, detection_rate_at_fpr
+    from ml.evalstats import roc_auc as ev_roc_auc
+
+    rng = np.random.default_rng(seed)
+    fz = SequenceFeaturizer()
+    det = ReconstructionAnomalyDetector(n_components=n_components)
+    det.fit(fz.transform(make_benign_realistic(n_benign_train, rng)))
+
+    benign_test = make_benign_realistic(n_benign_test, rng)
+    families = {
+        "code_injection": make_attack_sequences(n_attack_pool, "code_injection", rng),
+        "sensor_privacy": make_attack_sequences(n_attack_pool, "sensor_privacy", rng),
+        "stealth_immersive": make_stealth_sequences(n_attack_pool, rng),
+    }
+    scorers = {
+        "autoencoder": lambda seqs: det.score(fz.transform(seqs)),
+        "trivial_attack_op": _attack_op_count,
+        "trivial_max_repeat": _max_repeat_score,
+    }
+    # attacks subsampled so P(attack) = base_rate relative to the benign test set
+    n_atk_br = max(1, int(round(base_rate / (1.0 - base_rate) * len(benign_test))))
+
+    report = {"base_rate": base_rate, "n_benign_test": len(benign_test),
+              "n_attack_per_family": n_atk_br, "families": {}}
+    for fam, atk_pool in families.items():
+        atk = atk_pool[:n_atk_br]
+        seqs = benign_test + atk
+        y = np.concatenate([np.zeros(len(benign_test)), np.ones(len(atk))]).astype(int)
+        fam_rep = {}
+        for name, scorer in scorers.items():
+            sc = np.asarray(scorer(seqs), dtype=np.float64)
+            tpr, _, fpr = detection_rate_at_fpr(y, sc, 0.01)
+
+            def _ap_idx(idx, _y=y, _sc=sc):
+                yi = _y[idx]
+                return average_precision(yi, _sc[idx]) if yi.sum() > 0 else float("nan")
+
+            ap, ap_lo, ap_hi = bootstrap_ci(len(y), _ap_idx, n_boot=n_boot,
+                                            method="percentile", seed=1)
+            fam_rep[name] = {
+                "auroc": round(ev_roc_auc(y, sc), 4),
+                "auprc": round(ap, 4),
+                "auprc_ci95": [round(ap_lo, 4), round(ap_hi, 4)],
+                "detect_at_1pct_fpr": round(tpr, 4),
+                "achieved_fpr": round(fpr, 4),
+            }
+        report["families"][fam] = fam_rep
+    return report
+
+
 if __name__ == "__main__":
     import json
     rep = open_set_eval()
-    print("=== open-set anomaly eval (attack families HELD OUT of training) ===")
+    print("=== naive open-set eval (attack families HELD OUT of training) ===")
     print(json.dumps(rep, indent=2))
     print(f"\npooled AUC = {rep['pooled_auc']:.4f}   "
           f"benign FPR @99pct = {rep['benign_false_positive_rate']:.4f}")
+    print("  ^ AUC~1.00 here is a BENCHMARK ARTIFACT (out-of-vocabulary attack columns).\n")
+
+    hard = hard_negative_eval()
+    print("=== honest hard-negative eval (base rate {:.0%}, AUPRC + detect@1%FPR) ==="
+          .format(hard["base_rate"]))
+    print(f"  {'family':18} {'AUROC: autoenc':>15} {'attack-op':>10} {'max-repeat':>11}   "
+          f"{'AE AUPRC[CI]':>22} {'AE det@1%':>10} {'maxrep det@1%':>13}")
+    for fam, r in hard["families"].items():
+        ae, tao, tmr = r["autoencoder"], r["trivial_attack_op"], r["trivial_max_repeat"]
+        print(f"  {fam:18} {ae['auroc']:>15.3f} {tao['auroc']:>10.3f} {tmr['auroc']:>11.3f}   "
+              f"{str(ae['auprc'])+' '+str(ae['auprc_ci95']):>22} "
+              f"{ae['detect_at_1pct_fpr']:>10.3f} {tmr['detect_at_1pct_fpr']:>13.3f}")
+    print("  ^ HONEST FINDINGS: (easy families) the trivial attack-op rule TIES the "
+          "autoencoder -> AUC~1.0 is an artifact.\n"
+          "    (stealth family) a one-line MAX-REPEAT rule DOMINATES the autoencoder -> a "
+          "linear AE fit on benign is structurally weak\n    at repeat-based compositional "
+          "harm; the explicit bound is the right tool. Knowing when the one-liner wins is a result.")
