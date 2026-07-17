@@ -1,5 +1,129 @@
 # Voice Age Gate (ML #1) — DreamCodeVR+
 
+## The problem
+
+A VR headset is usually a **shared, family** device. The platform stores one age
+flag per account, set once at sign-up — but that flag cannot tell you **who is
+actually wearing the headset right now**. A parent signs in; their 8-year-old
+puts the headset on and starts a live voice-coding session. From that moment
+every safety limit the system applies is sized for the wrong person. The obvious
+"fix" — measure the exact age of whoever is speaking — is worse than the disease:
+precise-age or identity-grade voice biometrics are exactly the surveillance-grade
+inference the XR-privacy literature warns about, and regulators treat them as a
+hazard, not a solution. So the gap is narrow and specific: we need a **runtime**
+signal of *"is a child present in this session"* that is strong enough to tighten
+safety, yet deliberately too coarse to become an identity or age-estimation
+product.
+
+## Why we deal with it
+
+It matters because in XR the harm is **embodied**, not abstract: a flashing,
+rotating, or large-FOV effect — or an unvetted spawned object — lands on a real
+child's vestibular and visual system, and per-action code checks alone cannot
+bound *compositional* perceptual harm. It matters legally: COPPA's final amended
+rule (16 CFR 312, 2025) now covers biometric identifiers with an Apr-2026
+deadline; the FTC (Mar 2024) explicitly **denied** facial age estimation as a
+COPPA consent mechanism; the EU AI Act (Art. 5, in force Feb 2025) prohibits
+emotion recognition in many contexts; and the UK AADC/ICO Children's Code plus
+GDPR Art. 8 impose child-specific duties — so any age signal must be a *safety
+net*, never a legal basis, and must avoid affect inference entirely (which is why
+we output an age **band only**, never emotion). And it matters as research:
+re-using a surveillance-grade capability — on-device, template-free, and governed —
+as a purely protective control is the novel "surveillance→protection inversion"
+at the heart of this dissertation.
+
+## What we built
+
+A small, auditable, CPU-only voice age gate plus the coupling that makes it
+actually change behaviour:
+
+- **numpy-only DSP features** (`features.py`): pitch/F0 via autocorrelation,
+  spectral centroid + 85 % rolloff via FFT, zero-crossing rate, short-time
+  energy, and pitch statistics over frames → a 15-D float32 vector. No torch, no
+  sklearn — reproducible and readable by design.
+- **Logistic regression in numpy** (`model.py`) with **temperature-scaling
+  calibration** (shipped `T ≈ 1.93`), so `decision.py`'s confidence-based
+  fail-safe is fed honest probabilities rather than an over-confident model.
+- **A fail-safe `AgeGate`** (`decision.py`) that aggregates P(child) across a
+  session (running median), maps to coarse bands **child / teen / adult /
+  unknown**, **never emits a precise age**, and **defaults `unknown` → child**
+  (strictest profile) while raising `escalate` so the platform can fall back to
+  its authoritative age flag / parental consent.
+- **The Rust coupling** (`age.rs`): `AgeBand{Child, Teen, Adult, Unknown}` with
+  `default = Unknown`. Proven by tests: `unknown_fails_safe_to_child`, and
+  `child_tightens_both_planes_vs_adult`, where Child/Unknown tighten **both**
+  planes vs Adult — `perceptual_hardening` true-vs-false,
+  `require_compile_confirmation` true-vs-false, `max_spawn` 20-vs-40, `flash_hz`
+  2.0-vs-3.0, `fov_coverage` 0.35-vs-0.70, `rotate_deg_s` 30-vs-90,
+  `luminance_delta` 0.4-vs-1.0.
+- **Router coupling** (`age_minor_forces_hardened_csharp_gate`): a detected minor
+  **alone** flips the C# validator to hardened `DeployHardened` — the age signal
+  hardens code safety, not just perceptual limits. It is strictly **opt-in**:
+  with `DCVR_AGE_GATING` off, behaviour is **byte-identical** to legacy.
+
+Verified test counts (all re-run live 2026-07-17): **`ml/age_gate` 17/17 OK**;
+the surrounding Rust workspace **263 tests pass, 0 fail**; the companion
+`ml/attack_analyzer` **21/21 OK**.
+
+## Is it enough? — honest evaluation
+
+**What is PROVEN (reproducible figures):**
+
+- **Calibration works.** Via the live `evaluate.py`, validation ECE improves from
+  **≈ 0.05 → ≈ 0.007** (`T ≈ 1.93`). (The prose below still says ≈ 0.01 and the
+  plan doc says 0.012; the reproducible live figure is **≈ 0.007** — that is the
+  one to trust.)
+- **The fail-safe holds.** `unknown` maps to the child profile and Child/Unknown
+  tighten both planes, each pinned by a named test (see above). `17/17`
+  age-gate tests and `263/263` Rust tests are green.
+- **The coupling is real and opt-in.** A minor alone hardens the C# validator;
+  `DCVR_AGE_GATING` off is byte-identical to legacy.
+- **Ecosystem evidence** (companion analyzer, re-run): anomaly detector
+  (PCA/SVD undercomplete autoencoder) pooled **AUC 1.00**, benign **FPR ~2 %**
+  at the 99th-percentile threshold, per-family detection **1.0**; drift detector
+  (ADWIN2) **0 false alarms** on a stationary stream, injected shift detected at
+  **t = 304**; the curated **128**-vector baseline feeds a discovered-vector
+  store (`attacks_discovered.jsonl`) that **grows to 164 entries**. For context,
+  the prior C# validator hardening moved block-rate **15 % → 100 %, 0 bypass**.
+
+**What is a LIMITATION (stated plainly):**
+
+- **The acoustic gate is spoofable.** Our own red-team pushes a child sample
+  across the adult boundary with a **100 % spoof-rate** against this gate. That
+  is *why* the design fails safe, escalates, and is never the legal basis — the
+  Meta Quest age-group API (Apr 2024) remains the authoritative source; our ML
+  age is a secondary safety net only.
+- **The data is synthetic and numpy-only.** No real corpus, no torch/sklearn —
+  chosen for auditability and CPU-only reproducibility, but it means the numbers
+  above are on modelled, not in-the-wild, audio.
+- **The strong external accuracy numbers are LITERATURE ANCHORS, not our
+  results.** ~97.14 % child-vs-adult age-group (CMU Kids), ~20 ms edge-model
+  latency, ~78 % per-user motion-age (Nair, arXiv:2305.19198), and 94.33 %
+  re-identification of 55,000+ users from head+hand motion (Nair, USENIX
+  Security 2023) are cited to motivate the work — **we have not measured any of
+  them here.**
+
+**What is PENDING (on-device):**
+
+- **Real mic audio on a real Quest is not yet run** (scheduled **≥ 2026-07-23**).
+  The ~20 ms latency figure in particular has **not** been measured on-device.
+- The **wav2vec2 upgrade path** (`wav2vec2_features.py`) is written but not run in
+  this environment.
+- The full Phase-4 per-peer-lock refactor is written and testable but pending
+  live multi-peer sign-off. (Today the `Router` struct has no global lock — it is
+  per-peer sessions — but the server holds `Arc<Mutex<Router>>` across the
+  STT/LLM/validate awaits in `spawn_utterance`, so peers serialise; the DoS is
+  already bounded by per-step timeouts plus an overall `with_deadline`.)
+
+**Bottom line:** as a *governed secondary safety net* the gate is enough — it is
+calibrated, it fails safe for the child, it hardens both planes, and it is
+opt-in and byte-identical when off. As a *standalone age verifier* it is not, and
+is not meant to be: it is spoofable, trained on synthetic data, and its headline
+external accuracy is borrowed from the literature until on-device evaluation on a
+real Quest closes the loop.
+
+---
+
 On-device, privacy-preserving **child (<13) / adult** decision from voice. This is
 the age signal that tightens *both* safety planes of DreamCodeVR+ (the C# code
 validator and the perceptual-safety layer). It is built to be **tiny** — a small

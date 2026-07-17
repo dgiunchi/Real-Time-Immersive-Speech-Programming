@@ -1,5 +1,101 @@
 # Adaptive / Continuous Attack Analyzer (ML #2)
 
+## The problem
+
+DreamCodeVR+ ships a static, hand-curated list of **128 attack vectors** that the
+red-team campaign replays against the safety pipeline. A fixed list has two failure
+modes that get worse over time. First, it goes **stale**: once an attacker knows the
+128 strings, they mutate around them (leetspeak, homoglyphs, token-splitting,
+synonym aliasing, benign-wrapping) and the screen that blocks the literal vector
+sails past the variant. Second, it is **closed-set**: it can only catch attacks
+someone already wrote down. It cannot find **novel** or **compositional** harm — for
+example a sequence of individually-benign immersive operations (a long strobe/vection
+run) that is only dangerous *as a whole*, which per-action bounds provably miss. And
+because ML #1 (the voice **age gate**) is itself a security surface, the static list
+also has no way to **attack the age gate** and prove where it breaks. A list cannot
+red-team itself.
+
+## Why we deal with it
+
+This matters because the failures are not abstract. In XR the harm is **embodied and
+compositional** — a strobe/vection sequence can induce photosensitive or motion-sickness
+responses that no single "safe" op reveals — and the population most exposed is
+**children**, whose safety envelope must be tighter. The regulatory floor is rising to
+match: the amended **COPPA** rule (16 CFR 312, 2025) now covers biometric identifiers
+with an Apr 2026 deadline, the **FTC** (Mar 2024) explicitly **denied** facial age
+estimation as a consent mechanism, and the **EU AI Act** Art. 5 (in force Feb 2025)
+prohibits emotion recognition in many contexts — which is exactly why our age model
+emits a coarse **band only**, never affect. A frozen 128-vector list cannot demonstrate
+continued protection against an adaptive adversary under those obligations. The novel
+contribution is turning the static list into a **self-growing, drift-aware, ML-driven**
+attack surface that also **red-teams our own age gate**, unifying the two ML models into
+one threat model rather than two disconnected demos.
+
+## What we built
+
+Three cooperating mechanisms, all **numpy + Python-stdlib only** (no torch/sklearn),
+deterministic and CPU-only by design so every number is reproducible and auditable:
+
+- **Open-set anomaly detector** (`anomaly.py`) — a PCA/SVD undercomplete (linear)
+  autoencoder trained **only** on benign intent→code-op sequences; reconstruction error
+  is the out-of-distribution score. On held-out attack families it scores **pooled
+  AUC = 1.00**, with benign **FPR ≈ 2 %** at the 99th-percentile threshold and
+  **per-family detection = 1.0** (code-injection / sensor-privacy / compositional
+  immersive). This is the piece that finds attacks no one wrote down.
+- **Drift detector** (`drift.py`) — an **ADWIN2**-style windowed change detector so the
+  benign baseline adapts instead of decaying. On a stationary stream it raises
+  **0 false alarms**; an injected distribution shift is detected at **t = 304**.
+- **Auto-RT-style adaptive red-team loop** (`redteam_loop.py` + `vector_store.py`) — a
+  mutation/combination generator that hunts for inputs the System-Under-Test **passes
+  but should block**; each bypass is content-hashed, deduped, mapped onto the five
+  128-vector families, and appended to `attacks_discovered.jsonl`. Starting from the
+  curated baseline of **128 vectors**, one run grows the **discovered store to 164
+  entries**. It includes an **age-gate-spoofing** family that red-teams ML #1 directly,
+  and a child sample pushed across the adult boundary gives a **100 % spoof-rate**
+  finding against our own age gate — a self-test result the static list could never produce.
+
+The whole suite is green: **21/21 tests OK** for this analyzer (re-run from repo root),
+alongside **17/17** for the age gate and **263 Rust tests pass, 0 fail** across the
+workspace (re-run 2026-07-17).
+
+## Is it enough? — honest evaluation
+
+**What is PROVEN.** The measured, reproducible figures above are real from clean runs:
+anomaly AUC **1.00** / benign FPR **~2 %** / per-family detection **1.0**; drift with
+**0** false alarms and the shift caught at **t = 304**; **21/21** tests; the discovered
+store growing to **164**; and the **100 %** age-gate spoof-rate finding. Downstream, the
+coupling is exercised too — a detected minor **alone** flips the C# validator to the
+hardened path (`age_minor_forces_hardened_csharp_gate`), Unknown fails safe to child, and
+Child/Unknown tighten **both** the code and perceptual planes vs Adult; the prior
+validator hardening moved from **15 % → 100 %** block with **0 bypass**. With
+`DCVR_AGE_GATING` off the whole thing is **byte-identical** to legacy — it is opt-in.
+
+**What is a LIMITATION.** The System-Under-Test here is a deliberately naive
+`MockDenylistSUT` and the sequences/age-gate are **synthetic** stand-ins — this proves the
+*machinery* end-to-end, not yet the live pipeline's true bypass rate. The ML models are
+**numpy-only** (a deliberate reproducibility/auditability choice, not a state-of-the-art
+accuracy claim), and the age model outputs only a coarse **band** (child <13 / teen 13–17
+/ adult 18+), never a precise age and never emotion. Figures like child-vs-adult voice
+**~97.14 %** age-group accuracy (CMU Kids), motion-age **~78 %** per-user
+(Nair, arXiv:2305.19198), the USENIX Security 2023 re-identification of **94.33 %** of
+55,000+ users from head+hand motion, and **~20 ms** on-device edge latency are
+**literature anchors, not our measured results** — they motivate the design and set the
+targets. On the systems side, the Router has no global lock (per-peer sessions) but the
+server holds `Arc<Mutex<Router>>` across the STT/LLM/validate awaits, so peers currently
+serialise; the DoS is already **bounded** by per-step timeouts and an overall deadline,
+and the full Phase-4 per-peer-lock refactor is written and testable but pending live
+multi-peer sign-off.
+
+**What is PENDING.** On-device validation — real microphone audio on a **real Quest** — is
+pending **≥ 2026-07-23**. Until then the age gate stays a secondary **safety net**: the
+Meta Quest age-group API (Apr 2024) is the authoritative age source and the legal basis;
+our ML age never is. Replacing the mock SUT with the live server, swapping the synthetic
+op-sequences for real Roslyn/`csharp-policy` op streams, and warm-starting the age head
+from wav2vec2 are documented below and change none of the loop's machinery — only the
+target it runs against.
+
+---
+
 > Turns the static **128-vector attack model** into a **self-growing, drift-aware,
 > ML-driven attack surface.** This is model **#2** of the DreamCodeVR+ ML thrust
 > (`RESEARCH_AND_ML_PLAN.md` §5). Model #1 is the on-device voice **age gate**; this

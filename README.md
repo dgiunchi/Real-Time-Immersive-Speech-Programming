@@ -15,6 +15,148 @@ observability, an admin panel, personalization, and a red-team harness. The
 original UCL/Ubiq/Unity components are **not** authored here — see
 [`NOTICE`](NOTICE).
 
+## Why this exists — the whole system in one arc
+
+This section frames the entire project as one safety story: the gap, why it
+matters, what we actually built, and an honest reckoning of whether it is enough.
+Everything below it (build, run, layout, licence) is unchanged.
+
+### The problem
+
+An LLM writing runnable C# straight into a live VR scene is unsafe in two
+different ways at once, and the second way is usually ignored.
+
+1. **Code safety.** In Mode A/B the model's output is compiled and executed on
+   the device. A single generated line can reach `Reflection`, `Process.Start`,
+   `DllImport`, `unsafe`, or file/network IO — arbitrary code execution inside
+   the headset process. A plain text screen is not enough on its own:
+   guardrail-bypass research shows character-injection attacks passing
+   commercial prompt filters at high rates, so the gate has to be structural.
+2. **Perceptual / embodied harm.** Even when every op is "valid code," the scene
+   it builds can hurt the person wearing the headset — forced locomotion (the
+   "human joystick"), boundary/chaperone edits, disorientation and vection,
+   occluding overlays, strobing above photosensitive-seizure thresholds. And the
+   harm is **compositional**: each op can sit inside its per-action bound while
+   the *sequence* composes into harm (herding, progressive occlusion,
+   strobe-by-accumulation). Per-action limits provably miss this.
+3. **Child safety.** None of the above is age-aware. A scene that is merely
+   intense for an adult can be genuinely unsafe for a child, and nothing in the
+   base pipeline knows who is speaking.
+
+### Why we deal with it
+
+XR is embodied: the output is not text on a screen, it is motion and light
+applied to a person's vestibular system and eyes, so a bad frame is a real-world
+physical event rather than a log line — and children are simultaneously the most
+at-risk population and the most regulated one. The coupling of code-safety and
+perceptual-safety under a *live* speech→LLM→compile loop is genuinely
+unaddressed in the 2022–2026 literature (nobody couples an age posterior to a
+real-time safety policy, and the two safety literatures are disjoint), which is
+also where the novelty sits; meanwhile regulation is closing in — COPPA's final
+amended rule (16 CFR 312, 2025, which adds biometric identifiers, compliance
+deadline Apr 2026), the UK AADC / ICO Children's Code, EU AI Act Art. 5 (in
+force Feb 2025), GDPR Art. 8 child consent, and the age-assurance standards
+ISO/IEC 27566-1:2025 and IEEE 2089.1-2024 (five assurance levels) — so getting
+this right is at once a safety obligation and the central research contribution.
+
+### What we built
+
+**Fail-closed Rust validator + four execution modes.**
+- **Mode C (default):** a bounded 6-action plan, executed in Unity with **no code
+  compiled** — unsafe ops are literally unrepresentable.
+- **Mode B (opt-in):** validated generated C# (lexical denylist + optional .NET
+  Roslyn semantic check).
+- **Mode A (off by default):** the original runtime-C# compile path, now
+  validator-gated; research/demo only.
+- **Mode D (opt-in):** a hardened Docker/gVisor sandbox for untrusted C#.
+- Prior adversarial hardening of the C# validator moved its block rate from
+  **15% → 100% with 0 bypass** [reported].
+
+**Age-adaptive dual-plane coupling (the novel core)** — `crates/config/src/age.rs`:
+- `AgeBand{Child, Teen, Adult, Unknown}`, default `Unknown`; `Unknown` **fails
+  safe to the child profile** (test `unknown_fails_safe_to_child`).
+- Child/Unknown **tighten BOTH planes vs Adult** (test
+  `child_tightens_both_planes_vs_adult`): `perceptual_hardening` on (vs off),
+  `require_compile_confirmation` on (vs off), `max_spawn` 20 (vs 40), `flash_hz`
+  2.0 (vs 3.0), `fov_coverage` 0.35 (vs 0.70), `rotate_deg_s` 30 (vs 90),
+  `luminance_delta` 0.4 (vs 1.0).
+- A single detected **minor alone flips the C# validator to the hardened
+  `DeployHardened` gate** (test `age_minor_forces_hardened_csharp_gate`). This is
+  opt-in via `DCVR_AGE_GATING`; with it **off, behaviour is byte-identical to
+  legacy**.
+- This is the deliberate "inversion": the same voice inference the XR-privacy
+  literature demonstrates as a *surveillance* attack is re-used — on-device,
+  ephemeral, unlinked — as a governed *protective* control.
+
+**Two ML models (numpy-only, CPU, reproducible and auditable by design).**
+- `ml/age_gate` — a voice age gate emitting a **coarse BAND only** (child <13 /
+  teen 13–17 / adult 18+), never a precise age and never emotion: DSP features +
+  logistic regression + temperature calibration (T ≈ 1.93), with a session-level
+  fail-safe.
+- `ml/attack_analyzer` — an Auto-RT-style **continuous** analyzer: a PCA/SVD
+  undercomplete autoencoder for open-set anomaly detection, an ADWIN2 drift
+  detector, and a red-team loop that grows the discovered-vector store and
+  red-teams our own age gate.
+
+**Verified numbers (re-run live 2026-07-17):** 263 Rust tests pass, 0 fail.
+`ml/age_gate` 17/17 OK; `ml/attack_analyzer` 21/21 OK. Anomaly detector
+(PCA/SVD undercomplete autoencoder): pooled **AUC 1.00**, benign FPR ~2% at the
+99th-percentile threshold, per-family detection 1.0. Drift detector (ADWIN2):
+0 false alarms on a stationary stream; injected shift detected at t=304.
+Age-gate calibration: validation **ECE ~0.05 → ~0.007**. Red-team spoof-rate
+against our **own** age gate: **100%** (a child sample pushed across the adult
+boundary). Attack corpus: a curated baseline of **128 vectors**, with the
+discovered-vector store (`attacks_discovered.jsonl`) growing to **164 entries**.
+
+### Is it enough? — honest evaluation
+
+**Proven (measured, re-run 2026-07-17).**
+- 263 Rust tests / 0 fail. The age coupling is exercised end-to-end by
+  `unknown_fails_safe_to_child`, `child_tightens_both_planes_vs_adult`, and
+  `age_minor_forces_hardened_csharp_gate`; with `DCVR_AGE_GATING` off the build
+  is byte-identical to legacy.
+- ML suites green: `ml/age_gate` 17/17, `ml/attack_analyzer` 21/21.
+- Anomaly detector: AUC 1.00, benign FPR ~2% @ 99th-percentile, per-family
+  detection 1.0. Drift: 0 false alarms on a stationary stream, shift caught at
+  t=304. Calibration: ECE ~0.05 → ~0.007.
+- Prior C# validator hardening: 15% → 100% block, 0 bypass [reported].
+
+**Limitations (stated candidly — this is a dissertation, honesty scores).**
+- The **100% spoof-rate against our own age gate is a finding, not a win**: our
+  voice model is trivially defeated by pushing a child sample across the adult
+  boundary. This is exactly why the design treats the **Meta Quest age-group API
+  (Apr 2024) as the authoritative age source and our ML age as a secondary safety
+  net — never the legal basis.** The FTC (Mar 2024) explicitly **denied facial
+  age estimation as a COPPA consent mechanism**, so inference can gate the
+  *experience* but can never replace verifiable parental consent.
+- The ML models are **numpy-only by design** (no torch/sklearn) — reproducible,
+  auditable, CPU-only — which also means the age model is a small DSP +
+  logistic-regression head, **not** the wav2vec2-class model the literature
+  reports; the documented wav2vec2 upgrade is future work.
+- The age model emits a **coarse band only, deliberately**: EU AI Act Art. 5
+  prohibits emotion recognition in many contexts, so we exclude affect entirely
+  and output child/teen/adult — never a precise age, never emotion.
+- **Literature anchors are NOT our measured results** (labelled as such):
+  child-vs-adult voice ~97.14% age-group accuracy on CMU Kids; ~20 ms on-device
+  edge-model latency (reported elsewhere, **not yet run on a Quest**); motion-age
+  ~78% per-user (Nair, arXiv:2305.19198); and the standing caution that Nair
+  (USENIX Security 2023) **re-identifies 94.33% of 55,000+ users from head+hand
+  motion** — i.e. motion age inference is *not* privacy-neutral, which is why the
+  whole design is on-device and ephemeral.
+- **Router-lock reality:** the `Router` struct has **no global lock** (per-peer
+  sessions), but the server holds `Arc<Mutex<Router>>` across the STT/LLM/validate
+  awaits in `spawn_utterance`, so peers currently serialise. The DoS is already
+  bounded (per-step timeouts + an overall `with_deadline`). The full Phase-4
+  per-peer-lock refactor (so peers stop blocking each other) is written and
+  testable but **pending live multi-peer sign-off**.
+
+**Pending (on-device).**
+- On-device end-to-end — **real microphone audio on a real Quest** — is
+  **PENDING (≥ 2026-07-23)**. Everything above is measured on desktop/CPU with
+  recorded or synthetic inputs. No claim in this README depends on a Quest run;
+  when a headset is available, the same policy decisions get logged (decisions
+  only, never raw biometrics).
+
 ## How it works
 
 ```
@@ -64,7 +206,7 @@ bash scripts/doctor.sh
 
 # 1. build + test the Rust workspace (reproducible from Cargo.lock)
 cargo build --workspace --locked
-cargo test --workspace --locked     # 254 tests, fully offline
+cargo test --workspace --locked     # 263 tests, fully offline
 
 # 2. run the backend (offline mocks by default)
 cargo run -p dreamcodevr-server
