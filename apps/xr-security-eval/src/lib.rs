@@ -9,6 +9,11 @@
 use dcvr_csharp_policy::{validate_csharp_freeform_profile, CsharpDecision, HardeningProfile};
 use serde::{Deserialize, Serialize};
 
+/// Live streaming code-admission verdicts for the demo console.
+pub mod live;
+/// The demo console HTTP server (run-based API + SSE), testable in-process.
+pub mod server;
+
 /// The corpus, embedded at build time so the binary is self-contained.
 pub const CORPUS_JSON: &str = include_str!("../attacks/corpus.json");
 

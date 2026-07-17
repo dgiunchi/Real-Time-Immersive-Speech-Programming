@@ -1,22 +1,21 @@
-//! Localhost visible demo of the XR attack/defence evaluation.
+//! Localhost visible demo of the XR **static code-admission** evaluation.
 //!
-//! Serves a single self-contained page that lets you browse each attack and SEE it
-//! "succeed" with no defence vs being BLOCKED by the REAL DreamCodeVR+ backend. All
-//! verdicts are computed live by the same validator the eval CLI uses. Offline,
-//! deterministic, loopback-only.
+//! Serves a self-contained page with a LIVE console: fire the corpus (or your
+//! own pasted C#) through the REAL DreamCodeVR+ validator and watch each verdict
+//! stream in — rejected-before-execution vs admitted-by-static-validator — with
+//! the real per-call admission latency. Nothing is compiled or executed; this is
+//! admission control only. Offline, deterministic, loopback-only.
 //!
-//! Run:  cargo run -p xr-security-eval --bin xr-security-demo   (then open the printed URL)
+//! The API + handlers live in `xr_security_eval::server` (so they are testable
+//! in-process); this binary only binds the loopback socket and serves them.
+//!
+//! Run:  cargo run -p xr-security-eval --bin xr-security-demo   (then open the URL)
 
-use axum::{response::Html, routing::get, Json, Router};
-use xr_security_eval::{evaluate_attack, load_corpus};
-
-const PAGE: &str = include_str!("demo.html");
+use xr_security_eval::server::app;
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new()
-        .route("/", get(|| async { Html(PAGE) }))
-        .route("/api/results", get(results));
+    let app = app();
     let port: u16 = std::env::var("XR_DEMO_PORT")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -26,13 +25,6 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .expect("bind loopback");
-    println!("\n  XR attack/defence demo  →  http://127.0.0.1:{port}\n  (Ctrl+C to stop)\n");
+    println!("\n  XR code-admission console  ->  http://127.0.0.1:{port}\n  (Ctrl+C to stop)\n");
     axum::serve(listener, app).await.expect("serve");
-}
-
-/// Compute every attack's verdict at all three defence levels and return them as JSON.
-async fn results() -> Json<serde_json::Value> {
-    let corpus = load_corpus();
-    let per_attack: Vec<_> = corpus.attacks.iter().map(evaluate_attack).collect();
-    Json(serde_json::json!({ "per_attack": per_attack }))
 }

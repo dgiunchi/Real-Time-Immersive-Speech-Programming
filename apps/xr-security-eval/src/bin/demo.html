@@ -3,196 +3,378 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DreamCodeVR+ — XR Attacks vs Our Defence</title>
+<title>DreamCodeVR+ · Live Code-Admission Console</title>
 <style>
   :root{
-    --ink:#141a2e; --ink2:#4c586b; --faint:#8a94a8;
-    --indigo:#4c5bd4; --teal:#0fa3a3; --coral:#e0503f; --green:#2f9e6f; --amber:#b9791b;
-    --line:#e5e8f1; --bg:#f6f7fb; --card:#fff;
-    --coral-bg:#fdece9; --green-bg:#e6f4ed; --amber-bg:#f8efd9;
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-    --sans:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+    --bg:#0b0e14; --panel:#111725; --panel2:#0e1420; --line:#1e2838;
+    --ink:#e6edf6; --dim:#8b98ad; --faint:#5b6678;
+    --accent:#39c2c9;            /* system / brand */
+    --reject:#2f9e6f;            /* defence worked (rejected before execution) */
+    --nodef:#e0503f;             /* admitted without validation */
+    --residual:#c9922e;          /* admitted — runtime-guardian / unverified */
+    --benign:#6f7be6;            /* legitimate creative payload admitted */
+    --sys:#39c2c9; --perc:#a97be6; --struct:#7b8aa3;
+    --mono:"SFMono-Regular",ui-monospace,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:var(--sans);color:var(--ink);background:var(--bg);line-height:1.5}
-  .wrap{max-width:1180px;margin:0 auto;padding:26px 22px 60px}
-  header h1{font-size:29px;font-weight:800;letter-spacing:-.02em}
-  header .sub{color:var(--ink2);font-size:15px;margin-top:5px}
-  .cls-chip{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.04em;
-            text-transform:uppercase;padding:3px 8px;border-radius:5px;color:#fff}
-  .c-biometric{background:#7c5cd4}.c-positional{background:var(--indigo)}.c-surroundings{background:var(--teal)}
-  .c-joystick{background:var(--coral)}.c-chaperone{background:var(--amber)}.c-benign{background:var(--green)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+  a{color:var(--accent)}
+  .wrap{max-width:1280px;margin:0 auto;padding:20px 22px 40px}
 
-  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}
-  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:0 1px 2px rgba(20,25,40,.04)}
-  .stat .k{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:700}
-  .stat .v{font-size:34px;font-weight:800;margin-top:6px;line-height:1}
-  .stat .d{font-size:13px;color:var(--ink2);margin-top:6px}
-  .stat.bad .v{color:var(--coral)} .stat.good .v{color:var(--green)} .stat.free .v{color:var(--indigo)}
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:14px}
+  header h1{font-size:19px;margin:0;letter-spacing:.2px}
+  header h1 .plus{color:var(--accent)}
+  header .sub{color:var(--dim);font-size:12.5px}
+  .badge{font-family:var(--mono);font-size:11px;color:var(--accent);border:1px solid var(--line);
+         padding:2px 8px;border-radius:20px;background:var(--panel)}
 
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:16px;box-shadow:0 1px 2px rgba(20,25,40,.04)}
-  .panel h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:800;margin-bottom:14px}
+  .bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 0}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel)}
+  .seg button{appearance:none;background:transparent;border:0;color:var(--dim);font-family:var(--sans);
+              font-size:12.5px;padding:8px 13px;cursor:pointer;border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:0}
+  .seg button.on{background:var(--accent);color:#04121a;font-weight:600}
+  .seg button:hover:not(.on){color:var(--ink)}
+  .run{appearance:none;border:0;border-radius:9px;background:var(--accent);color:#04121a;font-weight:700;
+       font-size:13px;letter-spacing:.4px;padding:10px 16px;cursor:pointer}
+  .run:disabled{opacity:.5;cursor:progress}
+  .ghost{appearance:none;border:1px solid var(--line);border-radius:9px;background:var(--panel);
+          color:var(--dim);font-size:12.5px;padding:9px 13px;cursor:pointer}
+  .ghost:hover{color:var(--ink)}
+  .spacer{flex:1}
+  .ticker{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:right;line-height:1.35}
+  .ticker b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .ticker .lbl{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
 
-  /* chart */
-  .chartrow{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center;margin-bottom:11px}
-  .chartrow .lab{font-size:13.5px;font-weight:700;text-align:right;color:var(--ink)}
-  .bars{display:flex;flex-direction:column;gap:4px}
-  .bar{height:15px;border-radius:4px;position:relative;background:#eef1f7;overflow:hidden}
-  .bar>span{position:absolute;inset:0;border-radius:4px}
-  .bar .none{background:var(--coral)} .bar .sec{background:var(--amber)} .bar .hard{background:var(--green)}
-  .bar em{position:absolute;right:6px;top:-1px;font-size:10px;font-style:normal;font-weight:700;color:#333;line-height:17px}
-  .legend{display:flex;gap:18px;font-size:12.5px;color:var(--ink2);margin-top:6px}
-  .legend b{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .counters{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 14px}
+  .kpi{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 13px}
+  .kpi .n{font-family:var(--mono);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+  .kpi .t{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .kpi.rej .n{color:var(--reject)} .kpi.adm .n{color:var(--residual)} .kpi.tot .n{color:var(--accent)}
 
-  /* browser */
-  .browser{display:grid;grid-template-columns:300px 1fr;gap:16px}
-  .list{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;max-height:560px;overflow:auto}
-  .grp{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:800;padding:12px 8px 5px}
-  .item{display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:9px;cursor:pointer;font-size:13.5px}
-  .item:hover{background:var(--bg)} .item.sel{background:#eceefb;font-weight:600}
-  .dot{width:9px;height:9px;border-radius:50%;flex:none}
-  .item .v{margin-left:auto;font-size:11px;font-family:var(--mono);font-weight:700}
-  .vb{color:var(--coral)} .vg{color:var(--green)} .va{color:var(--amber)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+  .card>.h{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;
+           font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+  .card>.h .dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
 
-  .detail{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;min-height:560px}
-  .detail .top{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-  .detail .cmd{font-size:21px;font-weight:700;color:var(--ink);margin:4px 0 14px}
-  .detail .cmd::before{content:"“";color:var(--faint)} .detail .cmd::after{content:"”";color:var(--faint)}
-  .code{font-family:var(--mono);font-size:12.5px;background:#0f1420;color:#d7dcec;border-radius:10px;padding:14px 16px;overflow:auto;white-space:pre;line-height:1.55}
-  .code .kw{color:#8ea2ff} .code .ban{color:#ff8a7a;font-weight:700;background:rgba(255,90,70,.14);border-radius:3px;padding:0 2px}
-  .verdicts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
-  .vcard{border-radius:12px;padding:16px 18px;border:2px solid}
-  .vcard .h{font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:7px}
-  .vcard .m{font-size:15px;line-height:1.45}
-  .vcard.attack{border-color:var(--coral);background:var(--coral-bg)} .vcard.attack .h{color:var(--coral)}
-  .vcard.blocked{border-color:var(--green);background:var(--green-bg)} .vcard.blocked .h{color:var(--green)}
-  .vcard.residual{border-color:var(--amber);background:var(--amber-bg)} .vcard.residual .h{color:var(--amber)}
-  .vcard .why{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-top:8px}
-  .seclvl{font-size:12.5px;color:var(--ink2);margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
-  .seclvl b{font-family:var(--mono);font-weight:700}
+  /* live console */
+  #console{height:430px;overflow-y:auto;font-family:var(--mono);font-size:12.5px;background:var(--panel2)}
+  .row{display:grid;grid-template-columns:64px 76px 1fr auto;gap:10px;align-items:center;
+       padding:7px 14px;border-bottom:1px solid #141b28;cursor:pointer}
+  .row:hover{background:#131a28}
+  .row.sel{background:#152233;box-shadow:inset 3px 0 0 var(--accent)}
+  .row .ts{color:var(--faint);font-variant-numeric:tabular-nums}
+  .row .id{color:var(--accent)}
+  .row .cmd{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .lat{color:var(--dim);font-variant-numeric:tabular-nums;font-size:11.5px}
+  .pill{font-size:10.5px;font-weight:700;letter-spacing:.3px;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .pill.reject{background:rgba(47,158,111,.16);color:#63d3a3;border:1px solid rgba(47,158,111,.4)}
+  .pill.nodef{background:rgba(224,80,63,.16);color:#f18a7c;border:1px solid rgba(224,80,63,.4)}
+  .pill.residual{background:rgba(201,146,46,.16);color:#e3b660;border:1px solid rgba(201,146,46,.4)}
+  .pill.benign{background:rgba(111,123,230,.16);color:#a0a9f2;border:1px solid rgba(111,123,230,.4)}
+  .console-empty{color:var(--faint);padding:22px 16px;font-family:var(--sans);font-size:13px}
 
-  .runbtn{display:inline-flex;align-items:center;gap:8px;background:var(--indigo);color:#fff;border:none;border-radius:10px;
-          padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(76,91,212,.22)}
-  .runbtn:hover{background:#3f4cbb}
-  .tally{font-family:var(--mono);font-size:13px;color:var(--ink2);margin-left:14px}
-  .foot{margin-top:26px;font-family:var(--mono);font-size:11px;color:var(--faint);line-height:1.7}
+  /* detail */
+  #detail{padding:15px}
+  .detail-empty{color:var(--faint);padding:20px 4px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:2px 9px;font-family:var(--mono)}
+  .verdict{font-weight:800;font-size:14px;letter-spacing:.3px;padding:9px 12px;border-radius:9px;margin:6px 0 4px}
+  .verdict.reject{background:rgba(47,158,111,.14);color:#7fe0b3}
+  .verdict.nodef{background:rgba(224,80,63,.14);color:#f5a294}
+  .verdict.residual{background:rgba(201,146,46,.14);color:#eac578}
+  .verdict.benign{background:rgba(111,123,230,.14);color:#b3bbf5}
+  .caveat{color:var(--residual);font-size:12px;margin:2px 0 8px}
+  .said{color:var(--dim);font-size:13px;margin:8px 0}
+  .said b{color:var(--ink);font-weight:600}
+  .lbl{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;margin:12px 0 5px}
+  pre.src{margin:0;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px 12px;
+          font-family:var(--mono);font-size:11.8px;line-height:1.5;color:#cdd7e6;overflow:auto;max-height:220px;white-space:pre-wrap;word-break:break-word}
+  pre.src mark{background:rgba(224,80,63,.28);color:#ffd9d1;border-radius:3px;padding:0 2px}
+  .viol{display:flex;flex-direction:column;gap:6px}
+  .viol .v{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px}
+  .layer{font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px}
+  .layer.system_security{background:rgba(57,194,201,.15);color:#7fe0e4}
+  .layer.perceptual_xr{background:rgba(169,123,230,.15);color:#c6adf2}
+  .layer.structural{background:rgba(123,138,163,.15);color:#aab6c9}
+  .none{color:var(--faint);font-size:12px}
+  .lat-line{color:var(--dim);font-size:12px;margin-top:10px;font-family:var(--mono)}
+  .lat-line b{color:var(--ink)}
+
+  /* input lanes */
+  .lanes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+  @media(max-width:900px){.lanes{grid-template-columns:1fr}}
+  .lane .h .dot.auth{background:var(--reject)} .lane .h .dot.adv{background:var(--residual)}
+  .lane .body{padding:13px 14px}
+  .lane textarea,.lane input{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+       color:var(--ink);font-family:var(--mono);font-size:12px;padding:9px 10px;resize:vertical}
+  .lane textarea{min-height:118px}
+  .lane .act{display:flex;align-items:center;gap:10px;margin-top:9px}
+  .tag{font-size:10.5px;font-weight:700;letter-spacing:.4px;padding:2px 8px;border-radius:20px}
+  .tag.auth{background:rgba(47,158,111,.16);color:#63d3a3}
+  .tag.adv{background:rgba(201,146,46,.16);color:#e3b660}
+  .lane .disc{color:var(--faint);font-size:11.5px;margin-top:8px;line-height:1.45}
+  #advout{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+  .adv{font-family:var(--mono);font-size:11.5px;color:var(--dim);border-left:2px solid var(--residual);padding:3px 9px}
+  .adv b{color:var(--ink)}
+  footer{color:var(--faint);font-size:11.5px;margin-top:22px;border-top:1px solid var(--line);padding-top:12px;line-height:1.6}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>Speak-to-build VR: attacks vs the DreamCodeVR+ safety backend</h1>
-    <div class="sub">Every command below is spoken to the VR app and turned into code. See what it does with <b>no defence</b> vs our <b>real-time backend</b> — all local, no headset.</div>
+    <h1>DreamCodeVR<span class="plus">+</span> · Live Code-Admission Console</h1>
+    <span class="badge" id="badge">loopback · offline</span>
+    <span class="sub">Real validator, streamed live. Payloads are <b>statically screened, never compiled or executed.</b></span>
   </header>
 
-  <div class="stats" id="stats"></div>
-
-  <div class="panel">
-    <h2>Attack success rate by class &mdash; three defence levels</h2>
-    <div id="chart"></div>
-    <div class="legend">
-      <span><b style="background:var(--coral)"></b>No defence (original)</span>
-      <span><b style="background:var(--amber)"></b>Security-only</span>
-      <span><b style="background:var(--green)"></b>Fully hardened (ours)</span>
-      <span style="margin-left:auto"><button class="runbtn" id="run">▶ Run all 40 attacks</button><span class="tally" id="tally"></span></span>
+  <div class="bar">
+    <div class="seg" id="defence" role="group" aria-label="defence level">
+      <button data-d="no_defence">No defence</button>
+      <button data-d="security_only">Security-only</button>
+      <button data-d="deploy_hardened" class="on">DeployHardened</button>
+    </div>
+    <button class="run" id="run">▶ RUN LIVE CODE-ADMISSION SWEEP</button>
+    <button class="ghost" id="reset">Reset</button>
+    <div class="spacer"></div>
+    <div class="ticker">
+      <div><span class="lbl">live observational latency</span></div>
+      <div>median <b id="tk-med">—</b> · p95 <b id="tk-p95">—</b> µs</div>
     </div>
   </div>
 
-  <div class="browser">
-    <div class="list" id="list"></div>
-    <div class="detail" id="detail"></div>
+  <div class="counters">
+    <div class="kpi tot"><div class="n" id="c-total">0</div><div class="t">cases streamed</div></div>
+    <div class="kpi rej"><div class="n" id="c-rej">0</div><div class="t">rejected before execution</div></div>
+    <div class="kpi adm"><div class="n" id="c-adm">0</div><div class="t">admitted (incl. runtime residual)</div></div>
   </div>
 
-  <div class="foot">
-    Live verdicts from the real <span style="color:var(--ink2)">dcvr_csharp_policy</span> validator (no defence = unvalidated code runs · security-only = CreativeFreedom · fully hardened = DeployHardened).
-    Attacks grounded in Nair et al. (USENIX Security 2023) &amp; Casey et al. (IEEE TDSC 2021). Loopback-only demo.
+  <div class="grid">
+    <div class="card">
+      <div class="h"><span class="dot"></span> live sweep console</div>
+      <div id="console"><div class="console-empty">Press <b>Run live code-admission sweep</b> — each payload is evaluated by the real validator and streamed here as it is admitted or rejected.</div></div>
+    </div>
+    <div class="card">
+      <div class="h"><span class="dot"></span> verdict detail</div>
+      <div id="detail"><div class="detail-empty">Select a streamed row, run a sweep, or fire your own C# below.</div></div>
+    </div>
   </div>
+
+  <div class="lanes">
+    <div class="card lane">
+      <div class="h"><span class="dot auth"></span> C# input — authoritative admission <span class="tag auth" style="margin-left:auto">ENFORCING</span></div>
+      <div class="body">
+        <textarea id="cs" spellcheck="false" placeholder="public class GeneratedBehaviour : MonoBehaviour { void Start() { /* paste generated C# here */ } }"></textarea>
+        <div class="act">
+          <button class="run" id="fire">Fire &rarr; validator</button>
+          <span class="disc">Runs the real static validator at the selected defence level. This IS the code-admission decision.</span>
+        </div>
+      </div>
+    </div>
+    <div class="card lane">
+      <div class="h"><span class="dot adv"></span> Natural-language — intent advisory <span class="tag adv" style="margin-left:auto">ADVISORY ONLY</span></div>
+      <div class="body">
+        <input id="nl" placeholder='e.g. "render a zombie over that bystander so I attack them"'>
+        <div class="act">
+          <button class="ghost" id="screen">Screen intent</button>
+          <span class="disc">Advisory screen for embodied dark-patterns (swapping · coercion · concealment · false-affordance · motion-punishment). <b>NOT the code-admission decision</b> — no code is generated or validated here.</span>
+        </div>
+        <div id="advout"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Static code-admission evaluation only — no headset, camera, passthrough, or code execution. &ldquo;No defence&rdquo; means admitted <em>without validation</em>, not executed successfully.
+    Console latencies are <b>live observational timings</b>, distinct from the paper&rsquo;s controlled release-build microbenchmark.
+    Admission never establishes runtime safety.
+  </footer>
 </div>
 
 <script>
-const CLS = {
-  biometric:"Biometric — the body", positional:"Positional — head/hand pose",
-  surroundings:"Surroundings — the room", joystick:"Human-joystick", chaperone:"Chaperone / boundary", benign:"Benign (creative freedom)"
-};
-const CLSCOL = {biometric:"#7c5cd4",positional:"#4c5bd4",surroundings:"#0fa3a3",joystick:"#e0503f",chaperone:"#b9791b",benign:"#2f9e6f"};
-const BAN = ["System.IO","System.Net","System.Reflection","System.Diagnostics","System.Threading","UnityEngine.Networking","Application.Quit","Process","Assembly","AppDomain","Environment","Marshal","DllImport","UnityWebRequest","WebCamTexture","OVRManager","OVRBoundary","OVRPlugin","OVRInput","OVRHaptics","OVRCameraRig","InputTracking","TrackedPoseDriver","XROrigin","XRSettings","XRDevice","InputDevices","XRInputSubsystem","XR","WebClient","TcpClient","SetControllerVibration","Vibrate","SendHapticImpulse"];
-let DATA=[], sel=null;
+"use strict";
+const $ = s => document.querySelector(s);
+const cons = $("#console"), detail = $("#detail");
+let defence = "deploy_hardened";
+let es = null, selectedRow = null;
 
-function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
-function hlCode(code){
-  let s = esc(code);
-  s = s.replace(/\b(public|class|void|var|new|for|foreach|if|int|float|return)\b/g,'<span class="kw">$1</span>');
-  for(const t of BAN){ s = s.split(esc(t)).join('<span class="ban">'+esc(t)+'</span>'); }
-  return s;
+// ---- safe DOM helpers (no innerHTML with dynamic data) ----
+function el(tag, cls, text){ const e=document.createElement(tag); if(cls)e.className=cls; if(text!=null)e.textContent=text; return e; }
+function now(){ return new Date().toLocaleTimeString("en-GB",{hour12:false}); }
+
+function colorClass(ev){
+  if(ev.decision === "reject") return "reject";
+  if(ev.defence === "no_defence") return "nodef";
+  if(ev.expected_classification === "benign_admitted") return "benign";
+  return "residual"; // known-runtime-residual OR admitted-by-static (custom): amber, never "safe"
 }
-function fmt(n,d){return Math.round(1000*n/d)/10;}
 
-fetch('/api/results').then(r=>r.json()).then(j=>{ DATA=j.per_attack; render(); });
+// ---- live console rows ----
+function addRow(ev){
+  const empty = cons.querySelector(".console-empty"); if(empty) empty.remove();
+  const row = el("div","row");
+  row.appendChild(el("span","ts", now()));
+  row.appendChild(el("span","id", ev.payload_id));
+  row.appendChild(el("span","cmd", ev.spoken_command));
+  const pill = el("span","pill "+colorClass(ev), pillText(ev));
+  const right = el("span"); right.style.display="flex"; right.style.gap="8px"; right.style.alignItems="center";
+  right.appendChild(pill);
+  right.appendChild(el("span","lat", ev.latency_us.toFixed(1)+"µs"));
+  row.appendChild(right);
+  row.addEventListener("click", ()=>{ selectRow(row); showDetail(ev); });
+  cons.appendChild(row);
+  cons.scrollTop = cons.scrollHeight;
+  return row;
+}
+function pillText(ev){
+  if(ev.decision==="reject") return "REJECTED";
+  if(ev.defence==="no_defence") return "ADMITTED";
+  if(ev.expected_classification==="benign_admitted") return "BENIGN";
+  if(ev.expected_classification==="known_runtime_residual") return "RESIDUAL";
+  return "ADMITTED";
+}
+function selectRow(row){ if(selectedRow) selectedRow.classList.remove("sel"); selectedRow=row; if(row) row.classList.add("sel"); }
 
-function render(){
-  const atk = DATA.filter(a=>a.should_block), ben = DATA.filter(a=>!a.should_block);
-  const succ = lvl => atk.filter(a=>!a.blocked[lvl]).length;
-  // stats
-  document.getElementById('stats').innerHTML = `
-    <div class="stat bad"><div class="k">No defence</div><div class="v">${succ(0)}/${atk.length}</div><div class="d">attacks succeed (100%) — the original system runs any generated code</div></div>
-    <div class="stat good"><div class="k">Our backend (hardened)</div><div class="v">${atk.length-succ(2)}/${atk.length}</div><div class="d">attacks blocked = <b>${fmt(atk.length-succ(2),atk.length)}% mitigated</b> before anything runs</div></div>
-    <div class="stat free"><div class="k">Creative freedom</div><div class="v">${ben.length}/${ben.length}</div><div class="d">benign commands still allowed — 0 over-blocked</div></div>`;
-  // chart per class
-  const classes = ["biometric","positional","surroundings","joystick","chaperone"];
-  document.getElementById('chart').innerHTML = classes.map(c=>{
-    const rows = atk.filter(a=>a.cls===c);
-    const s = l => fmt(rows.filter(a=>!a.blocked[l]).length, rows.length);
-    const bar=(v,cl)=>`<div class="bar"><span class="${cl}" style="width:${v}%"></span><em>${v}%</em></div>`;
-    return `<div class="chartrow"><div class="lab">${CLS[c].split(' —')[0]}</div><div class="bars">${bar(s(0),'none')}${bar(s(1),'sec')}${bar(s(2),'hard')}</div></div>`;
-  }).join('');
-  // list
-  let html='';
-  for(const c of [...classes,"benign"]){
-    html += `<div class="grp">${CLS[c]}</div>`;
-    for(const a of DATA.filter(x=>x.cls===c)){
-      const v = a.should_block ? (a.blocked[2] ? '<span class="vg">blocked</span>' : '<span class="va">slips</span>') : '<span class="vg">allowed</span>';
-      html += `<div class="item" data-id="${a.id}"><span class="dot" style="background:${CLSCOL[c]}"></span>${esc(a.command)}<span class="v">${v}</span></div>`;
-    }
+// ---- detail pane ----
+function showDetail(ev){
+  detail.replaceChildren();
+  const chips = el("div","chips");
+  chips.appendChild(el("span","chip", ev.family));
+  chips.appendChild(el("span","chip", ev.payload_id));
+  chips.appendChild(el("span","chip", "profile: "+ev.defence));
+  detail.appendChild(chips);
+
+  const cc = colorClass(ev);
+  detail.appendChild(el("div","verdict "+cc, ev.verdict_label));
+  if(ev.runtime_unverified) detail.appendChild(el("div","caveat","⚠ Runtime safety not established — static admission only."));
+
+  if(ev.spoken_command){
+    const said = el("div","said"); said.appendChild(el("span",null,"command: "));
+    const b=el("b",null,"“"+ev.spoken_command+"”"); said.appendChild(b);
+    if(ev.effect){ said.appendChild(document.createElement("br")); said.appendChild(el("span",null,"effect: "+ev.effect)); }
+    detail.appendChild(said);
   }
-  const list=document.getElementById('list'); list.innerHTML=html;
-  list.querySelectorAll('.item').forEach(el=>el.onclick=()=>select(el.dataset.id));
-  select(DATA[0].id);
-}
 
-function select(id){
-  sel=id;
-  document.querySelectorAll('.item').forEach(e=>e.classList.toggle('sel',e.dataset.id===id));
-  const a = DATA.find(x=>x.id===id); const d=document.getElementById('detail');
-  const blockedH = a.blocked[2];
-  let right;
-  if(!a.should_block){
-    right = `<div class="vcard blocked"><div class="h">✅ DreamCodeVR+ backend</div><div class="m"><b>ALLOWED</b> — legitimate creation, passed the validator.</div><div class="why">creative freedom preserved</div></div>`;
-  } else if(blockedH){
-    right = `<div class="vcard blocked"><div class="h">🛡️ DreamCodeVR+ backend</div><div class="m"><b>BLOCKED</b> — the malicious code is refused before it can run.</div><div class="why">${a.reasons_hardened.map(esc).join('<br>')}</div></div>`;
+  detail.appendChild(el("div","lbl","generated c# (screened, not executed)"));
+  detail.appendChild(renderSource(ev.csharp, ev.violations));
+
+  detail.appendChild(el("div","lbl","violations ("+ev.violation_layer+")"));
+  if(ev.violations && ev.violations.length){
+    const box = el("div","viol");
+    ev.violations.forEach((v,i)=>{
+      const layer = (ev.violation_layers && ev.violation_layers[i]) || "structural";
+      const line = el("div","v");
+      line.appendChild(el("span","layer "+layer, layer.replace("_"," ")));
+      line.appendChild(el("span",null, v));
+      box.appendChild(line);
+    });
+    detail.appendChild(box);
   } else {
-    right = `<div class="vcard residual"><div class="h">⚠️ DreamCodeVR+ backend</div><div class="m"><b>Slips past static validation</b> — this abuses otherwise-legitimate camera moves, so it needs the <b>runtime guardian</b> (documented residual, 2/40).</div></div>`;
+    detail.appendChild(el("div","none", ev.defence==="no_defence" ? "no validation applied at this level" : "no violations — admitted by static validator"));
   }
-  const leftH = a.should_block
-    ? `<div class="vcard attack"><div class="h">▶ No defence (original)</div><div class="m"><b>ATTACK SUCCEEDS</b> — ${esc(a.effect)}</div></div>`
-    : `<div class="vcard attack" style="border-color:#cfd6e6;background:#f4f6fb"><div class="h" style="color:#6b7688">Benign command</div><div class="m">${esc(a.effect)}</div></div>`;
-  const secTxt = a.should_block ? (a.blocked[1]
-      ? `<b>blocked</b> — caught by the base system-access bans (${esc(a.reasons_security.join(', '))})`
-      : `<b>NOT blocked</b> — this attack touches no system API, so the code-security layer alone misses it; it needs perceptual hardening`) : `<b>allowed</b>`;
-  d.innerHTML = `
-    <div class="top"><span class="cls-chip c-${a.cls}">${a.cls}</span><span style="font-family:var(--mono);font-size:12px;color:var(--faint)">${a.id}</span></div>
-    <div class="cmd">${esc(a.command)}</div>
-    <div class="code">${hlCode(a.csharp)}</div>
-    <div class="verdicts">${leftH}${right}</div>
-    <div class="seclvl">Security-only layer: ${secTxt}.</div>`;
+
+  const lat = el("div","lat-line"); lat.appendChild(el("span",null,"admission latency (this call): "));
+  lat.appendChild(el("b",null, ev.latency_us.toFixed(1)+" µs"));
+  detail.appendChild(lat);
 }
 
-document.getElementById('run')?.addEventListener('click',async()=>{
-  const atk = DATA.filter(a=>a.should_block); let caught=0, slip=0;
-  const t=document.getElementById('tally');
-  for(const a of atk){ select(a.id); if(a.blocked[2])caught++; else slip++;
-    t.textContent = `caught ${caught}  ·  slipped ${slip}`;
-    await new Promise(r=>setTimeout(r,90)); }
-  t.textContent = `Done: ${caught}/${atk.length} blocked (${fmt(caught,atk.length)}%) · ${slip} need the runtime guardian`;
+// safe source render with token highlight (text nodes + <mark>, never innerHTML)
+function renderSource(src, tokens){
+  const pre = el("pre","src");
+  const marks = (tokens||[]).filter(t=>t && t.length>1 && /^[A-Za-z0-9_.]+$/.test(t));
+  if(!marks.length){ pre.textContent = src; return pre; }
+  const esc = marks.map(t=>t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+  const re = new RegExp("("+esc.join("|")+")","g");
+  let last=0, m;
+  while((m=re.exec(src))!==null){
+    if(m.index>last) pre.appendChild(document.createTextNode(src.slice(last,m.index)));
+    pre.appendChild(el("mark",null,m[0]));
+    last = m.index + m[0].length;
+    if(m.index===re.lastIndex) re.lastIndex++; // guard zero-width
+  }
+  if(last<src.length) pre.appendChild(document.createTextNode(src.slice(last)));
+  return pre;
+}
+
+// ---- counters + ticker ----
+let cTotal=0,cRej=0,cAdm=0;
+function bumpCounters(ev){
+  cTotal++; if(ev.decision==="reject") cRej++; else cAdm++;
+  $("#c-total").textContent=cTotal; $("#c-rej").textContent=cRej; $("#c-adm").textContent=cAdm;
+}
+function resetCounters(){ cTotal=cRej=cAdm=0; $("#c-total").textContent=0; $("#c-rej").textContent=0; $("#c-adm").textContent=0;
+  $("#tk-med").textContent="—"; $("#tk-p95").textContent="—"; }
+
+// ---- defence toggle ----
+$("#defence").addEventListener("click", e=>{
+  const b=e.target.closest("button[data-d]"); if(!b) return;
+  defence=b.dataset.d;
+  $("#defence").querySelectorAll("button").forEach(x=>x.classList.toggle("on", x===b));
+});
+
+// ---- sweep (POST /api/runs -> SSE) ----
+async function runSweep(){
+  if(es){ es.close(); es=null; }
+  cons.replaceChildren(); resetCounters(); selectRow(null);
+  const btn=$("#run"); btn.disabled=true;
+  try{
+    const r = await fetch("/api/runs",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({defence})});
+    if(!r.ok){ throw new Error("run create failed: "+r.status); }
+    const info = await r.json();
+    es = new EventSource("/api/runs/"+encodeURIComponent(info.run_id)+"/events");
+    es.onmessage = m=>{
+      const data = JSON.parse(m.data);
+      if(data.type==="completed"){
+        $("#tk-med").textContent=data.median_latency_us.toFixed(1);
+        $("#tk-p95").textContent=data.p95_latency_us.toFixed(1);
+        es.close(); es=null; btn.disabled=false;
+        return;
+      }
+      bumpCounters(data); addRow(data);
+    };
+    es.onerror = ()=>{ if(es){es.close();es=null;} btn.disabled=false; };
+  }catch(err){ btn.disabled=false; cons.appendChild(el("div","console-empty","Error: "+err.message)); }
+}
+$("#run").addEventListener("click", runSweep);
+$("#reset").addEventListener("click", ()=>{ if(es){es.close();es=null;} cons.replaceChildren(el("div","console-empty","Reset. Run a sweep or fire your own C#."));
+  resetCounters(); detail.replaceChildren(el("div","detail-empty","Select a streamed row, run a sweep, or fire your own C# below.")); selectRow(null); });
+
+// ---- custom C# (POST /api/evaluate) ----
+$("#fire").addEventListener("click", async ()=>{
+  const csharp=$("#cs").value.trim();
+  if(!csharp){ return; }
+  try{
+    const r=await fetch("/api/evaluate",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({csharp,defence})});
+    if(!r.ok){ detail.replaceChildren(el("div","caveat","Rejected by endpoint: "+r.status+" ("+(await r.text())+")")); return; }
+    const ev=await r.json();
+    bumpCounters(ev); const row=addRow(ev); selectRow(row); showDetail(ev);
+  }catch(err){ detail.replaceChildren(el("div","caveat","Error: "+err.message)); }
+});
+
+// ---- NL advisory (POST /api/advisory) ----
+$("#screen").addEventListener("click", async ()=>{
+  const command=$("#nl").value.trim(); const out=$("#advout"); out.replaceChildren();
+  if(!command){ return; }
+  try{
+    const r=await fetch("/api/advisory",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({command})});
+    if(!r.ok){ out.appendChild(el("div","adv","endpoint: "+r.status)); return; }
+    const d=await r.json();
+    const head=el("div","adv"); head.appendChild(el("b",null,d.note)); out.appendChild(head);
+    if(!d.advisories.length){ out.appendChild(el("div","adv","no intent flags raised (advisory).")); return; }
+    d.advisories.forEach(a=>{
+      const line=el("div","adv");
+      line.appendChild(el("b",null, a.cluster+": "));
+      line.appendChild(el("span",null, a.note+"  (conf "+Number(a.confidence).toFixed(2)+")"));
+      out.appendChild(line);
+    });
+  }catch(err){ out.appendChild(el("div","adv","Error: "+err.message)); }
 });
 </script>
 </body>
