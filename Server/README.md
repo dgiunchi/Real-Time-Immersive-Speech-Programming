@@ -38,6 +38,17 @@ Use the helper script below to verify the pieces that `npm install` does not gua
 npm run doctor
 ```
 
+For Claude/AgenticXR, set `AGENTICXR_MODE=claude` and `ANTHROPIC_API_KEY` before
+running the check. In this mode the legacy Python/OpenAI code-generation worker is
+not started, so its virtual environment and `OPENAI_API_KEY` are not required.
+
+```powershell
+$env:AGENTICXR_MODE="claude"
+$env:ANTHROPIC_API_KEY="sk-ant-your-real-key"
+$env:STT_HTTP_URL="http://your-faster-whisper-host:50101/stt/transcribe"
+npm run doctor
+```
+
 The check reports whether the local machine can resolve:
 
 - `ubiq`
@@ -85,6 +96,20 @@ From the `Server` folder you can start the main sample used in this repository w
 ```powershell
 npm run start:code-runtime-generator
 ```
+
+Start the live XR-to-Claude AgenticXR pipeline instead with:
+
+```powershell
+$env:ANTHROPIC_API_KEY="sk-ant-your-real-key"
+$env:STT_HTTP_URL="http://your-faster-whisper-host:50101/stt/transcribe"
+npm run start:agenticxr
+```
+
+The AgenticXR start script sets its mode internally. It hosts Ubiq on TCP `8009`,
+receives headset audio on NetworkId `98`, invokes faster-whisper, starts the Claude
+Agent SDK orchestrator, and returns scene queries and artifact proposals over the
+MCP/Ubiq bridge. The MCP server is spawned by each orchestrator turn; do not start a
+second copy manually for this flow.
 
 The script above changes into the correct sample directory before bootstrapping the app, so `config.json`, `cert.pem`, and `key.pem` are resolved correctly.
 

@@ -4,6 +4,7 @@
   "description": "Ubiq-Genie",
   "scripts": {
     "doctor": "node scripts/check-local-setup.js",
+    "start:agenticxr": "node scripts/start-agenticxr.js",
     "start:code-runtime-generator": "node scripts/start-code-runtime-generator.js",
     "start:unity-scene-bridge": "node scripts/start-unity-scene-bridge.js",
     "dev:mock-unity-peer": "node mcp/unity_scene_bridge/mock_unity_peer.js",

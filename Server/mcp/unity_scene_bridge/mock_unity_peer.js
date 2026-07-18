@@ -145,6 +145,7 @@ new Listener(CHANNELS.SCENE_QUERY, (envelope) => {
     }
 
     // Legacy/default: SceneQuery (docs/agentic-xr-architecture.md)
+    envelope = fromWireFormat(envelope);
     console.log(`[mock_unity_peer] SceneQuery received (correlationId ${envelope.correlationId}, target ${envelope.targetObjectId || envelope.payload.filter})`);
     const reply = makeEnvelope({
         type: "SceneDelta",
@@ -235,6 +236,7 @@ new Listener(CHANNELS.ARTIFACT_CHANNEL, (envelope) => {
     }
 
     // Legacy/default: ArtifactProposal (docs/agentic-xr-architecture.md)
+    envelope = fromWireFormat(envelope);
     const isSimulate = envelope.payload && envelope.payload.mode === "simulate";
     const needsConfirm = !isSimulate && envelope.authoringMode && envelope.authoringMode !== "automatic";
     console.log(

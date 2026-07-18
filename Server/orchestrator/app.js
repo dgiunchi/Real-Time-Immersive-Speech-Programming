@@ -123,13 +123,17 @@ timeline (see Server/memory/timeline_registry.js):
    and correlationId, before delegating to any subagent. This is a stand-in for real
    speech capture (not wired into this pipeline yet - see docs/next-build-prompt.md
    §1.3), not a claim that live speech was transcribed.
-1. scene_analyst - ground the request in the current scene.
+   Then call ${bridgeTool("send_agent_status")} with state "thinking" and a short detail.
+1. Call ${bridgeTool("send_agent_status")} with state "querying_memory", then use
+   scene_analyst to ground the request in the current scene.
 2. code_generator - draft a candidate artifact from the grounded intent.
-3. validator_critic - independently review the candidate; read its JSON verdict.
+3. Call ${bridgeTool("send_agent_status")} with state "validating", then use
+   validator_critic to independently review the candidate; read its JSON verdict.
    If pass is false, stop and explain why instead of proceeding.
 4. conflict_resolver - check the target object is safe to modify right now.
    If decision is not "proceed", stop and explain why instead of proceeding.
-5. Call ${bridgeTool("propose_artifact")} yourself (this call belongs to you, the
+5. Call ${bridgeTool("send_agent_status")} with state "ready_to_preview", then call
+   ${bridgeTool("propose_artifact")} yourself (this call belongs to you, the
    router, not a subagent) with the candidate code, targetObjectId, intent,
    authoringMode AND interactionMode from the validator's verdict, sessionId, and the
    shared correlationId.
@@ -161,7 +165,7 @@ async function main() {
     const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
     const correlationId = randomUUID();
-    const sessionId = "orchestrator-cli";
+    const sessionId = process.argv[4] || "orchestrator-cli";
 
     console.log(`[orchestrator] correlationId=${correlationId} target=${targetObjectId}`);
     console.log(`[orchestrator] intent: "${intent}"`);

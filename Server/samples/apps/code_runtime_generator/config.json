@@ -4,7 +4,7 @@
     "outputNetworkId": 94,
     "credentials": {
         "azureSpeech": {
-            "key": "8321a17878af46f4b80083ef7331c8cb",
+            "key": "",
             "region": "uksouth"
         },
         "openAI": {

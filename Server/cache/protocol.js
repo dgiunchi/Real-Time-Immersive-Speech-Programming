@@ -75,6 +75,15 @@ const CHANNEL_BY_TYPE = Object.freeze({
 // scaffold sends `payload` as a JSON string, and Unity's CacheEnvelope.payload field
 // is typed `string` accordingly. See docs/cache-exchange-layer.md.
 const STRINGIFY_PAYLOAD_FOR_UNITY = new Set([
+    // Original AgenticXR bridge messages. These now use the same payload-string
+    // convention as the cache messages so Unity has one unambiguous wire shape.
+    "SceneQuery",
+    "SceneDelta",
+    "ArtifactProposal",
+    "ArtifactResult",
+    "AgentUtterance",
+    "AgentPresenceHeartbeat",
+    "UserDecision",
     CACHE_MESSAGE_TYPES.CACHE_SNAPSHOT,
     CACHE_MESSAGE_TYPES.DELTA_ACK,
     CACHE_MESSAGE_TYPES.DELTA_NACK,
@@ -161,7 +170,6 @@ function toWireFormat(envelope) {
 // Inverse of toWireFormat - used by anything on the Node side (mock peer, tests)
 // that needs to read a stringified payload back as an object.
 function fromWireFormat(envelope) {
-    if (!STRINGIFY_PAYLOAD_FOR_UNITY.has(envelope.type)) return envelope;
     if (typeof envelope.payload !== "string") return envelope;
     try {
         return { ...envelope, payload: JSON.parse(envelope.payload) };

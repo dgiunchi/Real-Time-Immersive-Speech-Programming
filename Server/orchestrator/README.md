@@ -18,9 +18,10 @@ single-shot pipeline in `Server/samples/apps/code_runtime_generator` still uses
 `OPENAI_API_KEY`/`OPENAI_MODEL` and is untouched; the two are independent on purpose,
 so they stay comparable for the paper's planned one-shot-vs-agentic study conditions.)
 
-**Something answering on the Unity side.** Real Unity/C# handlers for
-`SceneQuery`/`SceneDelta`/`ArtifactProposal`/`ArtifactResult` are not implemented yet
-(`docs/progress-log.md`), so for now that "something" is `mock_unity_peer.js`.
+**Something answering on the Unity side.** Use the real Unity
+`DynamicCompiler.unity` scene for a headset run, or `mock_unity_peer.js` for a
+device-free backend test. The AgenticXR Unity handlers install automatically at
+scene load.
 
 ## Steps
 
@@ -89,8 +90,6 @@ The artifact history persists across runs at `Server/memory/data/artifact_log.js
 ## What this does and doesn't prove yet
 
 Running this end-to-end with a real `ANTHROPIC_API_KEY` and the mock peer proves the
-agent-to-agent delegation, the MCP tool wiring, and the memory stores all work
-together. It does **not** prove anything about a real headset, because Unity doesn't
-implement its side of the protocol yet — the mock peer's replies are canned, not
-computed from a real scene. See `docs/progress-log.md` for exactly what's implemented
-vs. designed-only.
+agent delegation, MCP wiring and memory stores. A real headset run additionally
+tests live scene serialization, microphone/STT, Roslyn staging/commit, consent UI,
+and undo. Follow `docs/live-xr-claude-setup.md` for that acceptance test.

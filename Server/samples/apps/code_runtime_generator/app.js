@@ -3,6 +3,8 @@ const { MessageReader, ApplicationController } = require("ubiq-genie-components"
 const {  CodeGenerationService, SpeechToTextService, FileServer } = require("ubiq-genie-services");
 const fs = require("fs");
 const nconf = require("nconf");
+const path = require("path");
+const { spawn } = require("child_process");
 
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 const DATA_DIR = "data";
@@ -21,6 +23,7 @@ class CodeGeneration extends ApplicationController {
     }
 
     registerComponents() {
+        this.agenticMode = (process.env.AGENTICXR_MODE || "legacy").toLowerCase() === "claude";
         ensureRuntimeDataFiles();
 
         // A FileServer to serve image files to clients
@@ -33,11 +36,15 @@ class CodeGeneration extends ApplicationController {
         this.components.transcriptionService = new SpeechToTextService(this.scene, nconf.get());
 
         // A CodeGenerationService to generate text based on text
-        this.components.codeGenerationService = new CodeGenerationService(this.scene, nconf.get());
+        if (!this.agenticMode) {
+            this.components.codeGenerationService = new CodeGenerationService(this.scene, nconf.get());
+        }
 
         this.functionality = "";
 
         this.isGenerating = false;
+        this.agenticTargets = new Map();
+        this.agenticRuns = new Map();
 
     }
 
@@ -50,8 +57,12 @@ class CodeGeneration extends ApplicationController {
             if (pcmChunk.length <= 64) {
                 const control = pcmChunk.toString("utf8");
                 if (control.startsWith(STT_CONTROL_PREFIX)) {
-                    const action = control.slice(STT_CONTROL_PREFIX.length);
+                    const actionWithTarget = control.slice(STT_CONTROL_PREFIX.length);
+                    const separator = actionWithTarget.indexOf(":");
+                    const action = separator >= 0 ? actionWithTarget.slice(0, separator) : actionWithTarget;
+                    const targetObjectId = separator >= 0 ? actionWithTarget.slice(separator + 1) : null;
                     if (action === "start") {
+                        if (targetObjectId) this.agenticTargets.set(peerUUID, targetObjectId);
                         this.components.transcriptionService.recordingStart(peerUUID);
                     } else if (action === "stop") {
                         this.components.transcriptionService.recordingStop(peerUUID);
@@ -80,7 +91,7 @@ class CodeGeneration extends ApplicationController {
             var response = data.toString();
             var threshold = 10;
 
-            if (response.length != 0 && response.length > threshold && this.isGenerating == false) {
+            if (response.length != 0 && response.length > threshold) {
                 // Remove all newlines from the response
                 response = response.replace(/(\r\n|\n|\r)/gm, "");
                 
@@ -88,9 +99,11 @@ class CodeGeneration extends ApplicationController {
                 fs.appendFileSync(INPUT_FILE, response);
                 console.log(`File ${INPUT_FILE} appended successfully.`);
 
-                if (response.startsWith(">")) {
-                    response = response.slice(1); // Slice off the leading '>' character
-                    if (response.trim()) {
+                if (response.startsWith(">")) response = response.slice(1);
+                if (response.trim()) {
+                    if (this.agenticMode) {
+                        this.startAgenticTurn(response.trim(), identifier);
+                    } else if (this.isGenerating == false) {
                         this.isGenerating = true;
                         console.log(peerName + " -> Agent:: " + response);
 
@@ -103,7 +116,7 @@ class CodeGeneration extends ApplicationController {
         });
 
         // Step 3: When we receive a response from the text generation service, send it to the text to speech service
-        this.components.codeGenerationService.on("response", (data, identifier) => {
+        if (this.components.codeGenerationService) this.components.codeGenerationService.on("response", (data, identifier) => {
             var response = data.toString();
             //console.log("Received text generation response from child process " + identifier);
             if (response.startsWith(">")) {
@@ -117,6 +130,35 @@ class CodeGeneration extends ApplicationController {
                     });
                 this.isGenerating = false;
             }
+        });
+    }
+
+    startAgenticTurn(intent, peerUUID) {
+        const targetObjectId = this.agenticTargets.get(peerUUID);
+        if (!targetObjectId) {
+            console.warn(`[AgenticXR] No selected stable object was supplied by Unity for peer ${peerUUID}; ignoring transcript.`);
+            return;
+        }
+        if (this.agenticRuns.has(peerUUID)) {
+            console.warn(`[AgenticXR] Claude is already handling a request for peer ${peerUUID}; ignoring overlapping transcript.`);
+            return;
+        }
+        const orchestrator = path.resolve(__dirname, "../../../orchestrator/app.js");
+        console.log(`[AgenticXR] starting Claude turn peer=${peerUUID} target=${targetObjectId} intent=${JSON.stringify(intent)}`);
+        const child = spawn(process.execPath, [orchestrator, intent, targetObjectId, peerUUID], {
+            cwd: path.resolve(__dirname, "../../.."),
+            env: process.env,
+            stdio: "inherit",
+            windowsHide: true,
+        });
+        this.agenticRuns.set(peerUUID, child);
+        child.on("error", (err) => {
+            console.error(`[AgenticXR] failed to start Claude turn: ${err.message}`);
+            this.agenticRuns.delete(peerUUID);
+        });
+        child.on("exit", (code) => {
+            console.log(`[AgenticXR] Claude turn finished peer=${peerUUID} exitCode=${code}`);
+            this.agenticRuns.delete(peerUUID);
         });
     }
 }

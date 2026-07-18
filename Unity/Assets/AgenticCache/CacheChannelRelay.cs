@@ -1,7 +1,9 @@
 using System;
+using System.Text;
 using Ubiq.Logging.Utf8Json;
 using Ubiq.Messaging;
 using UnityEngine;
+using Newtonsoft.Json.Linq;
 
 namespace AgenticCache
 {
@@ -33,15 +35,16 @@ namespace AgenticCache
             CacheEnvelope envelope;
             try
             {
-                // Matches CodeGenerationManager.cs's exact parsing call
-                // (data.FromJson<T>(), from Ubiq.Logging.Utf8Json) rather than
-                // JsonUtility.FromJson(data.ToString()) directly, for consistency
-                // with the one proven-working pattern in this codebase. Whether
-                // this extension actually handles nested payload objects better
-                // than plain JsonUtility was not verified against source in this
-                // environment - see CacheEnvelope.cs's class comment; `payload` is
-                // still declared as `string` defensively either way.
-                envelope = data.FromJson<CacheEnvelope>();
+                var json = Encoding.UTF8.GetString(data.bytes, data.start, data.length);
+                var root = JObject.Parse(json);
+                envelope = root.ToObject<CacheEnvelope>();
+                var payload = root["payload"];
+                if (payload != null)
+                {
+                    envelope.payload = payload.Type == Newtonsoft.Json.Linq.JTokenType.String
+                        ? payload.Value<string>()
+                        : payload.ToString(Newtonsoft.Json.Formatting.None);
+                }
             }
             catch (Exception e)
             {
@@ -56,6 +59,15 @@ namespace AgenticCache
             }
 
             onEnvelope?.Invoke(envelope, data);
+        }
+
+        public void Send(CacheEnvelope envelope)
+        {
+            var json = JsonUtility.ToJson(envelope);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            var message = ReferenceCountedSceneGraphMessage.Rent(bytes.Length);
+            bytes.CopyTo(new Span<byte>(message.bytes, message.start, bytes.Length));
+            context.Send(message);
         }
     }
 }

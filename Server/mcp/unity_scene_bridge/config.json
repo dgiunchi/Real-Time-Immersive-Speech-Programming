@@ -8,5 +8,5 @@
         }
     },
     "connectTimeoutMs": 8000,
-    "defaultTimeoutMs": 8000
+    "defaultTimeoutMs": 120000
 }

@@ -11,6 +11,7 @@ const venvPython = process.platform === "win32"
 const venvConfig = path.join(samplesRoot, "venv", "pyvenv.cfg");
 
 const checks = [];
+const agenticMode = (process.env.AGENTICXR_MODE || "legacy").toLowerCase() === "claude";
 
 function addCheck(ok, title, details) {
     checks.push({ ok, title, details });
@@ -48,23 +49,30 @@ addCheck(
     ]
 );
 
-addCheck(
-    pathExists(venvPython) && pathExists(venvConfig),
-    "Python virtual environment",
-    [
-        "The code generation and media services spawn Python from `Server/samples/venv`.",
-        "For the trimmed `code_runtime_generator` flow, create it with `cd samples`, `py -3.10 -m venv .\\venv`, activate it, run `python -m pip install --upgrade pip setuptools wheel`, then `pip install -r requirements.txt`."
-    ]
-);
-
-addCheck(
-    Boolean(process.env.OPENAI_API_KEY),
-    "Environment variable `OPENAI_API_KEY`",
-    [
-        "Required by the `code_runtime_generator` sample unless the key is hardcoded in config.",
-        "Set it in the shell before `npm run start:code-runtime-generator`."
-    ]
-);
+if (agenticMode) {
+    addCheck(
+        Boolean(process.env.ANTHROPIC_API_KEY),
+        "Environment variable `ANTHROPIC_API_KEY`",
+        [
+            "Required by the Claude Agent SDK orchestrator.",
+            "Set it only in the terminal that starts the server; do not put it in config.json."
+        ]
+    );
+} else {
+    addCheck(
+        pathExists(venvPython) && pathExists(venvConfig),
+        "Python virtual environment",
+        [
+            "Required only by the legacy OpenAI comparison path.",
+            "Create it under Server/samples/venv and install samples/requirements.txt."
+        ]
+    );
+    addCheck(
+        Boolean(process.env.OPENAI_API_KEY),
+        "Environment variable `OPENAI_API_KEY`",
+        ["Required by the legacy OpenAI code-generation comparison path."]
+    );
+}
 
 addCheck(
     Boolean(process.env.STT_HTTP_URL),

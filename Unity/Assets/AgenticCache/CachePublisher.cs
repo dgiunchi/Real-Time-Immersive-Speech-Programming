@@ -176,5 +176,9 @@ namespace AgenticCache
         {
             return string.IsNullOrEmpty(s) ? "" : s.Replace("\\", "\\\\").Replace("\"", "\\\"");
         }
+
+        // NetworkId 95 is outbound for Unity. The method is present because Ubiq's
+        // registration contract requires a processor even for send-only contexts.
+        public void ProcessMessage(ReferenceCountedSceneGraphMessage message) { }
     }
 }

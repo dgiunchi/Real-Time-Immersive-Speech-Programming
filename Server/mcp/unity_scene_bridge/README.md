@@ -14,16 +14,14 @@ person/policy) from that same message stream as it flows through.
 
 ## Status
 
-**The Node/MCP side — transport, memory stores, and the orchestrator — is implemented
-and tested end-to-end against a mock peer.** See `docs/progress-log.md` for the full
-record. **The Unity/C# side is not implemented yet** — that's roadmap phase 1-2
-(`docs/agentic-xr-architecture.md` §8): extending `SceneController.cs` to answer
-`SceneQuery`/emit `SceneDelta` (with real sensor events, not the mock's synthetic
-ones), and extending `CodeGenerationManager.cs` to handle `ArtifactProposal`/emit
-`ArtifactResult`. Until then, this bridge's tools will time out against a real
-headset — this is expected, not a bug. Use `mock_unity_peer.js` (below) to verify
-everything else in the meantime; see `Server/orchestrator/README.md` for running the
-full agent pipeline against it.
+The Node/MCP transport, memory stores and Claude orchestrator are implemented and
+tested against the mock peer. The Unity side is now implemented under
+`Unity/Assets/AgenticCache`: it installs automatically, publishes stable-ID
+focus/halo state, answers scene queries, stages Roslyn artifacts, requests consent,
+commits or rejects them, reports `ArtifactResult`, and supports undo. The complete
+project imports and compiles with Unity `6000.3.9f1`. A physical Quest run remains a
+human/device verification step because microphone permission, LAN routing and XR UI
+input cannot be exercised in headless batch mode.
 
 ## Files
 
@@ -84,9 +82,10 @@ and `zod`). No API keys needed; this process makes no LLM calls.
    `query_scene` should return a `SceneDelta` envelope with the mock peer's canned
    focus/halo payload, correlated back to your request. This has been verified.
 
-**2b. Run for real** (once Unity implements its side) — just `npm run
-   start:unity-scene-bridge` from `Server/`, or point your MCP client directly at
-   `node mcp/unity_scene_bridge/server.js`.
+**2b. Run for real** — use `npm run start:agenticxr` for the integrated
+speech-to-Claude path. The orchestrator spawns the MCP server itself. Use
+`npm run start:unity-scene-bridge` only when a separate MCP client will drive the
+tools directly.
 
 **2c. Wire into an MCP client** (e.g. Claude Agent SDK or a `.mcp.json`):
 
@@ -110,18 +109,10 @@ to run a full authoring turn against the mock peer.
 
 ## Next steps
 
-1. Unity: extend `SceneController.cs` to serialize the focus+halo JSON (plus real
-   sensor events, not the mock's synthetic ones) on `SceneQuery` (96) and reply on
-   `SceneDelta` (95), assigning the stable object GUIDs described in the architecture
-   doc.
-2. Unity: extend `CodeGenerationManager.cs` to handle `ArtifactProposal` (99) —
-   show the confirm/ghost-preview UI for non-automatic modes, run a real staging-clone
-   dry-run for `payload.mode === "simulate"` — and always reply with `ArtifactResult`
-   (100).
-3. Wire the orchestrator's `AgentUtterance` calls into the Coordinator so
-   `get_timeline_metrics`' `timeToVisibleResponseMs` actually populates (currently
-   null in tests, because nothing sends `AgentUtterance` outside a real Coordinator
-   flow).
-4. Migrate `Server/memory/artifact_log.js` off flat JSON-lines to SQLite once the
+1. Run the physical Quest acceptance test in `docs/live-xr-claude-setup.md` and tune
+   the world-space consent panel for the chosen XR input module.
+2. Expand the current gaze/selection sensor summary with collision, locomotion-region
+   and hand proximity publishers required by L1/L2 study tasks.
+3. Migrate `Server/memory/artifact_log.js` off flat JSON-lines to SQLite once the
    history needs querying beyond per-object, append/read (open decision,
    `docs/agentic-xr-architecture.md` §9).

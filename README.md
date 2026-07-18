@@ -49,6 +49,22 @@ $env:OPENAI_MODEL="gpt-5.5"
 $env:OPENAI_MAX_COMPLETION_TOKENS="1000"
 ```
 
+For the AgenticXR path, Claude replaces the legacy OpenAI code generator. Set the
+Anthropic key only in the terminal that starts the server:
+
+```powershell
+$env:ANTHROPIC_API_KEY="sk-ant-your-real-key"
+$env:STT_HTTP_URL="http://your-faster-whisper-host:50101/stt/transcribe"
+cd Server
+npm run doctor
+npm run start:agenticxr
+```
+
+`npm run start:agenticxr` enables `AGENTICXR_MODE=claude` automatically. It keeps
+the Ubiq room server, speech capture and STT in this process, then starts one Claude
+Agent SDK orchestration turn for each completed headset utterance. API keys must not
+be written into `.mcp.json` or any committed JSON file.
+
 Current STT uses faster-whisper HTTP, not Azure Speech STT. Defaults:
 
 ```powershell
@@ -72,9 +88,14 @@ cd Server\samples\apps\code_runtime_generator
 node app.js
 ```
 
-Then open the Unity project from the `Unity` folder with Unity `2021.3.16f1`, open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
+Then open the Unity project from the `Unity` folder with Unity `6000.3.9f1`, open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device. The AgenticXR runtime installs itself when this scene loads; no manual component placement is required.
 
 In VR, hold the left controller trigger to record speech. Release it to send the utterance to STT. Point at an object with the ray to select it; red ray means selected target.
+
+In AgenticXR mode, keep the ray on the target when recording starts so its stable
+object ID is sent with the audio session. Claude queries that object, validates the
+generated behaviour on an inactive staging clone, and either applies a low-risk
+automatic proposal or displays the world-space Approve/Reject/Undo panel.
 
 ### Git hygiene
 

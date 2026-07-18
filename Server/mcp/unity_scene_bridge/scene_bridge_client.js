@@ -4,7 +4,7 @@ const { EventEmitter } = require("events");
 const { NetworkScene, NetworkId, UbiqTcpConnection } = require("ubiq/ubiq");
 const { RoomClient } = require("ubiq/components");
 const { CHANNELS, makeEnvelope } = require("./protocol");
-const { CACHE_MESSAGE_TYPES, makeCacheEnvelope, toWireFormat } = require("../../cache/protocol");
+const { CACHE_MESSAGE_TYPES, makeCacheEnvelope, toWireFormat, fromWireFormat } = require("../../cache/protocol");
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -103,6 +103,7 @@ class SceneBridgeClient extends EventEmitter {
     }
 
     #handleInbound(envelope) {
+        envelope = fromWireFormat(envelope);
         if (["ArtifactResult", "CommitAccepted", "CommitRejected"].includes(envelope.type)) {
             this.#annotateStaleness(envelope);
         }
@@ -189,8 +190,7 @@ class SceneBridgeClient extends EventEmitter {
             this.sessionFocus.set(sessionId, { objectId, at: envelope.timestamp });
         }
         const reply = this.#awaitReply(envelope.correlationId, "SceneDelta", effectiveTimeout);
-        this.scene.send(CHANNELS.SCENE_QUERY, envelope);
-        this.emit("envelope", envelope);
+        this.#sendCache(CHANNELS.SCENE_QUERY, envelope);
         return reply;
     }
 
@@ -219,8 +219,7 @@ class SceneBridgeClient extends EventEmitter {
             payload: { code, intent: intent || null, mode: simulate ? "simulate" : "commit" },
         });
         const reply = this.#awaitReply(envelope.correlationId, "ArtifactResult", effectiveTimeout);
-        this.scene.send(CHANNELS.ARTIFACT_CHANNEL, envelope);
-        this.emit("envelope", envelope);
+        this.#sendCache(CHANNELS.ARTIFACT_CHANNEL, envelope);
         return reply;
     }
 
@@ -246,8 +245,7 @@ class SceneBridgeClient extends EventEmitter {
             originAgent: "coordinator",
             payload: { text },
         });
-        this.scene.send(CHANNELS.AGENT_UTTERANCE, envelope);
-        this.emit("envelope", envelope);
+        this.#sendCache(CHANNELS.AGENT_UTTERANCE, envelope);
         return envelope.correlationId;
     }
 

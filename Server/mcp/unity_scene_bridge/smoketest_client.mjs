@@ -1,7 +1,9 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const serverPath = "C:\\Users\\giunchid\\Downloads\\dcvr\\dcvr_agentic\\Server\\mcp\\unity_scene_bridge\\server.js";
+const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "server.js");
 
 const transport = new StdioClientTransport({ command: "node", args: [serverPath] });
 const client = new Client({ name: "smoketest", version: "0.0.2" });

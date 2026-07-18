@@ -6,6 +6,7 @@ using Ubiq.Networking;
 using Ubiq.Rooms;
 using UnityEngine;
 using UnityEngine.XR;
+using AgenticCache;
 
 public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 {
@@ -174,7 +175,14 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             Debug.Log($"[MicrophoneCapture] recording {(recording ? "start" : "stop")}");
         }
 
-        SendControlMessage(recording ? RecordingStartMessage : RecordingStopMessage);
+        var control = recording ? RecordingStartMessage : RecordingStopMessage;
+        if (recording)
+        {
+            var registry = FindFirstObjectByType<AgenticSceneRegistry>();
+            var selectedObjectId = registry != null ? registry.GetSelectedObjectId() : null;
+            if (!string.IsNullOrEmpty(selectedObjectId)) control += ":" + selectedObjectId;
+        }
+        SendControlMessage(control);
     }
 
     private void SendPendingMicrophoneSamples(bool force = false)

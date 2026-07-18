@@ -1,5 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Cache Exchange Layer mock/test flow (docs/cache-exchange-layer.md). Requires the
 // Ubiq room server AND mock_unity_peer.js already running - see that doc for the
@@ -7,12 +9,16 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 // + delta-with-a-gap sequence is generated automatically by mock_unity_peer.js on
 // join (see its "Automatic Cache Exchange Layer test flow" block).
 
-const serverPath = "C:\\Users\\giunchid\\Downloads\\dcvr\\dcvr_agentic\\Server\\mcp\\unity_scene_bridge\\server.js";
+const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "server.js");
 const sessionId = "cache-test-session"; // must match mock_unity_peer.js's demoSession
 
 const transport = new StdioClientTransport({ command: "node", args: [serverPath] });
 const client = new Client({ name: "cache-test-flow", version: "0.0.1" });
 await client.connect(transport);
+
+// Synchronize deterministically even if this client joins after the mock's timed
+// demo sequence. Ubiq does not replay old room messages to late peers.
+await client.callTool({ name: "request_snapshot", arguments: { sessionId } });
 
 function log(label, result) {
     const text = result.content.map((c) => c.text).join("\n");

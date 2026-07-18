@@ -52,6 +52,11 @@ class CacheExchangeLayer {
     attach(bridge) {
         bridge.on("envelope", (envelope) => {
             if (envelope.type === CACHE_MESSAGE_TYPES.SCENE_DELTA) {
+                // SceneDelta is shared by two protocol planes. Focus+halo query
+                // replies carry payload.focus but intentionally have no compact
+                // stableObjectId/deltaSeq; Shared XR Memory consumes those. Only
+                // compact cache deltas belong in the Agent Working Cache.
+                if (!envelope.stableObjectId) return;
                 const result = this.#reconcileOne(envelope, {
                     stableObjectId: envelope.stableObjectId,
                     objectRevision: envelope.objectRevision,

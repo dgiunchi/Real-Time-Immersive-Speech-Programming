@@ -1,21 +1,14 @@
 using RoslynCSharp;
-using RoslynCSharp.Example;
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Text.RegularExpressions;
-using Trivial.Mono.Cecil.Cil;
-using Ubiq.Samples;
 using Ubiq.XR;
 using UnityEngine;
 using UnityEngine.UI;
-using static System.Net.Mime.MediaTypeNames;
 
 public class TestRoslyn : MonoBehaviour
 {
     //private
     private string activeCSharpSource = null;
-    private ScriptProxy activeCrawlerScript = null;
     private ScriptDomain domain = null;
     // Start is called before the first frame update
 
@@ -27,7 +20,7 @@ public class TestRoslyn : MonoBehaviour
 
     public AssemblyReferenceAsset[] assemblyReferences;
     private string cSharpSource;
-    private static readonly Regex csharpScriptRegex = new Regex(@"`csharp\n(.*?)\n`", RegexOptions.Multiline);
+    private static readonly Regex csharpScriptRegex = new Regex(@"```(?:csharp)?\s*(.*?)```", RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
     bool codevis = false;
     // Methods
@@ -41,16 +34,8 @@ public class TestRoslyn : MonoBehaviour
 
     void Start()
     {
-        // Create the domain
-        domain = ScriptDomain.CreateDomain("myDom", true);
-
-        // Add assembly references
-        foreach (AssemblyReferenceAsset reference in assemblyReferences)
-            domain.RoslynCompilerService.ReferenceAssemblies.Add(reference);
-
-        domain.InitializeCompilerService();
-
-        handController.TriggerPress.AddListener(showCodePanel);
+        EnsureDomain();
+        if (handController != null) handController.TriggerPress.AddListener(showCodePanel);
     }
 
     // Update is called once per frame
@@ -87,7 +72,7 @@ public class TestRoslyn : MonoBehaviour
             return match.Groups[1].Value;
         }
 
-        return null;
+        return text;
     }
 
     public void SetCodeString(string code)
@@ -99,49 +84,78 @@ public class TestRoslyn : MonoBehaviour
 
     public void RunCode(GameObject gameObjectTarget)
     {
-        // Get the C# code from the input field
-        //cSharpSource = "using UnityEngine;\r\n\r\npublic class ColorObject : MonoBehaviour\r\n{\r\n    private void Start()\r\n    {\r\n        // Create a new material with the desired color\r\n        Material material = new Material(Shader.Find(\"Standard\"));\r\n        material.color = Color.red;\r\n\r\n        // Assign the new material to the object\'s Renderer component\r\n        Renderer renderer = GetComponent<Renderer>();\r\n        if (renderer != null)\r\n        {\r\n            renderer.material = material;\r\n        }\r\n    }\r\n}\n\n";
+        if (!TryCompileAndAttach(gameObjectTarget, cSharpSource, out _, out var error))
+            throw new Exception(error);
+    }
 
-        // Dont recompile the same code
-        if (activeCSharpSource != cSharpSource)
+    public bool TryCompileAndAttach(GameObject target, string source, out ScriptProxy proxy, out string error)
+    {
+        proxy = null;
+        error = null;
+        if (target == null) { error = "Target object no longer exists."; return false; }
+        source = Extract(source);
+        if (string.IsNullOrWhiteSpace(source)) { error = "The artifact did not contain C# source."; return false; }
+        if (!PassesCapabilityPolicy(source, out error)) return false;
+
+        try
         {
-            //try
+            EnsureDomain();
+            var type = domain.CompileAndLoadMainSource(source, ScriptSecurityMode.UseSettings, assemblyReferences);
+            if (type == null)
             {
-                // Compile code
-                ScriptType type = domain.CompileAndLoadMainSource(cSharpSource, ScriptSecurityMode.UseSettings, assemblyReferences);
-                
-                // Check for null
-                if (type == null)
-                {
-                    if (domain.RoslynCompilerService.LastCompileResult.Success == false)
-                        throw new Exception("Maze crawler code contained errors. Please fix and try again");
-                    else if (domain.SecurityResult.IsSecurityVerified == false)
-                        throw new Exception("Maze crawler code failed code security verification");
-                    else
-                        throw new Exception("Maze crawler code does not define a class. You must include one class definition of any name that inherits from 'RoslynCSharp.Example.MazeCrawler'");
-                }
-
-                ScriptProxy p = type.CreateInstance(gameObjectTarget);
-                if (p != null)
-                {
-                    Debug.Log("Created instance");
-                }
-
-
+                error = !domain.RoslynCompilerService.LastCompileResult.Success
+                    ? "Roslyn compilation failed. Check the Unity console for compiler diagnostics."
+                    : !domain.SecurityResult.IsSecurityVerified
+                        ? "The generated artifact failed Roslyn security verification."
+                        : "The source must define one MonoBehaviour class.";
+                return false;
             }
-            //catch (Exception e)
-            //{
-            //    // Show the code editor window
-            //    codeEditorWindow.SetActive(true);
-            //    throw e;
-            //}
+            if (!type.IsMonoBehaviour) { error = "The generated class must inherit MonoBehaviour."; return false; }
+            proxy = type.CreateInstance(target);
+            if (proxy == null || proxy.MonoBehaviourInstance == null) { error = "Roslyn created no MonoBehaviour instance."; return false; }
+            activeCSharpSource = source;
+            cSharpSource = source;
+            if (text != null)
+            {
+                var label = text.GetComponent<UnityEngine.UI.Text>();
+                if (label != null) label.text = source;
+            }
+            return true;
         }
-        else
+        catch (Exception ex)
         {
+            error = ex.GetBaseException().Message;
+            if (proxy != null) proxy.Dispose();
+            proxy = null;
+            return false;
         }
+    }
 
-        //display the code
-        text.GetComponent<UnityEngine.UI.Text>().text = cSharpSource;
+    private void EnsureDomain()
+    {
+        if (domain != null) return;
+        domain = ScriptDomain.CreateDomain("AgenticXRRuntime", true);
+        if (assemblyReferences != null)
+        {
+            foreach (var reference in assemblyReferences)
+                if (reference != null) domain.RoslynCompilerService.ReferenceAssemblies.Add(reference);
+        }
+        domain.InitializeCompilerService();
+    }
+
+    private static bool PassesCapabilityPolicy(string source, out string error)
+    {
+        string[] denied = { "System.IO", "System.Net", "System.Diagnostics", "System.Reflection", "DllImport", "unsafe ", "Process.", "Application.Quit" };
+        foreach (var token in denied)
+        {
+            if (source.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                error = "Capability policy rejected token: " + token;
+                return false;
+            }
+        }
+        error = null;
+        return true;
     }
 
     

@@ -408,3 +408,26 @@ as the system is used:
 - Implementation (orchestrator, how to test, API keys needed): `Server/orchestrator/README.md`
 - MCP client registration: `.mcp.json`
 - Paper source (read-only): `-2027_IEEEVR-AgenticXR/main.tex`, §"Shared XR Memory and Experimental Space"
+
+## 2026-07-18 — Live XR ↔ Claude integration pass
+
+Implemented the real Unity side of the AgenticXR contract and the live speech
+handoff to the Claude Agent SDK. `AgenticXRBootstrap` installs the runtime without
+scene-YAML edits; `AgenticSceneRegistry` assigns deterministic IDs and serializes
+focus/halo state; the cache exchange now answers queries/snapshots, emits presence,
+stages artifacts on inactive clones, gates confirmation, commits through Roslyn,
+reports `ArtifactResult`, and supports generated-component rollback. Microphone
+recording-start messages now include the selected stable object ID, and
+`start:agenticxr` routes completed STT transcripts to one Claude orchestration turn
+per peer while leaving the OpenAI baseline selectable.
+
+Also unified nested-payload wire encoding, removed the committed Azure credential,
+made MCP test paths repository-relative, and prevented focus/halo `SceneDelta`
+replies from entering the compact cache reconciler.
+
+Verified: Node syntax checks; mode-aware setup doctor; full MCP smoke test (scene,
+memory, proposal, simulation, person policy, stale detection); deterministic cache
+snapshot/backfill/commit/stale-gate test; and two Unity `6000.3.9f1` batch imports,
+the final one exiting 0 with no C# errors. Not yet verified: a real Anthropic turn
+(no `ANTHROPIC_API_KEY` was available) or physical Quest microphone/LAN/XR-button
+interaction. Human steps are in `docs/live-xr-claude-setup.md`.

@@ -2,6 +2,11 @@
 
 This sample runs DreamCodeVR: Unity sends selected-object context and push-to-talk audio to the Node app. The server transcribes speech with faster-whisper HTTP, sends recognized text to OpenAI, extracts one C# `MonoBehaviour`, and sends it back to Unity to compile and attach in the scene.
 
+It also hosts the live AgenticXR comparison path. From `Server`, set
+`ANTHROPIC_API_KEY` and `STT_HTTP_URL`, then run `npm run start:agenticxr`. In that
+mode STT transcripts and the selected stable object ID are routed through the Claude
+Agent SDK/MCP orchestrator; the legacy OpenAI worker is not started.
+
 ## Requirements
 
 - Node.js with npm
