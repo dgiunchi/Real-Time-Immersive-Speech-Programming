@@ -375,7 +375,9 @@ class WizardOfOzApp extends ApplicationController {
             this.components.transcriptionService.addAudioChunk(peerUUID, chunk);
         });
 
-        // Step 2: log transcript for researcher (do NOT auto-send to LLM).
+        // Step 2: log transcript for researcher (do NOT auto-send to LLM) and
+        // send it straight to the Unity client so the participant sees what the
+        // system heard immediately (not at the end of the pipeline).
         this.components.transcriptionService.on("response", (data) => {
             const text = data.toString().replace(/(\r\n|\n|\r)/gm, "").replace(/^>/, "").trim();
             if (text.length < 5) return;
@@ -384,6 +386,13 @@ class WizardOfOzApp extends ApplicationController {
             if (this.transcriptHistory.length > 50) this.transcriptHistory.shift();
             this.logEvent("transcript", text);
             console.log(`\x1b[36m[Transcript]\x1b[0m "${text}"  →  waiting for researcher to inject response`);
+
+            // Show in VR via TranscriptionCollector (network ID 98)
+            this.scene.send(new NetworkId(STT_NETWORK_ID), {
+                type: "Transcript",
+                peer: "server",
+                data: text
+            });
         });
 
         // Step 3: start the researcher control HTTP server.

@@ -226,7 +226,8 @@ public class StudyUIBootstrapper : MonoBehaviour
         }
 
         // Hook TranscriptionCollector → transcript display + feedback panel
-        var collector = FindObjectOfType<TranscriptionCollector>(true);
+        // (the DynamicCompiler scene doesn't include one, so add it if missing)
+        var collector = FindOrAdd<TranscriptionCollector>();
         if (collector)
         {
             collector.transcriptDisplay = transcriptDisplay;

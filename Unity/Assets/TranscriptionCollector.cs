@@ -51,7 +51,7 @@ public class TranscriptionCollector : MonoBehaviour
         // Raw bytes: check for STT control messages first
         if (data.data.Length <= 64)
         {
-            var raw = Encoding.UTF8.GetString(data.data.Array, data.data.Offset, data.data.Count);
+            var raw = Encoding.UTF8.GetString(data.bytes, data.start, data.length);
             if (raw.StartsWith(STT_CONTROL_PREFIX))
             {
                 var action = raw.Substring(STT_CONTROL_PREFIX.Length);

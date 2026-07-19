@@ -142,7 +142,7 @@ public class WizardOfOzController : MonoBehaviour
         Debug.Log($"[WoZ] Injecting {label}");
         SetStatus("Injected: " + label);
 
-        context.Send(new CodeMessage
+        context.SendJson(new CodeMessage
         {
             type = "CodeGenerated",
             peer = "WizardOfOz",

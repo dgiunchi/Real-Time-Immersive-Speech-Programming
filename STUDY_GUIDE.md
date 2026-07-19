@@ -36,7 +36,9 @@ researcher control panel.
 
 ### 2. Open Unity and press Play
 - In Unity Hub, open the `Unity/` folder of this project.
-- Open the scene (`Assets/Scenes/SampleScene`).
+- Open the scene **`Assets/Demos/DynamicCompiler/DynamicCompiler`** (the campfire
+  scene — NOT `Scenes/SampleScene`, which is an empty placeholder).
+- If a "TMP Importer" window pops up, click **Import TMP Essentials**.
 - **One-time setup:** create an empty GameObject (`GameObject → Create Empty`),
   name it `StudyManager`, and add the **`StudyUIBootstrapper`** component to it.
   Pick the condition (A/B/C) in its Inspector. That's the only wiring you need —

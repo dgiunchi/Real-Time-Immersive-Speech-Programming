@@ -104,3 +104,4 @@ Unity/Recordings/
 
 # Study results (participant data - never commit)
 Logs/
+*.slnx
