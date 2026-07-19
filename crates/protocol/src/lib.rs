@@ -3,7 +3,7 @@
 //! Accepts: little-endian length-prefixed frames carrying a [`NetworkId`] and a
 //! bounded payload. Rejects (fail-closed): truncated, oversized, or malformed
 //! frames. Contains no async, no I/O, and no `unsafe`; it is a pure codec so the
-//! one byte-level Ubiq assumption (see `docs/PROTOCOL.md`) stays isolated.
+//! one byte-level Ubiq assumption (see `PROJECT.md`) stays isolated.
 //!
 //! Invariants:
 //! * `decode_frame(encode_frame(id, p)) == (NetworkFrame { id, p }, len)` for any

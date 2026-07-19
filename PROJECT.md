@@ -249,3 +249,133 @@ VIVA_QA.md                      the 128-vector Q&A (viva prep)
 apps/xr-security-eval/PAPER.md  the formal paper
 scripts/                        lower-level launch helpers (wrapped by run.sh)
 ```
+
+---
+
+## 11. Security model (Modes A–D)
+
+DreamCodeVR+ treats **everything** as untrusted — spoken/typed commands, STT output, LLM output, network messages, admin requests, stored personalization profiles, and generated C#. Safety is **defence-in-depth**, not a single gate. (The guardrail internals are in §4; this section is the mode-by-mode architecture and the cyber-security layer.)
+
+**Layer 1 — intent screen (before generation).** A keyword classifier (`command-router`) plus an optional LLM classifier inspect the raw command and **neutralise** malicious/privacy-violating intent (camera, mic, exfiltration, keylogging, cyber-attack code) by replacing it with a harmless visual *before any code is generated*. Benign creative/edgy content is allowed. The keyword layer is offline; the LLM layer needs an API key.
+
+- **Mode C — bounded action plan (default, safest).** The LLM emits a small JSON action plan whose only legal instructions are six allow-listed behaviours (`set_color`, `set_scale`, `move`, `rotate`, `spawn_primitive`, `set_physics`) with hard numeric bounds. `code-policy` approves **iff zero violations**; oversized input is rejected *before* parsing. Unsafe operations are **unrepresentable**, there is **no runtime code compilation**, and a per-session spawn budget caps object creation.
+- **Mode B — validated C#.** `csharp-policy` runs a tree-sitter lexical scan that reconstructs dotted names and bans system-access namespaces/identifiers, hardened against three red-team evasion classes (`using` aliases, Unicode-escape identifiers, `dynamic` late-binding). An optional .NET Roslyn semantic check (`services/roslyn-analyzer`) adds a second layer. **Default (`legacy`): if Roslyn is not wired, a mock analyzer approves**, so the Rust lexical layer is the effective gate. The lexical guard is a denylist — thorough and adversarially tested, but not provably complete.
+- **Mode A — original runtime-C# (OFF by default, `DCVR_MODE_A=false`).** When enabled, validator-approved C# is sent on NID 94 to the client for runtime compilation. This widens the trust surface. In `legacy`, peers are unauthenticated, so a malicious room member could get code compiled on a client — keep it to trusted-network research/demos. `hardened` closes this by Ed25519-signing NID-94.
+- **Mode D — sandbox for untrusted C# (`crates/sandbox`).** Runs untrusted C# in a container hardened with `--network none`, read-only rootfs + tmpfs, `--cap-drop ALL`, `no-new-privileges`, non-root, memory/CPU/PID limits and `nofile`/`nproc` ulimits; only a structured `SandboxReport` crosses back, bounded by a wall-clock timeout + process-group kill. **gVisor (`runsc`) is opt-in** (`DCVR_SANDBOX_DOCKER_RUNTIME=runsc`); the default `runc` is a comparatively soft boundary per NIST SP 800-190. Mode D is a research arm, **not** on the live speech path.
+
+**Cyber-security layer — two profiles (`DCVR_SECURITY_PROFILE`).**
+
+- **`legacy` (default)** — byte-identical to the original build: peers self-assert identity, the Ubiq channel is plaintext, new controls are off. This is what the current Quest demo runs.
+- **`hardened` (opt-in)** — a versioned, canonical **`AuthEnvelope`** binds every message to protocol version, security profile (downgrade detection), message domain (`NetworkId.b`), a per-session monotonic sequence, an expiry, session/peer/request/target ids, and a **SHA-256 payload hash**. Two deliberately different crypto directions (audited `ring 0.17`): **client→backend HMAC-SHA256** admission and **backend→Unity Ed25519** signatures — so a leaked client secret cannot forge backend-approved code. A strict-monotonic sequence guard rejects replay/reorder; verification is constant-time. Outgoing NID-94 is signed on the live path; incoming verification is wired into `run_ubiq_peer` and **activates once the Unity client emits envelopes**. Hardened Mode A/B additionally **requires a real Roslyn analyzer** (no approve-all mock) with a per-request timeout. The backend **refuses to start** if `hardened` is selected without its keys (fail-closed, no silent downgrade); the seam is `apps/dreamcodevr-server/auth_gate.rs`.
+- **`test`** — deterministic CI: loopback, mock STT/LLM, deterministic local keys.
+
+**Admin / debug panel.** Binds to **loopback by default**. Mutating routes honour an optional `X-Admin-Token`; if no token is set they are unauthenticated, so the panel **refuses to bind to a non-loopback address without a token** (fail-closed, all profiles). Token comparison is **constant-time**. `/api/sandbox` validates C# only (never executes on the host); an authenticated `POST /api/profile/delete` erases a stored profile.
+
+**Liveness & input bounds (live path).** The per-utterance pipeline holds a shared router lock across its `.await`s, so one hung external call could stall every peer. Every external await is therefore bounded: STT and LLM have per-step timeouts; the Layer-1 `screen_intent` classifier and both RAG embedding calls are wrapped too (they **fail open** — a timeout maps to the "proceed / no context" path). Optional `DCVR_UTTERANCE_TIMEOUT_MS` adds a **fail-closed** per-utterance deadline (default off). Under `hardened`, NID-98 audio is validated against `AudioBounds` (size / 16 kHz-mono-16-bit / ≤30 s) before a paid/slow STT backend. A per-peer in-flight cap (`DCVR_MAX_INFLIGHT_PER_PEER`) bounds a task-flood DoS.
+
+**Privacy.** Telemetry is JSONL carrying ids / timestamps / decisions / reason-codes / counts — **never** audio or transcripts (a test asserts no `audio`/`transcript`/`secret` field can appear). Personalization state is stored locally and treated as untrusted prompt context (it may nudge aesthetics, never override safety). Stored profiles are written **owner-only (`0600`)**, support **erasure** and **TTL purge**, and — when `DCVR_PROFILE_ENC_KEY` is set — are **encrypted at rest** with ChaCha20-Poly1305. With no key the on-disk format is unchanged (plaintext).
+
+---
+
+## 12. Setup & build
+
+The offline Rust path needs **only Rust**; everything else is optional. `./run.sh` (§2) is the friendly wrapper.
+
+| Tool | Purpose | Required? |
+|---|---|---|
+| Rust + Cargo (+ rustfmt, clippy) | build + test the backend (1.96.0, pinned by `rust-toolchain.toml`) | **Required** |
+| Bash | helper scripts | **Required** |
+| cargo-deny | supply-chain gate | Optional |
+| .NET SDK 10 | Mode-B analyzer, Mode-D harness | Optional |
+| Python 3 | red-team tooling (stdlib only) | Optional |
+| Docker (+ gVisor `runsc`) | Mode-D sandbox | Optional |
+| Node.js ≥ 18 | run the fetched Ubiq RoomServer | Optional (live VR) |
+| Unity 6000.5.x | the VR client | Optional (live VR) |
+
+Install Rust via `rustup`; the repo's `rust-toolchain.toml` selects 1.96.0. Run **`bash scripts/doctor.sh`** to check prerequisites (it fails only if a required tool is missing). `cp .env.example .env` (gitignored — never commit); with no `OPENAI_API_KEY` and no STT URL the backend uses **offline mocks**.
+
+**The validation gate** (identical to CI; `scripts/check.sh` runs the same):
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --locked
+cargo build --workspace --release --locked
+cargo deny check            # optional; needs cargo-deny
+```
+
+The workspace is **`unsafe`-free** (`unsafe_code = forbid`) and panic-averse (`unwrap`/`expect`/`panic` denied in library crates). Everything runs fully offline (mock STT/LLM/Roslyn, no key, no network).
+
+**Offline mock demo** (no key, no Unity, no network — two terminals):
+
+```bash
+cargo run -p dreamcodevr-server      # backend, mock STT/LLM, binds 127.0.0.1:9098
+cargo run -p fake-quest-client       # built-in demo -> validated action-plan decision
+```
+
+**Fetching the Ubiq RoomServer (not vendored).** The live VR loop needs the Ubiq RoomServer, which is **not included** (third-party UCL/Ubiq code). Obtain a compatible RoomServer from the Ubiq project and run it on TCP `:8009`; `scripts/run-roomserver.sh` expects it under `vendor/ubiq-roomserver/`, and the backend joins it via `DCVR_UBIQ_ADDR` (set → Ubiq/Quest mode; unset → standalone local). The proprietary **RoslynCSharp** Unity asset (for on-device Mode A) is likewise **not included** — obtain it separately, or use Mode C (no runtime compilation).
+
+**Real providers (optional).** LLM: `OPENAI_API_KEY` (+ optional `OPENAI_MODEL`, `OPENAI_BASE_URL`, `DCVR_LLM_TIMEOUT_MS`). STT: `DCVR_STT_OPENAI=true` (OpenAI Whisper) or `DCVR_STT_HTTP_URL` (faster-whisper). The test suite **never** calls a paid API.
+
+---
+
+## 13. Deployment & transport security
+
+**Running the hardened profile.** Generate secrets with `cargo run --bin keygen` (prints an admission secret, a backend Ed25519 signing seed, a profile-encryption key, and the backend Ed25519 **public** key). Keep the private values in a secret manager (never commit; never send to the admin panel); only the public key goes to Unity. Then:
+
+```bash
+export DCVR_SECURITY_PROFILE=hardened
+export DCVR_PEER_AUTH_SECRET=...          # from keygen
+export DCVR_BACKEND_SIGNING_SEED=...      # from keygen (32-byte Ed25519 seed)
+export DCVR_PROFILE_ENC_KEY=...           # profiles encrypted at rest
+export DCVR_MODE_A=true
+export DCVR_ROSLYN_URL=http://127.0.0.1:5099   # a REAL analyzer (no mock in hardened)
+export DCVR_ADMIN_TOKEN=...               # if the admin panel is enabled
+```
+
+If a required control is missing, the backend **refuses to start** — it never silently downgrades. On the Unity side, provision `BACKEND_ED25519_PUBLIC_KEY` to the `BackendVerifier`, wire an `IEd25519Verifier`, and set `RequireSignature = true` so unsigned NID-94 is rejected.
+
+**Transport confidentiality (TLS/WSS).** In `hardened`, message auth already gives integrity, authenticity, and anti-replay through an untrusted relay; the one thing TLS adds is **confidentiality** (stopping an eavesdropper reading transcripts/code in transit) — so TLS is a **deployment step, not a code change**. The Ubiq RoomServer is untrusted-by-design; its encrypted channel is **WSS on `:8010`**. Recommended: a **TLS-terminating proxy** in front of the relay (`stunnel`, `nginx stream {}`, `caddy` layer4, or Ubiq's native WSS with a real cert), and **pin the server certificate / CA** on the connecting side. Point `DCVR_UBIQ_ADDR` at the local TLS proxy and the Quest client at the client-side proxy / WSS URL. TLS protects the wire, not a compromised endpoint.
+
+**On-device compile-time hardening (RoslynCSharp, Mode A).** Configure the proprietary RoslynCSharp asset in the Unity project so the runtime compiler itself refuses the dangerous surface: enable the security check **fail-closed** (reject on any violation, not warn-only; do not exempt hot-reload), **restrict referenced assemblies** to the minimum (exclude `System.Net*`, `System.Diagnostics`, unneeded `System.IO*`/`System.Reflection*`, and Meta XR/OVRPlugin), and mirror the Rust `DeployHardened` denylist for namespace/type restrictions. Dual-use APIs that are lexically indistinguishable from legitimate creation (`Camera.main.transform`, `OnRenderImage`, `GameObject.Find`, Quest-3 MR APIs) are **deliberately not banned lexically** — they are runtime-enforced by `UserFrameGuardian` instead. Verify on-device that a benign build compiles and a `System.Net` probe is refused by both layers.
+
+---
+
+## 14. Wire protocol
+
+DreamCodeVR+ speaks the **Ubiq** wire protocol so it can join the same room as the unmodified Unity client. Framing/codec live in `crates/protocol` (no I/O, `unsafe`-free, golden-byte tested). A Ubiq frame length counts **`NetworkId` (8 bytes) + payload**; the `Join` handshake's `args` field must be **stringified JSON**; each application payload is `{ peer_uuid, body }`.
+
+| NID | Direction | Purpose |
+|---|---|---|
+| **93** | client → backend | selected object id (per-peer target) |
+| **98** | client → backend | push-to-talk audio (16 kHz mono PCM) + `__STT_CONTROL__:start/stop` |
+| **94** | backend → client | backend decision — action plan or `{type:"code",…}` (Mode A/B); Ed25519-signed in `hardened` |
+| **95** | client → backend | like / dislike feedback (personalization) |
+| **96** | client → backend | runtime compile result (surfaced to the admin panel) |
+| **97** | client → backend | authored (default-off) Phase-6 disclosure safety-log channel |
+
+Peers **self-assert** `peer_uuid` (no enforced peer auth in `legacy`); inbound audio is size-bounded; malformed frames are dropped. NID-94 code is applied without a peer check in `legacy`, so Mode A is trusted-network / `hardened` only. **Internal interfaces:** Rust → Roslyn analyzer over HTTP `POST DCVR_ROSLYN_URL/analyze`; Rust → sandbox streams code to a .NET harness (only a `SandboxReport` returns); the admin panel (axum) exposes SSE + JSON routes on loopback with the optional `X-Admin-Token`.
+
+---
+
+## 15. Security policy & honest scope
+
+DreamCodeVR+ is a **research / dissertation prototype — NOT a production security boundary**. Do not expose it on an untrusted network without the `hardened` profile. (The runtime-vs-admission caveats, the 2/40 residual, and the audit backlog are in **§9**; this adds the boundary status and the publication gate.)
+
+**Boundary vs not.** Peer auth is **off in `legacy`** (self-asserted, plaintext, no TLS); `hardened` enforces it. Admin mutating routes are **unauthenticated unless a token is set** (loopback default; refuses off-loopback bind without a token). Mode B's semantic layer is **mock-by-default** unless Roslyn is wired, leaving the lexical denylist as the effective gate. Mode A widens the trust surface and is **off by default**. Mode D uses `runc` by default (soft per NIST SP 800-190); gVisor is opt-in.
+
+**Verified (host-side).** The Rust workspace builds, lints (`clippy -D warnings`), and tests fully offline with mocks; `cargo deny check` is clean. The safe Mode-C path and the validator-gated Mode-A path were demonstrated in the Unity 6 editor and on a Quest 1/2 Mono sideload; Mode D under Docker and gVisor. Hardened adds (Rust-verified): message auth, fail-closed startup + analyzer + timeout, privacy-at-rest, an adversarial campaign at **0% bypass / 0% false-positive**, and deterministic **fuzz corpora** proving both wire parsers never panic over ~95k malformed inputs.
+
+**Not yet covered.** No **on-device (Quest 3) end-to-end run** (all current evidence is host-side automated tests). **Incoming envelope verification is not yet active on the wire** (the Unity client must emit envelopes first; only outgoing NID-94 signing is live). **No TLS/WSS confidentiality** (a deployment step, §13). In-process C# limits inside Mode A/B are *contained, not prevented* — OS-level containment (Mode D) is future work. Quest 3 / Store builds (IL2CPP/ARM64) can't compile C# at runtime, so Mode A is limited to sideloaded Quest 1/2 Mono; Mode C is the deployable-by-construction path.
+
+**Ownership & publication (needs human confirmation before any public release).** DreamCodeVR+ is a derivative of UCL's **Apache-2.0 DreamCodeVR / Ubiq-Genie**, and is **MSc dissertation work (University of Birmingham)**. Before releasing, confirm: Apache-2.0 terms satisfied (licence + NOTICE + statement of changes); university/supervisor consent (no embargo); no employer/client IP; the proprietary **RoslynCSharp** asset excluded (it is); author copyright line completed in `NOTICE`/`CITATION.cff`. Report issues confidentially to the author (`CITATION.cff`) — no SLA. No credentials are committed; the OpenAI key is read from `.env` (never commit it).
+
+---
+
+## 16. Changelog highlights
+
+Versions are informal (dissertation prototype).
+
+- **0.1.0 — initial snapshot.** A **Rust workspace** replacing the original Node.js Ubiq-Genie backend, joining the same Ubiq room; the fail-closed action-plan validator + six-action IR (**Mode C**); lexical (tree-sitter) + optional Roslyn C# validation (**Mode B**) hardened against alias/unicode/`dynamic` evasion; the two-layer intent screen; the Docker/gVisor sandbox (**Mode D**); Mode A retained validator-gated and off by default; privacy-safe telemetry, the admin panel, personalization/RAG, the red-team harness. Mocks by default (fully offline). **164 tests.**
+- **Unreleased — opt-in `hardened` profile** (this branch; `legacy` stays byte-identical to 0.1.0; host-side verified, **on-device pending hardware**). Security profiles with fail-closed invariants; message authentication (HMAC + Ed25519, `ring 0.17`); fail-closed Mode A/B; privacy at rest (erasure, `0600`, TTL, optional ChaCha20-Poly1305); admin hardening (constant-time token, off-loopback refusal); live-path liveness bounds; hardened STT `AudioBounds`; the perceptual denylist extension; Mode-D ulimits + watchdog; Unity Phase 6/7 (default-off); a `keygen` utility. Adversarial campaign (0% bypass), fuzz corpora (~95k inputs), and (after the audit pass in §8) the guardrail bypass fixes + admin-panel detail.
+```

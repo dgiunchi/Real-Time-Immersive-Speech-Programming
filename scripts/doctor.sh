@@ -65,7 +65,7 @@ done
 echo
 if [ "$REQUIRED_MISSING" -ne 0 ]; then
   echo "RESULT: missing a REQUIRED prerequisite. Install Rust 1.96 (rustup) with the"
-  echo "        rustfmt + clippy components, then re-run. See docs/BUILD_AND_RUN.md."
+  echo "        rustfmt + clippy components, then re-run. See PROJECT.md."
   exit 1
 fi
 echo "RESULT: all required prerequisites present. Offline build/test path is ready:"

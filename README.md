@@ -80,7 +80,9 @@ it** — for example:
 - **[VIVA_QA.md](VIVA_QA.md)** — every attack vector (128 of them) with a plain-English
   attack + our answer.
 - **[apps/xr-security-eval/PAPER.md](apps/xr-security-eval/PAPER.md)** — the formal paper.
-- **[SECURITY.md](SECURITY.md)** — security policy and scope.
+
+Security policy, the mode-by-mode model, setup, deployment/TLS, and the wire protocol are
+all in **[PROJECT.md](PROJECT.md)** (sections 11–16).
 
 ## Honest note
 

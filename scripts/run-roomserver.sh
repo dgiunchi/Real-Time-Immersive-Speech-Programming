@@ -2,7 +2,7 @@
 # Start the Ubiq RoomServer (TCP :8009 — used by DreamCodeVR+ — / WSS :8010).
 #
 # The Ubiq RoomServer is third-party and is NOT redistributed in this repository.
-# Fetch it once into vendor/ubiq-roomserver/ as described in docs/REPRODUCIBILITY.md.
+# Fetch it once into vendor/ubiq-roomserver/ as described in PROJECT.md.
 # The first run does `npm install --ignore-scripts` (network needed once), after
 # which node_modules is reused offline.
 set -euo pipefail
@@ -12,7 +12,7 @@ SRV="$HERE/vendor/ubiq-roomserver"
 if [ ! -d "$SRV" ]; then
   echo "[run-roomserver] ERROR: $SRV not found." >&2
   echo "[run-roomserver] The Ubiq RoomServer is not bundled; fetch it into" >&2
-  echo "[run-roomserver]   vendor/ubiq-roomserver/  (see docs/REPRODUCIBILITY.md)." >&2
+  echo "[run-roomserver]   vendor/ubiq-roomserver/  (see PROJECT.md)." >&2
   exit 1
 fi
 cd "$SRV"

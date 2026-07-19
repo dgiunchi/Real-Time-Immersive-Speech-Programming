@@ -7,7 +7,7 @@ model and a perceptual-safety layer, and extended with **two ML thrusts** unifie
 **age-adaptive dual-plane safety.**
 
 > Grounded in [`RESEARCH_AND_ML_PLAN.md`](RESEARCH_AND_ML_PLAN.md),
-> [`SECURITY.md`](SECURITY.md), [`docs/HARDENING.md`](docs/HARDENING.md) and the red-team
+> [`PROJECT.md`](PROJECT.md), [`docs/HARDENING.md`](docs/HARDENING.md) and the red-team
 > corpus (`redteam/corpus_gen.py`). Every bolded line is a **say-it-aloud** model answer.
 > Answers are deliberately honest about limitations — examiners reward candour, not
 > over-claiming.
