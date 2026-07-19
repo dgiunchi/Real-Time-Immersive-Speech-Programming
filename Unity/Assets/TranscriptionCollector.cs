@@ -8,11 +8,20 @@ using Ubiq.Logging.Utf8Json;
 using Ubiq.Rooms;
 using System;
 using System.Text;
+using UnityEngine.Events;
 
 public class TranscriptionCollector : MonoBehaviour
 {
     public NetworkId networkId = new NetworkId(98);
     private NetworkContext context;
+
+    [Header("VR Display")]
+    public TranscriptDisplay transcriptDisplay;
+
+    [Header("Events")]
+    public UnityEvent<string> onTranscriptReceived;
+
+    private const string STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 
     [Serializable]
     private struct Message
@@ -22,21 +31,36 @@ public class TranscriptionCollector : MonoBehaviour
         public string data;
     }
 
-    // Start is called before the first frame update
     void Start()
     {
-        context = NetworkScene.Register(this,networkId);
+        context = NetworkScene.Register(this, networkId);
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-
-    }
+    void Update() { }
 
     public void ProcessMessage(ReferenceCountedSceneGraphMessage data)
     {
+        // Raw bytes: check for STT control messages first
+        if (data.data.Length <= 64)
+        {
+            var raw = Encoding.UTF8.GetString(data.data.Array, data.data.Offset, data.data.Count);
+            if (raw.StartsWith(STT_CONTROL_PREFIX))
+            {
+                var action = raw.Substring(STT_CONTROL_PREFIX.Length);
+                if (action == "start" && transcriptDisplay) transcriptDisplay.OnRecordingStart();
+                else if (action == "stop" && transcriptDisplay) transcriptDisplay.OnRecordingStop();
+                return;
+            }
+        }
+
         Message message = data.FromJson<Message>();
-        Debug.Log(message.peer + " " + message.data);
+        if (string.IsNullOrWhiteSpace(message.data)) return;
+
+        Debug.Log($"[Transcript] {message.peer}: {message.data}");
+
+        // Show transcript in VR immediately so participant sees what the system heard
+        if (transcriptDisplay) transcriptDisplay.ShowTranscript(message.data);
+
+        onTranscriptReceived?.Invoke(message.data);
     }
 }
