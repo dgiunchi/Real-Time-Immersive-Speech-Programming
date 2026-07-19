@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post-Condition Questionnaire</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --line:#e2e6ee; --text:#1c2230; --muted:#6b7488; --accent:#4f8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 22px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-bottom: 18px; }
+  .card h2 { font-size: 16px; margin: 0 0 4px; }
+  .card .note { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+  .field { margin-bottom: 6px; }
+  .setup { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  label.lbl { display:block; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:5px; }
+  input, select { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-size:15px; background:#fff; color:var(--text); }
+  .q { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .q:last-child { border-bottom: none; }
+  .q .text { font-size: 15px; margin-bottom: 10px; }
+  .scale { display: flex; gap: 6px; flex-wrap: wrap; }
+  .scale label { flex: 1; min-width: 54px; text-align: center; cursor: pointer; }
+  .scale input { display: none; }
+  .scale span { display:block; padding:9px 4px; border:1px solid var(--line); border-radius:8px; font-size:14px; user-select:none; }
+  .scale input:checked + span { background: var(--accent); color:#fff; border-color: var(--accent); font-weight:700; }
+  .ends { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; margin-top:6px; }
+  .submit { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 40%); padding: 20px 0 0; }
+  button { width:100%; padding:15px; font-size:16px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:11px; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  .ok { text-align:center; padding:60px 20px; }
+  .ok .big { font-size:52px; }
+  .req { color:#d33; }
+</style>
+</head>
+<body>
+<div class="wrap" id="form">
+  <h1>Post-Condition Questionnaire</h1>
+  <p class="lead">Please answer honestly based on the session you just completed. There are no right or wrong answers.</p>
+
+  <div class="card">
+    <div class="setup">
+      <div class="field">
+        <label class="lbl">Participant ID <span class="req">*</span></label>
+        <input id="participantId" placeholder="e.g. P01">
+      </div>
+      <div class="field">
+        <label class="lbl">Condition <span class="req">*</span></label>
+        <select id="condition">
+          <option value="">—</option>
+          <option value="A">A — No feedback</option>
+          <option value="B">B — Text panel</option>
+          <option value="C">C — Embodied agent</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUS -->
+  <div class="card">
+    <h2>System Usability Scale (SUS)</h2>
+    <p class="note">1 = Strongly disagree, 5 = Strongly agree.</p>
+    <div id="sus"></div>
+  </div>
+
+  <!-- Presence & embodiment -->
+  <div class="card">
+    <h2>Presence &amp; Experience</h2>
+    <p class="note">1 = Not at all, 7 = Very much.</p>
+    <div id="presence"></div>
+  </div>
+
+  <!-- Study-specific -->
+  <div class="card">
+    <h2>System Feedback &amp; Support</h2>
+    <p class="note">These questions are about how the system communicated with you. 1 = Not at all, 7 = Very much.</p>
+    <div id="custom"></div>
+  </div>
+
+  <div class="submit">
+    <button id="submitBtn" onclick="submitForm()">Submit questionnaire</button>
+  </div>
+</div>
+
+<div class="wrap ok" id="done" style="display:none;">
+  <div class="big">✅</div>
+  <h1>Thank you!</h1>
+  <p class="lead">Your responses have been saved.</p>
+</div>
+
+<script>
+const SUS = [
+  "I think that I would like to use this system frequently.",
+  "I found the system unnecessarily complex.",
+  "I thought the system was easy to use.",
+  "I think that I would need the support of a technical person to be able to use this system.",
+  "I found the various functions in this system were well integrated.",
+  "I thought there was too much inconsistency in this system.",
+  "I would imagine that most people would learn to use this system very quickly.",
+  "I found the system very cumbersome to use.",
+  "I felt very confident using the system.",
+  "I needed to learn a lot of things before I could get going with this system."
+];
+
+const PRESENCE = [
+  "I felt present in the virtual environment.",
+  "I was aware of things happening around me in the virtual scene.",
+  "I felt that the system was an entity I was interacting with.",
+  "I felt like the system responded to me as if it understood me."
+];
+
+const CUSTOM = [
+  { id: "engagement",  text: "How engaged did you feel while working with the system?" },
+  { id: "confidence",  text: "How confident were you that the system understood what you asked?" },
+  { id: "supportive",  text: "How supportive was the system when something went wrong?" },
+  { id: "error_clarity", text: "When there was a problem, how clearly could you tell what had gone wrong?" },
+  { id: "recovery",    text: "How easy was it to recover and correct a mistake?" },
+  { id: "trust",       text: "How much did you trust the system's feedback?" }
+];
+
+function scale(name, n, lowLabel, highLabel) {
+  let opts = "";
+  for (let i = 1; i <= n; i++) {
+    opts += `<label><input type="radio" name="${name}" value="${i}"><span>${i}</span></label>`;
+  }
+  return `<div class="scale">${opts}</div>
+          <div class="ends"><span>${lowLabel}</span><span>${highLabel}</span></div>`;
+}
+
+function render() {
+  document.getElementById("sus").innerHTML = SUS.map((q,i) =>
+    `<div class="q"><div class="text">${i+1}. ${q}</div>${scale("sus"+(i+1),5,"Strongly disagree","Strongly agree")}</div>`
+  ).join("");
+  document.getElementById("presence").innerHTML = PRESENCE.map((q,i) =>
+    `<div class="q"><div class="text">${q}</div>${scale("pres"+(i+1),7,"Not at all","Very much")}</div>`
+  ).join("");
+  document.getElementById("custom").innerHTML = CUSTOM.map(c =>
+    `<div class="q"><div class="text">${c.text}</div>${scale(c.id,7,"Not at all","Very much")}</div>`
+  ).join("");
+}
+
+function collect() {
+  const answers = {};
+  let missing = 0;
+  const names = [];
+  for (let i=1;i<=10;i++) names.push("sus"+i);
+  for (let i=1;i<=PRESENCE.length;i++) names.push("pres"+i);
+  CUSTOM.forEach(c => names.push(c.id));
+  names.forEach(n => {
+    const sel = document.querySelector(`input[name="${n}"]:checked`);
+    if (sel) answers[n] = sel.value; else { answers[n] = ""; missing++; }
+  });
+  return { answers, missing };
+}
+
+// Prefill from URL (?pid=P01&cond=B) so the researcher can hand over a ready link.
+const params = new URLSearchParams(location.search);
+if (params.get("pid"))  document.getElementById("participantId").value = params.get("pid");
+if (params.get("cond")) document.getElementById("condition").value = params.get("cond").toUpperCase();
+
+async function submitForm() {
+  const participantId = document.getElementById("participantId").value.trim();
+  const condition = document.getElementById("condition").value;
+  if (!participantId || !condition) { alert("Please fill in Participant ID and Condition."); return; }
+  const { answers, missing } = collect();
+  if (missing > 0 && !confirm(missing + " question(s) unanswered. Submit anyway?")) return;
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    await fetch("/questionnaire", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ participantId, condition, questionnaire: "post", answers })
+    });
+    document.getElementById("form").style.display = "none";
+    document.getElementById("done").style.display = "block";
+    window.scrollTo(0,0);
+  } catch (e) {
+    alert("Save failed: " + e.message + "\nIs the study server running?");
+    btn.disabled = false; btn.textContent = "Submit questionnaire";
+  }
+}
+
+render();
+</script>
+</body>
+</html>

@@ -26,6 +26,8 @@
  */
 
 const http = require("http");
+const fs   = require("fs");
+const path = require("path");
 const { NetworkId } = require("ubiq/ubiq/messaging");
 const { MessageReader, ApplicationController } = require("ubiq-genie-components");
 const { SpeechToTextService } = require("ubiq-genie-services");
@@ -34,6 +36,42 @@ const nconf = require("nconf");
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 const CODE_NETWORK_ID    = 94;  // matches CodeGenerationManager.networkId in Unity
 const STT_NETWORK_ID     = 98;
+
+const PUBLIC_DIR = path.join(__dirname, "public");
+const LOG_DIR    = path.join(__dirname, "data", "logs");
+
+// Short researcher-facing description of every response key, per task.
+// Used to label the buttons on the web control panel.
+const DESCRIPTIONS = {
+    task1: {
+        success: "Ball created correctly at hand",
+        error1:  "Ball at world origin, not at hand (missing position)",
+        error2:  "Cube created instead of sphere (wrong interpretation)",
+        error3:  "Ball falls through floor (collider disabled – gradual reveal)",
+        error4:  "Squashed ellipsoid (scale inherited from parent)"
+    },
+    task2: {
+        success: "Ball turns green correctly",
+        error1:  "All objects turn green (ambiguous 'it')",
+        error2:  "Ball turns teal, not green (wrong shade)",
+        error3:  "Colour reverts after 2s (material instance issue)",
+        error4:  "New green ball created instead of recolouring"
+    },
+    task3: {
+        success: "Ball orbits the cube correctly",
+        error1:  "Ball orbits world origin, not the cube",
+        error2:  "Orbit on wrong axis (tilted plane)",
+        error3:  "Orbit radius too small; ball hits cube and stops",
+        error4:  "Orbit too fast (1000 deg/s) – looks vanished"
+    },
+    task4: {
+        success: "Star + orbiting planet created correctly",
+        error1:  "Only the star created (ambiguous 'solar system')",
+        error2:  "Planet squashed (non-uniform scale from star)",
+        error3:  "Planet drifts away (gravity not disabled)",
+        error4:  "50 planets created (over-generated)"
+    }
+};
 
 // ── Pre-scripted task responses ──────────────────────────────────────────────
 // Edit these strings to change what gets injected into the Unity runtime.
@@ -247,8 +285,68 @@ class WizardOfOzApp extends ApplicationController {
     constructor(configFile = "config.json") {
         super(configFile);
         this.lastTranscript  = "";
+        this.transcriptHistory = [];
         this.activeTask      = "task1";
         this.controlPort     = nconf.get("wizardControlPort") || 8181;
+
+        // Session state (set by the researcher on the web panel before each run)
+        this.session = {
+            participantId: "",
+            condition:     "",   // "A" | "B" | "C"
+            startedAt:     null
+        };
+
+        fs.mkdirSync(LOG_DIR, { recursive: true });
+    }
+
+    // ── Data logging ─────────────────────────────────────────────────────────
+
+    /** Appends one row to <participant>_events.csv (creates header if new). */
+    logEvent(type, detail = "") {
+        const pid = this.session.participantId || "unknown";
+        const file = path.join(LOG_DIR, `${pid}_events.csv`);
+        const isNew = !fs.existsSync(file);
+        const row = [
+            new Date().toISOString(),
+            pid,
+            this.session.condition || "",
+            this.activeTask,
+            type,
+            csvEscape(detail)
+        ].join(",");
+        if (isNew) fs.writeFileSync(file, "timestamp,participantId,condition,task,eventType,detail\n");
+        fs.appendFileSync(file, row + "\n");
+    }
+
+    /** Records the session start row in the master sessions.csv. */
+    logSessionStart() {
+        const file = path.join(LOG_DIR, "sessions.csv");
+        const isNew = !fs.existsSync(file);
+        if (isNew) fs.writeFileSync(file, "timestamp,participantId,condition\n");
+        fs.appendFileSync(file,
+            [new Date().toISOString(), this.session.participantId, this.session.condition].join(",") + "\n");
+    }
+
+    /** Saves a completed questionnaire to <participant>_questionnaire.csv. */
+    saveQuestionnaire(payload) {
+        const pid = payload.participantId || this.session.participantId || "unknown";
+        const file = path.join(LOG_DIR, `${pid}_questionnaire.csv`);
+        const answers = payload.answers || {};
+        const keys = Object.keys(answers);
+        const isNew = !fs.existsSync(file);
+        if (isNew) {
+            fs.writeFileSync(file,
+                "timestamp,participantId,condition,questionnaire," + keys.join(",") + "\n");
+        }
+        const row = [
+            new Date().toISOString(),
+            pid,
+            payload.condition || this.session.condition || "",
+            payload.questionnaire || "post",
+            ...keys.map(k => csvEscape(String(answers[k])))
+        ].join(",");
+        fs.appendFileSync(file, row + "\n");
+        return file;
     }
 
     registerComponents() {
@@ -281,6 +379,9 @@ class WizardOfOzApp extends ApplicationController {
             const text = data.toString().replace(/(\r\n|\n|\r)/gm, "").replace(/^>/, "").trim();
             if (text.length < 5) return;
             this.lastTranscript = text;
+            this.transcriptHistory.push({ at: new Date().toISOString(), text });
+            if (this.transcriptHistory.length > 50) this.transcriptHistory.shift();
+            this.logEvent("transcript", text);
             console.log(`\x1b[36m[Transcript]\x1b[0m "${text}"  →  waiting for researcher to inject response`);
         });
 
@@ -297,6 +398,7 @@ class WizardOfOzApp extends ApplicationController {
         if (!code) return { ok: false, error: `Unknown response: ${responseKey} for task ${taskKey}` };
 
         console.log(`\x1b[32m[WoZ Inject]\x1b[0m task=${taskKey} response=${responseKey}`);
+        this.logEvent("inject", `${taskKey}/${responseKey}`);
 
         this.scene.send(new NetworkId(CODE_NETWORK_ID), {
             type: "CodeGenerated",
@@ -314,38 +416,76 @@ class WizardOfOzApp extends ApplicationController {
                 res.end(JSON.stringify(body));
             };
 
-            if (req.method === "GET" && req.url === "/status") {
+            const url = req.url.split("?")[0];
+
+            // ── Static pages ──────────────────────────────────────────────────
+            if (req.method === "GET" && (url === "/" || url === "/control")) {
+                return serveFile(res, path.join(PUBLIC_DIR, "control.html"), "text/html");
+            }
+            if (req.method === "GET" && url === "/questionnaire") {
+                return serveFile(res, path.join(PUBLIC_DIR, "questionnaire.html"), "text/html");
+            }
+
+            // ── Read endpoints ────────────────────────────────────────────────
+            if (req.method === "GET" && url === "/status") {
                 return send(200, {
+                    session: this.session,
                     lastTranscript: this.lastTranscript,
+                    transcriptHistory: this.transcriptHistory.slice(-8),
                     activeTask: this.activeTask,
                     availableTasks: Object.keys(SCRIPTS).map(k => ({ key: k, name: SCRIPTS[k].name }))
                 });
             }
 
-            if (req.method === "GET" && req.url === "/tasks") {
+            if (req.method === "GET" && url === "/tasks") {
                 return send(200, Object.entries(SCRIPTS).map(([k, v]) => ({
                     key: k, name: v.name,
-                    responses: Object.keys(v).filter(r => r !== "name")
+                    responses: Object.keys(v).filter(r => r !== "name").map(r => ({
+                        key: r,
+                        description: (DESCRIPTIONS[k] && DESCRIPTIONS[k][r]) || r
+                    }))
                 })));
             }
 
+            // ── Write endpoints ───────────────────────────────────────────────
             let body = "";
             req.on("data", d => (body += d));
             req.on("end", () => {
                 try {
                     const payload = body ? JSON.parse(body) : {};
 
-                    if (req.method === "POST" && req.url === "/task") {
+                    if (req.method === "POST" && url === "/session") {
+                        this.session.participantId = String(payload.participantId || "").trim();
+                        this.session.condition     = String(payload.condition || "").trim().toUpperCase();
+                        this.session.startedAt     = new Date().toISOString();
+                        this.logSessionStart();
+                        console.log(`\x1b[35m[Session]\x1b[0m participant=${this.session.participantId} condition=${this.session.condition}`);
+                        return send(200, { ok: true, session: this.session });
+                    }
+
+                    if (req.method === "POST" && url === "/task") {
                         const key = `task${payload.task}`;
                         if (!SCRIPTS[key]) return send(400, { error: "Unknown task: " + payload.task });
                         this.activeTask = key;
+                        this.logEvent("task-change", key);
                         return send(200, { activeTask: this.activeTask });
                     }
 
-                    if (req.method === "POST" && req.url === "/inject") {
+                    if (req.method === "POST" && url === "/inject") {
                         const taskKey     = payload.task     ? `task${payload.task}` : this.activeTask;
                         const responseKey = payload.response || "success";
                         return send(200, this.injectResponse(taskKey, responseKey));
+                    }
+
+                    if (req.method === "POST" && url === "/event") {
+                        this.logEvent(payload.type || "note", payload.detail || "");
+                        return send(200, { ok: true });
+                    }
+
+                    if (req.method === "POST" && url === "/questionnaire") {
+                        const file = this.saveQuestionnaire(payload);
+                        console.log(`\x1b[35m[Questionnaire]\x1b[0m saved → ${path.basename(file)}`);
+                        return send(200, { ok: true, saved: path.basename(file) });
                     }
 
                     send(404, { error: "Not found" });
@@ -356,13 +496,35 @@ class WizardOfOzApp extends ApplicationController {
         });
 
         server.listen(this.controlPort, () => {
-            console.log(`\x1b[1m[WoZ Control]\x1b[0m Researcher panel at http://localhost:${this.controlPort}`);
-            console.log(`  GET  /status          → last transcript + active task`);
-            console.log(`  GET  /tasks           → list all tasks and responses`);
-            console.log(`  POST /task   {"task":1}                     → set active task`);
-            console.log(`  POST /inject {"task":1,"response":"error2"} → inject response`);
+            console.log("");
+            console.log(`\x1b[1m\x1b[32m╔══════════════════════════════════════════════════════════════╗\x1b[0m`);
+            console.log(`\x1b[1m\x1b[32m║  WIZARD-OF-OZ STUDY SERVER READY                               ║\x1b[0m`);
+            console.log(`\x1b[1m\x1b[32m╚══════════════════════════════════════════════════════════════╝\x1b[0m`);
+            console.log(`\x1b[1m  Researcher panel:  \x1b[4mhttp://localhost:${this.controlPort}\x1b[0m`);
+            console.log(`\x1b[1m  Questionnaire:     \x1b[4mhttp://localhost:${this.controlPort}/questionnaire\x1b[0m`);
+            console.log(`  Logs saved to: samples/apps/wizard_of_oz/data/logs/`);
+            console.log("");
         });
     }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function csvEscape(value) {
+    const s = String(value == null ? "" : value);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function serveFile(res, filePath, contentType) {
+    fs.readFile(filePath, (err, data) => {
+        if (err) {
+            res.writeHead(404, { "Content-Type": "text/plain" });
+            res.end("Not found: " + path.basename(filePath));
+            return;
+        }
+        res.writeHead(200, { "Content-Type": contentType });
+        res.end(data);
+    });
 }
 
 module.exports = { WizardOfOzApp };

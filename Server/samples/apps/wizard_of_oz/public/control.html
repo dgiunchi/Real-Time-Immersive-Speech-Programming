@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wizard-of-Oz Control Panel</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #1a1e26; --panel2: #232935; --line: #333b49;
+    --text: #e6e9ef; --muted: #97a0b0; --accent: #4f8cff;
+    --ok: #2ecc71; --err: #ff5c5c; --warn: #ffb648;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 15px; }
+  header { padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--err); display: inline-block; }
+  .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 0; height: calc(100vh - 51px); }
+  .side { background: var(--panel); border-right: 1px solid var(--line); padding: 18px; overflow-y: auto; }
+  .content { padding: 22px; overflow-y: auto; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; text-transform: uppercase; letter-spacing: .5px; }
+  input, select { width: 100%; padding: 9px 11px; background: var(--panel2); border: 1px solid var(--line);
+    color: var(--text); border-radius: 7px; font-size: 15px; }
+  button { cursor: pointer; border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    padding: 10px 14px; color: #fff; transition: .12s; }
+  button:active { transform: scale(.98); }
+  .btn-accent { background: var(--accent); }
+  .btn-ghost { background: var(--panel2); border: 1px solid var(--line); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+  .card h2 { margin: 0 0 4px; font-size: 15px; }
+  .card p.sub { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+  .transcript { background: #000; border: 1px solid var(--line); border-radius: 10px; padding: 16px;
+    min-height: 64px; font-size: 20px; line-height: 1.4; }
+  .transcript.empty { color: var(--muted); font-size: 15px; font-style: italic; }
+  .tasks { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .task-chip { padding: 8px 14px; border-radius: 20px; background: var(--panel2); border: 1px solid var(--line);
+    cursor: pointer; font-size: 13px; }
+  .task-chip.active { background: var(--accent); border-color: var(--accent); }
+  .responses { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 8px; }
+  .resp { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 10px;
+    background: var(--panel2); border: 1px solid var(--line); cursor: pointer; }
+  .resp:hover { border-color: var(--accent); }
+  .resp .rbtn { min-width: 92px; text-align: center; padding: 8px 10px; border-radius: 7px; font-weight: 700; font-size: 13px; }
+  .resp.success .rbtn { background: var(--ok); }
+  .resp.error   .rbtn { background: var(--err); }
+  .resp .desc { color: var(--text); font-size: 14px; }
+  .log { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 1.7;
+    background: #000; border: 1px solid var(--line); border-radius: 10px; padding: 12px; height: 220px; overflow-y: auto; }
+  .log .t { color: var(--muted); }
+  .log .inject { color: var(--ok); }
+  .log .transcript { color: var(--accent); }
+  .log .task { color: var(--warn); }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+  .pill.A { background: #555; } .pill.B { background: #2a6cc9; } .pill.C { background: #7a4fd0; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="liveDot"></span>
+  <h1>Wizard-of-Oz Control Panel</h1>
+  <span id="sessionBadge" class="hint">no session</span>
+  <a href="/questionnaire" target="_blank" style="margin-left:auto; color:var(--accent); font-size:13px;">Open questionnaire ↗</a>
+</header>
+
+<main>
+  <!-- SIDEBAR: session setup -->
+  <div class="side">
+    <h2 style="font-size:14px;margin:0 0 4px;">Session Setup</h2>
+    <p class="hint">Set this before the participant starts.</p>
+
+    <label>Participant ID</label>
+    <input id="participantId" placeholder="e.g. P01">
+
+    <label>Condition</label>
+    <select id="condition">
+      <option value="A">A — No feedback</option>
+      <option value="B">B — Text panel</option>
+      <option value="C">C — Embodied agent</option>
+    </select>
+
+    <button class="btn-accent" style="width:100%;margin-top:16px;" onclick="startSession()">Start / Update Session</button>
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
+
+    <h2 style="font-size:14px;margin:0 0 8px;">Quick notes</h2>
+    <input id="noteInput" placeholder="Type an observation…" onkeydown="if(event.key==='Enter')logNote()">
+    <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="logNote()">Log note</button>
+    <p class="hint">Notes are timestamped and saved to the participant's event CSV.</p>
+  </div>
+
+  <!-- MAIN: live control -->
+  <div class="content">
+    <div class="card">
+      <h2>Live transcript</h2>
+      <p class="sub">What the system heard from the participant. Updates automatically.</p>
+      <div id="transcript" class="transcript empty">Waiting for speech…</div>
+    </div>
+
+    <div class="card">
+      <h2>Active task</h2>
+      <p class="sub">Pick the task the participant is currently doing.</p>
+      <div class="tasks" id="taskChips"></div>
+    </div>
+
+    <div class="card">
+      <h2>Inject response</h2>
+      <p class="sub">Click to send the pre-scripted outcome into the VR scene.</p>
+      <div class="responses" id="responses"></div>
+    </div>
+
+    <div class="card">
+      <h2>Event log</h2>
+      <p class="sub">Everything is saved to CSV in real time.</p>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const API = "";
+let tasks = [];
+let activeTask = "task1";
+let logLines = [];
+
+async function get(url) { const r = await fetch(API + url); return r.json(); }
+async function post(url, body) {
+  const r = await fetch(API + url, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body||{}) });
+  return r.json();
+}
+
+function addLog(kind, text) {
+  const t = new Date().toLocaleTimeString();
+  logLines.push(`<div><span class="t">${t}</span> <span class="${kind}">${text}</span></div>`);
+  if (logLines.length > 200) logLines.shift();
+  const el = document.getElementById("log");
+  el.innerHTML = logLines.join("");
+  el.scrollTop = el.scrollHeight;
+}
+
+async function loadTasks() {
+  tasks = await get("/tasks");
+  renderTaskChips();
+  renderResponses();
+}
+
+function renderTaskChips() {
+  const wrap = document.getElementById("taskChips");
+  wrap.innerHTML = "";
+  tasks.forEach(t => {
+    const chip = document.createElement("div");
+    chip.className = "task-chip" + (t.key === activeTask ? " active" : "");
+    const num = t.key.replace("task","");
+    chip.textContent = `${num}. ${t.name}`;
+    chip.onclick = () => selectTask(t.key);
+    wrap.appendChild(chip);
+  });
+}
+
+function renderResponses() {
+  const t = tasks.find(x => x.key === activeTask);
+  const wrap = document.getElementById("responses");
+  wrap.innerHTML = "";
+  if (!t) return;
+  t.responses.forEach(r => {
+    const isSuccess = r.key === "success";
+    const div = document.createElement("div");
+    div.className = "resp " + (isSuccess ? "success" : "error");
+    div.onclick = () => inject(r.key, r.description);
+    div.innerHTML = `<div class="rbtn">${isSuccess ? "SUCCESS" : r.key.replace("error","ERR ")}</div>
+                     <div class="desc">${r.description}</div>`;
+    wrap.appendChild(div);
+  });
+}
+
+async function selectTask(key) {
+  activeTask = key;
+  const num = key.replace("task","");
+  await post("/task", { task: Number(num) });
+  renderTaskChips();
+  renderResponses();
+  addLog("task", "Active task → " + key);
+}
+
+async function inject(response, desc) {
+  const num = activeTask.replace("task","");
+  const res = await post("/inject", { task: Number(num), response });
+  if (res.ok) addLog("inject", `Injected ${activeTask}/${response} — ${desc}`);
+  else addLog("t", "Inject failed: " + (res.error||"?"));
+}
+
+async function startSession() {
+  const participantId = document.getElementById("participantId").value.trim();
+  const condition = document.getElementById("condition").value;
+  if (!participantId) { alert("Enter a participant ID first."); return; }
+  await post("/session", { participantId, condition });
+  document.getElementById("sessionBadge").innerHTML =
+    `<b>${participantId}</b> &nbsp; <span class="pill ${condition}">Condition ${condition}</span>`;
+  addLog("task", `Session started: ${participantId} / Condition ${condition}`);
+}
+
+async function logNote() {
+  const el = document.getElementById("noteInput");
+  const detail = el.value.trim();
+  if (!detail) return;
+  await post("/event", { type: "note", detail });
+  addLog("t", "Note: " + detail);
+  el.value = "";
+}
+
+let lastTranscript = "";
+async function poll() {
+  try {
+    const s = await get("/status");
+    document.getElementById("liveDot").classList.add("live");
+    const tEl = document.getElementById("transcript");
+    if (s.lastTranscript) {
+      if (s.lastTranscript !== lastTranscript) {
+        lastTranscript = s.lastTranscript;
+        addLog("transcript", 'Heard: "' + s.lastTranscript + '"');
+      }
+      tEl.textContent = '"' + s.lastTranscript + '"';
+      tEl.classList.remove("empty");
+    }
+  } catch (e) {
+    document.getElementById("liveDot").classList.remove("live");
+  }
+}
+
+loadTasks();
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

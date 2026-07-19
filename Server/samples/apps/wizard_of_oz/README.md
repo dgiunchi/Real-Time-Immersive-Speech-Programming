@@ -1,37 +1,51 @@
-# Wizard-of-Oz Server – Study Setup
+# Wizard-of-Oz Study Server
 
-Replaces the live LLM pipeline with researcher-controlled pre-scripted responses.
+Replaces the live LLM pipeline with researcher-controlled pre-scripted responses,
+serves the researcher control panel and participant questionnaire, and logs all
+data to CSV.
 
-## Start
+> Full run instructions are in the top-level [`STUDY_GUIDE.md`](../../../../STUDY_GUIDE.md).
+
+## Start (one command)
 
 ```bash
 cd Server
-node scripts/start-wizard-of-oz.js
+npm run study
 ```
 
-## Researcher API (HTTP on port 8181)
+This installs deps if needed, copies certs, starts the server, and opens the
+control panel at **http://localhost:8181**.
+
+## Web pages
+
+| URL | Purpose |
+|-----|---------|
+| `http://localhost:8181/` | Researcher control panel (session, transcript, inject, log) |
+| `http://localhost:8181/questionnaire` | Participant questionnaire (SUS + presence + custom) |
+
+## HTTP API
 
 | Method | URL | Body | Effect |
 |--------|-----|------|--------|
-| GET | `/status` | – | Last transcript + active task |
-| GET | `/tasks` | – | All tasks and valid response keys |
-| POST | `/task` | `{"task":1}` | Set the active task (1–4) |
-| POST | `/inject` | `{"task":1,"response":"success"}` | Send pre-scripted code to Unity |
+| GET | `/status` | – | Session, last transcript, active task |
+| GET | `/tasks` | – | Tasks with response keys + descriptions |
+| POST | `/session` | `{"participantId":"P01","condition":"B"}` | Start/update session |
+| POST | `/task` | `{"task":1}` | Set active task (1–4) |
+| POST | `/inject` | `{"task":1,"response":"error2"}` | Send pre-scripted code to Unity |
+| POST | `/event` | `{"type":"note","detail":"…"}` | Log an event/note |
+| POST | `/questionnaire` | `{participantId,condition,answers}` | Save questionnaire CSV |
 
 ### Response keys per task
-- `success` – correct outcome
-- `error1` – missing / ambiguous detail
-- `error2` – wrong interpretation
-- `error3` – physics/collider issue (gradual reveal)
-- `error4` – scale or count issue
+`success`, `error1` (missing detail), `error2` (wrong interpretation),
+`error3` (physics/collider – gradual reveal), `error4` (scale/count).
 
-## Study Conditions
+## Data output
 
-Set `activeCondition` on the `StudyConditionManager` component in Unity before each session:
-- **A** – No feedback: participant sees only the scene result.
-- **B** – Text panel: `FeedbackPanelController` shows transcript + error description.
-- **C** – Embodied agent: `EmbodiedAgentDialogue` speaks pre/post response; panel also visible.
+`data/logs/` — `sessions.csv`, `<PID>_events.csv`, `<PID>_questionnaire.csv`
+(CSVs are git-ignored).
 
-## Keyboard shortcuts (Unity)
-- **Space** – hold to record voice (desktop / standalone Unity Editor)
-- **F12** – toggle the Wizard-of-Oz researcher panel in VR
+## Editing the scripted responses
+
+Edit the `SCRIPTS` object in [`app.js`](app.js) — each task maps `success` /
+`error1…error4` to a C# MonoBehaviour string that Roslyn compiles and runs in
+the Unity scene. Update `DESCRIPTIONS` to change the button labels.

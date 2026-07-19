@@ -12,6 +12,9 @@ using UnityEngine.Events;
 
 public class TranscriptionCollector : MonoBehaviour
 {
+    // Concrete subclass so the UnityEvent is serializable and always instantiated.
+    [Serializable] public class TranscriptEvent : UnityEvent<string> { }
+
     public NetworkId networkId = new NetworkId(98);
     private NetworkContext context;
 
@@ -19,7 +22,7 @@ public class TranscriptionCollector : MonoBehaviour
     public TranscriptDisplay transcriptDisplay;
 
     [Header("Events")]
-    public UnityEvent<string> onTranscriptReceived;
+    public TranscriptEvent onTranscriptReceived = new TranscriptEvent();
 
     private const string STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 
@@ -29,6 +32,11 @@ public class TranscriptionCollector : MonoBehaviour
         public string type;
         public string peer;
         public string data;
+    }
+
+    void Awake()
+    {
+        if (onTranscriptReceived == null) onTranscriptReceived = new TranscriptEvent();
     }
 
     void Start()

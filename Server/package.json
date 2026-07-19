@@ -4,6 +4,8 @@
   "description": "Ubiq-Genie",
   "scripts": {
     "doctor": "node scripts/check-local-setup.js",
+    "study": "node scripts/study.js",
+    "start:wizard-of-oz": "node scripts/start-wizard-of-oz.js",
     "start:code-runtime-generator": "node scripts/start-code-runtime-generator.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
