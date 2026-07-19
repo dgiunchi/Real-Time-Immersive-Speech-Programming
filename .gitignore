@@ -81,4 +81,4 @@ ml/**/attacks_discovered.jsonl
 ml/**/__pycache__/
 
 # generated paper render intermediate
-apps/xr-security-eval/report/paper.html
+apps/xr-security-eval/report/*.html

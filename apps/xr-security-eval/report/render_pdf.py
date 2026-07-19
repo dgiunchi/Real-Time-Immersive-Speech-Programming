@@ -13,9 +13,17 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # apps/xr-security-eval
-PAPER = os.path.join(ROOT, "PAPER.md")
-OUT_HTML = os.path.join(HERE, "paper.html")
-OUT_PDF = os.path.expanduser("~/Desktop/DreamCodeVR-Security-Paper.pdf")
+# Optional CLI: render_pdf.py [input.md] [output.pdf]  (defaults to the paper).
+import sys as _sys  # noqa: E402
+
+PAPER = os.path.join(ROOT, _sys.argv[1]) if len(_sys.argv) > 1 else os.path.join(ROOT, "PAPER.md")
+_stem = os.path.splitext(os.path.basename(PAPER))[0].lower()
+OUT_HTML = os.path.join(HERE, f"{_stem}.html")
+OUT_PDF = (
+    os.path.expanduser(_sys.argv[2])
+    if len(_sys.argv) > 2
+    else os.path.expanduser("~/Desktop/DreamCodeVR-Security-Paper.pdf")
+)
 
 import markdown  # noqa: E402
 
