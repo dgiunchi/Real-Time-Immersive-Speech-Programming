@@ -9,7 +9,8 @@
     "start:unity-scene-bridge": "node scripts/start-unity-scene-bridge.js",
     "dev:mock-unity-peer": "node mcp/unity_scene_bridge/mock_unity_peer.js",
     "start:orchestrator": "node orchestrator/app.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node tests/cache_contract_test.js",
+    "test:integration": "node tests/run_mock_integration.js"
   },
   "author": "UCL VECG",
   "license": "Apache-2.0",

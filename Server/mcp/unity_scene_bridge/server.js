@@ -12,6 +12,7 @@
 const path = require("path");
 const nconf = require("nconf");
 const { z } = require("zod");
+const { checkModePolicy } = require("../../orchestrator/mode_policy");
 const { SceneBridgeClient } = require("./scene_bridge_client");
 const { SharedMemory } = require("../../memory");
 const { CacheExchangeLayer } = require("../../cache");
@@ -112,14 +113,36 @@ async function main() {
                 intent: z.string().optional().describe("Original natural-language intent, shown in the confirmation UI"),
                 authoringMode: z.enum(["automatic", "semi_auto_confirm", "semi_auto_steer"]).optional(),
                 interactionMode: z.enum(["L1", "L2", "L3", "L4", "L5"]).optional().describe("Which of the paper's five interaction modes initiated this turn (main.tex tab:modes) - separate from authoringMode, which controls the execution gate"),
+                sceneEpoch: z.string().optional(),
+                snapshotId: z.string().optional(),
+                objectRevision: z.number().optional(),
+                snapshotTakenAt: z.number().optional(),
+                validationState: z.enum(["accepted", "rejected"]).optional(),
+                validationSummary: z.string().optional(),
+                riskScore: z.number().min(0).max(1).optional(),
+                consentRoute: z.string().optional(),
+                requiredPermissions: z.array(z.string()).optional(),
+                expectedSideEffects: z.string().optional(),
+                artifactVersion: z.string().optional(),
+                triggerSource: z.enum(["system_opportunity", "context", "clarification", "explicit_request"]).optional(),
+                reversible: z.boolean().optional(),
+                localOnly: z.boolean().optional(),
+                detailResolved: z.boolean().optional(),
                 sessionId: z.string().optional(),
                 correlationId: z.string().optional().describe("Reuse an existing correlationId to thread this call into the same authoring-turn timeline as prior/later calls"),
                 timeoutMs: z.number().int().positive().optional(),
             },
         },
-        async ({ code, targetObjectId, intent, authoringMode, interactionMode, sessionId, correlationId, timeoutMs }) => {
+        async (args) => {
+            const { code, targetObjectId, intent, authoringMode, interactionMode, sessionId, correlationId } = args;
             try {
-                const result = await bridge.proposeArtifact({ code, targetObjectId, intent, authoringMode, interactionMode, sessionId, correlationId, timeoutMs });
+                if (interactionMode) {
+                    const policy = checkModePolicy(args);
+                    if (!policy.accepted) {
+                        return { content: [{ type: "text", text: `propose_artifact rejected by interaction-mode policy: ${policy.reasons.join("; ")}` }], isError: true };
+                    }
+                }
+                const result = await bridge.proposeArtifact(args);
                 memory.artifactLog.append({
                     eventType: "propose_artifact",
                     targetObjectId,
@@ -127,6 +150,15 @@ async function main() {
                     intent: intent || null,
                     authoringMode: authoringMode || null,
                     interactionMode: interactionMode || null,
+                    sceneEpoch: args.sceneEpoch || null,
+                    snapshotId: args.snapshotId || null,
+                    objectRevision: args.objectRevision ?? null,
+                    validationState: args.validationState || "accepted",
+                    validationSummary: args.validationSummary || null,
+                    riskScore: args.riskScore ?? null,
+                    requiredPermissions: args.requiredPermissions || ["attach_component"],
+                    expectedSideEffects: args.expectedSideEffects || null,
+                    artifactVersion: args.artifactVersion || "1",
                     status: result.payload && result.payload.status,
                     artifactId: result.payload && result.payload.artifactId,
                 });
@@ -147,8 +179,8 @@ async function main() {
                 "docs/shared-memory-and-experimental-space.md, without ever touching the live object. Reuses " +
                 "the same ArtifactProposal/ArtifactResult channels (99/100) as propose_artifact, distinguished " +
                 "by payload.mode='simulate'. Use this before propose_artifact for anything above automatic-mode " +
-                "risk. Requires the Unity-side staging-clone handler (not yet implemented against a real " +
-                "headset - see docs/agentic-xr-architecture.md §9); mock_unity_peer.js answers it today.",
+                "risk. Unity compiles and attaches the candidate to an inactive staging clone; " +
+                "mock_unity_peer.js provides a deterministic stand-in for headless integration tests.",
             inputSchema: {
                 code: z.string().describe("Full C# source of the candidate artifact"),
                 targetObjectId: z.string().describe("Stable scene object id the artifact would attach to"),
@@ -286,7 +318,7 @@ async function main() {
                 capabilityPolicy: {
                     allowedNamespaces: ["UnityEngine"],
                     deniedNamespaces: ["System.IO", "System.Net", "System.Diagnostics", "System.Reflection"],
-                    note: "static allowlist mirroring Unity/Assets/RoslynCSharp/.../RoslynCSharpSecurityAllowance.cs - not yet wired to the new pipeline (docs/agentic-xr-architecture.md §7)",
+                    note: "Unity enforces a structured namespace/capability guard plus RoslynCSharp UseSettings security checks; this is defense in depth, not a formal process sandbox.",
                 },
             };
             return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };

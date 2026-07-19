@@ -203,7 +203,10 @@ class SceneBridgeClient extends EventEmitter {
     // ghost-preview UI (any mode other than "automatic") or applies
     // immediately - meaningless when simulate is true, since nothing is
     // committed to the live object either way.
-    async proposeArtifact({ code, targetObjectId, intent, authoringMode = "semi_auto_confirm", interactionMode, simulate = false, sessionId, correlationId, timeoutMs } = {}) {
+    async proposeArtifact({ code, targetObjectId, intent, authoringMode = "semi_auto_confirm", interactionMode, simulate = false,
+        sessionId, correlationId, timeoutMs, sceneEpoch, snapshotId, objectRevision, snapshotTakenAt,
+        validationState = "accepted", validationSummary, riskScore, consentRoute, requiredPermissions,
+        expectedSideEffects, artifactVersion } = {}) {
         if (!code || !targetObjectId) {
             throw new Error("proposeArtifact requires both 'code' and 'targetObjectId'");
         }
@@ -216,8 +219,30 @@ class SceneBridgeClient extends EventEmitter {
             targetObjectId,
             authoringMode,
             interactionMode,
-            payload: { code, intent: intent || null, mode: simulate ? "simulate" : "commit" },
+            payload: {
+                code,
+                intent: intent || null,
+                mode: simulate ? "simulate" : "commit",
+                snapshotTakenAt: snapshotTakenAt || Date.now(),
+                validationState,
+                validationSummary: validationSummary || null,
+                riskScore: typeof riskScore === "number" ? riskScore : null,
+                consentRoute: consentRoute || (authoringMode === "automatic" ? "automatic_low_risk" : "explicit_confirmation"),
+                requiredPermissions: requiredPermissions || ["attach_component"],
+                expectedSideEffects: expectedSideEffects || null,
+                artifactVersion: artifactVersion || "1",
+            },
         });
+        envelope.sceneEpoch = sceneEpoch || null;
+        envelope.snapshotId = snapshotId || null;
+        envelope.objectRevision = objectRevision != null ? objectRevision : null;
+        envelope.validationState = validationState;
+        envelope.validationSummary = validationSummary || null;
+        envelope.riskScore = typeof riskScore === "number" ? riskScore : null;
+        envelope.consentRoute = envelope.payload.consentRoute;
+        envelope.requiredPermissions = envelope.payload.requiredPermissions.join(",");
+        envelope.expectedSideEffects = expectedSideEffects || null;
+        envelope.artifactVersion = artifactVersion || "1";
         const reply = this.#awaitReply(envelope.correlationId, "ArtifactResult", effectiveTimeout);
         this.#sendCache(CHANNELS.ARTIFACT_CHANNEL, envelope);
         return reply;

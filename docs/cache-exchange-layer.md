@@ -70,19 +70,10 @@ declares `payload` as `string` accordingly. `fromWireFormat()` reverses this on 
 Node side (used by `mock_unity_peer.js` and `cache/index.js` when unpacking
 `CacheSnapshot`/`BackfillResponse`'s multi-object payloads).
 
-**Known gap, not fixed in this pass**: the three legacy types Unity must also
-receive — `SceneQuery`, `AgentUtterance`, `ArtifactProposal` — are *not*
-pre-stringified yet. `scene_bridge_client.js`'s `querySceneFocus`/`proposeArtifact`/
-`sendAgentUtterance` send nested-object payloads directly, bypassing the new
-`#sendCache`/`toWireFormat` path deliberately — extending this would touch already-
-tested, verified Node-side code this pass intentionally left alone. Unity's handlers
-for those three types are scaffolded but will receive an empty/malformed `payload`
-until a follow-up either extends `STRINGIFY_PAYLOAD_FOR_UNITY` to cover them (and
-routes those three send methods through it), or Unity-side parsing is swapped to
-something that handles nested objects (the codebase already links `Ubiq.Logging.Utf8Json`
-— `CacheChannelRelay.cs` uses its `data.FromJson<T>()` extension, matching
-`CodeGenerationManager.cs`'s proven pattern exactly, but its nested-object capability
-was not verified against source in this environment).
+**Resolved**: the original `SceneQuery`, `AgentUtterance`, and `ArtifactProposal`
+types now use the same `toWireFormat()` payload-string convention. Unity receives
+one consistent envelope shape, while `CacheChannelRelay` also accepts nested payloads
+for backward compatibility.
 
 ## Modules
 
@@ -115,14 +106,13 @@ Wired into `Server/mcp/unity_scene_bridge/server.js` as 8 new MCP tools:
   `BackfillRequest`/`CommitRequest`/`RollbackRequest` with its own authoritative
   freshness check against its tracked `objectRevisions`/`sceneEpoch`/`snapshotId`.
 
-### Unity (`Unity/Assets/AgenticCache/`) — scaffolded, **not compiled or run**
+### Unity (`Unity/Assets/AgenticCache/`) — implemented and Unity-compiled
 
-No Unity Editor is available in this environment, so nothing below has been verified
-by an actual compiler — only carefully pattern-matched against the three confirmed-
-working networked scripts already in this repo (`CodeGenerationManager.cs`,
-`MicrophoneCapture.cs`, `SelectRay.cs`: `NetworkScene.Register(this, networkId)` →
-`NetworkContext`, `data.FromJson<T>()` to receive, `ReferenceCountedSceneGraphMessage.Rent()`
-+ `context.Send()` to send).
+The Unity side now installs automatically, publishes an initial snapshot and live
+revision/focus deltas, journals a bounded recovery tail, serves backfill ranges,
+performs authoritative freshness/consent checks, stages generated code on an inactive
+clone, presents verification evidence, commits through Roslyn, and reports decisions
+and rollback. Unity 6000.3.9f1 batch compilation succeeds with no C# errors.
 
 | File | Role |
 |---|---|
@@ -137,11 +127,8 @@ re-checks correlationId validity, object existence, `sceneEpoch`, `objectRevisio
 and snapshot age against `maxSnapshotAgeMsBy­Mode` — the backend's `ProposalGate`
 result is never trusted, matching the architectural principle.
 
-**Not implemented even as scaffolding**: the actual Roslyn compile+attach on accept
-(flagged with a `TODO` at the exact line in `HandleCommitRequest`), real scene data
-sourcing for `DetailRequest`/snapshot content (would need `SceneController.cs` to
-grow stable IDs first, per `docs/agentic-xr-architecture.md` phase 1), and real
-component rollback in `HandleRollbackRequest`.
+Physical Quest input, live-model behavior, and multi-user conflict handling remain
+separate acceptance steps; batch compilation does not prove those hardware paths.
 
 ## Running the mock/test flow
 
@@ -196,11 +183,11 @@ delta already advanced the object's revision (monotonic safety net in
 | Automatic gap-detection → backfill / stale → snapshot request | **Implemented, tested** |
 | 8 new MCP tools | **Implemented, tested** |
 | Mock Unity peer (snapshot, deltas incl. simulated packet loss, commit/rollback authoritative check) | **Implemented, tested** — this is a mock, not real Unity |
-| `LocalXRCache`, `CachePublisher`, `CacheExchangeManager`, `CacheChannelRelay`, `CacheEnvelope` (Unity C#) | **Scaffolded, NOT compiled or run** — no Unity Editor available in this environment |
-| Unity JsonUtility payload parsing for `SceneQuery`/`AgentUtterance`/`ArtifactProposal` | **Known gap** — payload will be malformed until the wire-format fix described above lands |
-| Real Roslyn compile+attach on `CommitAccepted` | **Not implemented** — `TODO` marker in `HandleCommitRequest` |
-| Real scene data for `DetailRequest`/Unity-originated `CacheSnapshot` content | **Not implemented** — depends on `SceneController.cs` growing stable object IDs (existing roadmap phase 1) |
-| Real component rollback | **Not implemented** — `TODO` marker in `HandleRollbackRequest` |
+| `LocalXRCache`, `CachePublisher`, `CacheExchangeManager`, `CacheChannelRelay`, `CacheEnvelope` (Unity C#) | **Implemented and Unity batch-compiled** |
+| Unity JsonUtility payload parsing for `SceneQuery`/`AgentUtterance`/`ArtifactProposal` | **Implemented** through the shared payload-string wire convention |
+| Real Roslyn compile+attach and Verification Space clone | **Implemented and Unity batch-compiled**; not yet headset-exercised |
+| Real scene data for queries/snapshots/deltas and Unity backfill | **Implemented and Unity batch-compiled**; runtime evidence still requires an Editor/headset session |
+| Real component rollback and decision telemetry | **Implemented and Unity batch-compiled**; not yet headset-exercised |
 
 ## Pointers
 

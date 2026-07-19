@@ -15,20 +15,9 @@ namespace AgenticCache
     // RollbackRequest, RollbackResult) because the Node side pre-stringifies their
     // payload before sending (Server/cache/protocol.js STRINGIFY_PAYLOAD_FOR_UNITY).
     //
-    // KNOWN GAP, not fixed in this pass: the three LEGACY message types Unity must
-    // also receive - SceneQuery, AgentUtterance, ArtifactProposal - are NOT
-    // pre-stringified on the Node side yet (scene_bridge_client.js's
-    // querySceneFocus/proposeArtifact/sendAgentUtterance send nested-object payloads
-    // directly via this.scene.send(), bypassing the new #sendCache/toWireFormat
-    // path, deliberately - changing that would touch already-tested, verified code
-    // paths this pass intentionally left alone). Handlers for those three types
-    // below are scaffolded but will receive an empty/malformed `payload` until a
-    // follow-up either (a) extends STRINGIFY_PAYLOAD_FOR_UNITY to cover them and
-    // routes their send methods through toWireFormat, or (b) swaps Unity's JSON
-    // parsing to a library that supports nested objects (Utf8Json is already a
-    // project dependency per CodeGenerationManager.cs's `using
-    // Ubiq.Logging.Utf8Json;`, but its exact API was not verified against source in
-    // this environment).
+    // The original SceneQuery, AgentUtterance, and ArtifactProposal messages now use
+    // the same pre-stringified payload convention in Server/cache/protocol.js, so
+    // all Unity-bound envelope types share one unambiguous wire representation.
     //
     // Long fields that are conceptually nullable on the JS side (deltaSeq,
     // objectRevision, ttlMs) use -1 as the "not present" sentinel, because
@@ -48,6 +37,15 @@ namespace AgenticCache
         public string interactionMode;
         public string priority;
         public long timestamp;
+        public string validationState;
+        public string validationSummary;
+        public float riskScore = -1f;
+        public string consentRoute;
+        public string requiredPermissions;
+        public string expectedSideEffects;
+        public string artifactVersion;
+        public string artifactId;
+        public string rollbackPointer;
 
         // Cache Exchange Layer fields (tab:envelope: "sceneEpoch, snapshotId ->
         // cache freshness boundary"; "deltaSeq, objectRevision -> idempotence and

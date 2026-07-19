@@ -21,6 +21,7 @@ namespace AgenticCache
             exchange.compiler = Object.FindFirstObjectByType<TestRoslyn>();
             exchange.consentPanel = panel;
             publisher.localCache = exchange.localCache;
+            publisher.sceneRegistry = registry;
             publisher.sessionId = exchange.sessionId;
             panel.Initialize(exchange);
 

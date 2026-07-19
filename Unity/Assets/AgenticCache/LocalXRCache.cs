@@ -138,6 +138,12 @@ namespace AgenticCache
             proposalsByCorrelationId.Remove(correlationId);
         }
 
+        public void ClearAllProposals()
+        {
+            proposalsByCorrelationId.Clear();
+            previewByCorrelationId.Clear();
+        }
+
         // Selection change, rejection, undo, region change, or ownership change can
         // invalidate proposals for an object (spec's consistency rules) - call this
         // when any of those happen locally, independent of a server-driven

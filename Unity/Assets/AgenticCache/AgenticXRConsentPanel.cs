@@ -23,11 +23,17 @@ namespace AgenticCache
             if (statusText != null) statusText.text = "AgentiXR: " + (state ?? "") + "\n" + (detail ?? "");
         }
 
-        public void ShowProposal(string correlationId, string targetName, string intent)
+        public void ShowProposal(string correlationId, string targetName, string intent, string validationSummary,
+            float riskScore, string[] requiredPermissions, string expectedSideEffects)
         {
             pendingCorrelationId = correlationId;
             if (proposalText != null)
-                proposalText.text = "Claude proposes a behaviour for " + targetName + ":\n" + intent + "\n\nApprove or reject?";
+                proposalText.text = "Claude proposes a behaviour for " + targetName + ":\n" + intent +
+                    "\n\nVerification: " + (string.IsNullOrEmpty(validationSummary) ? "compiled on staging clone" : validationSummary) +
+                    "\nRisk: " + (riskScore >= 0f ? riskScore.ToString("0.00") : "not supplied") +
+                    "\nPermissions: " + (requiredPermissions != null ? string.Join(", ", requiredPermissions) : "attach_component") +
+                    "\nExpected effects: " + (string.IsNullOrEmpty(expectedSideEffects) ? "not supplied" : expectedSideEffects) +
+                    "\n\nApprove or reject?";
             if (canvas != null) canvas.gameObject.SetActive(true);
         }
 

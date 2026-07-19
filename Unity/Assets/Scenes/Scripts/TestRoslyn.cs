@@ -145,12 +145,42 @@ public class TestRoslyn : MonoBehaviour
 
     private static bool PassesCapabilityPolicy(string source, out string error)
     {
-        string[] denied = { "System.IO", "System.Net", "System.Diagnostics", "System.Reflection", "DllImport", "unsafe ", "Process.", "Application.Quit" };
+        // This is defense in depth in front of RoslynCSharp's own security mode, not
+        // a formal process sandbox. Normalize comments/whitespace before checking so
+        // simple token splitting cannot bypass the denied capability families.
+        var withoutComments = Regex.Replace(source, @"/\*.*?\*/|//[^\r\n]*", string.Empty, RegexOptions.Singleline);
+        var compact = Regex.Replace(withoutComments, @"\s+", string.Empty).ToLowerInvariant();
+        string[] denied = {
+            "system.io", "system.net", "system.diagnostics", "system.reflection",
+            "system.runtime.interopservices", "unityengine.networking", "dllimport",
+            "unsafe", "stackalloc", "process.", "activator.", "assembly.", "type.gettype",
+            "application.quit", "application.openurl", "environment.exit", "gc.collect"
+        };
         foreach (var token in denied)
         {
-            if (source.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+            if (compact.Contains(token))
             {
                 error = "Capability policy rejected token: " + token;
+                return false;
+            }
+        }
+
+        string[] allowedNamespaces = { "UnityEngine", "System", "System.Collections", "System.Collections.Generic" };
+        foreach (Match match in Regex.Matches(withoutComments, @"\busing\s+(?:static\s+)?([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;"))
+        {
+            var requested = match.Groups[1].Value;
+            var allowed = false;
+            foreach (var candidate in allowedNamespaces)
+            {
+                if (requested == candidate || requested.StartsWith(candidate + ".", StringComparison.Ordinal))
+                {
+                    allowed = true;
+                    break;
+                }
+            }
+            if (!allowed)
+            {
+                error = "Capability policy rejected namespace: " + requested;
                 return false;
             }
         }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using Ubiq.Messaging;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace AgenticCache
 {
@@ -18,11 +19,26 @@ namespace AgenticCache
     // context.Send(ReferenceCountedSceneGraphMessage)).
     public class CachePublisher : MonoBehaviour
     {
+        private sealed class PublishedDelta
+        {
+            public long deltaSeq;
+            public string stableObjectId;
+            public long objectRevision;
+            public string tag;
+            public string region;
+            public string stateJson;
+            public string sensorEventsJson;
+            public long timestamp;
+        }
+
         public NetworkId networkId = new NetworkId(95);
         private NetworkContext context;
 
         public LocalXRCache localCache;
+        public AgenticSceneRegistry sceneRegistry;
         public string sessionId = "default-session";
+        public float scanIntervalSeconds = 0.25f;
+        public int journalCapacity = 512;
 
         [Tooltip("Minimum time between transform-only delta sends for the same object, to coalesce high-frequency movement.")]
         public float coalesceIntervalMs = 200f;
@@ -30,11 +46,80 @@ namespace AgenticCache
         private long deltaSeqCounter = 0;
         private readonly Dictionary<string, float> lastSentAtByObject = new Dictionary<string, float>();
         private readonly Dictionary<string, long> lastSentRevisionByObject = new Dictionary<string, long>();
-        private readonly Queue<(string stableObjectId, long objectRevision, string tag, string region, string stateJson)> pendingHighPriority = new Queue<(string, long, string, string, string)>();
+        private readonly List<PublishedDelta> journal = new List<PublishedDelta>();
+        private float nextScanAt;
+        private string publishedSceneEpoch;
+        private string lastSelectedObjectId;
+        private bool contextReady;
 
         private void Start()
         {
             context = NetworkScene.Register(this, networkId);
+            contextReady = true;
+        }
+
+        private void Update()
+        {
+            if (!contextReady || sceneRegistry == null || Time.unscaledTime < nextScanAt) return;
+            nextScanAt = Time.unscaledTime + scanIntervalSeconds;
+
+            if (publishedSceneEpoch != sceneRegistry.SceneEpoch)
+            {
+                ResetForSceneBoundary();
+                PublishCurrentSnapshot();
+                PublishSensorEvent("xr-user-head", 1, string.Empty, SceneManager.GetActiveScene().name,
+                    "[{\"sensorType\":\"locomotion\",\"sourceObjectId\":\"" + Escape(sessionId) +
+                    "\",\"value\":{\"regionId\":\"" + Escape(SceneManager.GetActiveScene().name) +
+                    "\",\"entering\":true},\"confidence\":1.0}]");
+                return;
+            }
+
+            foreach (var state in sceneRegistry.GetSceneObjectStates())
+            {
+                if (!lastSentRevisionByObject.TryGetValue(state.stableObjectId, out var revision) || state.objectRevision > revision)
+                    PublishStateDelta(state.stableObjectId, state.objectRevision, state.tag, state.region, state.stateJson);
+            }
+
+            var selected = sceneRegistry.GetSelectedObjectId();
+            if (selected != lastSelectedObjectId)
+            {
+                lastSelectedObjectId = selected;
+                if (!string.IsNullOrEmpty(selected))
+                {
+                    var target = sceneRegistry.Find(selected);
+                    PublishSensorEvent("sensor:xr-user-head", 1, target != null ? target.tag : string.Empty,
+                        string.Empty, "[{\"sensorType\":\"gaze\",\"sourceObjectId\":\"xr-user-head\",\"targetObjectId\":\"" +
+                        Escape(selected) + "\",\"value\":true,\"confidence\":1.0}]");
+                }
+            }
+        }
+
+        private void ResetForSceneBoundary()
+        {
+            publishedSceneEpoch = sceneRegistry.SceneEpoch;
+            deltaSeqCounter = 0;
+            lastSentAtByObject.Clear();
+            lastSentRevisionByObject.Clear();
+            journal.Clear();
+            lastSelectedObjectId = null;
+            if (localCache != null)
+            {
+                localCache.SetSceneEpoch(sceneRegistry.SceneEpoch);
+                localCache.SetLatestSnapshotId(sceneRegistry.SnapshotId);
+            }
+        }
+
+        public void PublishCurrentSnapshot()
+        {
+            if (sceneRegistry == null) return;
+            var states = sceneRegistry.GetSceneObjectStates();
+            var objects = new List<(string stableObjectId, long objectRevision, string tag, string region, string stateJson)>();
+            foreach (var state in states)
+            {
+                objects.Add((state.stableObjectId, state.objectRevision, state.tag, state.region, state.stateJson));
+                lastSentRevisionByObject[state.stableObjectId] = state.objectRevision;
+            }
+            PublishSnapshot(objects, sceneRegistry.SceneEpoch, sceneRegistry.SnapshotId);
         }
 
         // Call for a transform-only update (position/rotation/scale). Coalesced -
@@ -101,10 +186,61 @@ namespace AgenticCache
 
             SendEnvelope(envelope);
 
+            journal.Add(new PublishedDelta
+            {
+                deltaSeq = envelope.deltaSeq,
+                stableObjectId = stableObjectId,
+                objectRevision = objectRevision,
+                tag = tag,
+                region = region,
+                stateJson = stateJson,
+                sensorEventsJson = null,
+                timestamp = envelope.timestamp,
+            });
+            while (journal.Count > Math.Max(8, journalCapacity)) journal.RemoveAt(0);
+
             if (localCache != null)
             {
                 localCache.TryAcceptObjectState(stableObjectId, objectRevision, tag, region, -1);
             }
+        }
+
+        public void PublishSensorEvent(string stableObjectId, long objectRevision, string tag, string region, string sensorEventsJson)
+        {
+            deltaSeqCounter += 1;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var envelope = new CacheEnvelope
+            {
+                schemaVersion = "1.0",
+                type = CacheMessageTypes.SceneDelta,
+                sessionId = sessionId,
+                correlationId = Guid.NewGuid().ToString(),
+                originAgent = "unity_sensor_publisher",
+                targetObjectId = stableObjectId,
+                stableObjectId = stableObjectId,
+                timestamp = now,
+                sceneEpoch = localCache != null ? localCache.CurrentSceneEpoch : null,
+                snapshotId = localCache != null ? localCache.LatestSnapshotId : null,
+                deltaSeq = deltaSeqCounter,
+                objectRevision = objectRevision,
+                source = "unity",
+                confidence = 1f,
+                payload = "{\"tag\":\"" + Escape(tag) + "\",\"region\":\"" + Escape(region) +
+                    "\",\"state\":{},\"sensorEvents\":" + sensorEventsJson + "}",
+            };
+            SendEnvelope(envelope);
+            journal.Add(new PublishedDelta
+            {
+                deltaSeq = envelope.deltaSeq,
+                stableObjectId = stableObjectId,
+                objectRevision = objectRevision,
+                tag = tag,
+                region = region,
+                stateJson = "{}",
+                sensorEventsJson = sensorEventsJson,
+                timestamp = now,
+            });
+            while (journal.Count > Math.Max(8, journalCapacity)) journal.RemoveAt(0);
         }
 
         public void PublishSnapshot(IEnumerable<(string stableObjectId, long objectRevision, string tag, string region, string stateJson)> objects, string sceneEpoch, string snapshotId)
@@ -163,8 +299,41 @@ namespace AgenticCache
             SendEnvelope(envelope);
         }
 
+        public bool CanBackfillAfter(long lastSeenSeq)
+        {
+            if (journal.Count == 0) return lastSeenSeq >= deltaSeqCounter;
+            return lastSeenSeq >= journal[0].deltaSeq - 1;
+        }
+
+        public string BuildBackfillPayload(long lastSeenSeq)
+        {
+            var sb = new StringBuilder("{\"deltas\":[");
+            var first = true;
+            foreach (var delta in journal)
+            {
+                if (delta.deltaSeq <= lastSeenSeq) continue;
+                if (!first) sb.Append(',');
+                first = false;
+                sb.Append("{\"stableObjectId\":\"").Append(Escape(delta.stableObjectId))
+                    .Append("\",\"objectRevision\":").Append(delta.objectRevision)
+                    .Append(",\"deltaSeq\":").Append(delta.deltaSeq)
+                    .Append(",\"tag\":\"").Append(Escape(delta.tag))
+                    .Append("\",\"region\":\"").Append(Escape(delta.region))
+                    .Append("\",\"state\":").Append(delta.stateJson)
+                    .Append(delta.sensorEventsJson != null ? ",\"sensorEvents\":" + delta.sensorEventsJson : string.Empty)
+                    .Append(",\"timestamp\":").Append(delta.timestamp).Append('}');
+            }
+            return sb.Append("]}").ToString();
+        }
+
+        public void AcknowledgeThrough(long deltaSeq)
+        {
+            while (journal.Count > 32 && journal[0].deltaSeq <= deltaSeq) journal.RemoveAt(0);
+        }
+
         private void SendEnvelope(CacheEnvelope envelope)
         {
+            if (!contextReady) return;
             string json = JsonUtility.ToJson(envelope);
             byte[] bytes = Encoding.UTF8.GetBytes(json);
             var message = ReferenceCountedSceneGraphMessage.Rent(bytes.Length);

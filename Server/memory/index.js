@@ -35,6 +35,27 @@ class SharedMemory {
                 this.sceneGraph.ingestSceneDelta(envelope);
                 this.sensors.ingestSceneDelta(envelope);
             }
+            if (["UserDecision", "ArtifactResult", "CommitAccepted", "CommitRejected", "RollbackResult"].includes(envelope.type)) {
+                const eventType = envelope.type === "UserDecision"
+                    ? `user_decision:${(envelope.payload && envelope.payload.decision) || "unknown"}`
+                    : envelope.type.toLowerCase();
+                this.artifactLog.append({
+                    eventType,
+                    sessionId: envelope.sessionId || null,
+                    correlationId: envelope.correlationId || null,
+                    targetObjectId: envelope.targetObjectId || null,
+                    artifactId: (envelope.payload && envelope.payload.artifactId) || envelope.artifactId || null,
+                    status: envelope.payload && (envelope.payload.status || envelope.payload.decision),
+                    reason: envelope.payload && (envelope.payload.reason || envelope.payload.error),
+                    at: envelope.timestamp || Date.now(),
+                });
+                this.personPolicy.recordEvent({
+                    sessionId: envelope.sessionId,
+                    eventType,
+                    targetObjectId: envelope.targetObjectId,
+                    at: envelope.timestamp || Date.now(),
+                });
+            }
         });
     }
 }

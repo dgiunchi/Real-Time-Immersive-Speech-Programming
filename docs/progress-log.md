@@ -431,3 +431,50 @@ snapshot/backfill/commit/stale-gate test; and two Unity `6000.3.9f1` batch impor
 the final one exiting 0 with no C# errors. Not yet verified: a real Anthropic turn
 (no `ANTHROPIC_API_KEY` was available) or physical Quest microphone/LAN/XR-button
 interaction. Human steps are in `docs/live-xr-claude-setup.md`.
+
+## 2026-07-19 — Paper/implementation completion pass
+
+Audited the current paper implementation claims against source and found that the
+backend/mock cache path was ahead of the live Unity state/recovery path. Wrote the
+executable specification in `docs/paper-implementation-completion-prompt.md`, then
+implemented its source-complete portions without modifying the paper repository.
+
+Unity now publishes an initial real-scene `CacheSnapshot`, scans stable objects for
+monotonic revision changes, emits state and selected-ray/gaze deltas, emits a coarse
+active-scene locomotion/region event, keeps a bounded delta journal, serves real
+backfill ranges, consumes delta acknowledgements, and resets its epoch/snapshot state
+across active-scene changes. Stable hierarchy IDs include sibling indices and duplicate
+IDs are detected and collision-resolved at runtime.
+
+The authoritative proposal path now checks validation state, scene epoch, snapshot ID,
+object revision, snapshot age, consent route, automatic-mode risk, current selection,
+and local invalidation before attach. `CommitRequest` always returns
+`CommitAccepted`/`CommitRejected`; confirmation timeout defaults to rejection. The
+world-space panel shows validation evidence, risk, permissions, and expected effects.
+Approve/reject/timeout/undo and rollback results are returned to backend temporal and
+person memory. Artifact envelopes/logs carry freshness, validation, risk, permission,
+side-effect, version, and rollback metadata.
+
+Added `Server/orchestrator/mode_policy.js` so L1/L2 automatic execution is limited to
+low-risk, reversible, local proposals with the correct trigger; unresolved L3 cannot
+continue; and L4/L5 cannot bypass confirmation. Strengthened runtime compilation from
+a small token blacklist to a normalized namespace/capability guard in front of
+RoslynCSharp `UseSettings`. This remains defense in depth, not a formal sandbox.
+
+Verification performed:
+
+- `cd Server; npm test` — PASS, 87 assertions. This command also runs `node --check`
+  across all custom JS/MJS and deterministically covers wire encoding, gaps, backfill,
+  duplicate handling, monotonic state, freshness rejection, mode policy, and required
+  Unity contract/security markers.
+- `cd Server; npm run test:integration` — PASS. A checked-in harness starts and cleans
+  up a real Ubiq room server plus `mock_unity_peer.js`, then runs the full MCP smoke
+  and cache flows, including automatic gap recovery, idempotent backfill, fresh commit,
+  stale-revision rejection, stale-snapshot rejection, memory, sensors, and staleness.
+- Unity `6000.3.9f1 -batchmode -nographics -quit` — exit 0; no C# compiler errors;
+  `unity-agenticxr-completion-compile.log` ends with “Exiting batchmode successfully”.
+
+Status boundary: the source is implemented, mock-integrated, and Unity-compiled. A
+real Anthropic turn, physical Quest microphone/LAN/XR-button run, real Unity runtime
+capture of snapshot/delta/backfill/commit/rollback logs, multi-user conflict behavior,
+and the user study remain unverified and must not be described as completed.

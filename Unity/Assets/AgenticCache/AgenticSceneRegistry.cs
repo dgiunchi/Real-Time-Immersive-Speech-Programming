@@ -9,6 +9,15 @@ namespace AgenticCache
 {
     public sealed class AgenticSceneRegistry : MonoBehaviour
     {
+        public sealed class SceneObjectState
+        {
+            public string stableObjectId;
+            public long objectRevision;
+            public string tag;
+            public string region;
+            public string stateJson;
+        }
+
         public float haloRadius = 5f;
         public float refreshInterval = 0.25f;
 
@@ -22,9 +31,24 @@ namespace AgenticCache
 
         private void Awake()
         {
+            ResetSceneBoundary();
+            RefreshObjects();
+        }
+
+        private void OnEnable() => SceneManager.activeSceneChanged += OnActiveSceneChanged;
+        private void OnDisable() => SceneManager.activeSceneChanged -= OnActiveSceneChanged;
+
+        private void OnActiveSceneChanged(Scene previous, Scene next)
+        {
+            ResetSceneBoundary();
+            RefreshObjects();
+        }
+
+        private void ResetSceneBoundary()
+        {
             sceneEpoch = SceneManager.GetActiveScene().name + "-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             snapshotId = Guid.NewGuid().ToString();
-            RefreshObjects();
+            byId.Clear();
         }
 
         private void Update()
@@ -46,6 +70,11 @@ namespace AgenticCache
                 var stable = obj.GetComponent<StableObjectId>() ?? obj.AddComponent<StableObjectId>();
                 stable.EnsureInitialized();
                 stable.RefreshRevision();
+                if (byId.TryGetValue(stable.Value, out var duplicate) && duplicate.gameObject != obj)
+                {
+                    Debug.LogWarning("[AgenticXR] duplicate stable object ID detected for " + obj.name + "; assigning a collision-resolved runtime ID.");
+                    stable.ResolveDuplicate(obj.GetInstanceID().ToString());
+                }
                 byId[stable.Value] = stable;
             }
 
@@ -129,6 +158,36 @@ namespace AgenticCache
                 sb.Append('}');
             }
             return sb.Append("]}").ToString();
+        }
+
+        public List<SceneObjectState> GetSceneObjectStates()
+        {
+            RefreshObjects();
+            var result = new List<SceneObjectState>(byId.Count);
+            foreach (var entry in byId.Values)
+            {
+                var state = new StringBuilder("{\"transform\":");
+                AppendTransform(state, entry.transform);
+                state.Append(",\"components\":[");
+                var first = true;
+                foreach (var component in entry.gameObject.GetComponents<Component>())
+                {
+                    if (component == null) continue;
+                    if (!first) state.Append(',');
+                    first = false;
+                    state.Append("{\"type\":\"").Append(Escape(component.GetType().Name)).Append("\"}");
+                }
+                state.Append("]}");
+                result.Add(new SceneObjectState
+                {
+                    stableObjectId = entry.Value,
+                    objectRevision = entry.Revision,
+                    tag = entry.gameObject.tag,
+                    region = string.Empty,
+                    stateJson = state.ToString(),
+                });
+            }
+            return result;
         }
 
         private static GameObject GetSelectedObject()

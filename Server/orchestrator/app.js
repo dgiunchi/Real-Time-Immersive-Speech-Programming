@@ -44,7 +44,9 @@ const AGENTS = {
             `${bridgeTool("query_affordances")} for that object, passing the given correlationId to every one ` +
             "of those calls so the whole turn's timeline stays correlated (see " +
             "Server/memory/timeline_registry.js). Summarize, in under 150 words, what the target object is, " +
-            "what is near or related to it, and what actions it affords. State plainly if scene data is " +
+            "what is near or related to it, and what actions it affords. Preserve the exact sceneEpoch, " +
+            "snapshotId, objectRevision, and response timestamp from query_scene in your summary so the " +
+            "router can perform Unity's authoritative freshness check. State plainly if scene data is " +
             "unavailable (e.g. the query times out) rather than inventing scene contents. Do not propose or " +
             "write any code.",
         tools: [bridgeTool("query_scene"), bridgeTool("query_visual_memory"), bridgeTool("query_scene_graph"), bridgeTool("query_affordances"), bridgeTool("get_script_context")],
@@ -83,7 +85,10 @@ const AGENTS = {
             "is persistent/shared and needs confirmation; 'L5' if the user explicitly asked for this function " +
             "through speech, possibly iterating on it. Respond with ONLY a single compact JSON object: " +
             "{\"pass\": boolean, \"riskScore\": number, \"authoringMode\": string, \"interactionMode\": string, " +
-            "\"reason\": string}. No prose outside the JSON.",
+            "\"reason\": string, \"requiredPermissions\": string[], \"expectedSideEffects\": string, " +
+            "\"triggerSource\": \"system_opportunity\"|\"context\"|\"clarification\"|\"explicit_request\", " +
+            "\"reversible\": boolean, \"localOnly\": boolean, \"detailResolved\": boolean}. " +
+            "No prose outside the JSON.",
         tools: [],
         model: "sonnet",
     },
@@ -135,8 +140,11 @@ timeline (see Server/memory/timeline_registry.js):
 5. Call ${bridgeTool("send_agent_status")} with state "ready_to_preview", then call
    ${bridgeTool("propose_artifact")} yourself (this call belongs to you, the
    router, not a subagent) with the candidate code, targetObjectId, intent,
-   authoringMode AND interactionMode from the validator's verdict, sessionId, and the
-   shared correlationId.
+   authoringMode, interactionMode, validationState="accepted", validationSummary,
+   riskScore, requiredPermissions, expectedSideEffects, triggerSource, reversible,
+   localOnly, and detailResolved from the validator's verdict,
+   and sceneEpoch, snapshotId, objectRevision, snapshotTakenAt from the Scene Analyst,
+   plus sessionId and the shared correlationId. Never omit freshness metadata.
 6. version_memory - confirm the outcome is logged.
 
 Narrate each step in one short sentence before moving to the next. If any stage fails,

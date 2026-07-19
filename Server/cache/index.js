@@ -34,7 +34,7 @@ class CacheExchangeLayer {
             objectRevision: entry.objectRevision,
             deltaSeq: entry.deltaSeq != null ? entry.deltaSeq : outer.deltaSeq,
             timestamp: entry.timestamp || outer.timestamp,
-            payload: { tag: entry.tag, region: entry.region, state: entry.state },
+            payload: { tag: entry.tag, region: entry.region, state: entry.state, sensorEvents: entry.sensorEvents || [] },
         };
         const result = this.reconciler.reconcileDelta(synthetic, { isBackfill });
         console.error(
@@ -64,6 +64,11 @@ class CacheExchangeLayer {
                     region: envelope.payload && envelope.payload.region,
                     state: envelope.payload,
                 });
+                if (result.outcome === "accepted" || result.outcome === "duplicate") {
+                    bridge.sendDeltaAck({ sessionId: envelope.sessionId, deltaSeq: envelope.deltaSeq, correlationId: envelope.correlationId });
+                } else if (result.outcome === "stale") {
+                    bridge.sendDeltaNack({ sessionId: envelope.sessionId, deltaSeq: envelope.deltaSeq, correlationId: envelope.correlationId, reason: "stale_or_expired" });
+                }
                 if (result.recommendedAction === "backfill" && result.detail.gap) {
                     bridge
                         .requestBackfill({ sessionId: envelope.sessionId, lastSeenSeq: result.detail.gap.fromSeq - 1 })

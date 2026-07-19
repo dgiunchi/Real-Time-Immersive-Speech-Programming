@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using Ubiq.Messaging;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace AgenticCache
 {
@@ -15,9 +16,18 @@ namespace AgenticCache
             public string code;
             public string intent;
             public string mode;
+            public long snapshotTakenAt;
+            public string validationState;
+            public string validationSummary;
+            public float riskScore = -1f;
+            public string consentRoute;
+            public string[] requiredPermissions;
+            public string expectedSideEffects;
+            public string artifactVersion;
         }
 
         [Serializable] private sealed class BackfillRequestPayload { public bool requestSnapshot; public long lastSeenSeq; }
+        [Serializable] private sealed class DeltaAckPayload { public long deltaSeq; }
         [Serializable] private sealed class AgentStatusPayload { public string state; public string detail; }
         [Serializable] private sealed class AgentUtterancePayload { public string text; }
         [Serializable] private sealed class CacheInvalidationPayload { public string reason; }
@@ -34,6 +44,7 @@ namespace AgenticCache
         private sealed class AppliedArtifact
         {
             public string artifactId;
+            public string correlationId;
             public string targetObjectId;
             public ScriptProxy proxy;
             public AppliedArtifact previous;
@@ -49,6 +60,7 @@ namespace AgenticCache
         public float maxSnapshotAgeMsAutomatic = 2000f;
         public float maxSnapshotAgeMsSemiAutoConfirm = 120000f;
         public float maxSnapshotAgeMsSemiAutoSteer = 120000f;
+        public float proposalTimeoutSeconds = 120f;
 
         private readonly Dictionary<string, PendingArtifact> pending = new Dictionary<string, PendingArtifact>();
         private readonly Dictionary<string, AppliedArtifact> appliedByArtifactId = new Dictionary<string, AppliedArtifact>();
@@ -57,6 +69,7 @@ namespace AgenticCache
         private CacheChannelRelay presenceRelay;
         private float nextHeartbeat;
         private string latestArtifactId;
+        private string observedSelectedObjectId;
 
         private void Start()
         {
@@ -74,12 +87,43 @@ namespace AgenticCache
             ShowStatus("ready", "Connected to the XR runtime; waiting for Claude.");
         }
 
+        private void OnEnable() => SceneManager.activeSceneChanged += OnActiveSceneChanged;
+        private void OnDisable() => SceneManager.activeSceneChanged -= OnActiveSceneChanged;
+
+        private void OnActiveSceneChanged(Scene previous, Scene next)
+        {
+            pending.Clear();
+            localCache.ClearAllProposals();
+            compiler = FindFirstObjectByType<TestRoslyn>();
+            if (sceneRegistry != null)
+            {
+                localCache.SetSceneEpoch(sceneRegistry.SceneEpoch);
+                localCache.SetLatestSnapshotId(sceneRegistry.SnapshotId);
+            }
+        }
+
         private void Update()
         {
+            var selectedId = sceneRegistry != null ? sceneRegistry.GetSelectedObjectId() : null;
+            if (selectedId != observedSelectedObjectId)
+            {
+                if (!string.IsNullOrEmpty(observedSelectedObjectId))
+                    localCache.InvalidateProposalsForObject(observedSelectedObjectId, "selection_changed");
+                observedSelectedObjectId = selectedId;
+                localCache.SetSelectedObject(selectedId);
+            }
+
+            var timedOut = new List<string>();
+            foreach (var item in pending)
+            {
+                var record = localCache.GetProposalByCorrelationId(item.Key);
+                if (record != null && Time.unscaledTime - record.receivedAt > proposalTimeoutSeconds) timedOut.Add(item.Key);
+            }
+            foreach (var correlationId in timedOut) RejectPending(correlationId, "confirmation_timeout");
+
             if (Time.unscaledTime >= nextHeartbeat && presenceRelay != null)
             {
                 nextHeartbeat = Time.unscaledTime + 2f;
-                var selectedId = sceneRegistry != null ? sceneRegistry.GetSelectedObjectId() : null;
                 if (!string.IsNullOrEmpty(selectedId)) localCache.SetSelectedObject(selectedId);
                 presenceRelay.Send(NewEnvelope(CacheMessageTypes.AgentPresenceHeartbeat, Guid.NewGuid().ToString(), selectedId,
                     "{\"state\":\"ready\",\"selectedObjectId\":\"" + AgenticSceneRegistry.Escape(selectedId) + "\"}"));
@@ -132,7 +176,10 @@ namespace AgenticCache
         {
             if (sceneRegistry == null || cachePublisher == null) return;
             var payload = Parse<BackfillRequestPayload>(envelope.payload);
-            if (payload != null && payload.requestSnapshot)
+            var needsSnapshot = payload == null || payload.requestSnapshot ||
+                (!string.IsNullOrEmpty(envelope.sceneEpoch) && envelope.sceneEpoch != sceneRegistry.SceneEpoch) ||
+                !cachePublisher.CanBackfillAfter(payload != null ? payload.lastSeenSeq : 0);
+            if (needsSnapshot)
             {
                 var response = NewEnvelope(CacheMessageTypes.CacheSnapshot, envelope.correlationId, null, sceneRegistry.BuildSnapshotJson());
                 response.sessionId = envelope.sessionId;
@@ -141,11 +188,12 @@ namespace AgenticCache
                 cachePublisher.SendRaw(response);
                 return;
             }
-            var empty = NewEnvelope(CacheMessageTypes.BackfillResponse, envelope.correlationId, null, "{\"deltas\":[]}");
-            empty.sessionId = envelope.sessionId;
-            empty.sceneEpoch = sceneRegistry.SceneEpoch;
-            empty.snapshotId = sceneRegistry.SnapshotId;
-            cachePublisher.SendRaw(empty);
+            var backfill = NewEnvelope(CacheMessageTypes.BackfillResponse, envelope.correlationId, null,
+                cachePublisher.BuildBackfillPayload(payload.lastSeenSeq));
+            backfill.sessionId = envelope.sessionId;
+            backfill.sceneEpoch = sceneRegistry.SceneEpoch;
+            backfill.snapshotId = sceneRegistry.SnapshotId;
+            cachePublisher.SendRaw(backfill);
         }
 
         private void HandleChannel97(CacheEnvelope envelope, ReferenceCountedSceneGraphMessage raw)
@@ -166,7 +214,7 @@ namespace AgenticCache
         private void HandleChannel99(CacheEnvelope envelope, ReferenceCountedSceneGraphMessage raw)
         {
             if (envelope.type == CacheMessageTypes.ArtifactProposal) HandleArtifactProposal(envelope);
-            else if (envelope.type == CacheMessageTypes.CommitRequest) ApprovePending(envelope.correlationId);
+            else if (envelope.type == CacheMessageTypes.CommitRequest) CommitPending(envelope.correlationId, envelope, false);
             else if (envelope.type == CacheMessageTypes.RollbackRequest) HandleRollbackRequest(envelope);
         }
 
@@ -187,6 +235,12 @@ namespace AgenticCache
             if (envelope.HasObjectRevision && sceneRegistry.GetRevision(target) != envelope.objectRevision)
             {
                 SendArtifactResult(envelope, "rejected", null, "The target object changed while Claude was reasoning.");
+                return;
+            }
+            var freshnessError = ValidateProposalEnvelope(envelope, payload);
+            if (freshnessError != null)
+            {
+                SendArtifactResult(envelope, "rejected", null, freshnessError);
                 return;
             }
 
@@ -213,6 +267,7 @@ namespace AgenticCache
 
             localCache.MarkProposalPending(envelope.correlationId, envelope.targetObjectId, envelope.snapshotId,
                 envelope.objectRevision, envelope.authoringMode, envelope.interactionMode);
+            localCache.SetPreview(envelope.correlationId, payload.validationSummary ?? "Compiled successfully on an inactive verification clone.");
             pending[envelope.correlationId] = new PendingArtifact
             {
                 envelope = envelope,
@@ -221,38 +276,91 @@ namespace AgenticCache
                 targetRevision = sceneRegistry.GetRevision(target),
             };
             if (string.Equals(envelope.authoringMode, "automatic", StringComparison.OrdinalIgnoreCase))
-                ApprovePending(envelope.correlationId);
+                CommitPending(envelope.correlationId, null, false);
             else
             {
                 ShowStatus("waiting_for_user", "A validated proposal needs your approval.");
-                if (consentPanel != null) consentPanel.ShowProposal(envelope.correlationId, target.name, payload.intent);
+                if (consentPanel != null) consentPanel.ShowProposal(envelope.correlationId, target.name, payload.intent,
+                    payload.validationSummary, payload.riskScore, payload.requiredPermissions, payload.expectedSideEffects);
             }
         }
 
-        public void ApprovePending(string correlationId)
+        private string ValidateProposalEnvelope(CacheEnvelope envelope, ArtifactProposalPayload payload)
         {
-            if (!pending.TryGetValue(correlationId, out var proposal)) return;
+            var validationState = !string.IsNullOrEmpty(payload.validationState) ? payload.validationState : envelope.validationState;
+            if (!string.Equals(validationState, "accepted", StringComparison.OrdinalIgnoreCase))
+                return "The proposal has not passed validation.";
+            if (!string.IsNullOrEmpty(envelope.sceneEpoch) && envelope.sceneEpoch != sceneRegistry.SceneEpoch)
+                return "The proposal belongs to an earlier scene epoch.";
+            if (!string.IsNullOrEmpty(envelope.snapshotId) && envelope.snapshotId != sceneRegistry.SnapshotId)
+                return "The proposal references a stale scene snapshot.";
+
+            var observedAt = payload.snapshotTakenAt > 0 ? payload.snapshotTakenAt : envelope.timestamp;
+            var maxAge = string.Equals(envelope.authoringMode, "automatic", StringComparison.OrdinalIgnoreCase)
+                ? maxSnapshotAgeMsAutomatic
+                : string.Equals(envelope.authoringMode, "semi_auto_steer", StringComparison.OrdinalIgnoreCase)
+                    ? maxSnapshotAgeMsSemiAutoSteer : maxSnapshotAgeMsSemiAutoConfirm;
+            if (observedAt <= 0 || DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - observedAt > maxAge)
+                return "The proposal's scene snapshot is too old for this authoring mode.";
+
+            var consentRoute = !string.IsNullOrEmpty(payload.consentRoute) ? payload.consentRoute : envelope.consentRoute;
+            if (string.IsNullOrEmpty(consentRoute)) return "The proposal has no consent route.";
+            if (string.Equals(envelope.authoringMode, "automatic", StringComparison.OrdinalIgnoreCase) &&
+                (payload.riskScore < 0f || payload.riskScore >= 0.3f || consentRoute != "automatic_low_risk"))
+                return "Automatic application is restricted to validated low-risk proposals.";
+            return null;
+        }
+
+        public void ApprovePending(string correlationId) => CommitPending(correlationId, null, true);
+
+        private void CommitPending(string correlationId, CacheEnvelope commitRequest, bool userApproved)
+        {
+            if (!pending.TryGetValue(correlationId, out var proposal))
+            {
+                if (commitRequest != null) SendCommitResult(commitRequest, false, null, "No active proposal matches this correlation ID.");
+                return;
+            }
+            var cachedProposal = localCache.GetProposalByCorrelationId(correlationId);
+            if (cachedProposal == null || cachedProposal.invalidated)
+            {
+                var reason = cachedProposal != null ? cachedProposal.invalidationReason : "proposal_not_active";
+                pending.Remove(correlationId);
+                localCache.ClearProposal(correlationId);
+                if (commitRequest != null) SendCommitResult(commitRequest, false, null, reason);
+                else SendArtifactResult(proposal.envelope, "rejected", null, reason);
+                return;
+            }
             var target = sceneRegistry.Find(proposal.envelope.targetObjectId);
             if (target == null)
             {
-                RejectPending(correlationId, "target_no_longer_exists");
+                RejectForCommit(correlationId, proposal, commitRequest, "target_no_longer_exists");
                 return;
             }
             if (sceneRegistry.GetRevision(target) != proposal.targetRevision)
             {
-                RejectPending(correlationId, "target_changed_before_approval");
+                RejectForCommit(correlationId, proposal, commitRequest, "target_changed_before_approval");
                 return;
             }
             if (!string.IsNullOrEmpty(localCache.SelectedObjectId) && localCache.SelectedObjectId != proposal.envelope.targetObjectId)
             {
-                RejectPending(correlationId, "selection_changed_before_approval");
+                RejectForCommit(correlationId, proposal, commitRequest, "selection_changed_before_approval");
                 return;
             }
-            if (!compiler.TryCompileAndAttach(target, proposal.payload.code, out var proxy, out var error))
+            var freshnessError = ValidateProposalEnvelope(proposal.envelope, proposal.payload);
+            if (freshnessError != null)
+            {
+                RejectForCommit(correlationId, proposal, commitRequest, freshnessError);
+                return;
+            }
+            ScriptProxy proxy = null;
+            string error = null;
+            if (compiler == null || !compiler.TryCompileAndAttach(target, proposal.payload.code, out proxy, out error))
             {
                 pending.Remove(correlationId);
                 localCache.ClearProposal(correlationId);
-                SendArtifactResult(proposal.envelope, "error", null, error);
+                var compileError = error ?? "The Roslyn runtime compiler is unavailable.";
+                if (commitRequest != null) SendCommitResult(commitRequest, false, null, compileError);
+                else SendArtifactResult(proposal.envelope, "error", null, compileError);
                 return;
             }
 
@@ -264,6 +372,7 @@ namespace AgenticCache
             var applied = new AppliedArtifact
             {
                 artifactId = artifactId,
+                correlationId = correlationId,
                 targetObjectId = proposal.envelope.targetObjectId,
                 proxy = proxy,
                 previous = previous,
@@ -275,8 +384,19 @@ namespace AgenticCache
             localCache.ClearProposal(correlationId);
             localCache.SetRollbackPointer(artifactId, previous != null ? previous.artifactId : null);
             if (consentPanel != null) consentPanel.HideProposal();
-            SendArtifactResult(proposal.envelope, "committed", artifactId, null);
+            if (userApproved) SendUserDecision(proposal.envelope, "approved", null);
+            if (commitRequest != null) SendCommitResult(commitRequest, true, artifactId, null);
+            else SendArtifactResult(proposal.envelope, "committed", artifactId, null);
             ShowStatus("committed", "The validated behaviour is now live. Use Undo to revert it.");
+        }
+
+        private void RejectForCommit(string correlationId, PendingArtifact proposal, CacheEnvelope commitRequest, string reason)
+        {
+            pending.Remove(correlationId);
+            localCache.ClearProposal(correlationId);
+            if (consentPanel != null) consentPanel.HideProposal();
+            if (commitRequest != null) SendCommitResult(commitRequest, false, null, reason);
+            else SendArtifactResult(proposal.envelope, "rejected", null, reason);
         }
 
         public void RejectPending(string correlationId, string reason)
@@ -285,6 +405,7 @@ namespace AgenticCache
             pending.Remove(correlationId);
             localCache.ClearProposal(correlationId);
             if (consentPanel != null) consentPanel.HideProposal();
+            SendUserDecision(proposal.envelope, reason == "confirmation_timeout" ? "timeout" : "rejected", reason);
             SendArtifactResult(proposal.envelope, "rejected", null, reason);
             ShowStatus("rejected", "The proposal was not applied.");
         }
@@ -296,7 +417,15 @@ namespace AgenticCache
                 ShowStatus("undo", "There is no generated behaviour to undo.");
                 return;
             }
-            Rollback(latestArtifactId);
+            if (!appliedByArtifactId.TryGetValue(latestArtifactId, out var applied)) return;
+            var decision = NewEnvelope(CacheMessageTypes.UserDecision, applied.correlationId, applied.targetObjectId,
+                "{\"decision\":\"undo\",\"artifactId\":\"" + AgenticSceneRegistry.Escape(applied.artifactId) + "\"}");
+            SendDecision(decision);
+            var rolledBack = Rollback(latestArtifactId);
+            var result = NewEnvelope(CacheMessageTypes.RollbackResult, applied.correlationId, applied.targetObjectId,
+                rolledBack ? "{\"status\":\"rolled_back\",\"artifactId\":\"" + AgenticSceneRegistry.Escape(applied.artifactId) + "\"}"
+                    : "{\"status\":\"not_found\"}");
+            SendDecision(result);
         }
 
         private void HandleRollbackRequest(CacheEnvelope envelope)
@@ -330,6 +459,13 @@ namespace AgenticCache
 
         private void HandleChannel101(CacheEnvelope envelope, ReferenceCountedSceneGraphMessage raw)
         {
+            if (envelope.type == CacheMessageTypes.DeltaAck)
+            {
+                var ack = Parse<DeltaAckPayload>(envelope.payload);
+                var seq = envelope.HasDeltaSeq ? envelope.deltaSeq : ack != null ? ack.deltaSeq : -1;
+                if (seq >= 0 && cachePublisher != null) cachePublisher.AcknowledgeThrough(seq);
+                return;
+            }
             if (envelope.type != CacheMessageTypes.CacheInvalidation) return;
             var payload = Parse<CacheInvalidationPayload>(envelope.payload);
             if (!string.IsNullOrEmpty(envelope.correlationId)) localCache.InvalidateProposal(envelope.correlationId, payload != null ? payload.reason : null);
@@ -346,7 +482,40 @@ namespace AgenticCache
             response.sessionId = request.sessionId;
             response.authoringMode = request.authoringMode;
             response.interactionMode = request.interactionMode;
+            response.validationState = request.validationState;
+            response.validationSummary = request.validationSummary;
+            response.riskScore = request.riskScore;
+            response.consentRoute = request.consentRoute;
+            response.requiredPermissions = request.requiredPermissions;
+            response.expectedSideEffects = request.expectedSideEffects;
+            response.artifactVersion = request.artifactVersion;
+            response.artifactId = artifactId;
             SendDecision(response);
+        }
+
+        private void SendCommitResult(CacheEnvelope request, bool accepted, string artifactId, string reason)
+        {
+            var payload = new StringBuilder("{\"status\":\"").Append(accepted ? "committed" : "rejected").Append('"');
+            if (!string.IsNullOrEmpty(artifactId)) payload.Append(",\"artifactId\":\"").Append(AgenticSceneRegistry.Escape(artifactId)).Append('"');
+            if (!string.IsNullOrEmpty(reason)) payload.Append(",\"reason\":\"").Append(AgenticSceneRegistry.Escape(reason)).Append('"');
+            payload.Append('}');
+            var response = NewEnvelope(accepted ? CacheMessageTypes.CommitAccepted : CacheMessageTypes.CommitRejected,
+                request.correlationId, request.targetObjectId, payload.ToString());
+            response.sessionId = request.sessionId;
+            response.artifactId = artifactId;
+            SendDecision(response);
+        }
+
+        private void SendUserDecision(CacheEnvelope proposal, string decision, string reason)
+        {
+            var payload = new StringBuilder("{\"decision\":\"").Append(AgenticSceneRegistry.Escape(decision)).Append('"');
+            if (!string.IsNullOrEmpty(reason)) payload.Append(",\"reason\":\"").Append(AgenticSceneRegistry.Escape(reason)).Append('"');
+            payload.Append('}');
+            var envelope = NewEnvelope(CacheMessageTypes.UserDecision, proposal.correlationId, proposal.targetObjectId, payload.ToString());
+            envelope.sessionId = proposal.sessionId;
+            envelope.authoringMode = proposal.authoringMode;
+            envelope.interactionMode = proposal.interactionMode;
+            SendDecision(envelope);
         }
 
         private void SendDecision(CacheEnvelope envelope)
