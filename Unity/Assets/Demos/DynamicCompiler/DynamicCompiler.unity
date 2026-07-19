@@ -11101,7 +11101,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 02aa14982b527f6498e01f290d7f8f18, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  gain: 1
 --- !u!1 &447842902
 GameObject:
   m_ObjectHideFlags: 0
@@ -13871,18 +13870,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 061d4dd0e23491f49be45abab3d8ed9e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  headPositionNode: HeadPosition
-  headRotationNode: HeadRotation
-  leftHandPositionNode: LeftHandPosition
-  leftHandRotationNode: LeftHandRotation
-  leftWristPositionNode: LeftWristPosition
-  leftWristRotationNode: LeftWristRotation
-  rightHandPositionNode: RightHandPosition
-  rightHandRotationNode: RightHandRotation
-  rightWristPositionNode: RightWristPosition
-  rightWristRotationNode: RightWristRotation
-  leftGripNode: LeftGrip
-  rightGripNode: RightGrip
 --- !u!1 &1135516414
 GameObject:
   m_ObjectHideFlags: 0
@@ -17610,6 +17597,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   microphoneCapture: {fileID: 1853535914}
+  controlAndroidRecording: 0
 --- !u!114 &1853535916
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -17632,6 +17620,9 @@ MonoBehaviour:
   testRoslyn: {fileID: 1853535917}
   targetObject: {fileID: 0}
   sceneController: {fileID: 1931786494}
+  feedbackPanel: {fileID: 0}
+  codeResultText: {fileID: 0}
+  codeResultPanel: {fileID: 0}
 --- !u!114 &1853535917
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -18770,6 +18761,73 @@ MonoBehaviour:
   m_Spacing: {x: 2, y: 4}
   m_Constraint: 0
   m_ConstraintCount: 2
+--- !u!1 &2020690683
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2020690686}
+  - component: {fileID: 2020690685}
+  - component: {fileID: 2020690684}
+  m_Layer: 0
+  m_Name: StudyManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2020690684
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2020690683}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f510d194f2824042b9419e6031eadc54, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StudySessionLogger
+  serverUrl: http://localhost:8181
+  speechAttempts: 0
+  currentTask: 0
+--- !u!114 &2020690685
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2020690683}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7a818b7be4d4f758f8035823241ff9c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StudyUIBootstrapper
+  condition: 1
+  anchor: {fileID: 0}
+  panelWorldPosition: {x: 0, y: 1.6, z: 2}
+  panelScale: 0.0025
+  faceCamera: 1
+  buildOnStart: 1
+  addMissingManagers: 1
+--- !u!4 &2020690686
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2020690683}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2060944967
 GameObject:
   m_ObjectHideFlags: 0
@@ -68313,3 +68371,4 @@ SceneRoots:
   - {fileID: 1149140466}
   - {fileID: 1894584484}
   - {fileID: 588261178}
+  - {fileID: 2020690686}

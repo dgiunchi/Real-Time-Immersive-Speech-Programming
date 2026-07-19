@@ -11,11 +11,11 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9258ee9d68b597d40ac401b2c1f8c3a1, type: 3}
   m_Name: Server
-  m_EditorClassIdentifier: 
-  listenOnIp: 
-  listenOnPort: 
-  sendToIp: 192.168.0.100
-  sendToPort: 8009
+  m_EditorClassIdentifier:
+  listenOnIp:
+  listenOnPort:
+  sendToIp: localhost
+  sendToPort: 8005
   type: 0
   platforms:
   - platform: 17
@@ -31,10 +31,10 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9258ee9d68b597d40ac401b2c1f8c3a1, type: 3}
   m_Name: Platform Connection
-  m_EditorClassIdentifier: 
-  listenOnIp: 
-  listenOnPort: 
-  sendToIp: 192.168.0.103
-  sendToPort: 8009
+  m_EditorClassIdentifier:
+  listenOnIp:
+  listenOnPort:
+  sendToIp: 192.168.8.235
+  sendToPort: 8005
   type: 0
   platforms: []
