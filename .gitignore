@@ -101,3 +101,6 @@ Server/samples/*.png
 Server/samples/apps/code_runtime_generator/data/input.txt
 Server/samples/apps/code_runtime_generator/data/response.txt
 Unity/Recordings/
+
+# Study results (participant data - never commit)
+Logs/

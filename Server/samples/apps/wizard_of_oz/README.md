@@ -41,8 +41,8 @@ control panel at **http://localhost:8181**.
 
 ## Data output
 
-`data/logs/` — `sessions.csv`, `<PID>_events.csv`, `<PID>_questionnaire.csv`
-(CSVs are git-ignored).
+`<project root>/Logs/` — `sessions.csv`, `<PID>_events.csv`,
+`<PID>_questionnaire.csv` (folder is git-ignored so participant data is never committed).
 
 ## Editing the scripted responses
 

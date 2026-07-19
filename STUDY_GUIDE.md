@@ -77,9 +77,9 @@ You can pre-fill it: `…/questionnaire?pid=P01&cond=B`.
 
 ## Where the data goes
 
-All files are written to:
+All files are written to a `Logs/` folder at the top of the project:
 ```
-Server/samples/apps/wizard_of_oz/data/logs/
+Real-Time-Immersive-Speech-Programming-…/Logs/
 ```
 - `sessions.csv` — one row per session start (participant, condition)
 - `<PID>_events.csv` — every transcript, inject, task change, note, and (if

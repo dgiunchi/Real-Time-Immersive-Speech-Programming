@@ -38,7 +38,8 @@ const CODE_NETWORK_ID    = 94;  // matches CodeGenerationManager.networkId in Un
 const STT_NETWORK_ID     = 98;
 
 const PUBLIC_DIR = path.join(__dirname, "public");
-const LOG_DIR    = path.join(__dirname, "data", "logs");
+// Study results live in <project root>/Logs (git-ignored, human-findable).
+const LOG_DIR    = path.resolve(__dirname, "..", "..", "..", "..", "Logs");
 
 // Short researcher-facing description of every response key, per task.
 // Used to label the buttons on the web control panel.
@@ -502,7 +503,7 @@ class WizardOfOzApp extends ApplicationController {
             console.log(`\x1b[1m\x1b[32m╚══════════════════════════════════════════════════════════════╝\x1b[0m`);
             console.log(`\x1b[1m  Researcher panel:  \x1b[4mhttp://localhost:${this.controlPort}\x1b[0m`);
             console.log(`\x1b[1m  Questionnaire:     \x1b[4mhttp://localhost:${this.controlPort}/questionnaire\x1b[0m`);
-            console.log(`  Logs saved to: samples/apps/wizard_of_oz/data/logs/`);
+            console.log(`  Study results saved to: ${LOG_DIR}`);
             console.log("");
         });
     }
