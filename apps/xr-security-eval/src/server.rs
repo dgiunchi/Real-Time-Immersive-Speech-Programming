@@ -52,25 +52,41 @@ pub struct AppState {
     runs: Arc<Mutex<HashMap<String, RunSpec>>>,
     counter: Arc<AtomicU64>,
     pace_ms: u64,
+    /// The live-swappable guardrail mode. Requests that omit `defence` use this,
+    /// so a terminal command (`POST /api/mode`) changes server behaviour on the
+    /// fly — bypass (attacks reach the headset) vs protected (blocked).
+    mode: Arc<Mutex<Defence>>,
 }
 
-/// Build the router with the default pacing (env `XR_DEMO_PACE_MS`, else 90 ms).
+/// Build the router with the default pacing (env `XR_DEMO_PACE_MS`, else 90 ms)
+/// and the initial guardrail mode from `DCVR_GUARDRAIL` (else protected).
 pub fn app() -> Router {
     let pace = std::env::var("XR_DEMO_PACE_MS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(90);
-    app_with(pace)
+    let mode = std::env::var("DCVR_GUARDRAIL")
+        .ok()
+        .and_then(|s| Defence::from_api(&s))
+        .unwrap_or(Defence::FullyHardened);
+    app_full(pace, mode)
 }
 
-/// Build the router with an explicit per-case pacing (tests use `0`).
+/// Build the router with an explicit per-case pacing (tests use `0`); guardrail
+/// starts protected.
 pub fn app_with(pace_ms: u64) -> Router {
+    app_full(pace_ms, Defence::FullyHardened)
+}
+
+/// Build the router with explicit pacing and initial guardrail mode.
+pub fn app_full(pace_ms: u64, initial_mode: Defence) -> Router {
     let corpus = load_corpus();
     let state = AppState {
         attacks: Arc::new(corpus.attacks),
         runs: Arc::new(Mutex::new(HashMap::new())),
         counter: Arc::new(AtomicU64::new(1)),
         pace_ms,
+        mode: Arc::new(Mutex::new(initial_mode)),
     };
     Router::new()
         .route("/", get(|| async { Html(PAGE) }))
@@ -79,9 +95,51 @@ pub fn app_with(pace_ms: u64) -> Router {
         .route("/api/runs", post(create_run))
         .route("/api/runs/:run_id/events", get(run_events))
         .route("/api/advisory", post(advisory))
+        .route("/api/mode", get(get_mode).post(set_mode))
         // Small body cap: the largest legitimate body is one ~20 KB C# fragment.
         .layer(DefaultBodyLimit::max(64 * 1024))
         .with_state(state)
+}
+
+/// Read the current server guardrail mode (locks briefly, never across await).
+fn current_mode(st: &AppState) -> Defence {
+    *st.mode.lock().expect("mode lock")
+}
+
+fn mode_json(m: Defence) -> serde_json::Value {
+    serde_json::json!({
+        "mode": m.api_label(),
+        "guardrail_on": m != Defence::None,
+        "label": match m {
+            Defence::None => "generated code reaches the headset unchecked",
+            Defence::SecurityOnly => "system/network bans only (XR manipulation still gets through)",
+            Defence::FullyHardened => "malicious code is blocked before the headset",
+        },
+    })
+}
+
+#[derive(Deserialize)]
+struct ModeReq {
+    mode: Option<String>,
+}
+
+/// Current guardrail mode.
+async fn get_mode(State(st): State<AppState>) -> Json<serde_json::Value> {
+    Json(mode_json(current_mode(&st)))
+}
+
+/// Hot-swap the guardrail mode live (the "command change" during a presentation):
+/// `{"mode":"bypass"|"security"|"protected"}`.
+async fn set_mode(State(st): State<AppState>, Json(req): Json<ModeReq>) -> impl IntoResponse {
+    let Some(m) = req.mode.as_deref().and_then(Defence::from_api) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            "mode must be bypass | security | protected",
+        )
+            .into_response();
+    };
+    *st.mode.lock().expect("mode lock") = m;
+    Json(mode_json(m)).into_response()
 }
 
 /// Batch: every payload's verdict at all three defence levels (the oracle the
@@ -104,7 +162,7 @@ async fn evaluate_one(State(st): State<AppState>, Json(req): Json<EvalReq>) -> i
         .defence
         .as_deref()
         .and_then(Defence::from_api)
-        .unwrap_or(Defence::FullyHardened);
+        .unwrap_or_else(|| current_mode(&st));
 
     if let Some(id) = req.payload_id.as_deref().filter(|s| !s.is_empty()) {
         match st.attacks.iter().find(|a| a.id == id) {
@@ -141,7 +199,7 @@ async fn create_run(State(st): State<AppState>, Json(req): Json<RunReq>) -> impl
         .defence
         .as_deref()
         .and_then(Defence::from_api)
-        .unwrap_or(Defence::FullyHardened);
+        .unwrap_or_else(|| current_mode(&st));
 
     let ids: Vec<String> = match req.payload_ids {
         Some(list) if !list.is_empty() => {

@@ -26,13 +26,13 @@ impl Defence {
     /// Parse a defence level from an API string (snake or kebab case).
     pub fn from_api(s: &str) -> Option<Defence> {
         match s.trim().to_ascii_lowercase().replace('-', "_").as_str() {
-            "none" | "no_defence" | "no_defense" | "unvalidated" => Some(Defence::None),
+            "none" | "no_defence" | "no_defense" | "unvalidated" | "off" | "bypass"
+            | "bypassed" => Some(Defence::None),
             "security_only" | "security" | "creative_freedom" | "creativefreedom" => {
                 Some(Defence::SecurityOnly)
             }
-            "deploy_hardened" | "deployhardened" | "fully_hardened" | "hardened" => {
-                Some(Defence::FullyHardened)
-            }
+            "deploy_hardened" | "deployhardened" | "fully_hardened" | "hardened" | "on"
+            | "protected" => Some(Defence::FullyHardened),
             _ => None,
         }
     }

@@ -30,6 +30,19 @@
   .badge{font-family:var(--mono);font-size:11px;color:var(--accent);border:1px solid var(--line);
          padding:2px 8px;border-radius:20px;background:var(--panel)}
 
+  /* live guardrail-mode banner + pipeline strip */
+  .banner{margin:14px 0 6px;padding:11px 15px;border-radius:11px;font-weight:800;font-size:14px;
+          letter-spacing:.3px;border:1px solid var(--line);transition:background .2s,color .2s}
+  .banner-bypass{background:rgba(224,80,63,.14);color:#f5a294;border-color:rgba(224,80,63,.55)}
+  .banner-security{background:rgba(201,146,46,.14);color:#eac578;border-color:rgba(201,146,46,.55)}
+  .banner-protected{background:rgba(47,158,111,.14);color:#7fe0b3;border-color:rgba(47,158,111,.55)}
+  .pipe{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--dim);font-size:12.5px;margin:0 0 4px}
+  .pipe .node{border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:var(--panel)}
+  .pipe .arr{color:var(--faint)}
+  .pipe .guard{font-weight:700}
+  .pipe .g-on{color:#7fe0b3;border-color:rgba(47,158,111,.55)}
+  .pipe .g-off{color:#f5a294;border-color:rgba(224,80,63,.55)}
+
   .bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 0}
   .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel)}
   .seg button{appearance:none;background:transparent;border:0;color:var(--dim);font-family:var(--sans);
@@ -132,11 +145,19 @@
     <span class="sub">Real validator, streamed live. Payloads are <b>statically screened, never compiled or executed.</b></span>
   </header>
 
+  <div id="modebanner" class="banner banner-protected">🛡  GUARDRAIL ON</div>
+  <div class="pipe">
+    <span class="node">🎤 Speech</span><span class="arr">→</span>
+    <span class="node">🧠 LLM writes C#</span><span class="arr">→</span>
+    <span id="pipe-guard" class="node guard g-on">🛡️ Guardrail ON</span><span class="arr">→</span>
+    <span class="node">🥽 Headset</span>
+  </div>
+
   <div class="bar">
-    <div class="seg" id="defence" role="group" aria-label="defence level">
-      <button data-d="no_defence">No defence</button>
+    <div class="seg" id="defence" role="group" aria-label="guardrail mode">
+      <button data-d="no_defence">🔓 Bypass</button>
       <button data-d="security_only">Security-only</button>
-      <button data-d="deploy_hardened" class="on">DeployHardened</button>
+      <button data-d="deploy_hardened" class="on">🛡️ Guardrail ON</button>
     </div>
     <button class="run" id="run">▶ RUN LIVE CODE-ADMISSION SWEEP</button>
     <button class="ghost" id="reset">Reset</button>
@@ -231,8 +252,9 @@ function addRow(ev){
   return row;
 }
 function pillText(ev){
-  if(ev.decision==="reject") return "REJECTED";
-  if(ev.defence==="no_defence") return "ADMITTED";
+  if(ev.decision==="reject") return "BLOCKED";
+  // guardrail bypassed → the generated code would reach the headset
+  if(ev.defence==="no_defence") return ev.expected_classification==="benign_admitted" ? "BENIGN" : "→ HEADSET";
   if(ev.expected_classification==="benign_admitted") return "BENIGN";
   if(ev.expected_classification==="known_runtime_residual") return "RESIDUAL";
   return "ADMITTED";
@@ -309,12 +331,29 @@ function bumpCounters(ev){
 function resetCounters(){ cTotal=cRej=cAdm=0; $("#c-total").textContent=0; $("#c-rej").textContent=0; $("#c-adm").textContent=0;
   $("#tk-med").textContent="—"; $("#tk-p95").textContent="—"; }
 
-// ---- defence toggle ----
-$("#defence").addEventListener("click", e=>{
+// ---- guardrail mode (server-swappable; the terminal `guardrail.sh` drives the SAME state) ----
+$("#defence").addEventListener("click", async e=>{
   const b=e.target.closest("button[data-d]"); if(!b) return;
-  defence=b.dataset.d;
-  $("#defence").querySelectorAll("button").forEach(x=>x.classList.toggle("on", x===b));
+  try{ await fetch("/api/mode",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({mode:b.dataset.d})}); }catch(_){}
+  refreshMode();
 });
+async function refreshMode(){
+  try{ const r=await fetch("/api/mode"); if(!r.ok) return; applyModeUI(await r.json()); }catch(_){}
+}
+function applyModeUI(m){
+  defence = m.mode;                       // sweeps/evaluate use the live server mode
+  const byp = m.mode==="no_defence", full = m.mode==="deploy_hardened";
+  const bn=$("#modebanner");
+  bn.textContent = (byp?"⚠  GUARDRAIL BYPASSED":full?"🛡  GUARDRAIL ON":"◑  SECURITY-ONLY")+" — "+m.label;
+  bn.className = "banner "+(byp?"banner-bypass":full?"banner-protected":"banner-security");
+  $("#defence").querySelectorAll("button").forEach(x=>x.classList.toggle("on", x.dataset.d===m.mode));
+  const g=$("#pipe-guard");
+  g.className = "node guard "+(byp?"g-off":"g-on");
+  g.textContent = byp?"🚫 Guardrail OFF":full?"🛡️ Guardrail ON":"◑ Security-only";
+}
+// poll so a terminal `./guardrail.sh off|on` flips the banner live during the demo
+setInterval(refreshMode, 1500);
+refreshMode();
 
 // ---- sweep (POST /api/runs -> SSE) ----
 async function runSweep(){

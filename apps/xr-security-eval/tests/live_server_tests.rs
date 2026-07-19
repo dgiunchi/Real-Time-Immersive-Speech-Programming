@@ -233,3 +233,69 @@ async fn unknown_payload_id_is_404() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+// The guardrail hot-swap (`POST /api/mode`) changes the server's default verdict
+// live: a sweep that omits `defence` follows the current mode.
+#[tokio::test]
+async fn guardrail_hot_swap_changes_default_behaviour() {
+    let app = app_with(0);
+
+    // default is protected
+    let m = to_json(app.clone().oneshot(get("/api/mode")).await.unwrap()).await;
+    assert_eq!(m["mode"], "deploy_hardened");
+    assert_eq!(m["guardrail_on"], true);
+
+    // swap to bypass; a run with NO explicit defence now blocks nothing
+    let sw = to_json(
+        app.clone()
+            .oneshot(json_post("/api/mode", json!({ "mode": "off" })))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(sw["mode"], "no_defence");
+    assert_eq!(sw["guardrail_on"], false);
+
+    let r = to_json(
+        app.clone()
+            .oneshot(json_post("/api/runs", json!({})))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let ev = stream_run(&app, r["run_id"].as_str().unwrap()).await;
+    assert_eq!(
+        ev.last().unwrap()["rejected"].as_u64().unwrap(),
+        0,
+        "bypass blocks nothing — attacks would reach the headset"
+    );
+
+    // swap back to protected; the same sweep now blocks 38/40
+    app.clone()
+        .oneshot(json_post("/api/mode", json!({ "mode": "on" })))
+        .await
+        .unwrap();
+    let r2 = to_json(
+        app.clone()
+            .oneshot(json_post("/api/runs", json!({})))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let ev2 = stream_run(&app, r2["run_id"].as_str().unwrap()).await;
+    assert_eq!(
+        ev2.last().unwrap()["rejected"].as_u64().unwrap(),
+        38,
+        "protected blocks 38/40 (the paper's 95%)"
+    );
+}
+
+#[tokio::test]
+async fn invalid_guardrail_mode_is_400() {
+    let app = app_with(0);
+    let resp = app
+        .oneshot(json_post("/api/mode", json!({ "mode": "banana" })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
