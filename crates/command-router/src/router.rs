@@ -399,6 +399,11 @@ impl Router {
                 Stage::Safety,
                 format!("MALICIOUS INTENT DETECTED — {reason}; neutralized to a harmless visual"),
             )
+            .detail(format!(
+                "Layer-1 intent screen flagged this spoken command as malicious BEFORE any code \
+                 was generated.\nReason: {reason}\nAction: the request was NOT sent to the LLM; \
+                 the user got a harmless calm-recolour visual instead."
+            ))
             .ok(false),
         );
         if let Some(b) = &self.bus {

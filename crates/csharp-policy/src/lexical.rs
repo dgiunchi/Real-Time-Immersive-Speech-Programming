@@ -185,8 +185,9 @@ fn strip_at(text: &str) -> &str {
     text.strip_prefix('@').unwrap_or(text)
 }
 
-/// Decode the `\uXXXX` / `\UXXXXXXXX` escapes that C# accepts INSIDE identifiers, so
-/// `Quit` normalises to `Quit` and `Application.Quit()` is caught. The AST
+/// Decode the `\uXXXX` / `\UXXXXXXXX` escapes that C# accepts INSIDE identifiers, so an
+/// identifier spelled with escapes normalises back to its real name and a banned member
+/// (e.g. an escaped `Quit`, so `Application.Quit()`) is still caught. The AST
 /// leaf text is the raw escape (tree-sitter does not decode), so without this a
 /// determined attacker spells any banned identifier with an escape to slip past the
 /// denylist while the C# compiler still resolves the real name. (Red-team finding.)
@@ -275,15 +276,17 @@ fn resolve_alias(segs: &[String], map: &HashMap<String, Vec<String>>) -> Vec<Str
         return segs.to_vec();
     }
     let mut cur = segs.to_vec();
-    for _ in 0..8 {
-        match map.get(&cur[0]) {
-            Some(target) => {
-                let mut expanded = target.clone();
-                expanded.extend_from_slice(&cur[1..]);
-                cur = expanded;
-            }
-            None => break,
+    // Resolve to a FIXPOINT (not a fixed hop count), so an arbitrarily long alias
+    // chain (`using A1=System; using A2=A1; … A9=A8;`) still reaches the real
+    // namespace; the `seen` set stops a cyclic `using A=B; using B=A;` looping forever.
+    let mut seen = std::collections::HashSet::new();
+    while let Some(target) = map.get(&cur[0]) {
+        if !seen.insert(cur[0].clone()) {
+            break;
         }
+        let mut expanded = target.clone();
+        expanded.extend_from_slice(&cur[1..]);
+        cur = expanded;
     }
     cur
 }
@@ -320,7 +323,6 @@ fn contains_subsequence(haystack: &[String], needle: &[&str]) -> bool {
 struct Scan {
     violations: Vec<CsharpViolation>,
     top_level_types: usize,
-    class_count: usize,
     found_mono: bool,
 }
 
@@ -336,9 +338,6 @@ fn analyze(
     let is_type = TYPE_DECL_KINDS.contains(&kind);
     if is_type && !inside_type {
         scan.top_level_types += 1;
-        if kind == "class_declaration" {
-            scan.class_count += 1;
-        }
     }
 
     let text = node.utf8_text(src).unwrap_or("");
@@ -374,13 +373,30 @@ fn analyze(
             }
         }
         "base_list" => {
-            if text.contains("MonoBehaviour") {
+            // Match a base-type IDENTIFIER segment exactly, not a raw substring:
+            // `: MonoBehaviour` / `: UnityEngine.MonoBehaviour` qualify, but
+            // `: FakeMonoBehaviourX` or a `/* MonoBehaviour */` comment must not.
+            let mut segs = Vec::new();
+            collect_segments(node, src, &mut segs);
+            if segs.iter().any(|s| s == "MonoBehaviour") {
                 scan.found_mono = true;
             }
         }
+        // `unsafe` as a modifier (`unsafe void Start()`) OR as a statement block
+        // (`unsafe { int* p = &x; *p = 2; }`, which parses as `unsafe_statement`), plus
+        // raw `pointer_type` (`int*`): ban all three so pointer memory access can't slip
+        // past the identifier/namespace denylists. (Red-team finding.)
         "modifier" if text == "unsafe" => {
             scan.violations
                 .push(CsharpViolation::BannedToken("unsafe".to_string()));
+        }
+        "unsafe_statement" => {
+            scan.violations
+                .push(CsharpViolation::BannedToken("unsafe".to_string()));
+        }
+        "pointer_type" => {
+            scan.violations
+                .push(CsharpViolation::BannedToken("pointer".to_string()));
         }
         _ => {}
     }
@@ -552,5 +568,59 @@ mod redteam_regression {
         ] {
             assert!(!banned(&mono(p, "")), "creative code wrongly flagged: {p}");
         }
+    }
+
+    #[test]
+    fn unsafe_statement_block_bypass_is_closed() {
+        // `unsafe { int* p = &x; *p = 2; }` parses as `unsafe_statement` (NOT a
+        // `modifier`); pointer memory access must be banned. (Red-team finding — was
+        // a HIGH-severity full guardrail bypass.)
+        assert!(banned(&mono("int x=1; unsafe { int* p=&x; *p=2; }", "")));
+        assert!(banned(&mono("unsafe { }", "")));
+        // the raw pointer type alone is banned
+        assert!(banned(&mono(
+            "System.IntPtr h; unsafe { byte* b=(byte*)0; }",
+            ""
+        )));
+        // the modifier form stays banned too (regression guard)
+        assert!(banned(
+            "public class GeneratedBehaviour : MonoBehaviour { unsafe void Start(){} }"
+        ));
+    }
+
+    #[test]
+    fn deep_alias_chain_bypass_is_closed() {
+        // A >8-deep alias chain must still resolve to System (fixpoint, not a fixed
+        // 8-hop cap). (Red-team finding.)
+        let usings = "using A1=System;\nusing A2=A1;\nusing A3=A2;\nusing A4=A3;\n\
+                      using A5=A4;\nusing A6=A5;\nusing A7=A6;\nusing A8=A7;\nusing A9=A8;\n";
+        assert!(
+            banned(&mono("A9.IO.File.WriteAllText(\"/x\",\"y\");", usings)),
+            "9-deep alias chain bypassed the namespace ban"
+        );
+    }
+
+    #[test]
+    fn monobehaviour_impostor_base_is_rejected() {
+        let not_mono = |src: &str| {
+            lexical_check(src)
+                .iter()
+                .any(|v| matches!(v, CsharpViolation::NotMonoBehaviour))
+        };
+        // A base type whose NAME merely contains "MonoBehaviour", or a comment, must
+        // NOT satisfy the structural gate. (Red-team finding — was a raw substring test.)
+        assert!(
+            not_mono("using UnityEngine;\npublic class GeneratedBehaviour : FakeMonoBehaviourX { void Start(){} }\n"),
+            "impostor base class accepted as MonoBehaviour"
+        );
+        assert!(
+            not_mono("using UnityEngine;\npublic class GeneratedBehaviour : /* MonoBehaviour */ IComparable { void Start(){} }\n"),
+            "commented MonoBehaviour satisfied the gate"
+        );
+        // the real base type (bare or qualified) still passes the mono gate
+        assert!(!not_mono("using UnityEngine;\npublic class GeneratedBehaviour : MonoBehaviour { void Start(){} }\n"));
+        assert!(!not_mono(
+            "public class GeneratedBehaviour : UnityEngine.MonoBehaviour { void Start(){} }\n"
+        ));
     }
 }

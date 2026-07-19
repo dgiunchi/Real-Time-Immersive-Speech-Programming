@@ -44,6 +44,7 @@
   .stage.ok .sm{ color:var(--tx); } .stage.bad .sm{ color:var(--bad); font-weight:600; }
   .stage pre{ display:none; margin:6px 0 0; padding:8px; background:#0a0d12; border:1px solid var(--bd); border-radius:6px; white-space:pre-wrap; word-break:break-word; font:12px/1.4 ui-monospace,monospace; color:#cdd9e5; max-height:340px; overflow:auto; }
   .stage.open pre{ display:block; }
+  .violbox{ margin:6px 0 2px; padding:9px 11px; background:#0a0d12; border:1px solid var(--bd); border-radius:6px; }
   .pill{ font-size:11px; padding:2px 7px; border-radius:999px; border:1px solid var(--bd); }
   .pill.ok{ color:var(--ok); border-color:var(--ok); } .pill.bad{ color:var(--bad); border-color:var(--bad); }
   .muted{ color:var(--mut); } .mono{ font-family:ui-monospace,monospace; }
@@ -104,7 +105,7 @@
       <div class="toggle"><input type="checkbox" id="cfg_stt"><label style="margin:0">Speech-to-text (STT)</label></div>
       <div class="toggle"><input type="checkbox" id="cfg_rag"><label style="margin:0">Personalization / RAG</label></div>
       <div class="toggle"><input type="checkbox" id="cfg_modea"><label style="margin:0">Mode A (runtime C# compile)</label></div>
-      <div class="toggle"><input type="checkbox" id="cfg_guard"><label style="margin:0">Safety guardrails</label></div>
+      <div class="toggle" title="The static C# guardrail always runs in the live pipeline; it cannot be turned off from here. Use the benchmark console (apps/xr-security-eval) to demo with-vs-without safety."><input type="checkbox" id="cfg_guard" checked disabled><label style="margin:0">Safety guardrails <span class="muted">(always on)</span></label></div>
       <div class="row" style="margin-top:10px; gap:8px">
         <button class="act" id="applyCfg">Apply</button>
         <button class="ghost" id="resetCfg">Reset defaults</button>
@@ -203,6 +204,56 @@ function stageLabel(ev){
   if(ev.stage==='info')        return `<b>${esc(ev.summary)}</b>`;
   return esc(ev.summary);
 }
+
+// ---- violation explainer ----
+// Turn a raw guardrail reason (e.g. "banned API/token referenced: WebCamTexture")
+// into a plain-English line: WHAT the generated code tried to do + WHICH guardrail
+// feature caught it. This is what makes the panel presentation-ready — not just
+// "blocked", but "tried to open the camera → caught by the Perceptual/XR guardrail".
+const VIOLATIONS = [
+  [/webcamtexture/i,                                  'open the headset camera to record you',                 'Perceptual/XR'],
+  [/microphone/i,                                     'record your microphone',                                'Perceptual/XR'],
+  [/eyegaze|eye_gaze|ovreye/i,                        'read your eye-gaze direction',                          'Perceptual/XR'],
+  [/inputtracking|xrnode|xrinput|tracked|headpose|centereye/i,'read your head / hand tracking pose',           'Perceptual/XR'],
+  [/ovrboundary|boundary|guardian|chaperone/i,        'move or disable the guardian safety boundary',          'Perceptual/XR'],
+  [/ovrhaptics|haptic/i,                              'drive the controllers to hurt or annoy you',            'Perceptual/XR'],
+  [/passthrough|spatialanchor|scenemanager|spatial/i, 'capture your real room via passthrough / spatial map',  'Perceptual/XR'],
+  [/ovrmanager|ovrplugin|\bovr/i,                     'reach into the Oculus / Quest device layer',            'Perceptual/XR'],
+  [/system\.io|streamwriter|streamreader|\bfile\b|directory/i,'read or write files on the disk',               'System-security'],
+  [/system\.net|unitywebrequest|webclient|httpclient|\bsocket\b|\bdns\b/i,'send your data out over the network','System-security'],
+  [/system\.diagnostics|\bprocess\b/i,                'launch external programs on the machine',               'System-security'],
+  [/reflection|assembly|activator/i,                  'use reflection to reach hidden / banned APIs',          'System-security'],
+  [/\bunsafe\b|pointer/i,                             'use unsafe pointer memory access',                      'System-security'],
+  [/\bdynamic\b/i,                                    'hide a banned call behind late-bound dynamic dispatch', 'System-security'],
+  [/application/i,                                    'quit or control the whole application',                 'System-security'],
+];
+function explainReason(reason){
+  const r = String(reason||'');
+  if(/too large|too long/i.test(r))           return {token:r, what:'is larger than the safe size limit for generated code', feature:'Structural'};
+  if(/monobehaviour/i.test(r))                return {token:r, what:'is not a single Unity MonoBehaviour (the required shape)', feature:'Structural'};
+  if(/parse|syntax/i.test(r))                 return {token:r, what:'is not valid C# (it failed to parse)', feature:'Structural'};
+  if(/exactly one class|capability/i.test(r)) return {token:r, what:'breaks the one-class / declared-capability rule', feature:'Structural'};
+  const m = r.match(/banned api\/token referenced:\s*(.+)$/i);
+  const token = m ? m[1].trim() : r.trim();
+  for(const [re,what,feature] of VIOLATIONS){ if(re.test(token)||re.test(r)) return {token, what, feature}; }
+  return {token, what:'references an API the guardrail does not allow', feature:'Guardrail'};
+}
+const FEATURE_COLOR = {'Perceptual/XR':'#a97be6','System-security':'#39c2c9','Structural':'#7b8aa3','Guardrail':'#ffcf6b'};
+function violationsHtml(detail){
+  const lines = String(detail||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!lines.length) return '';
+  return lines.map(l=>{
+    // A plain narration line (e.g. the neutralized-intent explanation) — show as-is.
+    if(!/banned api|too large|too long|monobehaviour|parse|syntax|capability|exactly one class/i.test(l))
+      return `<div style="margin:3px 0;color:var(--mut)">${esc(l)}</div>`;
+    const e = explainReason(l), col = FEATURE_COLOR[e.feature]||'#ffcf6b';
+    return `<div style="margin:5px 0;line-height:1.5">`
+      + `<span style="color:var(--bad);font-weight:700">⛔ ${esc(e.token)}</span> — tried to <b>${esc(e.what)}</b>`
+      + `<div style="font-size:12px;color:var(--mut)">caught by the <span style="color:${col};font-weight:700">${esc(e.feature)}</span> guardrail</div>`
+      + `</div>`;
+  }).join('');
+}
+
 const reqs = {}; // request_id -> element
 function addEvent(ev){
   let card = reqs[ev.request_id];
@@ -215,9 +266,17 @@ function addEvent(ev){
   }
   const row=document.createElement('div'); row.className='stage '+(ev.ok?'ok':'bad');
   row.innerHTML = `<span class="ic">${ICON[ev.stage]||'•'}</span><div class="sm">${stageLabel(ev)}</div><span class="ms">${ev.ms>0?fmtMs(ev.ms):''}</span>`;
-  if(ev.detail){ const pre=document.createElement('pre'); pre.textContent=ev.detail; row.appendChild(pre);
-    row.addEventListener('click',()=>row.classList.toggle('open'));
-    if(!ev.ok) row.classList.add('open'); }   // auto-expand rejections so the reason is visible
+  if(ev.detail){
+    if(!ev.ok && (ev.stage==='validation'||ev.stage==='safety')){
+      // Blocked: show exactly WHAT was caught + WHICH guardrail feature, in plain English.
+      const box=document.createElement('div'); box.className='violbox'; box.innerHTML=violationsHtml(ev.detail);
+      row.appendChild(box);
+    } else {
+      const pre=document.createElement('pre'); pre.textContent=ev.detail; row.appendChild(pre);
+      row.addEventListener('click',()=>row.classList.toggle('open'));
+      if(!ev.ok) row.classList.add('open');   // auto-expand rejections so the reason is visible
+    }
+  }
   card.appendChild(row);
   // Flag the whole request card so catches/rejections are obvious at a glance.
   const t=card.querySelector('.hd .t');
@@ -283,7 +342,9 @@ $('#exportBtn').onclick=async()=>{ const md=await (await fetch('/api/report')).t
 async function loadSafety(){ const items=await (await fetch('/api/safety')).json(); const el=$('#safety');
   el.innerHTML = items.length? '' : '<div class="muted">No safety events yet — try a malicious command or the red-team button.</div>';
   items.slice().reverse().forEach(ev=>{ const d=document.createElement('div'); d.className='card';
-    d.innerHTML=`<div class="row sb"><b>🚫 ${esc(ev.summary)}</b><span class="muted mono">req ${ev.request_id.slice(0,8)}</span></div><pre class="mono" style="white-space:pre-wrap;margin-top:8px">${esc(ev.detail)}</pre>`; el.appendChild(d); }); }
+    const enriched=violationsHtml(ev.detail);
+    d.innerHTML=`<div class="row sb"><b>🚫 ${esc(ev.summary)}</b><span class="muted mono">req ${ev.request_id.slice(0,8)}</span></div>`
+      + (enriched?`<div class="violbox" style="margin-top:8px">${enriched}</div>`:`<pre class="mono" style="white-space:pre-wrap;margin-top:8px">${esc(ev.detail)}</pre>`); el.appendChild(d); }); }
 
 // ---- profiles ----
 async function loadProfiles(){ const peers=await (await fetch('/api/profiles')).json(); const el=$('#profiles');

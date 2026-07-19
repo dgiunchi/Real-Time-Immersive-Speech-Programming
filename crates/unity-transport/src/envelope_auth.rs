@@ -173,7 +173,7 @@ impl BackendVerifier {
 /// Per-session anti-replay / ordering guard. Ubiq runs over ordered TCP, so a
 /// strictly-increasing sequence is both correct and the simplest safe policy:
 /// any repeated or out-of-order sequence is rejected as a replay.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SessionSequence {
     last: Option<u64>,
 }

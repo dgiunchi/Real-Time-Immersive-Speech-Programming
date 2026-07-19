@@ -456,10 +456,17 @@ fn is_secure_endpoint(url: &str) -> bool {
     }
     if let Some(rest) = u.strip_prefix("http://") {
         let rest = rest.trim();
-        if rest.starts_with("[::1]") {
+        // authority = everything before the first '/'. Reject any userinfo
+        // (`user:pass@host`): a loopback dev endpoint never has it, and
+        // `http://localhost:x@evil.com` must NOT be treated as loopback.
+        let authority = rest.split('/').next().unwrap_or("");
+        if authority.contains('@') {
+            return false;
+        }
+        if authority.starts_with("[::1]") {
             return true; // IPv6 loopback http://[::1]:port
         }
-        let host = rest.split(['/', ':']).next().unwrap_or("");
+        let host = authority.split(':').next().unwrap_or("");
         return matches!(host, "127.0.0.1" | "localhost");
     }
     false
@@ -473,6 +480,19 @@ mod tests {
     // The two security flags (DCVR_PERCEPTUAL_HARDENING / DCVR_REQUIRE_PEER_AUTH) and
     // the four feature flags all route through parse_bool_flag, so testing the
     // canonical parser proves consistent behaviour for every DCVR_* boolean.
+
+    #[test]
+    fn secure_endpoint_accepts_https_and_loopback_only() {
+        assert!(is_secure_endpoint("https://api.openai.com/v1"));
+        assert!(is_secure_endpoint("http://127.0.0.1:5005/analyze"));
+        assert!(is_secure_endpoint("http://localhost:5005/analyze"));
+        assert!(is_secure_endpoint("http://[::1]:5005/analyze"));
+        // plain remote http is not secure
+        assert!(!is_secure_endpoint("http://evil.com/analyze"));
+        // userinfo trick must NOT be treated as loopback (audit finding):
+        assert!(!is_secure_endpoint("http://localhost:x@evil.com/analyze"));
+        assert!(!is_secure_endpoint("http://127.0.0.1@evil.com/analyze"));
+    }
 
     #[test]
     fn bool_flag_true_forms() {

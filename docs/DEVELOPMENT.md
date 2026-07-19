@@ -48,7 +48,7 @@ preparation environment (the latter needs network for its advisory DB;
 `crates/` (15 libs) + `apps/` (4 bins) + `tests/` (integration) form one Cargo
 workspace rooted at the repository root (`Cargo.toml`). `services/` are .NET
 projects; `scripts/`, `redteam/`, `unity/`, `unity-examples/` are tooling and
-client code. See [ARCHITECTURE.md](ARCHITECTURE.md).
+client code. See [PROJECT.md](../PROJECT.md).
 
 ## Configuration
 

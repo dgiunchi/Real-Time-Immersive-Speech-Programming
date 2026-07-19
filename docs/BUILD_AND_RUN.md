@@ -292,7 +292,7 @@ so no paid API).
   95 like/dislike · 96 compile result.
 - **Authored Unity scripts** live in `unity/Runtime` (+ `unity/Editor`); import them into a
   Unity 6 project and register `ActionPlanNetworkBridge` on `NetworkId(94)` (remove any
-  original `CodeGenerationManager` from NID 94). Full wiring: [UNITY_INTEGRATION.md](UNITY_INTEGRATION.md).
+  original `CodeGenerationManager` from NID 94). Full wiring: [PROJECT.md](../PROJECT.md).
 - The **proprietary RoslynCSharp** Unity asset used by the original Mode-A path is **not
   included** and may not be redistributed here; obtain it separately under its own licence
   if you need Mode A on-device. Mode C needs no runtime compilation.

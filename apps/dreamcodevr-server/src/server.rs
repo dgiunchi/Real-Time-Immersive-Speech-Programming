@@ -311,11 +311,14 @@ pub async fn run_ubiq_peer(
             Some(k) => k,
             None => continue,
         };
-        let seq = seqs.entry(peer_key).or_default();
+        // Verify against a COPY of the peer's sequence and persist it only on success,
+        // so an in-room peer flooding unverifiable frames with varying keys cannot grow
+        // this map unboundedly (memory-exhaustion DoS). (Audit finding.)
+        let mut seq = seqs.get(&peer_key).cloned().unwrap_or_default();
         let verified = match services.auth.verify_incoming(
             frame.network_id.b,
             &frame.payload,
-            seq,
+            &mut seq,
             crate::auth_gate::now_unix(),
         ) {
             Ok(v) => v,
@@ -329,6 +332,7 @@ pub async fn run_ubiq_peer(
                 continue;
             }
         };
+        seqs.insert(peer_key, seq);
         let peer_uuid = verified.peer_id;
         let body = verified.body;
         match frame.network_id.b {
