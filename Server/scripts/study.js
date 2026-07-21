@@ -88,7 +88,30 @@ for (const f of ["cert.pem", "key.pem"]) {
     }
 }
 
-// ── 5. Open browser and start server ─────────────────────────────────────────
+// ── 5. Speech-server reachability check (non-blocking) ───────────────────────
+// Any HTTP response (even 404) counts as reachable; only a connect failure
+// means the transcription server can't be reached from this network.
+const sttUrl = process.env.STT_HTTP_URL || "http://130.136.2.161:50101/stt/transcribe";
+(() => {
+    const http = require("http");
+    const u = new URL(sttUrl);
+    const req = http.request(
+        { host: u.hostname, port: u.port || 80, path: u.pathname, method: "GET", timeout: 4000 },
+        () => log(`\x1b[32mSpeech server reachable\x1b[0m (${u.hostname}) — live transcripts will work.`)
+    );
+    const warn = () => {
+        req.destroy();
+        log(`\x1b[33mWARNING: speech server UNREACHABLE\x1b[0m (${u.hostname}).`);
+        log(`\x1b[33mParticipants will NOT see live transcripts on this network.\x1b[0m`);
+        log(`Injections still work. On the uni network it should connect automatically;`);
+        log(`or set STT_HTTP_URL to a different endpoint before launching.`);
+    };
+    req.on("timeout", warn);
+    req.on("error", warn);
+    req.end();
+})();
+
+// ── 6. Open browser and start server ─────────────────────────────────────────
 function openBrowser(url) {
     const cmd = process.platform === "darwin" ? "open"
               : process.platform === "win32"  ? "start"
