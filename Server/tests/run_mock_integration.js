@@ -1,9 +1,14 @@
 "use strict";
 
 const path = require("path");
+const fs = require("fs");
 const { spawn } = require("child_process");
 
 const root = path.resolve(__dirname, "..");
+process.env.AGENTICXR_EVALUATION_SOURCE = "mock";
+process.env.AGENTICXR_EVALUATION_LOG = path.join(root, "evaluation", "data", "mock-integration-events.jsonl");
+fs.mkdirSync(path.dirname(process.env.AGENTICXR_EVALUATION_LOG), { recursive: true });
+fs.rmSync(process.env.AGENTICXR_EVALUATION_LOG, { force: true });
 const children = new Set();
 
 function start(args, label) {

@@ -13,6 +13,7 @@ const { TimelineRegistry } = require("./timeline_registry");
 const { SensorRegistry } = require("./sensor_registry");
 const { RegionStore } = require("./region_store");
 const { IntentStore } = require("./intent_store");
+const { appendEvaluationEvent } = require("../evaluation/event_logger");
 
 class SharedMemory {
     constructor({ artifactLogPath } = {}) {
@@ -30,6 +31,23 @@ class SharedMemory {
     attach(bridge) {
         bridge.on("envelope", (envelope) => {
             this.timeline.observeEnvelope(envelope);
+            try {
+                appendEvaluationEvent({
+                    eventType: "envelope",
+                    envelopeType: envelope.type,
+                    sessionId: envelope.sessionId || null,
+                    correlationId: envelope.correlationId || null,
+                    targetObjectId: envelope.targetObjectId || null,
+                    timestamp: envelope.timestamp || Date.now(),
+                    status: envelope.payload && envelope.payload.status,
+                    reason: envelope.payload && (envelope.payload.reason || envelope.payload.error),
+                    staleness: envelope.staleness || null,
+                    verificationDurationMs: envelope.verificationDurationMs || null,
+                    commitAttachDurationMs: envelope.commitAttachDurationMs || null,
+                });
+            } catch (error) {
+                console.error(`[evaluation] failed to record envelope: ${error.message}`);
+            }
             if (envelope.type === "SceneDelta") {
                 this.visual.ingestSceneDelta(envelope);
                 this.sceneGraph.ingestSceneDelta(envelope);

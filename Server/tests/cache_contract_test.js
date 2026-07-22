@@ -8,7 +8,7 @@ const { AgentWorkingCache } = require("../cache/agent_working_cache");
 const { EventJournal } = require("../cache/event_journal");
 const { CacheReconciler } = require("../cache/cache_reconciler");
 const { ProposalGate } = require("../cache/proposal_gate");
-const { makeCacheEnvelope, toWireFormat, fromWireFormat } = require("../cache/protocol");
+const { makeCacheEnvelope, toWireFormat, fromWireFormat, STRINGIFY_PAYLOAD_FOR_UNITY } = require("../cache/protocol");
 const { checkModePolicy } = require("../orchestrator/mode_policy");
 
 const root = path.resolve(__dirname, "..");
@@ -33,12 +33,18 @@ for (const file of walk(root)) {
 
 const wire = toWireFormat(makeCacheEnvelope({
     type: "ArtifactProposal",
+    sessionId: "wire-test-session",
     correlationId: "corr-wire",
     targetObjectId: "object-1",
     payload: { code: "class Test {}", validationState: "accepted" },
 }));
 equal(typeof wire.payload, "string", "Unity-bound payload must be a JSON string");
 equal(fromWireFormat(wire).payload.validationState, "accepted", "wire payload must round-trip");
+for (const legacyType of ["SceneQuery", "SceneDelta", "ArtifactProposal", "ArtifactResult", "AgentUtterance", "AgentPresenceHeartbeat", "UserDecision"]) {
+    ok(STRINGIFY_PAYLOAD_FOR_UNITY.has(legacyType), `${legacyType} payload is JsonUtility-safe`);
+}
+assert.throws(() => makeCacheEnvelope({ type: "SceneDelta", payload: {} }), /sessionId is required/);
+assertions += 1;
 
 const workingCache = new AgentWorkingCache();
 const journal = new EventJournal({ maxEntriesPerSession: 32 });
@@ -121,5 +127,16 @@ for (const deniedCapability of ["system.io", "system.net", "system.diagnostics",
     ok(roslynRuntime.includes(`\"${deniedCapability}\"`), `capability policy denies ${deniedCapability}`);
 }
 ok(roslynRuntime.includes("allowedNamespaces"), "capability policy has an explicit namespace allowlist");
+
+const sttClient = fs.readFileSync(path.join(root, "samples", "services", "speech_to_text", "service.js"), "utf8");
+ok(!sttClient.includes("130.136.2.161"), "STT client has no hardcoded lab-server fallback");
+ok(sttClient.includes("STT_HTTP_URL is required"), "missing STT configuration fails actionably");
+const orchestrator = fs.readFileSync(path.join(root, "orchestrator", "app.js"), "utf8");
+ok(orchestrator.includes("AGENTICXR_ANTHROPIC_MAX_ATTEMPTS"), "Anthropic attempts are configurable");
+ok(orchestrator.includes("sawMutatingToolCall"), "retry stops after a mutating tool call");
+const runtimeGenerator = fs.readFileSync(path.join(root, "samples", "apps", "code_runtime_generator", "app.js"), "utf8");
+ok(runtimeGenerator.includes("AGENTICXR_TURN_TIMEOUT_MS"), "authoring turn watchdog is configurable");
+const executionWatchdog = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "GeneratedBehaviourWatchdog.cs"), "utf8");
+ok(executionWatchdog.includes("ReportExecutionWatchdog"), "generated behaviour watchdog signals Unity failure");
 
 console.log(`[cache_contract_test] PASS (${assertions} assertions)`);

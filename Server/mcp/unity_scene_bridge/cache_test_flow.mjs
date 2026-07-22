@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "server.js");
 const sessionId = "cache-test-session"; // must match mock_unity_peer.js's demoSession
 
-const transport = new StdioClientTransport({ command: "node", args: [serverPath] });
+const transport = new StdioClientTransport({ command: "node", args: [serverPath], env: { ...process.env } });
 const client = new Client({ name: "cache-test-flow", version: "0.0.1" });
 await client.connect(transport);
 

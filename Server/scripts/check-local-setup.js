@@ -78,8 +78,8 @@ addCheck(
     Boolean(process.env.STT_HTTP_URL),
     "Environment variable `STT_HTTP_URL`",
     [
-        "Recommended for local runs of the speech-to-text pipeline.",
-        "The current code falls back to `http://130.136.2.161:50101/stt/transcribe`, which may be unreachable from your machine."
+        "Required for speech input. The server deliberately has no hardcoded remote fallback.",
+        "Set it to a Faster Whisper-compatible /stt/transcribe endpoint reachable from this PC."
     ]
 );
 

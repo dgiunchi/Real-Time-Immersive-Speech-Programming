@@ -25,6 +25,14 @@ const CHANNELS = Object.freeze({
 // telemetry, but callers of proposeArtifact() only ever wait on "ArtifactResult".
 
 const SCHEMA_VERSION = "1.0";
+const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+function validateSessionId(sessionId) {
+    if (typeof sessionId !== "string" || !SESSION_ID_PATTERN.test(sessionId)) {
+        throw new Error("sessionId is required and must be 1-128 safe identifier characters");
+    }
+    return sessionId;
+}
 
 // The paper's five interaction modes (main.tex, tab:modes) - who *initiates* an
 // authoring episode. Distinct from authoringMode, which answers who *controls
@@ -45,7 +53,7 @@ function makeEnvelope({ type, sessionId, correlationId, originAgent, targetObjec
     return {
         schemaVersion: SCHEMA_VERSION,
         type,
-        sessionId: sessionId || null,
+        sessionId: validateSessionId(sessionId),
         correlationId: correlationId || randomUUID(),
         originAgent: originAgent || "unity_scene_bridge",
         targetObjectId: targetObjectId || null,
@@ -61,4 +69,4 @@ function isEnvelope(obj) {
     return !!obj && typeof obj === "object" && typeof obj.type === "string" && typeof obj.correlationId === "string";
 }
 
-module.exports = { CHANNELS, SCHEMA_VERSION, INTERACTION_MODES, makeEnvelope, isEnvelope };
+module.exports = { CHANNELS, SCHEMA_VERSION, INTERACTION_MODES, SESSION_ID_PATTERN, validateSessionId, makeEnvelope, isEnvelope };

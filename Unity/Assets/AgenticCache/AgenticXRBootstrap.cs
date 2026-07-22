@@ -14,12 +14,15 @@ namespace AgenticCache
             var registry = root.AddComponent<AgenticSceneRegistry>();
             var publisher = root.AddComponent<CachePublisher>();
             var panel = root.AddComponent<AgenticXRConsentPanel>();
+            var watchdog = root.AddComponent<GeneratedBehaviourWatchdog>();
             var exchange = root.AddComponent<CacheExchangeManager>();
 
             exchange.sceneRegistry = registry;
             exchange.cachePublisher = publisher;
             exchange.compiler = Object.FindFirstObjectByType<TestRoslyn>();
             exchange.consentPanel = panel;
+            exchange.executionWatchdog = watchdog;
+            watchdog.manager = exchange;
             publisher.localCache = exchange.localCache;
             publisher.sceneRegistry = registry;
             publisher.sessionId = exchange.sessionId;

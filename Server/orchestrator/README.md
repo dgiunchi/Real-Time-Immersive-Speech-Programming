@@ -48,7 +48,7 @@ node mcp\unity_scene_bridge\mock_unity_peer.js
 ```powershell
 cd Server
 $env:ANTHROPIC_API_KEY="sk-ant-your-real-key"
-node orchestrator\app.js "make this sphere pulse red when I touch it" obj-test-42
+node orchestrator\app.js "make this sphere pulse red when I touch it" obj-test-42 manual-test-session
 ```
 
 You should see the router narrate each stage (`scene_analyst` grounding the object,
@@ -60,11 +60,10 @@ The mock peer's terminal will show it receiving and answering each message; afte
 If `ANTHROPIC_API_KEY` is missing, the orchestrator exits immediately with a clear
 message instead of a raw SDK error — that's the expected failure mode, not a bug.
 
-## `sessionId` is a required convention now
+## `sessionId` is required
 
-As of `docs/next-build-prompt.md` §2.7, `sessionId` is required (by convention, not
-enforced at the schema level) for any multi-call authoring flow — not just a
-nice-to-have. It's what lets `query_scene` build a per-session "last-known focus" that
+`sessionId` is enforced by both the MCP schemas and wire protocol for every authoring
+flow. It lets `query_scene` build a per-session "last-known focus" that
 `propose_artifact`'s `ArtifactResult` is checked against for staleness. Without a
 consistent `sessionId` across a turn's calls, staleness can't be assessed and every
 result is tagged `staleness: { checked: false }` rather than incorrectly assumed

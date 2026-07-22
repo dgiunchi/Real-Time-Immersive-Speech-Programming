@@ -16,7 +16,7 @@ Use this section for the current DreamCodeVR fork.
 - Node.js with npm
 - Python `3.12` recommended for `Server/samples/venv`
 - OpenAI API key for code generation
-- Access to faster-whisper STT HTTP at `http://130.136.2.161:50101`
+- Access to a Faster Whisper-compatible STT HTTP endpoint
 
 ### Install server dependencies
 
@@ -65,10 +65,11 @@ the Ubiq room server, speech capture and STT in this process, then starts one Cl
 Agent SDK orchestration turn for each completed headset utterance. API keys must not
 be written into `.mcp.json` or any committed JSON file.
 
-Current STT uses faster-whisper HTTP, not Azure Speech STT. Defaults:
+Current STT uses Faster Whisper HTTP, not Azure Speech STT. The URL is required;
+there is no built-in lab-server fallback:
 
 ```powershell
-$env:STT_HTTP_URL="http://130.136.2.161:50101/stt/transcribe"
+$env:STT_HTTP_URL="http://your-stt-host:50101/stt/transcribe"
 $env:STT_SAMPLE_RATE="16000"
 $env:STT_CHANNELS="1"
 $env:STT_BITS_PER_SAMPLE="16"
@@ -78,7 +79,7 @@ $env:STT_REQUIRE_RECORDING="true"
 Health check:
 
 ```powershell
-curl.exe http://130.136.2.161:50101/health
+curl.exe http://your-stt-host:50101/health
 ```
 
 ### Run DreamCodeVR

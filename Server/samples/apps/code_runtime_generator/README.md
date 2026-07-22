@@ -13,7 +13,7 @@ Agent SDK/MCP orchestrator; the legacy OpenAI worker is not started.
 - Python `3.10` recommended
 - Unity `6000.3.9f1`
 - OpenAI API key
-- Faster-whisper STT backend reachable at `http://130.136.2.161:50101`
+- Faster Whisper-compatible STT backend reachable from the server PC
 
 Azure Speech STT is no longer used by this sample.
 
@@ -57,7 +57,7 @@ $env:OPENAI_MAX_COMPLETION_TOKENS="1000"
 Optional STT config:
 
 ```powershell
-$env:STT_HTTP_URL="http://130.136.2.161:50101/stt/transcribe"
+$env:STT_HTTP_URL="http://your-stt-host:50101/stt/transcribe"
 $env:STT_SAMPLE_RATE="16000"
 $env:STT_CHANNELS="1"
 $env:STT_BITS_PER_SAMPLE="16"
@@ -70,7 +70,7 @@ $env:STT_REQUIRE_RECORDING="true"
 Health check:
 
 ```powershell
-curl.exe http://130.136.2.161:50101/health
+curl.exe http://your-stt-host:50101/health
 ```
 
 Do not store real API keys in `config.json`. Environment variables override config values.
@@ -115,5 +115,5 @@ The app starts a Ubiq room server using `config.json`:
 - `Missing OpenAI API key`: set `$env:OPENAI_API_KEY` before `node app.js`.
 - `Unsupported parameter: max_tokens`: use current code; GPT-5 models use `max_completion_tokens`.
 - `Incorrect API key`: key is invalid, expired, copied with typo, or from wrong OpenAI project.
-- STT returns nothing: check `curl.exe http://130.136.2.161:50101/health`, microphone permission, and left-trigger push-to-talk.
+- STT returns nothing: check the configured endpoint's health URL, microphone permission, and left-trigger push-to-talk.
 - Command splits into pieces: hold left trigger for the whole sentence, then release once.

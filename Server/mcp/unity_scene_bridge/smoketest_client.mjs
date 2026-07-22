@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const serverPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "server.js");
 
-const transport = new StdioClientTransport({ command: "node", args: [serverPath] });
+const transport = new StdioClientTransport({ command: "node", args: [serverPath], env: { ...process.env } });
 const client = new Client({ name: "smoketest", version: "0.0.2" });
 await client.connect(transport);
 

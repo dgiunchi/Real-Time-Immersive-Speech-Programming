@@ -46,6 +46,8 @@ namespace AgenticCache
         public string artifactVersion;
         public string artifactId;
         public string rollbackPointer;
+        public double verificationDurationMs;
+        public double commitAttachDurationMs;
 
         // Cache Exchange Layer fields (tab:envelope: "sceneEpoch, snapshotId ->
         // cache freshness boundary"; "deltaSeq, objectRevision -> idempotence and

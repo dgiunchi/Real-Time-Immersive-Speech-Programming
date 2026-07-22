@@ -84,7 +84,7 @@ For the DreamCodeVR code generation sample:
 ```powershell
 $env:OPENAI_API_KEY="sk-proj-your-real-key"
 $env:OPENAI_MODEL="gpt-5.5"
-$env:STT_HTTP_URL="http://130.136.2.161:50101/stt/transcribe"
+$env:STT_HTTP_URL="http://your-stt-host:50101/stt/transcribe"
 ```
 
 `STT_HTTP_URL` is especially important for local runs. The code currently falls back to the remote endpoint above, which may be down or inaccessible from your network.

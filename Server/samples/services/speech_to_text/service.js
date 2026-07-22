@@ -1,7 +1,6 @@
 const { EventEmitter } = require("events");
 const FormData = require("form-data");
 
-const DEFAULT_HTTP_URL = "http://130.136.2.161:50101/stt/transcribe";
 const DEFAULT_SAMPLE_RATE = 16000;
 const DEFAULT_CHANNELS = 1;
 const DEFAULT_BITS_PER_SAMPLE = 16;
@@ -86,7 +85,13 @@ class FasterWhisperHttpSttService extends EventEmitter {
         super();
 
         this.name = "FasterWhisperHttpSttService";
-        this.url = process.env.STT_HTTP_URL || (config.stt && config.stt.httpUrl) || DEFAULT_HTTP_URL;
+        this.url = process.env.STT_HTTP_URL || (config.stt && config.stt.httpUrl);
+        if (!this.url) {
+            throw new Error(
+                "STT_HTTP_URL is required. Set it to a reachable Faster Whisper endpoint, " +
+                "for example http://127.0.0.1:50101/stt/transcribe. No remote fallback is used."
+            );
+        }
         this.sampleRate = getNumber("STT_SAMPLE_RATE", DEFAULT_SAMPLE_RATE);
         this.channels = getNumber("STT_CHANNELS", DEFAULT_CHANNELS);
         this.bitsPerSample = getNumber("STT_BITS_PER_SAMPLE", DEFAULT_BITS_PER_SAMPLE);

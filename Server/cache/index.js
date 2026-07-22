@@ -11,6 +11,7 @@ const { EventJournal } = require("./event_journal");
 const { CacheReconciler } = require("./cache_reconciler");
 const { ProposalGate } = require("./proposal_gate");
 const { CACHE_MESSAGE_TYPES, fromWireFormat } = require("./protocol");
+const { appendEvaluationEvent } = require("../evaluation/event_logger");
 
 class CacheExchangeLayer {
     constructor() {
@@ -41,6 +42,24 @@ class CacheExchangeLayer {
             `[cache_exchange] reconcile ${outer.type}${isBackfill ? "(backfill)" : ""} seq=${synthetic.deltaSeq} object=${entry.stableObjectId}: ${result.outcome}` +
             (result.detail && result.detail.gap ? ` gap=${JSON.stringify(result.detail.gap)}` : "")
         );
+        try {
+            appendEvaluationEvent({
+                eventType: "cache_reconcile",
+                envelopeType: outer.type,
+                sessionId: synthetic.sessionId || null,
+                correlationId: synthetic.correlationId || null,
+                targetObjectId: entry.stableObjectId || null,
+                deltaSeq: synthetic.deltaSeq ?? null,
+                objectRevision: synthetic.objectRevision ?? null,
+                isBackfill,
+                outcome: result.outcome,
+                gap: result.detail && result.detail.gap ? result.detail.gap : null,
+                epochChanged: !!(result.detail && result.detail.epochChanged),
+                supersededByNewer: !!(result.detail && result.detail.supersededByNewer),
+            });
+        } catch (error) {
+            console.error(`[evaluation] failed to record cache reconciliation: ${error.message}`);
+        }
         return result;
     }
 

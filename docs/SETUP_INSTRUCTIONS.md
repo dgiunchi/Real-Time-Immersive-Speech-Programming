@@ -136,7 +136,7 @@ cd "D:\Research_Activities\agenticXR\Real-Time-Immersive-Speech-Programming\Serv
 
 $env:ANTHROPIC_API_KEY="sk-ant-your-real-key"
 
-node orchestrator/app.js "make this sphere slowly pulse red" obj-mock-0001
+node orchestrator/app.js "make this sphere slowly pulse red" obj-mock-0001 manual-test-session
 ```
 
 The output should show these stages:
@@ -302,3 +302,31 @@ Keep credentials private. Only provide non-secret setup information:
 - Quest model
 - Server PC LAN topology and whether the Quest is on the same network
 
+## 12. Reliability and evaluation controls
+
+Optional runtime controls (the defaults are suitable for an initial acceptance run):
+
+```powershell
+$env:AGENTICXR_TURN_TIMEOUT_MS="180000"
+$env:AGENTICXR_ANTHROPIC_MAX_ATTEMPTS="3"
+$env:AGENTICXR_ANTHROPIC_RETRY_BASE_MS="2000"
+$env:AGENTICXR_EVALUATION_SOURCE="live-model"
+```
+
+The Anthropic retry loop only retries transient failures and stops retrying after a
+mutating proposal/commit tool call, avoiding duplicate scene changes. Unity disables
+generated behaviours after repeated global frame/allocation budget violations. This
+is a coarse recovery mechanism: Unity cannot pre-empt truly infinite code on its main
+thread, and unrelated work can contribute to the observed global budget.
+
+Runtime evaluation events are written to
+`Server/evaluation/data/runtime-events.jsonl` and are gitignored. Export a report with:
+
+```powershell
+cd "D:\Research_Activities\agenticXR\Real-Time-Immersive-Speech-Programming\Server"
+node evaluation/report.js --source=live-model
+```
+
+Never cite the mock integration report as live-model, Unity-runtime, headset, or user
+study evidence. Verification-space and commit-attach fields remain empty until a real
+Unity proposal executes.

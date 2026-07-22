@@ -5,6 +5,10 @@ const fs = require("fs");
 const nconf = require("nconf");
 const path = require("path");
 const { spawn } = require("child_process");
+const { randomUUID } = require("crypto");
+const { makeEnvelope } = require("../../../mcp/unity_scene_bridge/protocol");
+const { toWireFormat } = require("../../../cache/protocol");
+const { appendEvaluationEvent } = require("../../../evaluation/event_logger");
 
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 const DATA_DIR = "data";
@@ -45,6 +49,8 @@ class CodeGeneration extends ApplicationController {
         this.isGenerating = false;
         this.agenticTargets = new Map();
         this.agenticRuns = new Map();
+        this.agenticCorrelations = new Map();
+        this.agenticTurnTimeoutMs = Number(process.env.AGENTICXR_TURN_TIMEOUT_MS) || 180000;
 
     }
 
@@ -63,8 +69,15 @@ class CodeGeneration extends ApplicationController {
                     const targetObjectId = separator >= 0 ? actionWithTarget.slice(separator + 1) : null;
                     if (action === "start") {
                         if (targetObjectId) this.agenticTargets.set(peerUUID, targetObjectId);
+                        const correlationId = randomUUID();
+                        this.agenticCorrelations.set(peerUUID, correlationId);
+                        this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "listening", "Listening to your request.");
+                        this.logEvaluation({ eventType: "recording_start", sessionId: peerUUID, correlationId, targetObjectId });
                         this.components.transcriptionService.recordingStart(peerUUID);
                     } else if (action === "stop") {
+                        const correlationId = this.agenticCorrelations.get(peerUUID);
+                        this.sendAgenticStatus(peerUUID, this.agenticTargets.get(peerUUID), correlationId, "transcribing", "Transcribing your request.");
+                        this.logEvaluation({ eventType: "recording_stop", sessionId: peerUUID, correlationId, targetObjectId: this.agenticTargets.get(peerUUID) });
                         this.components.transcriptionService.recordingStop(peerUUID);
                     } else {
                         console.warn("Unknown STT control action from " + peerUUID + ": " + action);
@@ -102,6 +115,13 @@ class CodeGeneration extends ApplicationController {
                 if (response.startsWith(">")) response = response.slice(1);
                 if (response.trim()) {
                     if (this.agenticMode) {
+                        this.logEvaluation({
+                            eventType: "transcript_ready",
+                            sessionId: identifier,
+                            correlationId: this.agenticCorrelations.get(identifier),
+                            targetObjectId: this.agenticTargets.get(identifier),
+                            transcriptCharacters: response.trim().length,
+                        });
                         this.startAgenticTurn(response.trim(), identifier);
                     } else if (this.isGenerating == false) {
                         this.isGenerating = true;
@@ -135,31 +155,71 @@ class CodeGeneration extends ApplicationController {
 
     startAgenticTurn(intent, peerUUID) {
         const targetObjectId = this.agenticTargets.get(peerUUID);
+        const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
+        this.agenticCorrelations.set(peerUUID, correlationId);
         if (!targetObjectId) {
             console.warn(`[AgenticXR] No selected stable object was supplied by Unity for peer ${peerUUID}; ignoring transcript.`);
+            this.sendAgenticStatus(peerUUID, null, correlationId, "failed", "No authorable object was selected.");
+            this.logEvaluation({ eventType: "turn_rejected", sessionId: peerUUID, correlationId, reason: "missing_target" });
             return;
         }
         if (this.agenticRuns.has(peerUUID)) {
             console.warn(`[AgenticXR] Claude is already handling a request for peer ${peerUUID}; ignoring overlapping transcript.`);
+            this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "A previous request is still running.");
+            this.logEvaluation({ eventType: "turn_rejected", sessionId: peerUUID, correlationId, targetObjectId, reason: "overlapping_turn" });
             return;
         }
         const orchestrator = path.resolve(__dirname, "../../../orchestrator/app.js");
-        console.log(`[AgenticXR] starting Claude turn peer=${peerUUID} target=${targetObjectId} intent=${JSON.stringify(intent)}`);
-        const child = spawn(process.execPath, [orchestrator, intent, targetObjectId, peerUUID], {
+        console.log(`[AgenticXR] starting Claude turn peer=${peerUUID} correlationId=${correlationId} target=${targetObjectId} intent=${JSON.stringify(intent)}`);
+        this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "thinking", "Claude is grounding and validating your request.");
+        this.logEvaluation({ eventType: "turn_started", sessionId: peerUUID, correlationId, targetObjectId });
+        const child = spawn(process.execPath, [orchestrator, intent, targetObjectId, peerUUID, correlationId], {
             cwd: path.resolve(__dirname, "../../.."),
             env: process.env,
             stdio: "inherit",
             windowsHide: true,
         });
-        this.agenticRuns.set(peerUUID, child);
+        const watchdog = setTimeout(() => {
+            if (child.exitCode != null || child.killed) return;
+            console.error(`[AgenticXR] turn watchdog expired after ${this.agenticTurnTimeoutMs}ms correlationId=${correlationId}`);
+            this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "The agent timed out. Please try again.");
+            this.logEvaluation({ eventType: "turn_timeout", sessionId: peerUUID, correlationId, targetObjectId, timeoutMs: this.agenticTurnTimeoutMs });
+            child.kill();
+        }, this.agenticTurnTimeoutMs);
+        this.agenticRuns.set(peerUUID, { child, watchdog, correlationId });
         child.on("error", (err) => {
             console.error(`[AgenticXR] failed to start Claude turn: ${err.message}`);
+            clearTimeout(watchdog);
+            this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "The agent process could not start.");
+            this.logEvaluation({ eventType: "turn_process_error", sessionId: peerUUID, correlationId, targetObjectId, error: err.message });
             this.agenticRuns.delete(peerUUID);
         });
-        child.on("exit", (code) => {
-            console.log(`[AgenticXR] Claude turn finished peer=${peerUUID} exitCode=${code}`);
+        child.on("exit", (code, signal) => {
+            clearTimeout(watchdog);
+            console.log(`[AgenticXR] Claude turn finished peer=${peerUUID} correlationId=${correlationId} exitCode=${code} signal=${signal || "none"}`);
+            if (code !== 0) this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "The agent stopped before completing the request.");
+            this.logEvaluation({ eventType: "turn_process_exit", sessionId: peerUUID, correlationId, targetObjectId, exitCode: code, signal: signal || null });
             this.agenticRuns.delete(peerUUID);
+            this.agenticCorrelations.delete(peerUUID);
         });
+    }
+
+    sendAgenticStatus(sessionId, targetObjectId, correlationId, state, detail) {
+        if (!sessionId || !correlationId) return;
+        const envelope = makeEnvelope({
+            type: "AgentStatus",
+            sessionId,
+            correlationId,
+            originAgent: "code_runtime_generator",
+            targetObjectId: targetObjectId || null,
+            payload: { state, detail },
+        });
+        this.scene.send(97, toWireFormat(envelope));
+    }
+
+    logEvaluation(event) {
+        try { appendEvaluationEvent(event); }
+        catch (error) { console.error(`[AgenticXR] evaluation log error: ${error.message}`); }
     }
 }
 

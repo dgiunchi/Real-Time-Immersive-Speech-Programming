@@ -12,10 +12,13 @@
 const path = require("path");
 const nconf = require("nconf");
 const { z } = require("zod");
+const { SESSION_ID_PATTERN } = require("./protocol");
 const { checkModePolicy } = require("../../orchestrator/mode_policy");
 const { SceneBridgeClient } = require("./scene_bridge_client");
 const { SharedMemory } = require("../../memory");
 const { CacheExchangeLayer } = require("../../cache");
+
+const sessionIdSchema = z.string().regex(SESSION_ID_PATTERN, "sessionId must be a 1-128 character safe identifier");
 
 async function main() {
     const configPath = process.argv[2] || path.join(__dirname, "config.json");
@@ -81,7 +84,7 @@ async function main() {
             inputSchema: {
                 objectId: z.string().optional().describe("Stable scene object id to focus on"),
                 filter: z.string().optional().describe("Filter expression, e.g. tag:game or componentType:Light"),
-                sessionId: z.string().optional().describe("Required (as a convention, not enforced) for stale-proposal detection - see get_timeline_metrics and Server/orchestrator/README.md"),
+                sessionId: sessionIdSchema.describe("Required for stale-proposal detection and cross-call correlation"),
                 correlationId: z.string().optional().describe("Reuse an existing correlationId to thread this call into the same authoring-turn timeline as prior/later calls"),
                 timeoutMs: z.number().int().positive().optional(),
             },
@@ -128,7 +131,7 @@ async function main() {
                 reversible: z.boolean().optional(),
                 localOnly: z.boolean().optional(),
                 detailResolved: z.boolean().optional(),
-                sessionId: z.string().optional(),
+                sessionId: sessionIdSchema,
                 correlationId: z.string().optional().describe("Reuse an existing correlationId to thread this call into the same authoring-turn timeline as prior/later calls"),
                 timeoutMs: z.number().int().positive().optional(),
             },
@@ -186,7 +189,7 @@ async function main() {
                 targetObjectId: z.string().describe("Stable scene object id the artifact would attach to"),
                 intent: z.string().optional(),
                 interactionMode: z.enum(["L1", "L2", "L3", "L4", "L5"]).optional(),
-                sessionId: z.string().optional(),
+                sessionId: sessionIdSchema,
                 correlationId: z.string().optional(),
                 timeoutMs: z.number().int().positive().optional(),
             },
@@ -350,7 +353,7 @@ async function main() {
                 "Retrieve roles, permissions, consent policy, and priorDecisions for a session. Role/permissions " +
                 "are a static single-owner stub (docs/shared-memory-and-experimental-space.md §4.2); " +
                 "priorDecisions now updates from real session events (docs/next-build-prompt.md §2.4).",
-            inputSchema: { sessionId: z.string().optional(), correlationId: z.string().optional() },
+            inputSchema: { sessionId: sessionIdSchema, correlationId: z.string().optional() },
         },
         async ({ sessionId, correlationId }) => {
             markMemoryRetrieval(correlationId, "get_person_policy");
@@ -367,7 +370,7 @@ async function main() {
                 "is currently inside, derived from discrete 'locomotion' sensor events (region entry/exit), " +
                 "per the paper's 'locomotion updates region context' sentence " +
                 "(docs/paper-sync-timelines-and-modes.md §1.3, §2.3).",
-            inputSchema: { sessionId: z.string().optional() },
+            inputSchema: { sessionId: sessionIdSchema },
         },
         async ({ sessionId }) => ({ content: [{ type: "text", text: JSON.stringify(memory.region.getCurrentRegion(sessionId), null, 2) }] })
     );
@@ -386,7 +389,7 @@ async function main() {
             inputSchema: {
                 targetObjectId: z.string(),
                 eventType: z.string().describe("e.g. 'rollback', 'clarification_rejected', 'conflict_decision'"),
-                sessionId: z.string().optional(),
+                sessionId: sessionIdSchema,
                 correlationId: z.string().optional(),
                 data: z.record(z.string(), z.unknown()).optional(),
             },
@@ -411,7 +414,7 @@ async function main() {
                 "not a live transcript. See docs/next-build-prompt.md §1.3.",
             inputSchema: {
                 text: z.string(),
-                sessionId: z.string().optional(),
+                sessionId: sessionIdSchema,
                 correlationId: z.string().optional(),
             },
         },
@@ -475,7 +478,7 @@ async function main() {
         {
             title: "Request missing deltas from Unity's event history",
             description: "Recovers a deltaSeq range after a detected gap, reconnect, or restart. lastSeenSeq=0 means 'send everything you have'.",
-            inputSchema: { sessionId: z.string(), lastSeenSeq: z.number().int().min(0).optional(), correlationId: z.string().optional(), timeoutMs: z.number().int().positive().optional() },
+            inputSchema: { sessionId: sessionIdSchema, lastSeenSeq: z.number().int().min(0).optional(), correlationId: z.string().optional(), timeoutMs: z.number().int().positive().optional() },
         },
         async ({ sessionId, lastSeenSeq, correlationId, timeoutMs }) => {
             try {
@@ -492,7 +495,7 @@ async function main() {
         {
             title: "Request a fresh CacheSnapshot from Unity",
             description: "Used when the working cache is stale, epoch-conflicted, or missing an object entirely - asks Unity to restate full state rather than patch it.",
-            inputSchema: { sessionId: z.string(), correlationId: z.string().optional(), timeoutMs: z.number().int().positive().optional() },
+            inputSchema: { sessionId: sessionIdSchema, correlationId: z.string().optional(), timeoutMs: z.number().int().positive().optional() },
         },
         async ({ sessionId, correlationId, timeoutMs }) => {
             try {
@@ -545,7 +548,7 @@ async function main() {
                 authoringMode: z.enum(["automatic", "semi_auto_confirm", "semi_auto_steer"]).optional(),
                 consentRoute: z.string().optional(),
                 validationState: z.string().optional(),
-                sessionId: z.string().optional(),
+                sessionId: sessionIdSchema,
                 timeoutMs: z.number().int().positive().optional(),
             },
         },
@@ -579,7 +582,7 @@ async function main() {
                 correlationId: z.string(),
                 targetObjectId: z.string(),
                 artifactId: z.string().optional(),
-                sessionId: z.string().optional(),
+                sessionId: sessionIdSchema,
                 timeoutMs: z.number().int().positive().optional(),
             },
         },
@@ -598,7 +601,7 @@ async function main() {
         "send_cache_invalidation",
         {
             title: "Tell Unity a cached object/region/proposal is stale",
-            inputSchema: { sessionId: z.string().optional(), correlationId: z.string().optional(), targetObjectId: z.string().optional(), reason: z.string() },
+            inputSchema: { sessionId: sessionIdSchema, correlationId: z.string().optional(), targetObjectId: z.string().optional(), reason: z.string() },
         },
         async ({ sessionId, correlationId, targetObjectId, reason }) => {
             if (correlationId) cacheExchange.reconciler.invalidateProposal(correlationId, reason);
@@ -612,7 +615,7 @@ async function main() {
         {
             title: "Push a structured agent status update",
             description: "state is one of: thinking, querying_memory, validating, repairing, waiting_for_user, ready_to_preview, failed.",
-            inputSchema: { sessionId: z.string().optional(), correlationId: z.string().optional(), state: z.string(), detail: z.string().optional() },
+            inputSchema: { sessionId: sessionIdSchema, correlationId: z.string().optional(), state: z.string(), detail: z.string().optional() },
         },
         async ({ sessionId, correlationId, state, detail }) => {
             const sentCorrelationId = bridge.sendAgentStatus({ sessionId, correlationId, state, detail });

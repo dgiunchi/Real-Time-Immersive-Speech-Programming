@@ -18,10 +18,11 @@
 // (rag/drafts/agenticxr_research_questions.md).
 //
 // Usage:
-//   node orchestrator/app.js "<natural language authoring intent>" [targetObjectId]
+//   node orchestrator/app.js "<natural language authoring intent>" [targetObjectId] <sessionId> [correlationId]
 
 const path = require("path");
 const { randomUUID } = require("crypto");
+const { appendEvaluationEvent } = require("../evaluation/event_logger");
 
 const BRIDGE_SERVER_PATH = path.join(__dirname, "..", "mcp", "unity_scene_bridge", "server.js");
 const BRIDGE_SERVER_NAME = "unity_scene_bridge";
@@ -166,14 +167,18 @@ async function main() {
     const intent = process.argv[2];
     const targetObjectId = process.argv[3] || "obj-test-42";
     if (!intent) {
-        console.error('Usage: node orchestrator/app.js "<natural language authoring intent>" [targetObjectId]');
+        console.error('Usage: node orchestrator/app.js "<natural language authoring intent>" [targetObjectId] <sessionId> [correlationId]');
         process.exit(1);
     }
 
     const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
-    const correlationId = randomUUID();
-    const sessionId = process.argv[4] || "orchestrator-cli";
+    const correlationId = process.argv[5] || randomUUID();
+    const sessionId = process.argv[4];
+    if (!sessionId) {
+        console.error("[orchestrator] sessionId is required as the fourth CLI argument.");
+        process.exit(1);
+    }
 
     console.log(`[orchestrator] correlationId=${correlationId} target=${targetObjectId}`);
     console.log(`[orchestrator] intent: "${intent}"`);
@@ -182,7 +187,16 @@ async function main() {
         systemPrompt: SYSTEM_PROMPT,
         agents: AGENTS,
         mcpServers: {
-            [BRIDGE_SERVER_NAME]: { type: "stdio", command: "node", args: [BRIDGE_SERVER_PATH] },
+            [BRIDGE_SERVER_NAME]: {
+                type: "stdio",
+                command: "node",
+                args: [BRIDGE_SERVER_PATH],
+                env: Object.fromEntries(
+                    ["AGENTICXR_EVALUATION_SOURCE", "AGENTICXR_EVALUATION_LOG"]
+                        .filter((name) => process.env[name])
+                        .map((name) => [name, process.env[name]])
+                ),
+            },
         },
         // This is a non-interactive backend service with no terminal for a human to
         // approve tool calls from - the real human-in-the-loop gate is Unity's
@@ -199,17 +213,63 @@ async function main() {
         `Session id: ${sessionId}\n` +
         `correlationId to reuse for every subagent and tool call in this turn: ${correlationId}`;
 
-    for await (const message of query({ prompt, options })) {
-        if (message.type === "assistant") {
-            for (const block of message.message.content || []) {
-                if (block.type === "text" && block.text.trim()) {
-                    console.log(`[router] ${block.text.trim()}`);
+    const maxAttempts = Math.max(1, Number(process.env.AGENTICXR_ANTHROPIC_MAX_ATTEMPTS) || 3);
+    const baseBackoffMs = Math.max(100, Number(process.env.AGENTICXR_ANTHROPIC_RETRY_BASE_MS) || 2000);
+    let sawMutatingToolCall = false;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        appendEvaluationEvent({ eventType: "orchestrator_attempt_started", sessionId, correlationId, targetObjectId, attempt });
+        try {
+            for await (const message of query({ prompt, options })) {
+                if (message.type === "assistant") {
+                    for (const block of message.message.content || []) {
+                        if (block.type === "tool_use" && /(?:propose_artifact|request_commit)$/.test(block.name || "")) {
+                            sawMutatingToolCall = true;
+                        }
+                        if (block.type === "text" && block.text.trim()) {
+                            console.log(`[router] ${block.text.trim()}`);
+                        }
+                    }
+                } else if (message.type === "result") {
+                    console.log(`[orchestrator] finished (subtype=${message.subtype})`);
+                    appendEvaluationEvent({
+                        eventType: "orchestrator_result",
+                        sessionId,
+                        correlationId,
+                        targetObjectId,
+                        attempt,
+                        subtype: message.subtype || null,
+                        usage: message.usage || null,
+                        totalCostUsd: message.total_cost_usd ?? null,
+                    });
                 }
             }
-        } else if (message.type === "result") {
-            console.log(`[orchestrator] finished (subtype=${message.subtype})`);
+            return;
+        } catch (error) {
+            const transient = isTransientAnthropicError(error);
+            appendEvaluationEvent({
+                eventType: "orchestrator_attempt_failed",
+                sessionId,
+                correlationId,
+                targetObjectId,
+                attempt,
+                transient,
+                mutatingToolCallSeen: sawMutatingToolCall,
+                error: error.message,
+            });
+            if (!transient || sawMutatingToolCall || attempt >= maxAttempts) throw error;
+            const delayMs = baseBackoffMs * Math.pow(2, attempt - 1);
+            console.error(`[orchestrator] transient API failure on attempt ${attempt}/${maxAttempts}; retrying in ${delayMs}ms: ${error.message}`);
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
     }
+}
+
+function isTransientAnthropicError(error) {
+    const status = error && (error.status || error.statusCode);
+    if (status === 408 || status === 409 || status === 429 || (status >= 500 && status <= 599)) return true;
+    const text = `${error && error.code ? error.code : ""} ${error && error.message ? error.message : ""}`.toLowerCase();
+    return ["econnreset", "etimedout", "eai_again", "socket hang up", "rate limit", "overloaded", "temporarily unavailable"].some((token) => text.includes(token));
 }
 
 main().catch((err) => {

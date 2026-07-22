@@ -48,6 +48,7 @@ namespace AgenticCache
             public string targetObjectId;
             public ScriptProxy proxy;
             public AppliedArtifact previous;
+            public CacheEnvelope proposalEnvelope;
         }
 
         public LocalXRCache localCache = new LocalXRCache();
@@ -55,6 +56,7 @@ namespace AgenticCache
         public AgenticSceneRegistry sceneRegistry;
         public AgenticXRConsentPanel consentPanel;
         public TestRoslyn compiler;
+        public GeneratedBehaviourWatchdog executionWatchdog;
         public string sessionId = "unity-xr-session";
 
         public float maxSnapshotAgeMsAutomatic = 2000f;
@@ -245,6 +247,7 @@ namespace AgenticCache
             }
 
             ShowStatus("validating", "Testing Claude's code on a staging clone.");
+            var verificationStartedAt = Time.realtimeSinceStartupAsDouble;
             var clone = Instantiate(target);
             clone.name = target.name + " [AgenticXR Verification]";
             clone.SetActive(false);
@@ -253,6 +256,7 @@ namespace AgenticCache
             var staged = compiler != null && compiler.TryCompileAndAttach(clone, payload.code, out stageProxy, out stageError);
             if (stageProxy != null) stageProxy.Dispose();
             Destroy(clone);
+            envelope.verificationDurationMs = (Time.realtimeSinceStartupAsDouble - verificationStartedAt) * 1000.0;
             if (!staged)
             {
                 SendArtifactResult(envelope, "error", null, stageError ?? "Staging compilation failed.");
@@ -354,6 +358,7 @@ namespace AgenticCache
             }
             ScriptProxy proxy = null;
             string error = null;
+            var commitAttachStartedAt = Time.realtimeSinceStartupAsDouble;
             if (compiler == null || !compiler.TryCompileAndAttach(target, proposal.payload.code, out proxy, out error))
             {
                 pending.Remove(correlationId);
@@ -363,6 +368,7 @@ namespace AgenticCache
                 else SendArtifactResult(proposal.envelope, "error", null, compileError);
                 return;
             }
+            proposal.envelope.commitAttachDurationMs = (Time.realtimeSinceStartupAsDouble - commitAttachStartedAt) * 1000.0;
 
             activeByObjectId.TryGetValue(proposal.envelope.targetObjectId, out var previous);
             if (previous != null && previous.proxy != null && previous.proxy.MonoBehaviourInstance != null)
@@ -376,10 +382,12 @@ namespace AgenticCache
                 targetObjectId = proposal.envelope.targetObjectId,
                 proxy = proxy,
                 previous = previous,
+                proposalEnvelope = proposal.envelope,
             };
             appliedByArtifactId[artifactId] = applied;
             activeByObjectId[applied.targetObjectId] = applied;
             latestArtifactId = artifactId;
+            executionWatchdog?.Register(proxy.MonoBehaviourInstance, artifactId);
             pending.Remove(correlationId);
             localCache.ClearProposal(correlationId);
             localCache.SetRollbackPointer(artifactId, previous != null ? previous.artifactId : null);
@@ -440,6 +448,7 @@ namespace AgenticCache
         private bool Rollback(string artifactId)
         {
             if (string.IsNullOrEmpty(artifactId) || !appliedByArtifactId.TryGetValue(artifactId, out var applied)) return false;
+            if (applied.proxy != null) executionWatchdog?.Unregister(applied.proxy.MonoBehaviourInstance);
             if (applied.proxy != null) applied.proxy.Dispose();
             if (applied.previous != null && applied.previous.proxy != null && applied.previous.proxy.MonoBehaviourInstance != null)
             {
@@ -455,6 +464,14 @@ namespace AgenticCache
             appliedByArtifactId.Remove(artifactId);
             ShowStatus("rolled_back", "The last generated behaviour was removed.");
             return true;
+        }
+
+        public void ReportExecutionWatchdog(string artifactId, string reason, float frameMs, long allocationBytes)
+        {
+            if (string.IsNullOrEmpty(artifactId) || !appliedByArtifactId.TryGetValue(artifactId, out var applied)) return;
+            var detail = reason + " (frameMs=" + frameMs.ToString("0.0") + ", allocationBytes=" + allocationBytes + ")";
+            SendArtifactResult(applied.proposalEnvelope, "watchdog_disabled", artifactId, detail);
+            ShowStatus("watchdog_disabled", "A generated behaviour was disabled because it exceeded the runtime budget. Use Undo to remove it.");
         }
 
         private void HandleChannel101(CacheEnvelope envelope, ReferenceCountedSceneGraphMessage raw)
@@ -490,6 +507,8 @@ namespace AgenticCache
             response.expectedSideEffects = request.expectedSideEffects;
             response.artifactVersion = request.artifactVersion;
             response.artifactId = artifactId;
+            response.verificationDurationMs = request.verificationDurationMs;
+            response.commitAttachDurationMs = request.commitAttachDurationMs;
             SendDecision(response);
         }
 

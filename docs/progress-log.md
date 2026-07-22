@@ -478,3 +478,36 @@ Status boundary: the source is implemented, mock-integrated, and Unity-compiled.
 real Anthropic turn, physical Quest microphone/LAN/XR-button run, real Unity runtime
 capture of snapshot/delta/backfill/commit/rollback logs, multi-user conflict behavior,
 and the user study remain unverified and must not be described as completed.
+
+## 2026-07-22 — Code acceptance and evaluation hardening
+
+Executed the paper-side code-acceptance prompt against the current implementation.
+Added a three-minute authoring-turn watchdog with Unity failure status, bounded
+Anthropic retries with exponential backoff and a no-retry-after-mutation guard, and a
+coarse Unity generated-behaviour frame/allocation watchdog. Removed the hardcoded STT
+server fallback. `sessionId` is now validated by the wire protocol and required by all
+bridge tools that thread a session. Confirmed the earlier JsonUtility payload fix and
+added explicit regression assertions for the legacy message types.
+
+Added JSONL runtime instrumentation and a provenance-aware technical report exporter
+for turn outcomes/latency, staleness, verification/attach timing, cache gaps/backfill,
+and model usage. Generated evaluation data is gitignored. Mock child MCP processes now
+inherit the evaluation provenance and output path.
+
+Verification performed:
+
+- `cd Server; npm test` — PASS, 103 assertions, including syntax checks.
+- `cd Server; npm run test:integration` — PASS with a real local Ubiq room and mock
+  Unity peer. The run detected one intentionally dropped delta, accepted its automatic
+  backfill, suppressed one duplicate, detected one stale proposal, and completed the
+  proposal/simulation/commit/preflight flows.
+- Mock report — four turns; validated-result median 309 ms (mean 909.75 ms); 13 cache
+  reconciliation events, 12 accepted, one duplicate, one detected gap, five accepted
+  backfilled entries. These are mock timings, not live Unity/model/headset evidence.
+- Unity `6000.3.9f1 -batchmode -nographics -quit` — successful import/compile; no C#
+  errors; log ended `Exiting batchmode successfully now!`.
+
+Current acceptance boundary: source, deterministic tests, mock end-to-end transport,
+and Unity compilation pass. No `ANTHROPIC_API_KEY` or `STT_HTTP_URL` was available in
+the execution environment, so a live Claude turn, real speech, Unity Play Mode
+proposal execution, Quest interaction, and user-study measurements remain pending.

@@ -289,7 +289,7 @@ new Listener(CHANNELS.AGENT_PRESENCE, (envelope) => {
 roomClient.on("OnJoinedRoom", () => {
     console.log(`[mock_unity_peer] joined room ${roomClient.room.uuid} (joincode ${roomClient.room.joincode})`);
     setInterval(() => {
-        scene.send(CHANNELS.AGENT_PRESENCE, makeEnvelope({ type: "AgentPresenceHeartbeat", originAgent: "mock_unity_peer", payload: {} }));
+        scene.send(CHANNELS.AGENT_PRESENCE, makeEnvelope({ type: "AgentPresenceHeartbeat", sessionId: "mock-control-session", originAgent: "mock_unity_peer", payload: {} }));
     }, 5000);
 
     // Automatic Cache Exchange Layer test flow (docs/cache-exchange-layer.md):
