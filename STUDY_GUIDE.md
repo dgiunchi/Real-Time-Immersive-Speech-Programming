@@ -34,18 +34,38 @@ Leave that terminal running for the whole session. Press `Ctrl+C` to stop.
 Run the command above. Your browser opens `http://localhost:8181` — the
 researcher control panel.
 
-### 2. Open Unity and press Play
+### 2. Open Unity and deploy to the Quest
 - In Unity Hub, open the `Unity/` folder of this project.
 - Open the scene **`Assets/Demos/DynamicCompiler/DynamicCompiler`** (the campfire
   scene — NOT `Scenes/SampleScene`, which is an empty placeholder).
 - If a "TMP Importer" window pops up, click **Import TMP Essentials**.
-- **One-time setup:** create an empty GameObject (`GameObject → Create Empty`),
+- **One-time scene setup:** create an empty GameObject (`GameObject → Create Empty`),
   name it `StudyManager`, and add the **`StudyUIBootstrapper`** component to it.
   Pick the condition (A/B/C) in its Inspector. That's the only wiring you need —
-  it builds every panel and connects all the scripts automatically at runtime.
-  (Optionally also add `StudySessionLogger` to the same object for speech-attempt
-  and task-timing logs.)
-- Press **Play**. Unity joins the room the server created.
+  it builds every panel, the embodied agent, discovery, and the outcome runner,
+  and connects all the scripts automatically at runtime. (Optionally also add
+  `StudySessionLogger` for speech-attempt and task-timing logs.) Save the scene.
+
+**Running on the Meta Quest (this is a Mac — Quest Link is not available):**
+- The study runs as a **standalone Android build on the headset**, which talks to
+  the Mac's server over Wi-Fi.
+- One-time: put the Quest in **Developer Mode** (Meta Quest phone app → your
+  headset → Developer Mode), connect it by USB-C, and accept the "Allow USB
+  debugging" prompt in the headset.
+- One-time Unity settings: **Build target = Android** (File → Build Profiles →
+  Switch Platform); **Player → Other Settings → Scripting Backend = IL2CPP**,
+  **Target Architectures = ARM64**; **XR Plug-in Management → Android → Oculus**.
+- Each build: **File → Build Profiles → Build And Run**. Unity builds the APK,
+  installs it, and launches it on the headset. The headset finds the Mac
+  automatically (LAN auto-discovery) — no IP setup.
+- You only need to **rebuild** when the code changes or you switch to a
+  different Wi-Fi network. Between participants, just relaunch the app on the
+  headset — no rebuild.
+
+**Testing in the Editor (no headset):** you can also press **Play** in the Editor
+to rehearse the whole flow on the desktop. Everything works there too (the
+outcome runner is plain C#), so you can pilot the researcher workflow without
+the Quest.
 
 ### 3. Set up the participant on the control panel
 - Enter the **Participant ID** (e.g. `P01`) and choose the **Condition**.
@@ -58,12 +78,35 @@ researcher control panel.
 ### 4. Run each task
 For each of the 4 tasks:
 1. Click the task chip (1–4) on the control panel.
-2. The participant gives a spoken instruction (hold **Space** in the Unity Editor,
-   or the left trigger in the headset, while speaking).
-3. Their transcript appears live on the control panel.
-4. You click **SUCCESS** or one of the **ERROR** buttons — the pre-scripted
-   outcome runs in the VR scene instantly.
-5. Use the **Quick note** box to log any observation.
+2. Read the task aloud to the participant.
+3. The participant gives a spoken instruction (left trigger in the headset, or
+   hold **Space** in the Unity Editor, while speaking).
+4. Their transcript appears live on the control panel (and in VR for B/C).
+5. **You click SUCCESS or one of the ERROR buttons** — this is the Wizard-of-Oz
+   step. After a short "thinking" pause, the pre-scripted outcome runs in VR.
+6. Use the **Quick note** box to log any observation.
+7. **Clear scene / Reset** before the next participant (and to go from free-play
+   into the real tasks) — it removes everything created and clears the feedback.
+
+> **There is no live AI.** You (the researcher) decide every outcome by clicking
+> the buttons. If you click nothing, nothing happens — that is by design, and is
+> what keeps every participant's experience identical within a condition.
+
+**What the participant sees per condition (e.g. you inject ERR 2 on task 1):**
+- **A – No feedback:** a cube appears. Nothing else — no transcript, no text,
+  no agent. They must interpret and recover alone. (This is the control.)
+- **B – Text panel:** cube appears **and** a panel shows the action, a ✗, and a
+  plain-language explanation ("a cube was created instead of a sphere…"), plus
+  their transcript.
+- **C – Embodied agent:** everything in B **plus** a visible assistant that
+  acknowledges the request beforehand and comments on the result afterwards
+  ("Hmm — that came out as a cube. Did you mean a sphere?").
+
+### 4a. Optional — agent voice for condition C
+The agent speaks via on-screen subtitles by default. To give it a real voice,
+drop `.wav` clips into `Unity/Assets/Resources/AgentVoice/` named by line
+(`t1_preSuccess.wav`, `t1_postError2.wav`, … one per task/stage/response) — they
+load automatically, no wiring. Without clips, subtitles are used.
 
 ### 5. Questionnaire
 After the session, open `http://localhost:8181/questionnaire` (link is in the

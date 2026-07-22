@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Text;
 using Ubiq.Messaging;
 using UnityEngine;
 
@@ -19,7 +18,7 @@ using UnityEngine;
 /// a tiny "task/response" id and this component runs the matching pre-built
 /// behaviour. Pure compiled C# → works perfectly on the Quest.
 ///
-/// The server sends, on NetworkId 95:
+/// The server sends, on NetworkId 99:
 ///     { type:"StudyOutcome", peer:"WizardOfOz", data:"task1/success" }
 /// </summary>
 public class StudyOutcomes : MonoBehaviour
@@ -72,12 +71,31 @@ public class StudyOutcomes : MonoBehaviour
     private IEnumerator RunAfterThinking(string task, string response)
     {
         var cond = FindObjectOfType<StudyConditionManager>(true);
-        if (!cond || !cond.IsConditionA())
+        bool feedback = !cond || !cond.IsConditionA();
+        bool embodied = cond && cond.IsConditionC();
+
+        if (feedback)
         {
             var panel = FindObjectOfType<FeedbackPanelController>(true);
             if (panel) panel.ShowProcessing();
         }
-        yield return new WaitForSeconds(UnityEngine.Random.Range(thinkingDelayMin, thinkingDelayMax));
+
+        // Condition C: the agent acknowledges the request BEFORE the result
+        // appears ("Okay, I'll create a ball…"), then comments AFTER (in Run).
+        float wait = UnityEngine.Random.Range(thinkingDelayMin, thinkingDelayMax);
+        if (embodied)
+        {
+            var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
+            if (agent)
+            {
+                int taskIndex = task[4] - '1';
+                agent.SetActiveTask(taskIndex);
+                agent.SpeakPre(response);
+                wait = Mathf.Max(wait, agent.EstimateDuration(response, true) + 0.3f);
+            }
+        }
+
+        yield return new WaitForSeconds(wait);
         Run(task, response);
     }
 
@@ -117,22 +135,14 @@ public class StudyOutcomes : MonoBehaviour
             else panel.ShowError(action, ErrorDescription(task, response));
         }
 
-        // Embodied agent voice/subtitle (C only)
+        // Embodied agent voice/subtitle (C only) — comment on the result.
         if (cond && cond.IsConditionC())
         {
             var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
             if (agent)
             {
-                int taskIndex = task[4] - '1'; // "task1" -> 0
-                agent.SetActiveTask(taskIndex);
-                switch (response)
-                {
-                    case "success": agent.SpeakPostSuccess(); break;
-                    case "error1":  agent.SpeakPostError1();  break;
-                    case "error2":  agent.SpeakPostError2();  break;
-                    case "error3":  agent.SpeakPostError3();  break;
-                    case "error4":  agent.SpeakPostError4();  break;
-                }
+                agent.SetActiveTask(task[4] - '1'); // "task1" -> 0
+                agent.SpeakPost(response);
             }
         }
     }

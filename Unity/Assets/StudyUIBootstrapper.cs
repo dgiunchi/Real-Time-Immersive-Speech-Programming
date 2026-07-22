@@ -45,6 +45,7 @@ public class StudyUIBootstrapper : MonoBehaviour
     private TranscriptDisplay transcriptDisplay;
     private FeedbackPanelController feedbackPanel;
     private EmbodiedAgentDialogue agentDialogue;
+    private EmbodiedAgentBody agentBody;
 
     private GameObject transcriptPanel, feedbackPanelRoot, agentPanel, codePanel;
 
@@ -253,7 +254,18 @@ public class StudyUIBootstrapper : MonoBehaviour
             agentDialogue.subtitleText = pendingAgentSubtitle;
             agentDialogue.subtitlePanel = agentPanel;
             if (!agentDialogue.agentAudioSource)
-                agentDialogue.agentAudioSource = agentDialogue.GetComponent<AudioSource>();
+                agentDialogue.agentAudioSource = agentDialogue.GetComponent<AudioSource>()
+                    ?? agentDialogue.gameObject.AddComponent<AudioSource>();
+
+            // Give condition C a visible body beside the panel, and drive its
+            // animation from the agent's speaking events.
+            agentBody = FindOrAdd<EmbodiedAgentBody>();
+            if (agentBody)
+            {
+                agentBody.worldPosition = panelWorldPosition + new Vector3(-1.15f, -0.1f, 0f);
+                agentDialogue.onAgentStartedSpeaking.AddListener(agentBody.OnStartedSpeaking);
+                agentDialogue.onAgentFinishedSpeaking.AddListener(agentBody.OnFinishedSpeaking);
+            }
         }
 
         // StudyConditionManager toggles
@@ -262,6 +274,7 @@ public class StudyUIBootstrapper : MonoBehaviour
             conditionManager.feedbackPanelRoot = feedbackPanelRoot;
             conditionManager.embodiedAgentRoot = agentPanel;
             conditionManager.transcriptPanelRoot = transcriptPanel;
+            conditionManager.embodiedAgentBody = agentBody;
         }
 
         // Hook TranscriptionCollector → transcript display + feedback panel

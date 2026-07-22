@@ -20,6 +20,8 @@
   input, select { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-size:15px; background:#fff; color:var(--text); }
   .q { padding: 14px 0; border-bottom: 1px solid var(--line); }
   .q:last-child { border-bottom: none; }
+  .q.missing { background: #3a1414; border-radius: 8px; padding: 14px 12px; }
+  .q.missing .text::after { content: " — required"; color: #ff8a8a; font-size: 12px; }
   .q .text { font-size: 15px; margin-bottom: 10px; }
   .scale { display: flex; gap: 6px; flex-wrap: wrap; }
   .scale label { flex: 1; min-width: 54px; text-align: center; cursor: pointer; }
@@ -143,16 +145,27 @@ function render() {
 
 function collect() {
   const answers = {};
-  let missing = 0;
+  const missingNames = [];
   const names = [];
   for (let i=1;i<=10;i++) names.push("sus"+i);
   for (let i=1;i<=PRESENCE.length;i++) names.push("pres"+i);
   CUSTOM.forEach(c => names.push(c.id));
   names.forEach(n => {
     const sel = document.querySelector(`input[name="${n}"]:checked`);
-    if (sel) answers[n] = sel.value; else { answers[n] = ""; missing++; }
+    if (sel) answers[n] = sel.value; else { answers[n] = ""; missingNames.push(n); }
   });
-  return { answers, missing };
+  return { answers, missing: missingNames.length, missingNames };
+}
+
+function highlightMissing(missingNames) {
+  document.querySelectorAll(".q.missing").forEach(el => el.classList.remove("missing"));
+  let first = null;
+  missingNames.forEach(n => {
+    const input = document.querySelector(`input[name="${n}"]`);
+    const q = input && input.closest(".q");
+    if (q) { q.classList.add("missing"); if (!first) first = q; }
+  });
+  if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 // Prefill from URL (?pid=P01&cond=B) so the researcher can hand over a ready link.
@@ -164,8 +177,12 @@ async function submitForm() {
   const participantId = document.getElementById("participantId").value.trim();
   const condition = document.getElementById("condition").value;
   if (!participantId || !condition) { alert("Please fill in Participant ID and Condition."); return; }
-  const { answers, missing } = collect();
-  if (missing > 0 && !confirm(missing + " question(s) unanswered. Submit anyway?")) return;
+  const { answers, missing, missingNames } = collect();
+  if (missing > 0) {
+    highlightMissing(missingNames);
+    alert(missing + " question(s) still need an answer — they are highlighted. Please complete them before submitting.");
+    return;
+  }
 
   const btn = document.getElementById("submitBtn");
   btn.disabled = true; btn.textContent = "Saving…";

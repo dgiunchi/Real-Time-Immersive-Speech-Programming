@@ -22,6 +22,7 @@ public class StudyConditionManager : MonoBehaviour
 
     [Header("Condition C – Embodied Agent")]
     public GameObject embodiedAgentRoot;
+    public EmbodiedAgentBody embodiedAgentBody;
 
     [Header("Transcript display (visible in B and C)")]
     public GameObject transcriptPanelRoot;
@@ -48,6 +49,7 @@ public class StudyConditionManager : MonoBehaviour
 
         if (feedbackPanelRoot)  feedbackPanelRoot.SetActive(showPanel);
         if (embodiedAgentRoot)  embodiedAgentRoot.SetActive(showAgent);
+        if (embodiedAgentBody)  embodiedAgentBody.SetVisible(showAgent);
         if (transcriptPanelRoot) transcriptPanelRoot.SetActive(showTranscript);
 
         var label = condition switch

@@ -61,8 +61,8 @@ public class EmbodiedAgentDialogue : MonoBehaviour
     public AudioSource agentAudioSource;
 
     [Header("Events")]
-    public UnityEvent onAgentStartedSpeaking;
-    public UnityEvent onAgentFinishedSpeaking;
+    public UnityEvent onAgentStartedSpeaking = new UnityEvent();
+    public UnityEvent onAgentFinishedSpeaking = new UnityEvent();
 
     // ── Internal ──────────────────────────────────────────────────────────────
 
@@ -71,10 +71,38 @@ public class EmbodiedAgentDialogue : MonoBehaviour
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    [Header("Optional voice")]
+    [Tooltip("If true, tries to load AudioClips from Resources/AgentVoice/<key>.wav (e.g. t1_postSuccess). If absent, the agent uses subtitles only.")]
+    public bool autoLoadVoiceFromResources = true;
+
     private void Start()
     {
         PopulateDefaultDialogue();
+        if (autoLoadVoiceFromResources) LoadVoiceClips();
         HideSubtitle();
+    }
+
+    // Looks for Resources/AgentVoice/t{task}_{stage}{Response}.wav and assigns it
+    // to the matching line. Keys match the study's voice-clip naming so you can
+    // drop generated audio in later and it "just works" — no manual wiring.
+    private void LoadVoiceClips()
+    {
+        for (int i = 0; i < taskDialogues.Length; i++)
+        {
+            string p = $"AgentVoice/t{i + 1}_";
+            var d = taskDialogues[i];
+            d.preSuccess.clip  = d.preSuccess.clip  ? d.preSuccess.clip  : Resources.Load<AudioClip>(p + "preSuccess");
+            d.postSuccess.clip = d.postSuccess.clip ? d.postSuccess.clip : Resources.Load<AudioClip>(p + "postSuccess");
+            d.preError1.clip   = d.preError1.clip   ? d.preError1.clip   : Resources.Load<AudioClip>(p + "preError1");
+            d.postError1.clip  = d.postError1.clip  ? d.postError1.clip  : Resources.Load<AudioClip>(p + "postError1");
+            d.preError2.clip   = d.preError2.clip   ? d.preError2.clip   : Resources.Load<AudioClip>(p + "preError2");
+            d.postError2.clip  = d.postError2.clip  ? d.postError2.clip  : Resources.Load<AudioClip>(p + "postError2");
+            d.preError3.clip   = d.preError3.clip   ? d.preError3.clip   : Resources.Load<AudioClip>(p + "preError3");
+            d.postError3.clip  = d.postError3.clip  ? d.postError3.clip  : Resources.Load<AudioClip>(p + "postError3");
+            d.preError4.clip   = d.preError4.clip   ? d.preError4.clip   : Resources.Load<AudioClip>(p + "preError4");
+            d.postError4.clip  = d.postError4.clip  ? d.postError4.clip  : Resources.Load<AudioClip>(p + "postError4");
+            taskDialogues[i] = d;
+        }
     }
 
     // ── Public API (called by WizardOfOzController) ───────────────────────────
@@ -94,6 +122,36 @@ public class EmbodiedAgentDialogue : MonoBehaviour
     public void SpeakPostError3()   => Speak(taskDialogues[activeTask].postError3);
     public void SpeakPreError4()    => Speak(taskDialogues[activeTask].preError4);
     public void SpeakPostError4()   => Speak(taskDialogues[activeTask].postError4);
+
+    /// <summary>Speak the pre-execution line for a response ("success"/"error1"…"error4").</summary>
+    public void SpeakPre(string response)
+    {
+        var d = taskDialogues[activeTask];
+        Speak(response switch {
+            "success" => d.preSuccess, "error1" => d.preError1, "error2" => d.preError2,
+            "error3" => d.preError3, "error4" => d.preError4, _ => d.preSuccess });
+    }
+
+    /// <summary>Speak the post-execution line for a response ("success"/"error1"…"error4").</summary>
+    public void SpeakPost(string response)
+    {
+        var d = taskDialogues[activeTask];
+        Speak(response switch {
+            "success" => d.postSuccess, "error1" => d.postError1, "error2" => d.postError2,
+            "error3" => d.postError3, "error4" => d.postError4, _ => d.postSuccess });
+    }
+
+    /// <summary>Approx seconds the current line for this response will take (for timing pre-speech).</summary>
+    public float EstimateDuration(string response, bool pre)
+    {
+        var d = taskDialogues[activeTask];
+        var line = pre
+            ? (response switch { "error1" => d.preError1, "error2" => d.preError2, "error3" => d.preError3, "error4" => d.preError4, _ => d.preSuccess })
+            : (response switch { "error1" => d.postError1, "error2" => d.postError2, "error3" => d.postError3, "error4" => d.postError4, _ => d.postSuccess });
+        if (line.clip) return line.clip.length;
+        if (line.fallbackDuration > 0f) return line.fallbackDuration;
+        return string.IsNullOrEmpty(line.text) ? 0f : Mathf.Max(2f, line.text.Length * 0.055f);
+    }
 
     public void StopSpeaking()
     {
