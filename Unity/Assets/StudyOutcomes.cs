@@ -29,6 +29,10 @@ public class StudyOutcomes : MonoBehaviour
     [Tooltip("Where new objects spawn / the reference point. If unset, uses the main camera (in front of the participant).")]
     public Transform spawnOrigin;
 
+    [Tooltip("Fake 'AI thinking' delay (seconds) between the researcher's inject and the outcome appearing. Keeps the illusion of live processing.")]
+    public float thinkingDelayMin = 1.2f;
+    public float thinkingDelayMax = 2.5f;
+
     private NetworkContext context;
 
     [Serializable]
@@ -58,7 +62,23 @@ public class StudyOutcomes : MonoBehaviour
 
         var parts = m.data.Split('/');
         if (parts.Length != 2) { Debug.LogWarning("[StudyOutcomes] Bad outcome id: " + m.data); return; }
-        Run(parts[0], parts[1]);
+
+        // Task outcomes get a short fake "thinking" delay so it feels like a
+        // live AI processed the request; control messages run immediately.
+        if (parts[0].StartsWith("task")) StartCoroutine(RunAfterThinking(parts[0], parts[1]));
+        else Run(parts[0], parts[1]);
+    }
+
+    private IEnumerator RunAfterThinking(string task, string response)
+    {
+        var cond = FindObjectOfType<StudyConditionManager>(true);
+        if (!cond || !cond.IsConditionA())
+        {
+            var panel = FindObjectOfType<FeedbackPanelController>(true);
+            if (panel) panel.ShowProcessing();
+        }
+        yield return new WaitForSeconds(UnityEngine.Random.Range(thinkingDelayMin, thinkingDelayMax));
+        Run(task, response);
     }
 
     /// <summary>Runs an outcome. task = "task1".."task4", response = "success"/"error1".."error4".</summary>
@@ -73,9 +93,79 @@ public class StudyOutcomes : MonoBehaviour
             case "task2": Task2(response); break;
             case "task3": Task3(response); break;
             case "task4": Task4(response); break;
-            default: Debug.LogWarning("[StudyOutcomes] Unknown task: " + task); break;
+            default: Debug.LogWarning("[StudyOutcomes] Unknown task: " + task); return;
+        }
+
+        // Drive the condition-specific feedback so the panels/agent actually
+        // react to each outcome (B: text panel explains; C: agent speaks too).
+        if (task.StartsWith("task")) NotifyFeedback(task, response);
+    }
+
+    // ── Feedback (conditions B and C) ─────────────────────────────────────────
+
+    private void NotifyFeedback(string task, string response)
+    {
+        var cond = FindObjectOfType<StudyConditionManager>(true);
+        if (cond && cond.IsConditionA()) return; // A = no feedback, by design
+
+        // Text panel (B and C)
+        var panel = FindObjectOfType<FeedbackPanelController>(true);
+        if (panel)
+        {
+            string action = ActionSummary(task);
+            if (response == "success") panel.ShowSuccess(action);
+            else panel.ShowError(action, ErrorDescription(task, response));
+        }
+
+        // Embodied agent voice/subtitle (C only)
+        if (cond && cond.IsConditionC())
+        {
+            var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
+            if (agent)
+            {
+                int taskIndex = task[4] - '1'; // "task1" -> 0
+                agent.SetActiveTask(taskIndex);
+                switch (response)
+                {
+                    case "success": agent.SpeakPostSuccess(); break;
+                    case "error1":  agent.SpeakPostError1();  break;
+                    case "error2":  agent.SpeakPostError2();  break;
+                    case "error3":  agent.SpeakPostError3();  break;
+                    case "error4":  agent.SpeakPostError4();  break;
+                }
+            }
         }
     }
+
+    private static string ActionSummary(string task) => task switch
+    {
+        "task1" => "Create a ball at your hand",
+        "task2" => "Change the ball's colour to green",
+        "task3" => "Make the ball orbit the cube",
+        "task4" => "Create a small solar system",
+        _ => task
+    };
+
+    private static string ErrorDescription(string task, string response) => (task, response) switch
+    {
+        ("task1", "error1") => "The ball was placed at the centre of the room instead of at your hand — the position wasn't understood.",
+        ("task1", "error2") => "A cube was created instead of a sphere — the shape was misinterpreted.",
+        ("task1", "error3") => "The ball's collider is disabled, so it falls through the floor.",
+        ("task1", "error4") => "The ball came out squashed — it inherited a wrong scale.",
+        ("task2", "error1") => "Every object turned green — the target was ambiguous.",
+        ("task2", "error2") => "The colour came out teal instead of green — wrong shade.",
+        ("task2", "error3") => "The colour reverted after a moment — a material problem.",
+        ("task2", "error4") => "A new green ball was created instead of recolouring the existing one.",
+        ("task3", "error1") => "The ball is orbiting the centre of the room, not the cube — no clear target was found.",
+        ("task3", "error2") => "The orbit is on the wrong axis — it looks tilted.",
+        ("task3", "error3") => "The orbit was too tight — the ball hit the cube and stopped.",
+        ("task3", "error4") => "The orbit speed is far too high.",
+        ("task4", "error1") => "Only the star was created — the planet was missed.",
+        ("task4", "error2") => "The planet inherited a squashed scale from the star.",
+        ("task4", "error3") => "The planet is drifting away instead of orbiting.",
+        ("task4", "error4") => "Fifty planets were created — the instruction was over-interpreted.",
+        _ => "Something went wrong while executing the instruction."
+    };
 
     /// <summary>Destroys everything the study created, for a clean start.</summary>
     private void ResetScene()
