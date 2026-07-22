@@ -15,15 +15,19 @@
  */
 
 const { execSync, spawn } = require("child_process");
-const fs   = require("fs");
-const path = require("path");
+const dgram = require("dgram");
+const os    = require("os");
+const fs    = require("fs");
+const path  = require("path");
 
 const serverRoot  = path.resolve(__dirname, "..");
 const wozDir      = path.join(serverRoot, "samples", "apps", "wizard_of_oz");
 const certSrcDir  = path.join(serverRoot, "samples", "apps", "code_runtime_generator");
 const serverAsset = path.resolve(serverRoot, "..", "Unity", "Assets", "Demos", "Server.asset");
 const controlUrl  = "http://localhost:8181";
-const STUDY_PORTS = [8005, 8010, 8181];
+const STUDY_PORTS = [8005, 8010, 8181, 8007];
+const UBIQ_PORT   = 8005;   // Ubiq RoomServer TCP port (matches config.json)
+const BEACON_PORT = 8007;   // UDP port the Quest listens on for auto-discovery
 
 function log(msg) { console.log(`\x1b[1m\x1b[36m[study]\x1b[0m ${msg}`); }
 
@@ -69,6 +73,53 @@ function patchServerAsset(ip) {
 const lanIp = getLanIp();
 log(`LAN IP: ${lanIp}`);
 patchServerAsset(lanIp);
+
+// ── 2b. Discovery beacon ──────────────────────────────────────────────────────
+// The Quest headset listens on UDP BEACON_PORT and connects to whatever server
+// address it hears here. This means the headset finds the Mac automatically on
+// ANY Wi-Fi they share — no IP configuration and no rebuild when the network
+// changes. Requires only that the Quest and Mac are on the same network.
+function computeBroadcastAddrs() {
+    const addrs = new Set(["255.255.255.255"]);
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+        for (const net of ifaces[name] || []) {
+            if (net.family !== "IPv4" || net.internal) continue;
+            const ip = net.address.split(".").map(Number);
+            const mask = net.netmask.split(".").map(Number);
+            const bcast = ip.map((o, i) => (o & mask[i]) | (~mask[i] & 0xff));
+            addrs.add(bcast.join("."));
+        }
+    }
+    return [...addrs];
+}
+
+function startBeacon() {
+    const sock = dgram.createSocket({ type: "udp4", reuseAddr: true });
+    const message = Buffer.from(`UBIQ_DISCOVERY:${lanIp}:${UBIQ_PORT}`);
+    sock.on("error", (e) => log(`Beacon socket error: ${e.message}`));
+
+    // Reply directly (unicast) whenever the headset asks. This path needs no
+    // special Android permission on the Quest, so it works even if Wi-Fi
+    // power-saving filters our broadcasts.
+    sock.on("message", (buf, rinfo) => {
+        if (buf.toString().startsWith("UBIQ_QUERY")) {
+            sock.send(message, 0, message.length, rinfo.port, rinfo.address, () => {});
+        }
+    });
+
+    sock.bind(BEACON_PORT, () => {
+        sock.setBroadcast(true);
+        const targets = computeBroadcastAddrs();
+        log(`Discovery beacon broadcasting "${lanIp}:${UBIQ_PORT}" on UDP ${BEACON_PORT} → ${targets.join(", ")}`);
+        setInterval(() => {
+            for (const t of targets) {
+                sock.send(message, 0, message.length, BEACON_PORT, t, () => {});
+            }
+        }, 1000);
+    });
+}
+startBeacon();
 
 // ── 3. Dependencies ───────────────────────────────────────────────────────────
 if (!fs.existsSync(path.join(serverRoot, "node_modules", "ubiq"))) {

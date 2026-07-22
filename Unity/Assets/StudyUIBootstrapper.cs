@@ -175,6 +175,10 @@ public class StudyUIBootstrapper : MonoBehaviour
         transcriptDisplay = FindOrAdd<TranscriptDisplay>();
         feedbackPanel     = FindOrAdd<FeedbackPanelController>();
         agentDialogue     = FindOrAdd<EmbodiedAgentDialogue>();
+
+        // Zero-config LAN discovery: finds the Mac's server automatically on any
+        // shared Wi-Fi so the headset never needs a hardcoded IP or a rebuild.
+        FindOrAdd<ServerAutoDiscovery>();
     }
 
     private T FindOrAdd<T>() where T : Component
