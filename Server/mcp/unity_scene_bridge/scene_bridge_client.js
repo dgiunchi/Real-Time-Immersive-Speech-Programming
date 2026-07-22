@@ -206,9 +206,10 @@ class SceneBridgeClient extends EventEmitter {
     async proposeArtifact({ code, targetObjectId, intent, authoringMode = "semi_auto_confirm", interactionMode, simulate = false,
         sessionId, correlationId, timeoutMs, sceneEpoch, snapshotId, objectRevision, snapshotTakenAt,
         validationState = "accepted", validationSummary, riskScore, consentRoute, requiredPermissions,
-        expectedSideEffects, artifactVersion } = {}) {
-        if (!code || !targetObjectId) {
-            throw new Error("proposeArtifact requires both 'code' and 'targetObjectId'");
+        expectedSideEffects, artifactVersion, operation = "create", existingArtifactId, candidateId,
+        candidateSetId, candidateCount, selectionReason, experienceMode } = {}) {
+        if (!targetObjectId || (operation !== "remove" && !code)) {
+            throw new Error("proposeArtifact requires targetObjectId and code for create/edit");
         }
         const effectiveTimeout = this.#effectiveTimeout(timeoutMs);
         const envelope = makeEnvelope({
@@ -228,9 +229,16 @@ class SceneBridgeClient extends EventEmitter {
                 validationSummary: validationSummary || null,
                 riskScore: typeof riskScore === "number" ? riskScore : null,
                 consentRoute: consentRoute || (authoringMode === "automatic" ? "automatic_low_risk" : "explicit_confirmation"),
-                requiredPermissions: requiredPermissions || ["attach_component"],
+                requiredPermissions: requiredPermissions || [operation === "remove" ? "detach_component" : "attach_component"],
                 expectedSideEffects: expectedSideEffects || null,
                 artifactVersion: artifactVersion || "1",
+                operation,
+                existingArtifactId: existingArtifactId || null,
+                candidateId: candidateId || null,
+                candidateSetId: candidateSetId || null,
+                candidateCount: candidateCount || 1,
+                selectionReason: selectionReason || null,
+                experienceMode: experienceMode || null,
             },
         });
         envelope.sceneEpoch = sceneEpoch || null;
@@ -243,6 +251,10 @@ class SceneBridgeClient extends EventEmitter {
         envelope.requiredPermissions = envelope.payload.requiredPermissions.join(",");
         envelope.expectedSideEffects = expectedSideEffects || null;
         envelope.artifactVersion = artifactVersion || "1";
+        envelope.operation = operation;
+        envelope.existingArtifactId = existingArtifactId || null;
+        envelope.candidateId = candidateId || null;
+        envelope.candidateSetId = candidateSetId || null;
         const reply = this.#awaitReply(envelope.correlationId, "ArtifactResult", effectiveTimeout);
         this.#sendCache(CHANNELS.ARTIFACT_CHANNEL, envelope);
         return reply;

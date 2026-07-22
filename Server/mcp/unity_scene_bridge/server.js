@@ -14,6 +14,8 @@ const nconf = require("nconf");
 const { z } = require("zod");
 const { SESSION_ID_PATTERN } = require("./protocol");
 const { checkModePolicy } = require("../../orchestrator/mode_policy");
+const { rankCandidates, validateLifecycle, LIFECYCLE_OPERATIONS } = require("../../orchestrator/candidate_selector");
+const { appendEvaluationEvent } = require("../../evaluation/event_logger");
 const { SceneBridgeClient } = require("./scene_bridge_client");
 const { SharedMemory } = require("../../memory");
 const { CacheExchangeLayer } = require("../../cache");
@@ -34,6 +36,18 @@ async function main() {
     memory.attach(bridge);
     const cacheExchange = new CacheExchangeLayer();
     cacheExchange.attach(bridge);
+    const persistContinuityCheckpoint = () => {
+        try {
+            memory.checkpoints.save({
+                artifactLog: memory.artifactLog,
+                personPolicy: memory.personPolicy,
+                experienceContext: memory.experienceContext,
+                sceneEpoch: cacheExchange.workingCache.getSceneEpoch(),
+            });
+        } catch (error) { console.error(`[checkpoint] persistence failed: ${error.message}`); }
+    };
+    setInterval(persistContinuityCheckpoint, 30000).unref();
+    process.once("exit", persistContinuityCheckpoint);
 
     // Stale-proposal rejection (docs/next-build-prompt.md §2.7): the ArtifactResult
     // still resolves to whoever asked for it either way (see
@@ -111,7 +125,7 @@ async function main() {
                 "ghost-preview/confirm UI to the user. Always resolves with the final ArtifactResult " +
                 "(status: committed|rejected|error) once Unity responds on NetworkId 100.",
             inputSchema: {
-                code: z.string().describe("Full C# source of the MonoBehaviour artifact"),
+                code: z.string().optional().describe("Full C# source; omitted only for operation='remove'"),
                 targetObjectId: z.string().describe("Stable scene object id this artifact attaches to"),
                 intent: z.string().optional().describe("Original natural-language intent, shown in the confirmation UI"),
                 authoringMode: z.enum(["automatic", "semi_auto_confirm", "semi_auto_steer"]).optional(),
@@ -131,6 +145,13 @@ async function main() {
                 reversible: z.boolean().optional(),
                 localOnly: z.boolean().optional(),
                 detailResolved: z.boolean().optional(),
+                operation: z.enum(LIFECYCLE_OPERATIONS).optional(),
+                existingArtifactId: z.string().optional(),
+                candidateId: z.string().optional(),
+                candidateSetId: z.string().optional(),
+                candidateCount: z.number().int().min(1).optional(),
+                selectionReason: z.string().optional(),
+                experienceMode: z.string().optional(),
                 sessionId: sessionIdSchema,
                 correlationId: z.string().optional().describe("Reuse an existing correlationId to thread this call into the same authoring-turn timeline as prior/later calls"),
                 timeoutMs: z.number().int().positive().optional(),
@@ -139,8 +160,13 @@ async function main() {
         async (args) => {
             const { code, targetObjectId, intent, authoringMode, interactionMode, sessionId, correlationId } = args;
             try {
+                const lifecycle = validateLifecycle(args);
+                if (!lifecycle.accepted) return { content: [{ type: "text", text: `propose_artifact lifecycle rejected: ${lifecycle.reasons.join("; ")}` }], isError: true };
+                if (["edit", "remove"].includes(lifecycle.operation) && authoringMode === "automatic") {
+                    return { content: [{ type: "text", text: `${lifecycle.operation} requires explicit confirmation` }], isError: true };
+                }
                 if (interactionMode) {
-                    const policy = checkModePolicy(args);
+                    const policy = checkModePolicy({ ...args, userPreference: memory.personPolicy.getPolicy({ sessionId }) });
                     if (!policy.accepted) {
                         return { content: [{ type: "text", text: `propose_artifact rejected by interaction-mode policy: ${policy.reasons.join("; ")}` }], isError: true };
                     }
@@ -159,9 +185,15 @@ async function main() {
                     validationState: args.validationState || "accepted",
                     validationSummary: args.validationSummary || null,
                     riskScore: args.riskScore ?? null,
-                    requiredPermissions: args.requiredPermissions || ["attach_component"],
+                    requiredPermissions: args.requiredPermissions || [args.operation === "remove" ? "detach_component" : "attach_component"],
                     expectedSideEffects: args.expectedSideEffects || null,
                     artifactVersion: args.artifactVersion || "1",
+                    operation: args.operation || "create",
+                    supersedesArtifactId: args.existingArtifactId || null,
+                    candidateId: args.candidateId || null,
+                    candidateSetId: args.candidateSetId || null,
+                    candidateCount: args.candidateCount || 1,
+                    selectionReason: args.selectionReason || null,
                     status: result.payload && result.payload.status,
                     artifactId: result.payload && result.payload.artifactId,
                 });
@@ -170,6 +202,47 @@ async function main() {
             } catch (err) {
                 return { content: [{ type: "text", text: `propose_artifact failed: ${err.message}` }], isError: true };
             }
+        }
+    );
+
+    server.registerTool(
+        "rank_artifact_candidates",
+        {
+            title: "Rank independently verified artifact candidates",
+            description: "Selects the best eligible candidate after every candidate has its own Validator/Critic and Verification Space result. Ranking never bypasses mode or proposal gates.",
+            inputSchema: {
+                sessionId: sessionIdSchema,
+                correlationId: z.string(),
+                targetObjectId: z.string(),
+                candidateSetId: z.string(),
+                candidates: z.array(z.object({
+                    candidateId: z.string(), operation: z.enum(LIFECYCLE_OPERATIONS), code: z.string().optional(),
+                    existingArtifactId: z.string().optional(), validationState: z.string(), simulationStatus: z.string(),
+                    riskScore: z.number().min(0).max(1), authoringMode: z.string().optional(), experienceMode: z.string().optional(),
+                })).min(2),
+            },
+        },
+        async ({ sessionId, correlationId, targetObjectId, candidateSetId, candidates }) => {
+            const result = rankCandidates(candidates, {
+                profile: memory.personPolicy.getPolicy({ sessionId }),
+                experienceContext: memory.experienceContext.get(sessionId),
+            });
+            for (const candidate of result.ranked) {
+                memory.artifactLog.append({
+                    eventType: candidate === result.selected ? "candidate_selected" : "candidate_rejected",
+                    operation: candidate.operation, targetObjectId, correlationId, candidateSetId,
+                    candidateId: candidate.candidateId, riskScore: candidate.riskScore,
+                    status: candidate.ranking.eligible ? (candidate === result.selected ? "selected" : "not_selected") : "ineligible",
+                    selectionReason: candidate === result.selected ? `highest deterministic score ${candidate.ranking.score}` : `score ${candidate.ranking.score}`,
+                });
+            }
+            appendEvaluationEvent({
+                eventType: "candidate_selection", sessionId, correlationId, targetObjectId, candidateSetId,
+                candidateCount: candidates.length, eligibleCount: result.ranked.filter((item) => item.ranking.eligible).length,
+                selectedCandidateId: result.selected && result.selected.candidateId,
+                selectedScore: result.selected && result.selected.ranking.score,
+            });
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: !result.selected };
         }
     );
 
@@ -185,24 +258,35 @@ async function main() {
                 "risk. Unity compiles and attaches the candidate to an inactive staging clone; " +
                 "mock_unity_peer.js provides a deterministic stand-in for headless integration tests.",
             inputSchema: {
-                code: z.string().describe("Full C# source of the candidate artifact"),
+                code: z.string().optional().describe("Full C# source; omitted only for operation='remove'"),
                 targetObjectId: z.string().describe("Stable scene object id the artifact would attach to"),
                 intent: z.string().optional(),
                 interactionMode: z.enum(["L1", "L2", "L3", "L4", "L5"]).optional(),
+                operation: z.enum(LIFECYCLE_OPERATIONS).optional(),
+                existingArtifactId: z.string().optional(),
+                candidateId: z.string().optional(),
+                candidateSetId: z.string().optional(),
                 sessionId: sessionIdSchema,
                 correlationId: z.string().optional(),
                 timeoutMs: z.number().int().positive().optional(),
             },
         },
-        async ({ code, targetObjectId, intent, interactionMode, sessionId, correlationId, timeoutMs }) => {
+        async (args) => {
+            const { code, targetObjectId, intent, interactionMode, sessionId, correlationId, timeoutMs } = args;
             try {
-                const result = await bridge.proposeArtifact({ code, targetObjectId, intent, interactionMode, sessionId, correlationId, timeoutMs, simulate: true });
+                const lifecycle = validateLifecycle(args);
+                if (!lifecycle.accepted) return { content: [{ type: "text", text: `simulate_artifact lifecycle rejected: ${lifecycle.reasons.join("; ")}` }], isError: true };
+                const result = await bridge.proposeArtifact({ ...args, simulate: true });
                 memory.artifactLog.append({
                     eventType: "simulate_artifact",
                     targetObjectId,
                     correlationId: result.correlationId,
                     intent: intent || null,
                     interactionMode: interactionMode || null,
+                    operation: lifecycle.operation,
+                    supersedesArtifactId: args.existingArtifactId || null,
+                    candidateId: args.candidateId || null,
+                    candidateSetId: args.candidateSetId || null,
                     status: result.payload && result.payload.status,
                 });
                 memory.personPolicy.recordEvent({ sessionId, eventType: `simulate_artifact:${result.payload && result.payload.status}`, targetObjectId, at: Date.now() });
@@ -362,6 +446,44 @@ async function main() {
     );
 
     server.registerTool(
+        "set_person_profile_consent",
+        {
+            title: "Opt in or revoke pseudonymous cross-session learning",
+            description: "Binds this session to a pseudonymous personId only after explicit consent. Revocation deletes the persisted profile.",
+            inputSchema: { sessionId: sessionIdSchema, personId: z.string().min(1).max(128), consent: z.boolean(), retentionDays: z.number().int().min(1).max(365).optional() },
+        },
+        async (args) => ({ content: [{ type: "text", text: JSON.stringify(memory.personPolicy.setPersistenceConsent(args), null, 2) }] })
+    );
+
+    server.registerTool(
+        "reset_person_profile",
+        {
+            title: "Reset a learned person profile",
+            description: "Deletes learned cross-session preferences and revokes bindings. This is irreversible and must follow an explicit user request.",
+            inputSchema: { sessionId: sessionIdSchema, personId: z.string().min(1).max(128).optional(), confirmReset: z.literal(true) },
+        },
+        async (args) => ({ content: [{ type: "text", text: JSON.stringify(memory.personPolicy.resetProfile(args), null, 2) }] })
+    );
+
+    server.registerTool(
+        "get_experience_context",
+        {
+            title: "Inspect the current activity/experience context",
+            inputSchema: { sessionId: sessionIdSchema },
+        },
+        async ({ sessionId }) => ({ content: [{ type: "text", text: JSON.stringify(memory.experienceContext.get(sessionId), null, 2) }] })
+    );
+
+    server.registerTool(
+        "set_experience_context",
+        {
+            title: "Explicitly override the current activity/experience context",
+            inputSchema: { sessionId: sessionIdSchema, mode: z.enum(["productivity", "training", "entertainment", "exploration", "unspecified"]) },
+        },
+        async ({ sessionId, mode }) => ({ content: [{ type: "text", text: JSON.stringify(memory.experienceContext.set({ sessionId, mode }), null, 2) }] })
+    );
+
+    server.registerTool(
         "get_region_context",
         {
             title: "Query current region context (locomotion sensor)",
@@ -420,7 +542,45 @@ async function main() {
         },
         async ({ text, sessionId, correlationId }) => {
             const entry = memory.intent.record({ sessionId, text, correlationId });
-            return { content: [{ type: "text", text: JSON.stringify(entry, null, 2) }] };
+            const experienceContext = memory.experienceContext.observeIntent({ sessionId, text });
+            return { content: [{ type: "text", text: JSON.stringify({ intent: entry, experienceContext }, null, 2) }] };
+        }
+    );
+
+    server.registerTool(
+        "get_evolution_history",
+        {
+            title: "Inspect procedure evolution for an object or scene",
+            description: "Returns ordered create/edit/remove/candidate/rollback lineage from the existing temporal artifact log.",
+            inputSchema: { objectId: z.string().optional(), limit: z.number().int().positive().max(500).optional(), correlationId: z.string().optional() },
+        },
+        async ({ objectId, limit, correlationId }) => {
+            markMemoryRetrieval(correlationId, "get_evolution_history");
+            return { content: [{ type: "text", text: JSON.stringify(memory.artifactLog.evolution({ objectId, limit }), null, 2) }] };
+        }
+    );
+
+    server.registerTool(
+        "create_system_checkpoint",
+        {
+            title: "Persist the backend continuity checkpoint",
+            description: "Persists active artifact references, consented profiles, and experience contexts. Live code attachment is independently checkpointed by Unity.",
+            inputSchema: {},
+        },
+        async () => ({ content: [{ type: "text", text: JSON.stringify(memory.checkpoints.save({ artifactLog: memory.artifactLog, personPolicy: memory.personPolicy, experienceContext: memory.experienceContext, sceneEpoch: cacheExchange.workingCache.getSceneEpoch() }), null, 2) }] })
+    );
+
+    server.registerTool(
+        "resume_system_checkpoint",
+        {
+            title: "Classify checkpoint references against the current scene",
+            description: "Never silently restores missing targets; absent stable IDs are returned and logged as orphaned.",
+            inputSchema: { currentObjectIds: z.array(z.string()).min(1) },
+        },
+        async ({ currentObjectIds }) => {
+            const result = memory.checkpoints.load({ currentObjectIds });
+            for (const orphan of result.orphaned || []) memory.artifactLog.append({ eventType: "checkpoint_orphaned", ...orphan });
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
     );
 

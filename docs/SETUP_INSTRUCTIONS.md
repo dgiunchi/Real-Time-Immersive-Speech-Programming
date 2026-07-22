@@ -313,6 +313,21 @@ $env:AGENTICXR_ANTHROPIC_RETRY_BASE_MS="2000"
 $env:AGENTICXR_EVALUATION_SOURCE="live-model"
 ```
 
+Cross-session preference learning is disabled by default. For a participant who has
+explicitly consented, supply a pseudonymous study identifier (never a name or email):
+
+```powershell
+$env:AGENTICXR_PROFILE_CONSENT="true"
+$env:AGENTICXR_PERSON_ID="participant-007"
+```
+
+Unset both variables for session-only memory. A user can explicitly request profile
+reset/revocation through the agent; this calls `reset_person_profile` and deletes the
+persisted learned profile. Default retention is 90 days and can be shortened through
+the consent tool. Generated Unity procedures are checkpointed locally in
+`Application.persistentDataPath`; treat that application data as potentially
+sensitive source code.
+
 The Anthropic retry loop only retries transient failures and stops retrying after a
 mutating proposal/commit tool call, avoiding duplicate scene changes. Unity disables
 generated behaviours after repeated global frame/allocation budget violations. This

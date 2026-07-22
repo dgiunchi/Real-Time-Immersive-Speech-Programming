@@ -50,28 +50,30 @@ const AGENTS = {
             "router can perform Unity's authoritative freshness check. State plainly if scene data is " +
             "unavailable (e.g. the query times out) rather than inventing scene contents. Do not propose or " +
             "write any code.",
-        tools: [bridgeTool("query_scene"), bridgeTool("query_visual_memory"), bridgeTool("query_scene_graph"), bridgeTool("query_affordances"), bridgeTool("get_script_context")],
+        tools: [bridgeTool("query_scene"), bridgeTool("query_visual_memory"), bridgeTool("query_scene_graph"), bridgeTool("query_affordances"), bridgeTool("get_script_context"), bridgeTool("get_evolution_history"), bridgeTool("get_experience_context")],
         mcpServers: [BRIDGE_SERVER_NAME],
         model: "sonnet",
     },
     code_generator: {
-        description: "Drafts a candidate C# MonoBehaviour artifact from a grounded intent. Use after the Scene Analyst has grounded the request.",
+        description: "Drafts three distinct lifecycle candidates from a grounded intent. Use after scene grounding and history retrieval.",
         prompt:
             "You are the Code Generator for AgenticXR. Given a scene grounding summary and the user's " +
-            "natural-language intent, write exactly ONE C# class inheriting from MonoBehaviour that implements " +
-            "the requested behavior. Constraints: ASCII only; no keyboard/mouse input APIs; no System.IO, " +
+            "natural-language intent, operation (create/edit/remove), existing artifact history, and experience context, " +
+            "produce exactly THREE materially distinct candidates. Create/edit candidates contain one C# MonoBehaviour; " +
+            "edit names existingArtifactId and refines the current implementation; remove names existingArtifactId and has no code. " +
+            "Constraints: ASCII only; no keyboard/mouse input APIs; no System.IO, " +
             "System.Net, System.Diagnostics, or reflection; a Component name that does not collide with a " +
             "common Unity type; if a new object is instantiated, parent it under transform; default any speed " +
-            "to 1; tag the target 'game'. Output ONLY the code inside a ```csharp fenced block, no prose before " +
-            "or after it.",
+            "to 1; tag the target 'game'. Output ONLY a JSON array of three objects with candidateId, operation, " +
+            "existingArtifactId, approach, experienceMode, and code (null only for remove).",
         tools: [],
         model: "sonnet",
     },
     validator_critic: {
         description: "Independently reviews a candidate artifact against the original intent before it is proposed to Unity. Use after code_generator, before any propose/simulate call.",
         prompt:
-            "You are the Validator/Critic for AgenticXR - an independent reviewer, not the code's author, and " +
-            "you must not simply trust the generator's own framing of what it wrote. Given the candidate C# " +
+            "You are the Validator/Critic for AgenticXR - an independent reviewer, not the code's author. Review ONE " +
+            "candidate at a time; every candidate must receive its own verdict and Verification Space dry-run. Given the candidate C# " +
             "code, the original intent, the scene grounding summary, and how this turn was triggered: " +
             "(1) check it only uses UnityEngine APIs and none of the denied namespaces (System.IO, System.Net, " +
             "System.Diagnostics, reflection); (2) check it plausibly matches the stated intent and the object " +
@@ -111,9 +113,10 @@ const AGENTS = {
         prompt:
             "You are the Version/Memory agent for AgenticXR. Given the final outcome of an authoring turn, call " +
             `${bridgeTool("commit_memory_event")} to record it if it was not already logged automatically by ` +
-            `propose_artifact/simulate_artifact, and call ${bridgeTool("get_artifact_history")} to confirm the ` +
-            "object's history now reflects it. Be terse - report only the final logged state, not a narrative.",
-        tools: [bridgeTool("commit_memory_event"), bridgeTool("get_artifact_history")],
+            `propose_artifact/simulate_artifact, and call ${bridgeTool("get_artifact_history")} plus ` +
+            `${bridgeTool("get_evolution_history")} to confirm the object's version lineage reflects it. ` +
+            "Be terse - report only the final logged state, not a narrative.",
+        tools: [bridgeTool("commit_memory_event"), bridgeTool("get_artifact_history"), bridgeTool("get_evolution_history")],
         mcpServers: [BRIDGE_SERVER_NAME],
         model: "haiku",
     },
@@ -129,24 +132,36 @@ timeline (see Server/memory/timeline_registry.js):
    and correlationId, before delegating to any subagent. This is a stand-in for real
    speech capture (not wired into this pipeline yet - see docs/next-build-prompt.md
    §1.3), not a claim that live speech was transcribed.
-   Then call ${bridgeTool("send_agent_status")} with state "thinking" and a short detail.
+   If and only if the prompt says cross-session profile consent is true and supplies a
+   pseudonymous personId, call ${bridgeTool("set_person_profile_consent")} before reading
+   person policy. Never infer consent. Then call ${bridgeTool("send_agent_status")} with
+   state "thinking" and a short detail. If the user explicitly asks to forget/reset
+   learning, call ${bridgeTool("reset_person_profile")} with confirmReset=true.
 1. Call ${bridgeTool("send_agent_status")} with state "querying_memory", then use
    scene_analyst to ground the request in the current scene.
-2. code_generator - draft a candidate artifact from the grounded intent.
-3. Call ${bridgeTool("send_agent_status")} with state "validating", then use
-   validator_critic to independently review the candidate; read its JSON verdict.
-   If pass is false, stop and explain why instead of proceeding.
-4. conflict_resolver - check the target object is safe to modify right now.
+2. Classify the lifecycle operation as create, edit, or remove. Retrieve
+   ${bridgeTool("get_evolution_history")}, ${bridgeTool("get_person_policy")}, and
+   ${bridgeTool("get_experience_context")}, then use code_generator to draft exactly
+   three candidates sharing one candidateSetId.
+3. Call ${bridgeTool("send_agent_status")} with state "validating". For EACH candidate,
+   use validator_critic independently and call ${bridgeTool("simulate_artifact")}.
+   Never rank an unvalidated or unsimulated candidate.
+4. Call ${bridgeTool("rank_artifact_candidates")} with all three verdicts and dry-run
+   outcomes. Stop if none is eligible. Rejected alternatives remain in evolution
+   history and are shown only when an L5 user explicitly asks for alternatives.
+5. conflict_resolver - check the target object is safe to modify right now.
    If decision is not "proceed", stop and explain why instead of proceeding.
-5. Call ${bridgeTool("send_agent_status")} with state "ready_to_preview", then call
+6. Call ${bridgeTool("send_agent_status")} with state "ready_to_preview", then call
    ${bridgeTool("propose_artifact")} yourself (this call belongs to you, the
    router, not a subagent) with the candidate code, targetObjectId, intent,
    authoringMode, interactionMode, validationState="accepted", validationSummary,
    riskScore, requiredPermissions, expectedSideEffects, triggerSource, reversible,
    localOnly, and detailResolved from the validator's verdict,
    and sceneEpoch, snapshotId, objectRevision, snapshotTakenAt from the Scene Analyst,
-   plus sessionId and the shared correlationId. Never omit freshness metadata.
-6. version_memory - confirm the outcome is logged.
+   plus operation, existingArtifactId, candidateId, candidateSetId, candidateCount,
+   selectionReason, experienceMode, sessionId and the shared correlationId. Never omit freshness metadata.
+   Edit and remove always require confirmation and may never use automatic mode.
+7. version_memory - confirm the outcome is logged and query evolution history.
 
 Narrate each step in one short sentence before moving to the next. If any stage fails,
 rejects, or times out, stop immediately and explain the reason in plain language
@@ -211,6 +226,8 @@ async function main() {
         `Authoring intent: "${intent}"\n` +
         `Target object id: ${targetObjectId}\n` +
         `Session id: ${sessionId}\n` +
+        `Cross-session profile consent: ${String(process.env.AGENTICXR_PROFILE_CONSENT || "false").toLowerCase() === "true"}\n` +
+        `Pseudonymous person id: ${process.env.AGENTICXR_PERSON_ID || "not-provided"}\n` +
         `correlationId to reuse for every subagent and tool call in this turn: ${correlationId}`;
 
     const maxAttempts = Math.max(1, Number(process.env.AGENTICXR_ANTHROPIC_MAX_ATTEMPTS) || 3);

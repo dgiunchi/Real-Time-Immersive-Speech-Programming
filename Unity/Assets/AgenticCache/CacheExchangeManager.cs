@@ -1,6 +1,7 @@
 using RoslynCSharp;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using Ubiq.Messaging;
 using UnityEngine;
@@ -24,6 +25,13 @@ namespace AgenticCache
             public string[] requiredPermissions;
             public string expectedSideEffects;
             public string artifactVersion;
+            public string operation;
+            public string existingArtifactId;
+            public string candidateId;
+            public string candidateSetId;
+            public int candidateCount;
+            public string selectionReason;
+            public string experienceMode;
         }
 
         [Serializable] private sealed class BackfillRequestPayload { public bool requestSnapshot; public long lastSeenSeq; }
@@ -32,6 +40,15 @@ namespace AgenticCache
         [Serializable] private sealed class AgentUtterancePayload { public string text; }
         [Serializable] private sealed class CacheInvalidationPayload { public string reason; }
         [Serializable] private sealed class RollbackPayload { public string artifactId; }
+        [Serializable] private sealed class CheckpointArtifact
+        {
+            public string artifactId; public string correlationId; public string targetObjectId; public string code;
+            public string artifactVersion; public string rollbackPointer;
+        }
+        [Serializable] private sealed class RuntimeCheckpoint
+        {
+            public string schemaVersion = "1.0"; public string sceneName; public long savedAt; public CheckpointArtifact[] activeArtifacts;
+        }
 
         private sealed class PendingArtifact
         {
@@ -49,6 +66,10 @@ namespace AgenticCache
             public ScriptProxy proxy;
             public AppliedArtifact previous;
             public CacheEnvelope proposalEnvelope;
+            public string operation;
+            public string code;
+            public string artifactVersion;
+            public string rollbackPointer;
         }
 
         public LocalXRCache localCache = new LocalXRCache();
@@ -72,6 +93,7 @@ namespace AgenticCache
         private float nextHeartbeat;
         private string latestArtifactId;
         private string observedSelectedObjectId;
+        private string CheckpointPath => Path.Combine(Application.persistentDataPath, "agenticxr-runtime-checkpoint.json");
 
         private void Start()
         {
@@ -87,7 +109,10 @@ namespace AgenticCache
                 localCache.SetLatestSnapshotId(sceneRegistry.SnapshotId);
             }
             ShowStatus("ready", "Connected to the XR runtime; waiting for Claude.");
+            Invoke(nameof(RestoreRuntimeCheckpoint), 0.5f);
         }
+
+        private void OnApplicationQuit() => SaveRuntimeCheckpoint();
 
         private void OnEnable() => SceneManager.activeSceneChanged += OnActiveSceneChanged;
         private void OnDisable() => SceneManager.activeSceneChanged -= OnActiveSceneChanged;
@@ -224,9 +249,11 @@ namespace AgenticCache
         {
             var payload = Parse<ArtifactProposalPayload>(envelope.payload);
             var target = sceneRegistry != null ? sceneRegistry.Find(envelope.targetObjectId) : null;
-            if (payload == null || string.IsNullOrWhiteSpace(payload.code))
+            var operation = payload != null && !string.IsNullOrEmpty(payload.operation) ? payload.operation : "create";
+            var removes = string.Equals(operation, "remove", StringComparison.OrdinalIgnoreCase);
+            if (payload == null || (!removes && string.IsNullOrWhiteSpace(payload.code)))
             {
-                SendArtifactResult(envelope, "error", null, "ArtifactProposal contained no C# code.");
+                SendArtifactResult(envelope, "error", null, "Create/edit ArtifactProposal contained no C# code.");
                 return;
             }
             if (target == null)
@@ -246,16 +273,37 @@ namespace AgenticCache
                 return;
             }
 
+            if ((string.Equals(operation, "edit", StringComparison.OrdinalIgnoreCase) || removes) &&
+                (string.IsNullOrEmpty(payload.existingArtifactId) ||
+                 !activeByObjectId.TryGetValue(envelope.targetObjectId, out var currentArtifact) ||
+                 currentArtifact.artifactId != payload.existingArtifactId))
+            {
+                SendArtifactResult(envelope, "rejected", null, operation + " references no active artifact.");
+                return;
+            }
+            if ((string.Equals(operation, "edit", StringComparison.OrdinalIgnoreCase) || removes) &&
+                string.Equals(envelope.authoringMode, "automatic", StringComparison.OrdinalIgnoreCase))
+            {
+                SendArtifactResult(envelope, "rejected", null, operation + " requires explicit confirmation.");
+                return;
+            }
+
             ShowStatus("validating", "Testing Claude's code on a staging clone.");
             var verificationStartedAt = Time.realtimeSinceStartupAsDouble;
-            var clone = Instantiate(target);
-            clone.name = target.name + " [AgenticXR Verification]";
-            clone.SetActive(false);
+            GameObject clone = null;
             ScriptProxy stageProxy = null;
-            var stageError = compiler == null ? "The Roslyn runtime compiler is unavailable in this scene." : null;
-            var staged = compiler != null && compiler.TryCompileAndAttach(clone, payload.code, out stageProxy, out stageError);
-            if (stageProxy != null) stageProxy.Dispose();
-            Destroy(clone);
+            string stageError = null;
+            var staged = removes;
+            if (!removes)
+            {
+                clone = Instantiate(target);
+                clone.name = target.name + " [AgenticXR Verification]";
+                clone.SetActive(false);
+                stageError = compiler == null ? "The Roslyn runtime compiler is unavailable in this scene." : null;
+                staged = compiler != null && compiler.TryCompileAndAttach(clone, payload.code, out stageProxy, out stageError);
+                if (stageProxy != null) stageProxy.Dispose();
+                Destroy(clone);
+            }
             envelope.verificationDurationMs = (Time.realtimeSinceStartupAsDouble - verificationStartedAt) * 1000.0;
             if (!staged)
             {
@@ -356,6 +404,12 @@ namespace AgenticCache
                 RejectForCommit(correlationId, proposal, commitRequest, freshnessError);
                 return;
             }
+            var operation = !string.IsNullOrEmpty(proposal.payload.operation) ? proposal.payload.operation : "create";
+            if (string.Equals(operation, "remove", StringComparison.OrdinalIgnoreCase))
+            {
+                CommitRemoval(correlationId, proposal, commitRequest, userApproved);
+                return;
+            }
             ScriptProxy proxy = null;
             string error = null;
             var commitAttachStartedAt = Time.realtimeSinceStartupAsDouble;
@@ -383,6 +437,10 @@ namespace AgenticCache
                 proxy = proxy,
                 previous = previous,
                 proposalEnvelope = proposal.envelope,
+                operation = operation,
+                code = proposal.payload.code,
+                artifactVersion = proposal.payload.artifactVersion,
+                rollbackPointer = previous != null ? previous.artifactId : null,
             };
             appliedByArtifactId[artifactId] = applied;
             activeByObjectId[applied.targetObjectId] = applied;
@@ -396,6 +454,40 @@ namespace AgenticCache
             if (commitRequest != null) SendCommitResult(commitRequest, true, artifactId, null);
             else SendArtifactResult(proposal.envelope, "committed", artifactId, null);
             ShowStatus("committed", "The validated behaviour is now live. Use Undo to revert it.");
+            SaveRuntimeCheckpoint();
+        }
+
+        private void CommitRemoval(string correlationId, PendingArtifact proposal, CacheEnvelope commitRequest, bool userApproved)
+        {
+            if (!appliedByArtifactId.TryGetValue(proposal.payload.existingArtifactId, out var removed) || removed.targetObjectId != proposal.envelope.targetObjectId)
+            {
+                RejectForCommit(correlationId, proposal, commitRequest, "remove_target_not_active");
+                return;
+            }
+            if (removed.proxy != null && removed.proxy.MonoBehaviourInstance != null)
+            {
+                executionWatchdog?.Unregister(removed.proxy.MonoBehaviourInstance);
+                removed.proxy.MonoBehaviourInstance.enabled = false;
+            }
+            var artifactId = "unity-remove-" + correlationId;
+            var tombstone = new AppliedArtifact
+            {
+                artifactId = artifactId, correlationId = correlationId, targetObjectId = removed.targetObjectId,
+                previous = removed, proposalEnvelope = proposal.envelope, operation = "remove",
+                artifactVersion = proposal.payload.artifactVersion, rollbackPointer = removed.artifactId,
+            };
+            appliedByArtifactId[artifactId] = tombstone;
+            activeByObjectId.Remove(removed.targetObjectId);
+            latestArtifactId = artifactId;
+            pending.Remove(correlationId);
+            localCache.ClearProposal(correlationId);
+            localCache.SetRollbackPointer(artifactId, removed.artifactId);
+            if (consentPanel != null) consentPanel.HideProposal();
+            if (userApproved) SendUserDecision(proposal.envelope, "approved", null);
+            if (commitRequest != null) SendCommitResult(commitRequest, true, artifactId, null);
+            else SendArtifactResult(proposal.envelope, "removed", artifactId, null);
+            ShowStatus("removed", "The generated behaviour was removed. Use Undo to restore it.");
+            SaveRuntimeCheckpoint();
         }
 
         private void RejectForCommit(string correlationId, PendingArtifact proposal, CacheEnvelope commitRequest, string reason)
@@ -463,7 +555,75 @@ namespace AgenticCache
             }
             appliedByArtifactId.Remove(artifactId);
             ShowStatus("rolled_back", "The last generated behaviour was removed.");
+            SaveRuntimeCheckpoint();
             return true;
+        }
+
+        private void SaveRuntimeCheckpoint()
+        {
+            try
+            {
+                var entries = new List<CheckpointArtifact>();
+                foreach (var item in activeByObjectId.Values)
+                {
+                    if (item == null || string.IsNullOrEmpty(item.code)) continue;
+                    entries.Add(new CheckpointArtifact
+                    {
+                        artifactId = item.artifactId, correlationId = item.correlationId, targetObjectId = item.targetObjectId,
+                        code = item.code, artifactVersion = item.artifactVersion, rollbackPointer = item.rollbackPointer,
+                    });
+                }
+                var checkpoint = new RuntimeCheckpoint
+                {
+                    sceneName = SceneManager.GetActiveScene().name,
+                    savedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    activeArtifacts = entries.ToArray(),
+                };
+                var temporary = CheckpointPath + ".tmp";
+                File.WriteAllText(temporary, JsonUtility.ToJson(checkpoint, true));
+                if (File.Exists(CheckpointPath)) File.Delete(CheckpointPath);
+                File.Move(temporary, CheckpointPath);
+            }
+            catch (Exception error) { Debug.LogError("[AgenticXR] checkpoint save failed: " + error.Message); }
+        }
+
+        private void RestoreRuntimeCheckpoint()
+        {
+            if (!File.Exists(CheckpointPath) || compiler == null || sceneRegistry == null) return;
+            RuntimeCheckpoint checkpoint;
+            try { checkpoint = JsonUtility.FromJson<RuntimeCheckpoint>(File.ReadAllText(CheckpointPath)); }
+            catch (Exception error) { Debug.LogError("[AgenticXR] checkpoint load failed: " + error.Message); return; }
+            if (checkpoint == null || checkpoint.activeArtifacts == null) return;
+            foreach (var entry in checkpoint.activeArtifacts)
+            {
+                var target = checkpoint.sceneName == SceneManager.GetActiveScene().name ? sceneRegistry.Find(entry.targetObjectId) : null;
+                if (target == null)
+                {
+                    Debug.LogError("[AgenticXR] checkpoint orphaned artifact " + entry.artifactId + ": stable object is absent from current scene.");
+                    SendDecision(NewEnvelope(CacheMessageTypes.RollbackResult, entry.correlationId, entry.targetObjectId,
+                        "{\"status\":\"checkpoint_orphaned\",\"artifactId\":\"" + AgenticSceneRegistry.Escape(entry.artifactId) + "\"}"));
+                    continue;
+                }
+                if (!compiler.TryCompileAndAttach(target, entry.code, out var proxy, out var error))
+                {
+                    Debug.LogError("[AgenticXR] checkpoint restore failed for " + entry.artifactId + ": " + error);
+                    SendDecision(NewEnvelope(CacheMessageTypes.RollbackResult, entry.correlationId, entry.targetObjectId,
+                        "{\"status\":\"checkpoint_restore_failed\",\"artifactId\":\"" + AgenticSceneRegistry.Escape(entry.artifactId) + "\"}"));
+                    continue;
+                }
+                var restored = new AppliedArtifact
+                {
+                    artifactId = entry.artifactId, correlationId = entry.correlationId, targetObjectId = entry.targetObjectId,
+                    code = entry.code, artifactVersion = entry.artifactVersion, rollbackPointer = entry.rollbackPointer,
+                    proxy = proxy, operation = "resume",
+                };
+                appliedByArtifactId[restored.artifactId] = restored;
+                activeByObjectId[restored.targetObjectId] = restored;
+                latestArtifactId = restored.artifactId;
+                executionWatchdog?.Register(proxy.MonoBehaviourInstance, restored.artifactId);
+                SendDecision(NewEnvelope(CacheMessageTypes.RollbackResult, entry.correlationId, entry.targetObjectId,
+                    "{\"status\":\"checkpoint_resumed\",\"artifactId\":\"" + AgenticSceneRegistry.Escape(entry.artifactId) + "\"}"));
+            }
         }
 
         public void ReportExecutionWatchdog(string artifactId, string reason, float frameMs, long allocationBytes)
@@ -507,6 +667,10 @@ namespace AgenticCache
             response.expectedSideEffects = request.expectedSideEffects;
             response.artifactVersion = request.artifactVersion;
             response.artifactId = artifactId;
+            response.operation = request.operation;
+            response.existingArtifactId = request.existingArtifactId;
+            response.candidateId = request.candidateId;
+            response.candidateSetId = request.candidateSetId;
             response.verificationDurationMs = request.verificationDurationMs;
             response.commitAttachDurationMs = request.commitAttachDurationMs;
             SendDecision(response);

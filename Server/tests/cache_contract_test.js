@@ -10,6 +10,11 @@ const { CacheReconciler } = require("../cache/cache_reconciler");
 const { ProposalGate } = require("../cache/proposal_gate");
 const { makeCacheEnvelope, toWireFormat, fromWireFormat, STRINGIFY_PAYLOAD_FOR_UNITY } = require("../cache/protocol");
 const { checkModePolicy } = require("../orchestrator/mode_policy");
+const { rankCandidates, validateLifecycle } = require("../orchestrator/candidate_selector");
+const { PersonPolicyStore } = require("../memory/person_policy");
+const { ExperienceContextStore } = require("../memory/experience_context");
+const { ArtifactLog } = require("../memory/artifact_log");
+const { CheckpointStore } = require("../memory/checkpoint_store");
 
 const root = path.resolve(__dirname, "..");
 let assertions = 0;
@@ -112,6 +117,50 @@ ok(!checkModePolicy({ interactionMode: "L4", authoringMode: "automatic", riskSco
 ok(!checkModePolicy({ interactionMode: "L3", authoringMode: "semi_auto_confirm",
     triggerSource: "clarification", detailResolved: false }).accepted,
 "L3 cannot continue before clarification is resolved");
+
+ok(!validateLifecycle({ operation: "remove" }).accepted, "remove requires an existing artifact");
+ok(validateLifecycle({ operation: "remove", existingArtifactId: "artifact-1" }).accepted, "remove is a first-class no-code operation");
+ok(!validateLifecycle({ operation: "edit", existingArtifactId: "artifact-1" }).accepted, "edit requires replacement code");
+const candidateResult = rankCandidates([
+    { candidateId: "safe", operation: "create", code: "class Safe {}", validationState: "accepted", simulationStatus: "simulated", riskScore: 0.1, authoringMode: "semi_auto_confirm", experienceMode: "training" },
+    { candidateId: "risky", operation: "create", code: "class Risky {}", validationState: "accepted", simulationStatus: "simulated", riskScore: 0.8, authoringMode: "semi_auto_confirm", experienceMode: "training" },
+    { candidateId: "broken", operation: "create", code: "class Broken {}", validationState: "accepted", simulationStatus: "error", riskScore: 0.0, authoringMode: "semi_auto_confirm", experienceMode: "training" },
+], { experienceContext: { mode: "training" } });
+equal(candidateResult.selected.candidateId, "safe", "ranking selects the lowest-risk verified context-fit candidate");
+ok(!candidateResult.ranked.find((candidate) => candidate.candidateId === "broken").ranking.eligible, "failed dry-run candidate cannot be selected");
+
+const testDataDir = path.join(root, "evaluation", "data", "contract-test");
+fs.rmSync(testDataDir, { recursive: true, force: true });
+fs.mkdirSync(testDataDir, { recursive: true });
+const profilePath = path.join(testDataDir, "profiles.json");
+const people = new PersonPolicyStore({ filePath: profilePath });
+people.setPersistenceConsent({ sessionId: "session-a", personId: "participant-007", consent: true, retentionDays: 30 });
+for (let index = 0; index < 3; index += 1) people.recordEvent({ sessionId: "session-a", eventType: "rejected", authoringMode: "automatic" });
+const learnedPolicy = people.getPolicy({ sessionId: "session-a" });
+ok(learnedPolicy.persistenceConsent, "cross-session learning requires explicit opt-in");
+ok(!checkModePolicy({ interactionMode: "L1", authoringMode: "automatic", riskScore: 0.1, triggerSource: "system_opportunity", reversible: true, localOnly: true, userPreference: learnedPolicy }).accepted,
+    "learned rejection history can make autonomy stricter");
+const reloadedPeople = new PersonPolicyStore({ filePath: profilePath });
+ok(reloadedPeople.snapshotConsentedProfiles().length === 1, "consented pseudonymous profile survives restart");
+ok(people.resetProfile({ sessionId: "session-a" }).reset, "profile reset/revocation deletes learned state");
+
+const contextPath = path.join(testDataDir, "context.json");
+const contexts = new ExperienceContextStore({ filePath: contextPath });
+equal(contexts.observeIntent({ sessionId: "session-a", text: "guide me through this safety repair procedure" }).mode, "training", "experience context is inferred from intent");
+contexts.set({ sessionId: "session-a", mode: "productivity" });
+equal(contexts.observeIntent({ sessionId: "session-a", text: "start a fun game" }).mode, "productivity", "explicit context override wins over inference");
+equal(new ExperienceContextStore({ filePath: contextPath }).get("session-a").mode, "productivity", "experience context survives restart");
+
+const evolutionLog = new ArtifactLog({ filePath: path.join(testDataDir, "artifacts.jsonl") });
+evolutionLog.append({ eventType: "propose_artifact", operation: "create", targetObjectId: "object-e", artifactId: "artifact-v1", artifactVersion: "1", status: "committed" });
+evolutionLog.append({ eventType: "candidate_rejected", operation: "edit", targetObjectId: "object-e", candidateId: "candidate-b", candidateSetId: "set-1", status: "not_selected" });
+evolutionLog.append({ eventType: "propose_artifact", operation: "edit", targetObjectId: "object-e", artifactId: "artifact-v2", artifactVersion: "2", supersedesArtifactId: "artifact-v1", status: "committed" });
+equal(evolutionLog.evolution({ objectId: "object-e" })[1].candidateId, "candidate-b", "evolution history retains rejected alternatives");
+equal(evolutionLog.activeArtifacts()[0].artifactId, "artifact-v2", "evolution history reconstructs current artifact");
+const checkpoints = new CheckpointStore({ filePath: path.join(testDataDir, "checkpoint.json") });
+checkpoints.save({ artifactLog: evolutionLog, personPolicy: people, experienceContext: contexts, sceneEpoch: "epoch-test" });
+const resumed = checkpoints.load({ currentObjectIds: ["different-object"] });
+equal(resumed.orphaned.length, 1, "checkpoint explicitly classifies missing object references as orphaned");
 
 const unityManager = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CacheExchangeManager.cs"), "utf8");
 const unityPublisher = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CachePublisher.cs"), "utf8");

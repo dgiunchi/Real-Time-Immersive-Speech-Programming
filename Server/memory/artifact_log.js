@@ -14,6 +14,7 @@ class ArtifactLog {
         this.filePath = filePath || path.join(__dirname, "data", "artifact_log.jsonl");
         fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
         this.byObjectId = new Map(); // objectId -> [entries]
+        this.byArtifactId = new Map();
         this._loadExisting();
     }
 
@@ -30,6 +31,7 @@ class ArtifactLog {
     }
 
     _index(entry) {
+        if (entry.artifactId) this.byArtifactId.set(entry.artifactId, entry);
         if (!entry.targetObjectId) return;
         if (!this.byObjectId.has(entry.targetObjectId)) this.byObjectId.set(entry.targetObjectId, []);
         this.byObjectId.get(entry.targetObjectId).push(entry);
@@ -47,6 +49,37 @@ class ArtifactLog {
             ? (this.byObjectId.get(objectId) || [])
             : Array.from(this.byObjectId.values()).flat().sort((a, b) => a.loggedAt - b.loggedAt);
         return entries.slice(-limit).reverse();
+    }
+
+    evolution({ objectId, limit = 100 } = {}) {
+        return this.history({ objectId, limit }).reverse().map((entry) => ({
+            at: entry.loggedAt || entry.at,
+            eventType: entry.eventType,
+            operation: entry.operation || (entry.eventType && entry.eventType.includes("rollback") ? "rollback" : null),
+            targetObjectId: entry.targetObjectId || null,
+            artifactId: entry.artifactId || null,
+            artifactVersion: entry.artifactVersion || null,
+            supersedesArtifactId: entry.supersedesArtifactId || entry.rollbackPointer || null,
+            candidateId: entry.candidateId || null,
+            candidateSetId: entry.candidateSetId || null,
+            selectionReason: entry.selectionReason || null,
+            intent: entry.intent || null,
+            status: entry.status || null,
+            reason: entry.reason || null,
+            correlationId: entry.correlationId || null,
+        }));
+    }
+
+    activeArtifacts() {
+        const active = new Map();
+        for (const entry of this.history({ limit: Number.MAX_SAFE_INTEGER }).reverse()) {
+            if (!entry.targetObjectId) continue;
+            const operation = entry.operation || "create";
+            const committed = entry.status === "committed" || entry.status === "removed" || entry.eventType === "commitaccepted";
+            if (committed && operation !== "remove") active.set(entry.targetObjectId, entry);
+            if ((committed && operation === "remove") || /rollback|removed/.test(entry.eventType || "")) active.delete(entry.targetObjectId);
+        }
+        return Array.from(active.values());
     }
 }
 

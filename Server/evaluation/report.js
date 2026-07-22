@@ -85,6 +85,9 @@ function buildReport(events, source) {
     }
     const resultEvents = filtered.filter((event) => event.eventType === "orchestrator_result");
     const usage = resultEvents.map((event) => event.usage).filter(Boolean);
+    const candidateSelections = filtered.filter((event) => event.eventType === "candidate_selection");
+    const selectedCorrelations = new Set(candidateSelections.map((event) => event.correlationId));
+    const selectedTurns = turns.filter((turn) => selectedCorrelations.has(turn.correlationId));
 
     return {
         schemaVersion: "1.0",
@@ -116,6 +119,15 @@ function buildReport(events, source) {
             backfilled: reconcile.filter((event) => event.isBackfill && event.outcome === "accepted").length,
         },
         modelUsage: { resultEvents: resultEvents.length, usage },
+        multiCandidate: {
+            selectionEvents: candidateSelections.length,
+            candidatesGenerated: candidateSelections.reduce((sum, event) => sum + (event.candidateCount || 0), 0),
+            eligibleCandidates: candidateSelections.reduce((sum, event) => sum + (event.eligibleCount || 0), 0),
+            selectedScores: statistics(candidateSelections.map((event) => event.selectedScore)),
+            selectedTurnsWithValidatedOutcome: selectedTurns.filter((turn) => !!turn.finalEnvelopeType).length,
+            selectedTurnsCommittedWithoutRevision: selectedTurns.filter((turn) => turn.finalStatus === "committed").length,
+            note: "Committed-without-revision requires a selected candidate and a committed result on the same correlationId.",
+        },
         turns,
     };
 }

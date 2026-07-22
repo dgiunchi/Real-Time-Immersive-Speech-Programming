@@ -46,6 +46,10 @@ namespace AgenticCache
         public string artifactVersion;
         public string artifactId;
         public string rollbackPointer;
+        public string operation;
+        public string existingArtifactId;
+        public string candidateId;
+        public string candidateSetId;
         public double verificationDurationMs;
         public double commitAttachDurationMs;
 

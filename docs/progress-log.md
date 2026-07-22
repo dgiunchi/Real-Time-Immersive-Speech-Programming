@@ -511,3 +511,47 @@ Current acceptance boundary: source, deterministic tests, mock end-to-end transp
 and Unity compilation pass. No `ANTHROPIC_API_KEY` or `STT_HTTP_URL` was available in
 the execution environment, so a live Claude turn, real speech, Unity Play Mode
 proposal execution, Quest interaction, and user-study measurements remain pending.
+
+## 2026-07-22 — Five paper-design extensions
+
+Executed `code-implement-paper-design-2026-07-22.md`. The prerequisite paper-
+strengthening prompt had not been executed: `main.tex` still described single-
+candidate verification, H1--H3 only, and missing person persistence/revocation. The
+detailed five-capability engineering prompt was therefore used as the contract.
+
+Extended the existing architecture with: explicit-opt-in pseudonymous cross-session
+profiles and reset/retention; best-of-three candidate generation with independent
+validation/dry-run eligibility and deterministic risk/preference/context ranking;
+typed create/edit/remove lifecycle operations; ordered evolution lineage in the
+existing artifact log; inspectable/overridable experience context; and backend plus
+Unity checkpoint/resume with explicit orphan/failure events. Learned preferences can
+only restrict automatic execution, never loosen L1--L5, Proposal Gate, or Unity gates.
+
+Study sequencing prioritizes multi-candidate selection because it can be measured in
+one session as first-proposal acceptance without revision. Cross-session learning
+requires longitudinal study; checkpoint/resume is an engineering test; evolution and
+experience continuity are better transparency/consistency probes. This scope does not
+supersede the still-open live Anthropic, Unity Play Mode, Quest, and real-metrics work.
+
+Verification performed:
+
+- `cd Server; npm test` — PASS, 121 assertions, including JS syntax checks and
+  deterministic coverage of lifecycle invariants, candidate eligibility/ranking,
+  profile opt-in/persistence/reset, experience override, evolution lineage, and
+  checkpoint orphan classification.
+- `cd Server; npm run test:integration` — PASS with a real local Ubiq room and mock
+  Unity peer. The run independently simulated three candidates, ranked and committed
+  the selected candidate, then simulated/committed edit and remove operations. It also
+  detected one deliberate cache gap, accepted its backfill, and suppressed duplicates.
+- Mock report — 11 turns; validated-result median 314 ms (mean 880.55 ms); three
+  generated/eligible candidates; one selected candidate validated and committed
+  without revision; 13 cache reconciliation events, one gap, one backfill, and five
+  duplicates. These are mock technical timings, not live model/Unity/headset evidence.
+- Unity `6000.3.9f1 -batchmode -nographics -quit` — successful compile; Tundra reported
+  build success and the log ended `Exiting batchmode successfully now!`; no C# compiler
+  errors were found.
+
+Acceptance boundary: the backend behaviors are deterministic-tested, the extended
+transport/lifecycle is mock-integrated, and Unity source compiles. Cross-session use by
+real participants, a live Claude turn, Unity Play Mode restart/resume, Quest speech and
+interaction, and study outcomes remain unverified.

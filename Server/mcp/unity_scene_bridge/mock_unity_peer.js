@@ -238,6 +238,7 @@ new Listener(CHANNELS.ARTIFACT_CHANNEL, (envelope) => {
     // Legacy/default: ArtifactProposal (docs/agentic-xr-architecture.md)
     envelope = fromWireFormat(envelope);
     const isSimulate = envelope.payload && envelope.payload.mode === "simulate";
+    const operation = envelope.payload && envelope.payload.operation || "create";
     const needsConfirm = !isSimulate && envelope.authoringMode && envelope.authoringMode !== "automatic";
     console.log(
         `[mock_unity_peer] ArtifactProposal received (correlationId ${envelope.correlationId}, mode ${envelope.authoringMode}, ` +
@@ -266,8 +267,13 @@ new Listener(CHANNELS.ARTIFACT_CHANNEL, (envelope) => {
                   sessionId: envelope.sessionId,
                   originAgent: "mock_unity_peer",
                   targetObjectId: envelope.targetObjectId,
-                  payload: { status: "committed", artifactId: `mock-${envelope.correlationId.slice(0, 8)}` },
+                  payload: { status: operation === "remove" ? "removed" : "committed", artifactId: `mock-${envelope.correlationId.slice(0, 8)}`, operation },
               });
+        result.operation = operation;
+        result.existingArtifactId = envelope.payload && envelope.payload.existingArtifactId || null;
+        result.candidateId = envelope.payload && envelope.payload.candidateId || null;
+        result.candidateSetId = envelope.payload && envelope.payload.candidateSetId || null;
+        result.artifactVersion = envelope.payload && envelope.payload.artifactVersion || "1";
         scene.send(CHANNELS.USER_DECISION, result);
         console.log(`[mock_unity_peer] replied ArtifactResult (${result.payload.status}) for correlationId ${envelope.correlationId}`);
     }, isSimulate ? 300 : needsConfirm ? 1500 : 200);
@@ -300,7 +306,10 @@ roomClient.on("OnJoinedRoom", () => {
     // the room before the sequence fires - Ubiq does not replay missed messages to
     // late joiners.
     const demoSession = "cache-test-session";
-    const startDelayMs = 12000;
+    // The smoke flow now exercises three candidate dry-runs plus create/edit/remove
+    // before the cache client starts, so leave enough time for that first MCP client
+    // to finish while still ensuring the second client observes the deliberate gap.
+    const startDelayMs = 45000;
     console.log(`[mock_unity_peer] will start the automatic Cache Exchange demo sequence in ${startDelayMs}ms - start the backend MCP client now if it isn't running yet`);
     setTimeout(() => sendSnapshot(demoSession), startDelayMs);
     setTimeout(() => sendDelta(demoSession, "obj-mock-0001", "color -> red"), startDelayMs + 400); // seq 1
