@@ -53,6 +53,7 @@ Server/config/local.json
 # Unity generated folders
 **/[Ll]ibrary/
 **/[Tt]emp/
+**/.utmp/
 **/[Oo]bj/
 **/[Bb]uild/
 **/[Bb]uilds/

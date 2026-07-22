@@ -1,2 +1,0 @@
-C:\Users\valla\UnityProjects\GitHub\Real-Time-Immersive-Speech-Programming\Unity\Library\Bee\Android\Prj\Mono2x\Gradle\unityLibrary\src\main\cpp\CMakeLists.txt
-C:\Users\valla\UnityProjects\GitHub\Real-Time-Immersive-Speech-Programming\Unity\Library\Bee\Android\Prj\Mono2x\Gradle\unityLibrary\src\main\cpp\FramePacing\CMakeLists.txt

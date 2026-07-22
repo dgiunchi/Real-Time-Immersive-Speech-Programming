@@ -64,7 +64,7 @@
 <header>
   <span class="dot" id="liveDot"></span>
   <h1>Wizard-of-Oz Control Panel</h1>
-  <span id="sessionBadge" class="hint">no session</span>
+  <span id="sessionBadge" class="hint">⚠ warm-up — no session started (data saved as “warmup”, not participant data)</span>
   <a href="/questionnaire" target="_blank" style="margin-left:auto; color:var(--accent); font-size:13px;">Open questionnaire ↗</a>
 </header>
 
@@ -112,6 +112,8 @@
       <h2>Inject response</h2>
       <p class="sub">Click to send the pre-scripted outcome into the VR scene.</p>
       <div class="responses" id="responses"></div>
+      <button class="btn-accent" style="width:100%;margin-top:12px;background:#7a2b2b;" onclick="resetScene()">Clear scene / Reset for next participant</button>
+      <p class="sub" style="margin-top:6px;">Destroys everything created so far. Use it after free-play (before the real tasks) and between participants.</p>
     </div>
 
     <div class="card">
@@ -192,6 +194,11 @@ async function inject(response, desc) {
   const res = await post("/inject", { task: Number(num), response });
   if (res.ok) addLog("inject", `Injected ${activeTask}/${response} — ${desc}`);
   else addLog("t", "Inject failed: " + (res.error||"?"));
+}
+
+async function resetScene() {
+  const res = await post("/reset", {});
+  if (res.ok) addLog("task", "Scene cleared — ready for a clean start.");
 }
 
 async function startSession() {

@@ -304,7 +304,9 @@ class WizardOfOzApp extends ApplicationController {
 
     /** Appends one row to <participant>_events.csv (creates header if new). */
     logEvent(type, detail = "") {
-        const pid = this.session.participantId || "unknown";
+        // Before a session is started, events are participant testing/warm-up.
+        // Keep them out of participant data files by tagging them "warmup".
+        const pid = this.session.participantId || "warmup";
         const file = path.join(LOG_DIR, `${pid}_events.csv`);
         const isNew = !fs.existsSync(file);
         const row = [
@@ -399,6 +401,23 @@ class WizardOfOzApp extends ApplicationController {
         this.startControlServer();
     }
 
+    /** Destroys everything the study created so the next participant / the real
+     *  session starts from a clean scene. Runs as an injected one-shot script. */
+    resetScene() {
+        const code = wrapClass("WoZResetScene", `
+            void Start() {
+                foreach (var go in GameObject.FindGameObjectsWithTag("Interactable")) Destroy(go);
+                foreach (var go in GameObject.FindGameObjectsWithTag("game")) Destroy(go);
+                Destroy(gameObject);
+            }`);
+        console.log(`\x1b[33m[WoZ Reset]\x1b[0m clearing created objects`);
+        this.logEvent("reset", "clear-scene");
+        this.scene.send(new NetworkId(CODE_NETWORK_ID), {
+            type: "CodeGenerated", peer: "WizardOfOz", data: code
+        });
+        return { ok: true, reset: true };
+    }
+
     /** Injects a pre-scripted code string into the Unity client. */
     injectResponse(taskKey, responseKey) {
         const task = SCRIPTS[taskKey];
@@ -485,6 +504,10 @@ class WizardOfOzApp extends ApplicationController {
                         const taskKey     = payload.task     ? `task${payload.task}` : this.activeTask;
                         const responseKey = payload.response || "success";
                         return send(200, this.injectResponse(taskKey, responseKey));
+                    }
+
+                    if (req.method === "POST" && url === "/reset") {
+                        return send(200, this.resetScene());
                     }
 
                     if (req.method === "POST" && url === "/event") {

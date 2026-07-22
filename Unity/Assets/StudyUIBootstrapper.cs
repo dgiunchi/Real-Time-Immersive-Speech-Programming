@@ -35,6 +35,10 @@ public class StudyUIBootstrapper : MonoBehaviour
     public bool buildOnStart = true;
     public bool addMissingManagers = true;
 
+    [Header("Study isolation")]
+    [Tooltip("Disable the original DreamCodeVR in-VR task menu (ChooseTask/CheckResult) so it can't hijack the session and bounce the participant back to its menu. Recommended ON for the study.")]
+    public bool disableLegacyMenu = true;
+
     // Built references
     private Canvas canvas;
     private StudyConditionManager conditionManager;
@@ -62,6 +66,7 @@ public class StudyUIBootstrapper : MonoBehaviour
 
     public void Build()
     {
+        DisableLegacyMenuSystem();
         BuildCanvas();
         BuildTranscriptPanel();
         BuildFeedbackPanel();
@@ -71,6 +76,27 @@ public class StudyUIBootstrapper : MonoBehaviour
         WireEverything();
         ApplyCondition();
         Debug.Log("[StudyUIBootstrapper] Study UI built and wired. Condition = " + condition);
+    }
+
+    // Turn off the original DreamCodeVR task menu so it can't run its own flow
+    // underneath the study (its "Start" buttons and target-area completion send
+    // the participant back to that menu, which reads as "quits and won't start").
+    private void DisableLegacyMenuSystem()
+    {
+        if (!disableLegacyMenu) return;
+        int n = 0;
+        foreach (var ct in FindObjectsOfType<ChooseTask>(true))
+        {
+            if (ct.menu) ct.menu.SetActive(false);
+            ct.enabled = false;
+            n++;
+        }
+        foreach (var cr in FindObjectsOfType<CheckResult>(true))
+        {
+            cr.enabled = false;
+            n++;
+        }
+        Debug.Log($"[StudyUIBootstrapper] Legacy DreamCodeVR menu/task system disabled ({n} components). Study web panel is now the only driver.");
     }
 
     // ── Canvas ────────────────────────────────────────────────────────────────
