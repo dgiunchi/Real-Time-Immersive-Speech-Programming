@@ -34,7 +34,8 @@ const { SpeechToTextService } = require("ubiq-genie-services");
 const nconf = require("nconf");
 
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
-const CODE_NETWORK_ID    = 94;  // matches CodeGenerationManager.networkId in Unity
+const CODE_NETWORK_ID    = 94;  // CodeGenerationManager (runtime Roslyn — Editor only)
+const OUTCOME_NETWORK_ID = 99;  // StudyOutcomes (pre-compiled — works on the Quest)
 const STT_NETWORK_ID     = 98;
 
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -404,16 +405,10 @@ class WizardOfOzApp extends ApplicationController {
     /** Destroys everything the study created so the next participant / the real
      *  session starts from a clean scene. Runs as an injected one-shot script. */
     resetScene() {
-        const code = wrapClass("WoZResetScene", `
-            void Start() {
-                foreach (var go in GameObject.FindGameObjectsWithTag("Interactable")) Destroy(go);
-                foreach (var go in GameObject.FindGameObjectsWithTag("game")) Destroy(go);
-                Destroy(gameObject);
-            }`);
         console.log(`\x1b[33m[WoZ Reset]\x1b[0m clearing created objects`);
         this.logEvent("reset", "clear-scene");
-        this.scene.send(new NetworkId(CODE_NETWORK_ID), {
-            type: "CodeGenerated", peer: "WizardOfOz", data: code
+        this.scene.send(new NetworkId(OUTCOME_NETWORK_ID), {
+            type: "StudyOutcome", peer: "WizardOfOz", data: "reset/clear"
         });
         return { ok: true, reset: true };
     }
@@ -429,13 +424,15 @@ class WizardOfOzApp extends ApplicationController {
         console.log(`\x1b[32m[WoZ Inject]\x1b[0m task=${taskKey} response=${responseKey}`);
         this.logEvent("inject", `${taskKey}/${responseKey}`);
 
-        this.scene.send(new NetworkId(CODE_NETWORK_ID), {
-            type: "CodeGenerated",
+        // Pre-compiled outcome id — StudyOutcomes runs the matching behaviour.
+        // Works identically in the Editor and on the Quest (no runtime compile).
+        this.scene.send(new NetworkId(OUTCOME_NETWORK_ID), {
+            type: "StudyOutcome",
             peer: "WizardOfOz",
-            data: code
+            data: `${taskKey}/${responseKey}`
         });
 
-        return { ok: true, task: taskKey, response: responseKey, codeSent: code.substring(0, 80) + "…" };
+        return { ok: true, task: taskKey, response: responseKey, outcome: `${taskKey}/${responseKey}` };
     }
 
     startControlServer() {
@@ -489,6 +486,13 @@ class WizardOfOzApp extends ApplicationController {
                         this.session.startedAt     = new Date().toISOString();
                         this.logSessionStart();
                         console.log(`\x1b[35m[Session]\x1b[0m participant=${this.session.participantId} condition=${this.session.condition}`);
+                        // Switch the headset's visible feedback condition to match.
+                        if (["A", "B", "C"].includes(this.session.condition)) {
+                            this.scene.send(new NetworkId(OUTCOME_NETWORK_ID), {
+                                type: "StudyOutcome", peer: "WizardOfOz",
+                                data: `condition/${this.session.condition}`
+                            });
+                        }
                         return send(200, { ok: true, session: this.session });
                     }
 

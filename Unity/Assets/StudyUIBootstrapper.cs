@@ -205,6 +205,15 @@ public class StudyUIBootstrapper : MonoBehaviour
         // Zero-config LAN discovery: finds the Mac's server automatically on any
         // shared Wi-Fi so the headset never needs a hardcoded IP or a rebuild.
         FindOrAdd<ServerAutoDiscovery>();
+
+        // Runs the study outcomes as pre-compiled C# (works on the Quest, unlike
+        // the runtime Roslyn path which needs a JIT the IL2CPP build doesn't have).
+        var outcomes = FindOrAdd<StudyOutcomes>();
+        if (outcomes && !outcomes.spawnOrigin)
+        {
+            var codeGen = FindObjectOfType<CodeGenerationManager>(true);
+            if (codeGen && codeGen.targetObject) outcomes.spawnOrigin = codeGen.targetObject.transform;
+        }
     }
 
     private T FindOrAdd<T>() where T : Component
