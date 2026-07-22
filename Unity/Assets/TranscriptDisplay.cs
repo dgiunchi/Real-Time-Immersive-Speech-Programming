@@ -29,9 +29,19 @@ public class TranscriptDisplay : MonoBehaviour
         SetTranscriptText("");
     }
 
+    // Condition A means NO feedback of any kind — including the transcript.
+    // Without this, showing a transcript re-activates the panel that the
+    // StudyConditionManager hid, making conditions A and B look identical.
+    private bool SuppressedByCondition()
+    {
+        var cond = FindObjectOfType<StudyConditionManager>(true);
+        return cond && cond.IsConditionA();
+    }
+
     /// <summary>Called by TranscriptionCollector when the user starts speaking.</summary>
     public void OnRecordingStart()
     {
+        if (SuppressedByCondition()) return;
         isRecording = true;
         if (hideCoroutine != null) StopCoroutine(hideCoroutine);
         SetPanelVisible(true);
@@ -52,6 +62,7 @@ public class TranscriptDisplay : MonoBehaviour
     public void ShowTranscript(string transcript)
     {
         if (string.IsNullOrWhiteSpace(transcript)) return;
+        if (SuppressedByCondition()) return;
 
         SetPanelVisible(true);
         SetTranscriptText(transcript);

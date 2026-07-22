@@ -170,8 +170,19 @@ public class StudyOutcomes : MonoBehaviour
     /// <summary>Destroys everything the study created, for a clean start.</summary>
     private void ResetScene()
     {
+        // Everything the outcome system made lives under one container.
+        for (int i = CreatedRoot.childCount - 1; i >= 0; i--)
+            Destroy(CreatedRoot.GetChild(i).gameObject);
+
+        // Plus anything tagged by legacy paths (Editor Roslyn injections etc.).
         foreach (var go in GameObject.FindGameObjectsWithTag("Interactable")) Destroy(go);
         foreach (var go in GameObject.FindGameObjectsWithTag("game")) Destroy(go);
+
+        // Hide any lingering feedback.
+        var panel = FindObjectOfType<FeedbackPanelController>(true);
+        if (panel) panel.Clear();
+        var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
+        if (agent) agent.StopSpeaking();
     }
 
     /// <summary>Switches the visible feedback condition live (A/B/C) from the panel.</summary>
@@ -189,14 +200,35 @@ public class StudyOutcomes : MonoBehaviour
     }
 
     // ── Small helpers ─────────────────────────────────────────────────────────
-    private GameObject Ball(Vector3 pos, float scale, Color? color = null)
+
+    // Everything the study creates lives under one container so Clear/Reset can
+    // remove ALL of it reliably (tags alone missed untagged stars/planets).
+    private static Transform createdRoot;
+    private static Transform CreatedRoot
     {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        get
+        {
+            if (!createdRoot)
+            {
+                var go = GameObject.Find("StudyCreatedObjects") ?? new GameObject("StudyCreatedObjects");
+                createdRoot = go.transform;
+            }
+            return createdRoot;
+        }
+    }
+
+    private GameObject Primitive(PrimitiveType type, Vector3 pos, Vector3 scale, Color? color = null)
+    {
+        var go = GameObject.CreatePrimitive(type);
+        go.transform.SetParent(CreatedRoot, true);
         go.transform.position = pos;
-        go.transform.localScale = Vector3.one * scale;
+        go.transform.localScale = scale;
         if (color.HasValue) go.GetComponent<Renderer>().material.color = color.Value;
         return go;
     }
+
+    private GameObject Ball(Vector3 pos, float scale, Color? color = null)
+        => Primitive(PrimitiveType.Sphere, pos, Vector3.one * scale, color);
 
     private Renderer FindInteractable()
     {
@@ -207,10 +239,17 @@ public class StudyOutcomes : MonoBehaviour
 
     private Transform FindCube()
     {
-        // The scene's cube: an untagged object carrying a BoxCollider.
-        foreach (var c in GameObject.FindGameObjectsWithTag("Untagged"))
-            if (c.GetComponent<BoxCollider>()) return c.transform;
-        return null;
+        // Prefer the cube this study created earlier; otherwise create one so
+        // "orbit the cube" always has a visible, sensible target. (Scanning the
+        // scene for any BoxCollider grabbed random environment objects.)
+        var existing = CreatedRoot.Find("OrbitCube");
+        if (existing) return existing;
+
+        var cube = Primitive(PrimitiveType.Cube,
+            OriginPos + OriginFwd * 0.9f, Vector3.one * 0.25f,
+            new Color(0.85f, 0.4f, 0.15f));
+        cube.name = "OrbitCube";
+        return cube.transform;
     }
 
     // ── TASK 1 — create a ball at hand ────────────────────────────────────────
@@ -231,9 +270,7 @@ public class StudyOutcomes : MonoBehaviour
                 break;
             }
             case "error2": { // wrong shape: cube not sphere
-                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                go.transform.position = InFront;
-                go.transform.localScale = Vector3.one * 0.15f;
+                var go = Primitive(PrimitiveType.Cube, InFront, Vector3.one * 0.15f);
                 go.AddComponent<Rigidbody>();
                 go.tag = "Interactable";
                 break;
@@ -247,9 +284,7 @@ public class StudyOutcomes : MonoBehaviour
                 break;
             }
             case "error4": { // squashed ellipsoid
-                var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                go.transform.position = InFront;
-                go.transform.localScale = new Vector3(0.05f, 0.25f, 0.05f);
+                var go = Primitive(PrimitiveType.Sphere, InFront, new Vector3(0.05f, 0.25f, 0.05f));
                 go.AddComponent<Rigidbody>();
                 go.tag = "Interactable";
                 break;
@@ -335,12 +370,10 @@ public class StudyOutcomes : MonoBehaviour
                 break;
             }
             case "error2": { // squashed star, planet parented (bad scale inherited)
-                var star = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                star.transform.position = centre;
-                star.transform.localScale = new Vector3(0.4f, 0.2f, 0.4f);
-                star.GetComponent<Renderer>().material.color = new Color(1f, 0.8f, 0f);
+                var star = Primitive(PrimitiveType.Sphere, centre,
+                    new Vector3(0.4f, 0.2f, 0.4f), new Color(1f, 0.8f, 0f));
                 var planet = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                planet.transform.SetParent(star.transform);
+                planet.transform.SetParent(star.transform); // inherits squashed scale (the error)
                 planet.transform.localPosition = Vector3.right * 2f;
                 var orbit = planet.AddComponent<StudyOrbit>();
                 orbit.centrePoint = centre; orbit.useFixedPoint = true; orbit.axis = Vector3.up; orbit.speed = 45f;
