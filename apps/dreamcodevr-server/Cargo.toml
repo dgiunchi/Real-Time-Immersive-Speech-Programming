@@ -19,6 +19,7 @@ dcvr-control = { workspace = true }
 dcvr-csharp-policy = { workspace = true }
 async-trait = { workspace = true }
 dcvr-unity-transport = { workspace = true }
+dcvr-roomserver = { workspace = true }
 dcvr-roslyn-client = { workspace = true }
 dcvr-stt-client = { workspace = true }
 dcvr-llm-client = { workspace = true }

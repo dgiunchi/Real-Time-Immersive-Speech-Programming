@@ -127,6 +127,13 @@ pub struct Settings {
     /// JOIN `room_guid`, instead of running the standalone TCP listener.
     pub ubiq_addr: Option<String>,
     pub room_guid: String,
+    /// If true, run an EMBEDDED Rust RoomServer (no external Node.js) inside this
+    /// process and connect the pipeline to it over loopback, so one binary is the
+    /// whole system. Env `DCVR_EMBED_ROOMSERVER`. Default false (legacy behaviour).
+    pub embed_roomserver: bool,
+    /// Bind address for the embedded RoomServer. Env `DCVR_ROOMSERVER_BIND`.
+    /// Default `0.0.0.0:8009` — headsets always dial :8009 (the Ubiq RoomServer port).
+    pub roomserver_bind: String,
     /// Optional .NET Roslyn semantic analyzer URL (Mode B deep check). None = mock.
     pub roslyn_url: Option<String>,
     /// Anti-flood: max generated plans per peer per minute (SOC-03/PE-02).
@@ -191,6 +198,8 @@ impl Default for Settings {
             mode_a: false,
             ubiq_addr: None,
             room_guid: "6765c52b-3ad6-4fb0-9030-2c9a05dc4731".to_string(),
+            embed_roomserver: false,
+            roomserver_bind: "0.0.0.0:8009".to_string(),
             roslyn_url: None,
             // Mirrors `dcvr_control::RuntimeConfig` defaults (shared contract).
             max_generations_per_min: 30,
@@ -320,6 +329,14 @@ impl Settings {
         if let Ok(g) = env::var("DCVR_ROOM_GUID") {
             if !g.trim().is_empty() {
                 s.room_guid = g;
+            }
+        }
+        if let Ok(v) = env::var("DCVR_EMBED_ROOMSERVER") {
+            s.embed_roomserver = parse_bool_flag(&v);
+        }
+        if let Ok(b) = env::var("DCVR_ROOMSERVER_BIND") {
+            if !b.trim().is_empty() {
+                s.roomserver_bind = b;
             }
         }
         if let Ok(u) = env::var("DCVR_ROSLYN_URL") {

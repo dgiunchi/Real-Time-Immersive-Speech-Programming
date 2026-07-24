@@ -372,6 +372,7 @@ dependencies = [
  "dcvr-observability",
  "dcvr-personalization",
  "dcvr-protocol",
+ "dcvr-roomserver",
  "dcvr-roslyn-client",
  "dcvr-stt-client",
  "dcvr-unity-transport",

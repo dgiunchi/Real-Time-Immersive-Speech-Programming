@@ -46,9 +46,11 @@ async fn main() {
     // Pull out values needed before `settings` is consumed by services_from_settings.
     let admin_port = settings.admin_port;
     let admin_token = settings.admin_token.clone();
-    let ubiq = settings.ubiq_addr.clone();
+    let mut ubiq = settings.ubiq_addr.clone();
     let room = settings.room_guid.clone();
     let listen_addr = settings.listen_addr;
+    let embed_roomserver = settings.embed_roomserver;
+    let roomserver_bind = settings.roomserver_bind.clone();
 
     // LAN auto-discovery beacon: lets the headset app find this laptop on ANY network
     // (hotspot today, a different wifi tomorrow) without a baked-in IP or a rebuild.
@@ -84,7 +86,37 @@ async fn main() {
         });
     }
 
-    // Ubiq service-peer mode (real Unity/Quest) if DCVR_UBIQ_ADDR is set.
+    // Embedded RoomServer mode (DCVR_EMBED_ROOMSERVER): run the Rust RoomServer
+    // in-process so there is NO external Node.js relay — one binary is the whole
+    // system (switchboard + pipeline + guardrail). The pipeline then joins as a
+    // normal Ubiq peer over loopback; a headset dials this laptop's :8009 and
+    // lands in the same room, so its audio is relayed to the pipeline and the
+    // NID-94 answer is relayed back. Held for the process lifetime.
+    let _embedded_room = if embed_roomserver {
+        match dcvr_roomserver::RoomServerHandle::bind(&roomserver_bind).await {
+            Ok(handle) => {
+                let port = handle.local_addr().port();
+                eprintln!(
+                    "[embedded] Rust RoomServer listening on {} — no Node.js needed. \
+                     Pipeline joins over loopback; headsets dial <laptop-ip>:{port}.",
+                    handle.local_addr()
+                );
+                // Point the pipeline peer at the embedded server over loopback,
+                // overriding any DCVR_UBIQ_ADDR.
+                ubiq = Some(format!("127.0.0.1:{port}"));
+                Some(handle)
+            }
+            Err(e) => {
+                eprintln!("embedded roomserver bind on {roomserver_bind} failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+
+    // Ubiq service-peer mode (real Unity/Quest) if DCVR_UBIQ_ADDR is set, or the
+    // loopback address of the embedded RoomServer above.
     if let Some(addr) = ubiq {
         if let Err(e) = dreamcodevr_server::server::run_ubiq_peer(&addr, &room, services).await {
             eprintln!("ubiq peer error: {e}");
