@@ -16,6 +16,7 @@ members = [
     "crates/personalization",
     "crates/control",
     "crates/admin",
+    "crates/roomserver",
     "apps/dreamcodevr-server",
     "apps/fake-quest-client",
     "apps/ubiq-probe",
@@ -61,6 +62,7 @@ dcvr-unity-transport = { path = "crates/unity-transport", version = "0.1.0" }
 dcvr-personalization = { path = "crates/personalization", version = "0.1.0" }
 dcvr-control = { path = "crates/control", version = "0.1.0" }
 dcvr-admin = { path = "crates/admin", version = "0.1.0" }
+dcvr-roomserver = { path = "crates/roomserver", version = "0.1.0" }
 
 # Centralised lint policy. Every crate opts in with `[lints] workspace = true`.
 # These enforce the Phase-1 invariants mechanically (stronger than code review).

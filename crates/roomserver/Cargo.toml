@@ -1,0 +1,16 @@
+[package]
+name = "dcvr-roomserver"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Minimal Ubiq-compatible RoomServer (rooms, peers, relay) for DreamCodeVR+."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+dcvr-protocol = { workspace = true }
+
+[lints]
+workspace = true

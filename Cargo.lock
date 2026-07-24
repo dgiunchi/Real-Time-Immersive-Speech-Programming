@@ -292,6 +292,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dcvr-roomserver"
+version = "0.1.0"
+dependencies = [
+ "dcvr-protocol",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "dcvr-roslyn-client"
 version = "0.1.0"
 dependencies = [
