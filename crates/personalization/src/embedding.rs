@@ -2,7 +2,7 @@
 //! - [`MockEmbeddingClient`] is deterministic and offline (hashed bag-of-words),
 //!   so personalization works with no key and tests are reproducible.
 //! - [`OpenAiEmbeddingClient`] calls OpenAI `text-embedding-3-small` for real
-//!   semantic similarity (the ChatGPT/Gemini-style RAG path).
+//!   semantic similarity (the embedding-based RAG path).
 
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretString};

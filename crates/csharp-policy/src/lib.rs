@@ -157,7 +157,7 @@ public class GeneratedBehaviour : MonoBehaviour {
 "#;
 
     // A creative camera effect on an AUTHOR-CREATED camera (a diorama / preview shot)
-    // PLUS a RenderTexture (a reflection/minimap). The adversarial verification showed
+    // PLUS a RenderTexture (a reflection/minimap). The security analysis showed
     // banning these tokens wrongly blocks legitimate authoring — so they must pass
     // BOTH profiles. The live-rig version of this attack is caught at RUNTIME
     // (UserFrameGuardian), not lexically.

@@ -71,7 +71,6 @@ redteam/*.log
 Thumbs.db
 
 # ---- Local tooling / editor ----
-.claude/
 .vscode/
 .idea/
 

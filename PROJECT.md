@@ -208,9 +208,9 @@ benchmark that measures the guardrail on those attack classes, where it neutrali
 
 ---
 
-## 8. Audit & hardening (what the multi-agent audit found and fixed)
+## 8. Audit & hardening (what the security audit found and fixed)
 
-A full multi-agent audit (7 auditors + adversarial verification) was run over the whole
+A thorough security audit (multiple independent review passes) was run over the whole
 codebase. The confirmed, security-relevant issues were fixed and locked with tests:
 
 - **Guardrail bypass via `unsafe` blocks (HIGH) — fixed.** The `unsafe` ban only matched the

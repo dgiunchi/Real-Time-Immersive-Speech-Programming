@@ -97,7 +97,7 @@ fn creative_builds_pass_under_both_profiles() {
 
 // ---- Unambiguous DEVICE/RIG/HAPTICS/CAPTURE attacks: no legitimate creative use,
 // ---- so they are lexically blocked under DeployHardened (Mode B) and contained by
-// ---- Mode D. (The adversarial verification confirmed these have no creative use.)
+// ---- Mode D. (The security analysis confirmed these have no creative use.)
 
 const XR_RIG_HERDING: &str = r#"
 public class GeneratedBehaviour : MonoBehaviour {

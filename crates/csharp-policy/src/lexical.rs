@@ -88,7 +88,7 @@ const PERCEPTUAL_BANNED_NAMESPACES: &[&[&str]] = &[
 
 /// PERCEPTUAL / EMBODIED-attack identifiers — added ONLY under `DeployHardened`.
 ///
-/// SCOPE (deliberate, set by the adversarial verification of all six papers): this
+/// SCOPE (deliberate, set by the security analysis of all six papers): this
 /// list contains ONLY the **device / rig / tracking / haptics / capture** APIs that
 /// have *no legitimate content-authoring use* — touching them means touching the
 /// user's headset, never building content. Banning them therefore costs zero
