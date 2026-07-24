@@ -2,8 +2,7 @@
 //!
 //! Produces one [`TimingEvent`] per request as a JSONL line. The event schema is
 //! deliberately minimal: ids, timestamps, decision, structured error strings,
-//! and counts — never audio, transcripts, biometrics, or secrets. See
-//! `PROJECT.md` (Privacy).
+//! and counts — never audio, transcripts, biometrics, or secrets.
 
 mod errors;
 mod jsonl;

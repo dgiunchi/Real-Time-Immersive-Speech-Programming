@@ -11,13 +11,13 @@ pub struct SandboxJob {
 
 /// Resource bounds for one job. `wall_clock` is enforced by the Rust runner
 /// (timeout + kill). CPU/memory/pids are enforced by the isolation wrapper
-/// program (cgroups v2 / gVisor / microVM) in deployment — see `PROJECT.md` (Mode D).
+/// program (cgroups v2 / gVisor / microVM) in deployment (Mode D).
 #[derive(Debug, Clone)]
 pub struct ResourceLimits {
     pub wall_clock: Duration,
     // CPU/memory/pids caps are intentionally absent from the Rust API: they are
     // enforced by the Axis-B isolation wrapper (cgroups v2 / gVisor / microVM),
-    // not by this process. See PROJECT.md (Mode D).
+    // not by this process (Mode D).
 }
 
 impl Default for ResourceLimits {

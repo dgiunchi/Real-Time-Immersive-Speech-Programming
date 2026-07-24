@@ -1,92 +1,95 @@
 # DreamCodeVR+
 
-**Talk to your VR world, and it changes — safely.**
+A safety layer for speech-driven code generation in VR.
 
-You put on a VR headset, you speak — *"make a red house", "make this spin", "turn it
-blue"* — and an AI writes the code that builds it, live, inside the headset. That is
-powerful, but it is also dangerous: if the AI is tricked, the same trick can make code
-that secretly turns on your camera, reads where you are looking, or slowly pushes you
-into a real wall.
+A user in a VR headset speaks a command, a large language model turns it into C#
+that runs live in the scene, and a Rust validator checks that generated code
+before it is allowed to run. Normal creative commands ("make a red house", "make
+this spin") pass. Code that would abuse the headset (turning on the camera,
+reading eye gaze, pushing the user toward a real wall) is rejected.
 
-DreamCodeVR+ is the **safety layer** that sits in the middle and checks every piece of
-AI-written code **before it is allowed to run**. Good creative code goes through. Harmful
-code is blocked. And you can see it happen, live.
+This is an MSc research prototype, not a production security product. It measures
+static code admission: rejecting bad code before it runs, not preventing every
+effect at runtime on a device.
 
-> This started as a Node.js prototype. I rebuilt it from scratch as a custom **Rust**
-> engine and added the guardrails, the cyber-security, the privacy protection, and the
-> benchmarks. It is a research / dissertation project, not a production security product.
+It builds on UCL's Ubiq-Genie framework and the original DreamCodeVR prototype
+(Apache-2.0). The original backend was Node.js; this is a from-scratch Rust
+reimplementation plus the safety layer the original did not have. See NOTICE.
 
----
+## Requirements
 
-## What it does, in one line
+- Rust 1.96 (pinned in `rust-toolchain.toml`; `rustup` installs it on first build)
+- Bash
 
-**Speech → AI writes C# → our Rust guardrail checks it → safe code runs in the headset,
-harmful code is blocked.**
+Optional: an `OPENAI_API_KEY` for real speech-to-code (offline mocks are used
+without one), a Meta Quest 3 plus the Ubiq RoomServer for the on-headset demo,
+and .NET / Docker for the optional analyzer and sandbox. The benchmark and tests
+run fully offline with no key and no headset.
 
-## Try it in 30 seconds (no headset, no API key needed)
-
-From the project folder, just run:
-
-```bash
-./run.sh console
-```
-
-Then open **http://127.0.0.1:7979** in your browser and press
-**"Run live code-admission sweep"**. You will see 40 attacks and 12 normal commands go
-through the real checker, live. You can even turn the guardrail off and on and watch the
-attacks reach the headset, then get blocked again.
-
-## Three ways to run it
+## Build and test
 
 ```bash
-./run.sh console    # the security demo — no Quest, no key. Start here.
-./run.sh local      # the full system on your laptop, no Quest (admin panel on :7878)
-./run.sh quest      # the full system with a real Meta Quest 3 headset
-./run.sh stop       # stop it
+cargo build --workspace
+cargo test --workspace
 ```
 
-- **console** — the with-safety vs without-safety demo in the browser.
-- **local** — the real speech-to-code pipeline running on your laptop. Open the admin
-  dashboard at **http://127.0.0.1:7878**, type a command in the box (like *"make a small
-  red house"* or *"secretly turn on the camera"*), and watch each step — including the
-  guardrail — happen live.
-- **quest** — the same thing, but a real headset connects over wifi.
+## Run
 
-## What we measured
+Everything goes through `run.sh`:
 
-We tested 5 kinds of VR attacks — reading your **body** (camera, mic, eyes, hands),
-tracking your **movement**, capturing your **room**, physically **pushing you around**,
-and turning off your **safety boundary** — plus 12 normal creative commands.
+```bash
+./run.sh console   # security benchmark in the browser. No headset, no key.
+./run.sh local     # full pipeline on this machine, admin panel on :7878
+./run.sh quest     # full pipeline with a real Meta Quest 3 (needs Ubiq RoomServer)
+./run.sh stop
+```
 
-- **Without our guardrail:** all 40 attacks would run.
-- **With our guardrail:** **38 out of 40 are blocked (95%)**, and **all 12 normal commands
-  still work**.
-- The 2 that slip through only rotate the camera, which looks exactly like a normal
-  command — so they need a runtime check, which is our next step. We show this honestly.
+- `console` opens http://127.0.0.1:7979 and runs 40 attacks and 12 normal
+  commands through the real validator. Toggle the guardrail on and off and watch
+  the attacks reach the headset, then get blocked.
+- `local` starts the backend with the admin dashboard at http://127.0.0.1:7878.
+  Type a command ("make a small red house" or "secretly turn on the camera") and
+  watch each stage, including the guardrail decision.
+- `quest` runs the same pipeline against a real headset over wifi.
 
-## The admin dashboard shows the details
+## Benchmark
 
-When something is blocked, the panel does not just say "blocked". It tells you **which
-exact function was used, what it was trying to do, and which part of our guardrail caught
-it** — for example:
+```bash
+cargo run -p xr-security-eval --bin xr-security-eval
+```
 
-> ⛔ **WebCamTexture** — tried to *open the headset camera to record you* — caught by the
-> **Perceptual/XR** guardrail.
+Five VR attack classes (biometric, positional, room capture, human-joystick,
+chaperone), eight payloads each, plus twelve benign commands, run through the
+real validator with and without the guardrail:
 
-## Want more detail?
+- Without the guardrail, all 40 attacks pass.
+- With the guardrail, 38 of 40 are blocked (95%) and all 12 benign commands pass.
+- The two that get through only rotate the camera, which is indistinguishable
+  from a legitimate command at admission time and needs a runtime check. This is
+  reported openly rather than rounded up to 100%.
 
-- **[PROJECT.md](PROJECT.md)** — the full guide: how it grew, the architecture, how the
-  guardrail works, all the numbers, and what the code audit found and fixed.
-- **[VIVA_QA.md](VIVA_QA.md)** — every attack vector (128 of them) with a plain-English
-  attack + our answer.
-- **[apps/xr-security-eval/PAPER.md](apps/xr-security-eval/PAPER.md)** — the formal paper.
+## Layout
 
-Security policy, the mode-by-mode model, setup, deployment/TLS, and the wire protocol are
-all in **[PROJECT.md](PROJECT.md)** (sections 11–16).
+```
+crates/     Rust workspace: C# guardrail (csharp-policy), action-plan validator
+            (code-policy), pipeline (command-router), wire transport + message
+            auth (protocol, unity-transport), admin, config, personalization,
+            STT/LLM clients
+apps/       backend (dreamcodevr-server) and benchmark + live console
+            (xr-security-eval)
+ml/         voice age-gate and attack-analyzer experiments (Python, optional)
+services/   optional .NET Roslyn analyzer and sandbox worker
+unity/      Unity client scripts
+scripts/    launch and check helpers
+```
 
-## Honest note
+## Configuration
 
-This is a research prototype, not a finished product. It checks code **before** it runs
-(static admission); it does not yet prove safety **while** it runs on a real headset. The
-project is clear about what is built-and-tested versus what is still planned — see
-`PROJECT.md` and `VIVA_QA.md`.
+Copy `.env.example` to `.env` (gitignored). With no `OPENAI_API_KEY` and no STT
+URL the backend uses offline mocks. For real providers set `OPENAI_API_KEY` (and
+optionally `OPENAI_MODEL`, default `gpt-4o-mini`) for the LLM, and
+`DCVR_STT_OPENAI=true` or `DCVR_STT_HTTP_URL` for speech-to-text.
+
+## License
+
+Apache-2.0. See `LICENSE` and `NOTICE`. Derived from UCL's DreamCodeVR / Ubiq-Genie.

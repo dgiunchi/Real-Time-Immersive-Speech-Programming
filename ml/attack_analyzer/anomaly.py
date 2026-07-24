@@ -2,7 +2,7 @@
 """
 Reconstruction-error anomaly detector for benign intent->code-op sequences.
 
-WHY (RESEARCH_AND_ML_PLAN.md §5, L2 "streaming anomaly + drift"):
+WHY (L2 "streaming anomaly + drift"):
   The Rust validator + LLM screen are a *closed-set* defence — they block what we already
   named. Novel attacks are *out-of-distribution*. So we train a model on nothing but
   BENIGN behaviour (the intent->code-op sequences a well-behaved creative session emits)

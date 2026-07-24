@@ -1,7 +1,7 @@
 //! Isolated sandbox harness for the malicious-code research mode (DreamCodeVR+
 //! Mode D, Phase 4).
 //!
-//! TWO-AXIS isolation (see `PROJECT.md`, Mode D):
+//! TWO-AXIS isolation (Mode D):
 //! * Axis A — isolation FROM the backend: the backend never runs untrusted code
 //!   in-process; it hands a [`SandboxJob`] to a worker (on a separate host) that
 //!   returns ONLY a [`SandboxReport`]. A sandbox crash/hang/escape costs at most

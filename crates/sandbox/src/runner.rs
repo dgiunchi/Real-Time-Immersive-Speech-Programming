@@ -34,7 +34,7 @@ impl SandboxRunner for MockSandboxRunner {
 /// the backend — runs on a separate worker host and returns ONLY a structured
 /// [`SandboxReport`]. Environment is cleared (no secrets). NEVER panics / never
 /// returns `Err`. NOT enforced here (delegated to the wrapper): CPU/memory/pids
-/// caps, seccomp, no-network, read-only rootfs, kernel isolation — see PROJECT.md (Mode D).
+/// caps, seccomp, no-network, read-only rootfs, kernel isolation (Mode D).
 /// A bare runner without a wrapper provides NO kernel isolation.
 #[derive(Debug, Clone)]
 pub struct ProcessSandboxRunner {

@@ -25,7 +25,6 @@ namespace DreamCodeVRPlus
     /// JIT-compiles at runtime. It requires the Roslyn DLLs (Microsoft.CodeAnalysis*) under
     /// Assets/Plugins AND the scripting define <c>DCVR_ROSLYN_ENABLED</c>. Until those are
     /// added this is an inert stub, so the project ALWAYS compiles (wire first, debug later).
-    /// Setup: PROJECT.md
     /// </summary>
     public static class RuntimeCSharpCompiler
     {
@@ -109,7 +108,7 @@ namespace DreamCodeVRPlus
             _ = target;
             error = "Roslyn runtime compiler not enabled. Import the Microsoft.CodeAnalysis DLLs "
                   + "into Assets/Plugins and add the scripting define DCVR_ROSLYN_ENABLED "
-                  + "(see PROJECT.md).";
+                  + ".";
             return false;
 #endif
         }

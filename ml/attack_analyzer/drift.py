@@ -2,7 +2,7 @@
 """
 ADWIN-style windowed drift detector (pure Python + numpy math).
 
-WHY (RESEARCH_AND_ML_PLAN.md §5, "wrap with ADWIN/DDM drift detection ... so it doesn't
+WHY ("wrap with ADWIN/DDM drift detection ... so it doesn't
 decay"): the benign baseline drifts — new creative APIs, new phrasings, seasonal content.
 If the anomaly detector's threshold is frozen it slowly rots (rising false positives, or
 blindness as benign error creeps up). A drift detector watches the STREAM of reconstruction

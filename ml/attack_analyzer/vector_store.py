@@ -2,7 +2,7 @@
 """
 The growing discovered-attack-vector store + mapping onto the 128-vector families.
 
-WHY (RESEARCH_AND_ML_PLAN.md §5, L1): every bypass the adaptive red-teamer finds is a NEW
+WHY (L1): every bypass the adaptive red-teamer finds is a NEW
 attack vector. Left in a log it is inert; the point of ML #2 is that the static 128-vector
 model GROWS. This module is the append-only store (JSON-Lines) plus the mapping that files
 each discovered vector under one of the five existing families the 128-vector model already

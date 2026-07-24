@@ -3,7 +3,7 @@
 The adaptive red-team loop: mutate/combine seed attacks, hunt for inputs the System Under
 Test PASSES but should BLOCK, and record every bypass as a new attack vector.
 
-WHY (RESEARCH_AND_ML_PLAN.md §5, L1 "adaptive red-teamer"; lineage: Auto-RT arXiv:2501.01830,
+WHY (L1 "adaptive red-teamer"; lineage: Auto-RT arXiv:2501.01830,
 WildTeaming, survey arXiv:2410.09097): static guardrails leak (character-injection ASR
 70-88% against commercial prompt shields, arXiv:2504.11168). So we don't just *assert* the
 validator is robust — we ATTACK it, continuously, with a generator that evolves the attack

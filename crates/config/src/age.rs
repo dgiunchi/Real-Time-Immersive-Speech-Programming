@@ -11,7 +11,7 @@
 //! FAIL-SAFE: an `Unknown`/low-confidence band maps to the STRICTEST (child) posture,
 //! never to the permissive one — age RESTRICTS, it never AUTHORISES. The platform age
 //! flag remains authoritative; this posture is a safety net, never the legal basis for
-//! consent (see `RESEARCH_AND_ML_PLAN.md`).
+//! consent.
 
 /// A coarse, privacy-preserving age band. This is the ONLY age value that ever leaves
 /// the on-device model — never a precise age, never a voiceprint/template.

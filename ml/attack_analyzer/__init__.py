@@ -1,7 +1,7 @@
 """ML #2 — the adaptive / continuous attack-surface analyzer for DreamCodeVR+.
 
 This turns the static 128-vector attack model into a self-growing, drift-aware,
-ML-driven attack surface (RESEARCH_AND_ML_PLAN.md §5). It has four cooperating parts:
+ML-driven attack surface. It has four cooperating parts:
 
   * `anomaly`      — an undercomplete (PCA-optimal) linear autoencoder trained ONLY on
                      benign intent->code-op sequences; reconstruction error is the

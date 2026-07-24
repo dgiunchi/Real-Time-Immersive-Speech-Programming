@@ -2,10 +2,9 @@
 # Mode-D sandbox wrapper WITH gVisor (runsc) — the real Axis-B kernel isolation.
 #
 # STATUS: NOT YET VERIFIED on this machine. Docker containment WAS live-verified
-# (see PROJECT.md "What is verified"). gVisor adds a userspace kernel that also contains
+# gVisor adds a userspace kernel that also contains
 # kernel-level escapes, but `runsc` is NOT installed here, so this path is
-# scripted/documented only. Install runsc (gvisor.dev/docs/user_guide/install/;
-# Mode-D notes in PROJECT.md) and test
+# scripted/documented only. Install runsc (gvisor.dev/docs/user_guide/install/) and test
 # before claiming gVisor isolation in the dissertation.
 #
 # Identical to scripts/sandbox-run-docker.sh except for `--runtime=runsc`.
