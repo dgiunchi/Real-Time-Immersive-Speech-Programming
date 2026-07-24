@@ -15,8 +15,10 @@
 
 pub mod message;
 mod state;
+mod tcp;
 
 pub use crate::state::{ConnId, Outbound, RoomServer, ROOMSERVER_ID};
+pub use crate::tcp::RoomServerHandle;
 
 /// Errors from parsing a control message or encoding an outbound frame.
 #[derive(Debug, thiserror::Error)]

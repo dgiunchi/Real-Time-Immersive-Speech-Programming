@@ -296,9 +296,11 @@ name = "dcvr-roomserver"
 version = "0.1.0"
 dependencies = [
  "dcvr-protocol",
+ "dcvr-unity-transport",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]

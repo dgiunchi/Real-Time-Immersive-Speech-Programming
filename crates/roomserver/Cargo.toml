@@ -10,7 +10,11 @@ description = "Minimal Ubiq-compatible RoomServer (rooms, peers, relay) for Drea
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 dcvr-protocol = { workspace = true }
+
+[dev-dependencies]
+dcvr-unity-transport = { workspace = true }
 
 [lints]
 workspace = true
