@@ -5,7 +5,12 @@
 //! true semantic, symbol-resolving, allow-list check — implemented in .NET
 //! because Roslyn is the only authoritative C# analyzer (see
 //! `services/roslyn-analyzer/`). [`MockRoslynAnalyzer`] is the offline default;
-//! [`HttpRoslynAnalyzer`] calls the real service. Both are fail-closed.
+//! [`HttpRoslynAnalyzer`] calls the real service. [`HttpRoslynAnalyzer`] is
+//! **fail-closed** (unreachable / unparseable / non-approving analyzer ⇒ not
+//! approved). [`MockRoslynAnalyzer`] is **approve-all (fail-OPEN)** for offline
+//! dev — which is why `hardened` Mode A refuses to start without a real analyzer,
+//! and why the in-process `dcvr-csharp-policy` lexical layer always runs first as
+//! the effective gate.
 
 mod error;
 mod http;

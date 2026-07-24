@@ -104,9 +104,19 @@ Every generated C# fragment goes through `crates/csharp-policy` before it can ru
    - **System-security layer** — `System.IO`, `System.Net`, `UnityWebRequest`, `Process`,
      reflection, `unsafe`/pointers, `dynamic`. Stops code that sends data out or touches
      the machine.
-   - **Perceptual / XR layer** — `WebCamTexture`, `Microphone`, `InputTracking`, eye-gaze,
-     `OVRManager`, `OVRBoundary`, XR namespaces. Stops code that reads the body or moves
-     the user.
+   - **Perceptual / XR layer** — the actual banned identifiers are `WebCamTexture`,
+     `InputTracking`, `XRSettings`/`XRDevice`, `XROrigin`, `TrackedPoseDriver`,
+     `OVRManager`/`OVRCameraRig`/`OVRPlugin`/`OVRBoundary`/`OVRInput`,
+     `InputDevices`/`XRInputSubsystem`, and `OVRHaptics`/`SendHapticImpulse`/`Vibrate`,
+     plus the XR namespaces (`UnityEngine.XR`, `Unity.XR`, `UnityEngine.InputSystem.XR`).
+     Stops code that reaches the headset's rig / tracking / haptics / camera. **Note:**
+     `Microphone` is **not** banned anywhere, and eye-gaze (`OVREyeGaze`) and the other
+     dual-use MR primitives (`OVRPassthroughLayer`, `OVRSpatialAnchor`, `OVRSceneManager`,
+     `OVRHand`, `OVRSkeleton`, `OVRFaceExpressions`) are **deliberately allowed** as
+     content-authoring APIs — see the `NOTE` in `crates/csharp-policy/src/lexical.rs`.
+     Covert capture/manipulation via them is a runtime/disclosure concern (Phase-6
+     monitors), not a lexical one; exfiltration through them is already caught by the
+     System-security layer.
 3. **Checks the shape** — it must be a single `MonoBehaviour` class within size limits.
 4. If anything matches → **Reject before dispatch**, with the exact offending token
    recorded so the reason is specific. Otherwise → admit.
@@ -144,6 +154,12 @@ and after (DeployHardened). Reproduce with `cargo run -p xr-security-eval` (writ
   from a legitimate "turn the view" command — so static checking can't block them without
   breaking creation. Flagged as a **runtime-guardian** case (future work). That is why it is
   95%, not a suspicious 100%.
+- **What "biometric 8/8" actually means (honest reading):** biometric 8/8 is achieved
+  because those payloads use a banned API (`WebCamTexture`) or exfiltrate via
+  `System.Net`/`UnityWebRequest` — the guardrail catches the camera/egress, not a bare,
+  local-only `Microphone` or eye-gaze **read**, which is a runtime/disclosure concern. So
+  the row is true for the corpus, but it does **not** mean the biometric sensor surface is
+  lexically closed.
 
 \* *No real camera, passthrough feed, or physical room was captured — class 3 is tested as
 attempted API access with synthetic payloads. This is a static code-admission study, not
@@ -230,8 +246,21 @@ codebase. The confirmed, security-relevant issues were fixed and locked with tes
   `process_audio` path emits no admin events (the demo uses Mode A, which does); admin **read**
   routes are not token-gated (safe on the default loopback bind, a concern only if exposed on
   `0.0.0.0`); the personalization RAG context interpolates a past command into the prompt
-  (prompt-injection surface); the Mode-D sandbox has a stdin-write timeout gap. These are on
-  the hardening backlog.
+  (prompt-injection surface); the Mode-D sandbox has a stdin-write timeout gap; the personalization
+  **TTL purge is coded but unwired** (`purge_expired` has no runtime caller) and RAG retention is
+  **opt-out** (`enable_rag` defaults true). These are on the hardening backlog.
+- **Hardened analyzer requirement gates on Mode A only.** `enforce_profile_invariants` requires a
+  real Roslyn analyzer only when `mode_a` (`crates/config/src/settings.rs:411`); a `hardened`
+  deployment running Mode-B-only C# (`DCVR_CSHARP_RESEARCH=true`, `mode_a=false`, no `roslyn_url`)
+  silently falls back to the approve-all mock. **Impact is bounded** — only Mode A emits runnable
+  code to the device (NID-94), so Mode-B-only never reaches the headset and the in-process lexical
+  guardrail stays the effective gate — but `hardened` should require the analyzer for Mode B too.
+- **LLM default & the control-bus `model` field.** The deployed generation model defaults to
+  **`gpt-4o-mini`** (`crates/config/src/settings.rs:177`), and the server seeds the live-tunable
+  `RuntimeConfig.model` (`crates/control/src/lib.rs:101`, literal default `"gpt-5.5"`) **from**
+  that setting — so the admin/control-bus `model` field is **decorative for generation**: editing
+  it does not change the model actually used (only `reasoning_effort` / `verbosity` /
+  `max_completion_tokens` are pushed live). Set the model via `OPENAI_MODEL`, not the panel.
 
 ---
 

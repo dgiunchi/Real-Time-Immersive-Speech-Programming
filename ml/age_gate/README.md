@@ -83,8 +83,13 @@ the surrounding Rust workspace **263 tests pass, 0 fail**; the companion
   at the 99th-percentile threshold, per-family detection **1.0**; drift detector
   (ADWIN2) **0 false alarms** on a stationary stream, injected shift detected at
   **t = 304**; the curated **128**-vector baseline feeds a discovered-vector
-  store (`attacks_discovered.jsonl`) that **grows to 164 entries**. For context,
-  the prior C# validator hardening moved block-rate **15 % → 100 %, 0 bypass**.
+  store (`attacks_discovered.jsonl`) that **grows to 164 entries**. *(Caveat: these
+  anomaly-AUC and 128→164 discovered-vector figures are measured against **synthetic**
+  op-sequences and the naive `MockDenylistSUT` substring stand-in — **NOT** the real Rust
+  `crates/csharp-policy` guardrail; they validate the analyzer method, not the shipping
+  guardrail. See `ml/attack_analyzer/README.md`.)* For context — and by contrast, against
+  the **real** guardrail's red-team corpus — the prior C# validator hardening moved
+  block-rate **15 % → 100 %, 0 bypass**.
 
 **What is a LIMITATION (stated plainly):**
 

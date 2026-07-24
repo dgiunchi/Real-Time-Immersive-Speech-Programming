@@ -31,16 +31,32 @@ inference that the XR-privacy literature (Nair et al., USENIX Sec 2023) demonstr
 contribution is the *coupling* of an age posterior to a real-time dual-plane safety
 policy, not age inference itself, which I treat honestly as prior art.
 
+> **Build status (code-checked — read this alongside the pitch).** What is **built and
+> tested today** is the age→**code-safety** coupling: a detected minor flips the C#
+> validator to the `DeployHardened` denylist (`crates/command-router/src/router.rs:163`),
+> pinned by the test `age_minor_forces_hardened_csharp_gate`
+> (`crates/command-router/tests/router_tests.rs:470`). What is **designed / proposed, not
+> yet built**: the *second* (perceptual) plane's age-coupling — the runtime perceptual
+> clamps read **global** config, not the age band — the **compositional / cumulative-
+> envelope** harm model, and the **ML age-signal wiring** (`ml/age_gate` is standalone
+> Python, not called from the pipeline; the only live age input is a manual `DCVR_AGE_BAND`
+> env string). So the **dual-plane** story is the **target architecture**; the **built**
+> coupling is **single-plane (code)**. §G5 states this built-vs-proposed split in full, and
+> the framing below should be read through it.
+
 ---
 
 > ## If you only remember 3 sentences
 > 1. **The novelty is the coupling, not the components:** one on-device age signal drives
 >    *both* code-safety *and* perceptual-safety, and nobody in 2022–2026 couples an age
 >    posterior to a real-time safety policy or unifies those two planes over an
->    LLM-writes-runnable-code XR loop.
+>    LLM-writes-runnable-code XR loop. *(Built today: the **code-safety** leg only — see the
+>    Build-status note above; the perceptual leg is the designed extension.)*
 > 2. **Compositional harm is the strongest, least-contested wedge:** individually-bounded
 >    ops compose into harm (herding, progressive occlusion, strobe-by-accumulation), and
 >    per-action bounds *provably* miss it — I model the cumulative envelope instead.
+>    *(Designed, not yet built: the cumulative-envelope model; the built perceptual layer
+>    today is per-plan static code-admission, not a cumulative accumulator.)*
 > 3. **I confront the paradox head-on** ("you built the surveillance you critique") — the
 >    inversion is deliberate, governed by on-device/ephemeral/template-free/consent-gated/
 >    fail-closed design, and the age model is a *safety net*, never the legal basis
@@ -59,6 +75,11 @@ plane over a live speech→LLM→C#→runtime-compile XR loop — the *coupling*
 age inference, which is prior art."** The three defensible sub-claims are age-conditioned
 enforcement of *generated code*, unification of two disjoint safety literatures, and
 detection of *compositional* immersive harm inside LLM-generated scene code pre-compile.
+**Build status:** the age→code-safety coupling is **built and tested** today
+(`crates/command-router/src/router.rs:163`; test `age_minor_forces_hardened_csharp_gate`,
+`crates/command-router/tests/router_tests.rs:470`); the perceptual-plane coupling and the
+compositional-harm model are **designed, not yet built** (see the Build-status note under
+the elevator pitch and §G5).
 
 ### A2. Why is this novel — hasn't age-gating and code-safety each been done?
 
@@ -751,10 +772,10 @@ If an examiner points at any single vector, this is the one-line attack + our ex
 | A112 | Adversarial stimuli | ⚪ N/A | **Attack:** Use adversarial visuals to manipulate perception. **Answer:** Covered by the perceptual-safety plan (the Immersive family above). |
 | A113 | Facial-expression eavesdropping | ⚪ N/A | **Attack:** Read the user's facial expressions. **Answer:** Kept out of the protocol; sensor-read ban under hardening. |
 | A114 | Voiceprint inference | 📐 Designed | **Attack:** A cloud provider infers your identity from your voice. **Answer:** Planned: local-first speech-to-text, consent and disclosure, and transcribe-then-delete. |
-| A115 | Transcript leakage | 🟡 Partial | **Attack:** Read your saved transcripts, e.g. via an unauthenticated admin page. **Answer:** Done: refuse to expose the panel off-loopback without a token, plus redaction and TTL. Remaining: authenticate the read-only pages. |
+| A115 | Transcript leakage | 🟡 Partial | **Attack:** Read your saved transcripts, e.g. via an unauthenticated admin page. **Answer:** Done: refuse to expose the panel off-loopback without a token, plus redaction. (TTL purge is **designed, not yet wired** — see A117.) Remaining: authenticate the read-only pages. |
 | A116 | Prompt leakage | 📐 Designed | **Attack:** Your prompts leak to the cloud LLM provider. **Answer:** Planned: disclosure and consent, and prefer local models. |
-| A117 | Generated-code leakage | 🟡 Partial | **Attack:** Your generated code is exposed via an unauthenticated page. **Answer:** Done: bind refusal, opt-in retention, and TTL. Remaining: authenticate the read routes. |
-| A118 | Profile leakage | ✅ Solved | **Attack:** Your saved taste profile is read from disk or an open page. **Answer:** Encrypted at rest, owner-only file permissions, TTL, delete/export, and owner binding. |
+| A117 | Generated-code leakage | 🟡 Partial | **Attack:** Your generated code is exposed via an unauthenticated page. **Answer:** Done: bind refusal (off-loopback needs a token). **Correction (code-checked):** retention is opt-**out**, not opt-in — RAG history records by default (`enable_rag` defaults `true`, `crates/control/src/lib.rs:98`); and TTL is **designed, not wired** — `purge_expired` exists (`crates/personalization/src/lib.rs:142`) but has **no runtime caller** and there is no TTL config field. Remaining: authenticate the read routes, wire the TTL purge, make retention opt-in. |
+| A118 | Profile leakage | ✅ Solved | **Attack:** Your saved taste profile is read from disk or an open page. **Answer:** Encrypted at rest (ChaCha20-Poly1305 when `DCVR_PROFILE_ENC_KEY` set), owner-only (`0600`) file permissions, delete/export, and owner binding. (TTL purge is coded but **not yet wired** — see A117.) |
 | A119 | Preference inference | 📐 Designed | **Attack:** The feature itself infers your private preferences. **Answer:** Planned: opt-in with notice, minimise to keyword counts, TTL, and deletion. |
 | A120 | Re-identification | 📐 Designed | **Attack:** Re-identify you from quasi-identifiers in stored data. **Answer:** Planned: redact transcripts, keyword-only history, pseudonymous ids, and TTL. |
 | A121 | Admin-log exposure | ✅ Solved | **Attack:** Read admin logs via an open panel, or time the token to guess it. **Answer:** Constant-time token compare, refuse off-loopback bind without a token, and redaction. |

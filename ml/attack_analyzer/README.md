@@ -54,6 +54,16 @@ deterministic and CPU-only by design so every number is reproducible and auditab
   and a child sample pushed across the adult boundary gives a **100 % spoof-rate**
   finding against our own age gate — a self-test result the static list could never produce.
 
+> **Caveat — what these numbers are measured against (read before quoting them).** The
+> **AUC 1.00** / per-family **1.0** anomaly figures come from **synthetic** benign-vs-held-out
+> **intent→code-op sequences**, and the **128 → 164**-vector growth is produced against
+> `MockDenylistSUT` — *a deliberately naive case-insensitive substring denylist stand-in*, **not**
+> the real Rust `crates/csharp-policy` guardrail. They validate the **analyzer method**, not
+> the shipping guardrail; wiring these to the live pipeline (real `csharp-policy` op streams,
+> the real server SUT) is **designed / future work**, detailed in "Wiring to the real system"
+> below. (The separate **15 % → 100 %, 0 bypass** figure *is* against the real guardrail's
+> red-team corpus — do not conflate the two.)
+
 The whole suite is green: **21/21 tests OK** for this analyzer (re-run from repo root),
 alongside **17/17** for the age gate and **263 Rust tests pass, 0 fail** across the
 workspace (re-run 2026-07-17).
