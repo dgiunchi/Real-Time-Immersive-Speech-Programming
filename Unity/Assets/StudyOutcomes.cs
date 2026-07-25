@@ -1,38 +1,71 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using Ubiq.Messaging;
 using UnityEngine;
 
 /// <summary>
-/// Runs the study's pre-scripted outcomes as ordinary compiled C#.
+/// Executes study outcomes described by the server.
 ///
 /// WHY THIS EXISTS
-/// The original DreamCodeVR pipeline compiles the injected C# at runtime with
-/// RoslynCSharp (Assembly.Load of freshly built IL). That works in the Unity
-/// Editor (Mono/JIT) but CANNOT work in a standalone Quest build, which uses
-/// IL2CPP (ahead-of-time, no JIT) — Assembly.Load of new IL throws, so nothing
-/// appears on the headset.
+/// The original DreamCodeVR pipeline compiled injected C# at runtime with
+/// RoslynCSharp (Assembly.Load of freshly built IL). That works in the Editor
+/// (Mono/JIT) but CANNOT work in a standalone Quest build, which uses IL2CPP
+/// (ahead-of-time, no JIT) — so on the headset every injection silently failed.
 ///
-/// A Wizard-of-Oz study only ever plays a FIXED set of outcomes (4 tasks ×
-/// 5 responses). So instead of compiling code on the device, the server sends
-/// a tiny "task/response" id and this component runs the matching pre-built
-/// behaviour. Pure compiled C# → works perfectly on the Quest.
+/// A Wizard-of-Oz study only plays pre-planned outcomes, so no runtime
+/// compilation is needed. The server sends a small JSON *spec* describing what
+/// should happen and this component performs it with ordinary compiled code.
 ///
-/// The server sends, on NetworkId 99:
-///     { type:"StudyOutcome", peer:"WizardOfOz", data:"task1/success" }
+/// Because the spec (including feedback wording and agent dialogue) lives on the
+/// server, task variants can be authored/edited in Server/.../app.js WITHOUT
+/// rebuilding and reinstalling the APK — important, since each rebuild costs
+/// minutes and a headset deploy.
+///
+/// Channel: NetworkId 99
+///     { type:"StudyOutcome", peer:"WizardOfOz", data:"<json OutcomeSpec>" }
 /// </summary>
 public class StudyOutcomes : MonoBehaviour
 {
     public NetworkId networkId = new NetworkId(99);
 
-    [Tooltip("Where new objects spawn / the reference point. If unset, uses the main camera (in front of the participant).")]
+    [Tooltip("Reference point for spawning. If unset, uses the main camera (in front of the participant).")]
     public Transform spawnOrigin;
 
-    [Tooltip("Fake 'AI thinking' delay (seconds) between the researcher's inject and the outcome appearing. Keeps the illusion of live processing.")]
+    [Tooltip("Fake 'AI thinking' delay (seconds) before an outcome appears, so it feels like live processing.")]
     public float thinkingDelayMin = 1.2f;
     public float thinkingDelayMax = 2.5f;
 
     private NetworkContext context;
+
+    /// <summary>What the server asks us to do. All content is server-authored.</summary>
+    [Serializable]
+    public class OutcomeSpec
+    {
+        public string action = "spawn";   // spawn | recolor | orbit | clear | condition | mic
+        public string shape = "sphere";   // sphere | cube | cylinder | capsule
+        public string pos = "hand";       // hand | origin | offset | high
+        public float scaleX = 0.15f, scaleY = 0.15f, scaleZ = 0.15f;
+        public string color = "";         // "#RRGGBB", empty = default
+        public bool physics = false;
+        public bool useCollider = true;
+        public int count = 1;
+        public bool applyToAll = false;   // recolor: hit every renderer (ambiguous-target error)
+        public bool revert = false;       // recolor: revert after a moment (flaky-material error)
+        public bool drift = false;        // orbit: fly away instead of orbiting
+        public string orbitTarget = "cube"; // cube | origin
+        public string orbitAxis = "up";     // up | forward | right
+        public float orbitSpeed = 60f;
+        public bool stopOnCollision = false;
+
+        // Feedback content (conditions B and C) — authored server-side.
+        public string label = "";      // what the system claims it did
+        public string errorText = "";  // plain-language explanation; empty = treated as success
+        public string agentPre = "";   // condition C: spoken before the result
+        public string agentPost = "";  // condition C: spoken after the result
+
+        public string value = "";      // payload for condition/mic actions
+    }
 
     [Serializable]
     private struct Message { public string type; public string peer; public string data; }
@@ -43,15 +76,21 @@ public class StudyOutcomes : MonoBehaviour
     }
 
     // ── Origin helpers ────────────────────────────────────────────────────────
-    private Vector3 OriginPos =>
-        spawnOrigin ? spawnOrigin.position :
-        (Camera.main ? Camera.main.transform.position : Vector3.zero);
+    private Vector3 OriginPos => spawnOrigin ? spawnOrigin.position
+        : (Camera.main ? Camera.main.transform.position : Vector3.zero);
+    private Vector3 OriginFwd => spawnOrigin ? spawnOrigin.forward
+        : (Camera.main ? Camera.main.transform.forward : Vector3.forward);
 
-    private Vector3 OriginFwd =>
-        spawnOrigin ? spawnOrigin.forward :
-        (Camera.main ? Camera.main.transform.forward : Vector3.forward);
-
-    private Vector3 InFront => OriginPos + OriginFwd * 0.3f;
+    private Vector3 ResolvePosition(string pos)
+    {
+        switch (pos)
+        {
+            case "origin": return Vector3.zero;                       // "wrong place" error
+            case "offset": return OriginPos + OriginFwd * 0.9f;
+            case "high":   return OriginPos + OriginFwd * 0.3f + Vector3.up * 0.6f;
+            default:       return OriginPos + OriginFwd * 0.3f;       // "hand"
+        }
+    }
 
     // ── Network entry point ───────────────────────────────────────────────────
     public void ProcessMessage(ReferenceCountedSceneGraphMessage data)
@@ -59,16 +98,20 @@ public class StudyOutcomes : MonoBehaviour
         Message m = data.FromJson<Message>();
         if (string.IsNullOrWhiteSpace(m.data)) return;
 
-        var parts = m.data.Split('/');
-        if (parts.Length != 2) { Debug.LogWarning("[StudyOutcomes] Bad outcome id: " + m.data); return; }
+        OutcomeSpec spec;
+        try { spec = JsonUtility.FromJson<OutcomeSpec>(m.data); }
+        catch (Exception e) { Debug.LogWarning("[StudyOutcomes] Bad spec: " + e.Message); return; }
+        if (spec == null) return;
 
-        // Task outcomes get a short fake "thinking" delay so it feels like a
-        // live AI processed the request; control messages run immediately.
-        if (parts[0].StartsWith("task")) StartCoroutine(RunAfterThinking(parts[0], parts[1]));
-        else Run(parts[0], parts[1]);
+        // Control actions are immediate; visible outcomes get the thinking delay.
+        if (spec.action == "condition") { SetCondition(spec.value); return; }
+        if (spec.action == "mic")       { SetRemoteRecording(spec.value == "start"); return; }
+        if (spec.action == "clear")     { ResetScene(); return; }
+
+        StartCoroutine(RunAfterThinking(spec));
     }
 
-    private IEnumerator RunAfterThinking(string task, string response)
+    private IEnumerator RunAfterThinking(OutcomeSpec spec)
     {
         var cond = FindObjectOfType<StudyConditionManager>(true);
         bool feedback = !cond || !cond.IsConditionA();
@@ -80,136 +123,160 @@ public class StudyOutcomes : MonoBehaviour
             if (panel) panel.ShowProcessing();
         }
 
-        // Condition C: the agent acknowledges the request BEFORE the result
-        // appears ("Okay, I'll create a ball…"), then comments AFTER (in Run).
         float wait = UnityEngine.Random.Range(thinkingDelayMin, thinkingDelayMax);
-        if (embodied)
+
+        // Condition C: acknowledge the request before the result appears.
+        if (embodied && !string.IsNullOrWhiteSpace(spec.agentPre))
         {
             var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
             if (agent)
             {
-                int taskIndex = task[4] - '1';
-                agent.SetActiveTask(taskIndex);
-                agent.SpeakPre(response);
-                wait = Mathf.Max(wait, agent.EstimateDuration(response, true) + 0.3f);
+                agent.SpeakCustom(spec.agentPre);
+                wait = Mathf.Max(wait, EstimateSpeech(spec.agentPre) + 0.3f);
             }
         }
 
         yield return new WaitForSeconds(wait);
-        Run(task, response);
+
+        Apply(spec);
+        NotifyFeedback(spec);
     }
 
-    /// <summary>Runs an outcome. task = "task1".."task4", response = "success"/"error1".."error4".</summary>
-    public void Run(string task, string response)
-    {
-        Debug.Log($"[StudyOutcomes] Running {task}/{response}");
-        switch (task)
-        {
-            case "reset": ResetScene(); break;
-            case "condition": SetCondition(response); break;
-            case "mic": SetRemoteRecording(response == "start"); break;
-            case "task1": Task1(response); break;
-            case "task2": Task2(response); break;
-            case "task3": Task3(response); break;
-            case "task4": Task4(response); break;
-            default: Debug.LogWarning("[StudyOutcomes] Unknown task: " + task); return;
-        }
+    private static float EstimateSpeech(string text) =>
+        string.IsNullOrEmpty(text) ? 0f : Mathf.Max(2f, text.Length * 0.055f);
 
-        // Drive the condition-specific feedback so the panels/agent actually
-        // react to each outcome (B: text panel explains; C: agent speaks too).
-        if (task.StartsWith("task")) NotifyFeedback(task, response);
+    // ── Outcome execution ─────────────────────────────────────────────────────
+    public void Apply(OutcomeSpec spec)
+    {
+        Debug.Log($"[StudyOutcomes] {spec.action} shape={spec.shape} pos={spec.pos} err={!string.IsNullOrEmpty(spec.errorText)}");
+        switch (spec.action)
+        {
+            case "spawn":   DoSpawn(spec);   break;
+            case "recolor": DoRecolor(spec); break;
+            case "orbit":   DoOrbit(spec);   break;
+            default: Debug.LogWarning("[StudyOutcomes] Unknown action: " + spec.action); break;
+        }
     }
 
-    // ── Feedback (conditions B and C) ─────────────────────────────────────────
-
-    private void NotifyFeedback(string task, string response)
+    private void DoSpawn(OutcomeSpec spec)
     {
-        var cond = FindObjectOfType<StudyConditionManager>(true);
-        if (cond && cond.IsConditionA()) return; // A = no feedback, by design
+        Vector3 basePos = ResolvePosition(spec.pos);
+        int n = Mathf.Max(1, spec.count);
 
-        // Text panel (B and C)
-        var panel = FindObjectOfType<FeedbackPanelController>(true);
-        if (panel)
+        for (int i = 0; i < n; i++)
         {
-            string action = ActionSummary(task);
-            if (response == "success") panel.ShowSuccess(action);
-            else panel.ShowError(action, ErrorDescription(task, response));
-        }
+            // Multiple objects (the "over-interpreted" error) fan out in a ring.
+            Vector3 p = n == 1 ? basePos
+                : basePos + Quaternion.Euler(0, i * (360f / n), 0) * Vector3.right * 0.8f;
 
-        // Embodied agent voice/subtitle (C only) — comment on the result.
-        if (cond && cond.IsConditionC())
-        {
-            var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
-            if (agent)
+            var go = Primitive(ParseShape(spec.shape), p,
+                new Vector3(spec.scaleX, spec.scaleY, spec.scaleZ), ParseColor(spec.color));
+            go.tag = "Interactable";
+
+            if (!spec.useCollider)
             {
-                agent.SetActiveTask(task[4] - '1'); // "task1" -> 0
-                agent.SpeakPost(response);
+                var col = go.GetComponent<Collider>();
+                if (col) col.enabled = false;   // falls through the floor
+            }
+            if (spec.physics) go.AddComponent<Rigidbody>().useGravity = true;
+            if (spec.drift)
+            {
+                var rb = go.GetComponent<Rigidbody>() ?? go.AddComponent<Rigidbody>();
+                rb.useGravity = false;
+                rb.AddForce(Vector3.forward * 2f, ForceMode.VelocityChange);
             }
         }
     }
 
-    private static string ActionSummary(string task) => task switch
+    private void DoRecolor(OutcomeSpec spec)
     {
-        "task1" => "Create a ball at your hand",
-        "task2" => "Change the ball's colour to green",
-        "task3" => "Make the ball orbit the cube",
-        "task4" => "Create a small solar system",
-        _ => task
-    };
+        Color c = ParseColor(spec.color) ?? Color.green;
 
-    private static string ErrorDescription(string task, string response) => (task, response) switch
+        if (spec.applyToAll)
+        {
+            foreach (var r in FindObjectsOfType<Renderer>()) r.material.color = c;
+            return;
+        }
+
+        var target = FindInteractable();
+        if (!target) { Debug.LogWarning("[StudyOutcomes] recolor: nothing to recolor"); return; }
+
+        target.material.color = c;
+        if (spec.revert) StartCoroutine(RevertColour(target));
+    }
+
+    private IEnumerator RevertColour(Renderer target)
     {
-        ("task1", "error1") => "The ball was placed at the centre of the room instead of at your hand — the position wasn't understood.",
-        ("task1", "error2") => "A cube was created instead of a sphere — the shape was misinterpreted.",
-        ("task1", "error3") => "The ball's collider is disabled, so it falls through the floor.",
-        ("task1", "error4") => "The ball came out squashed — it inherited a wrong scale.",
-        ("task2", "error1") => "Every object turned green — the target was ambiguous.",
-        ("task2", "error2") => "The colour came out teal instead of green — wrong shade.",
-        ("task2", "error3") => "The colour reverted after a moment — a material problem.",
-        ("task2", "error4") => "A new green ball was created instead of recolouring the existing one.",
-        ("task3", "error1") => "The ball is orbiting the centre of the room, not the cube — no clear target was found.",
-        ("task3", "error2") => "The orbit is on the wrong axis — it looks tilted.",
-        ("task3", "error3") => "The orbit was too tight — the ball hit the cube and stopped.",
-        ("task3", "error4") => "The orbit speed is far too high.",
-        ("task4", "error1") => "Only the star was created — the planet was missed.",
-        ("task4", "error2") => "The planet inherited a squashed scale from the star.",
-        ("task4", "error3") => "The planet is drifting away instead of orbiting.",
-        ("task4", "error4") => "Fifty planets were created — the instruction was over-interpreted.",
-        _ => "Something went wrong while executing the instruction."
-    };
+        yield return new WaitForSeconds(2f);
+        if (target) target.material.color = Color.white;
+    }
 
-    /// <summary>Destroys everything the study created, for a clean start.</summary>
+    private void DoOrbit(OutcomeSpec spec)
+    {
+        var ball = FindInteractable();
+        GameObject go = ball ? ball.gameObject
+            : Primitive(PrimitiveType.Sphere, ResolvePosition("hand"), Vector3.one * 0.15f, null);
+        go.tag = "Interactable";
+
+        foreach (var old in go.GetComponents<StudyOrbit>()) Destroy(old);   // don't stack orbits
+        var orbit = go.AddComponent<StudyOrbit>();
+        orbit.speed = spec.orbitSpeed;
+        orbit.stopOnCollision = spec.stopOnCollision;
+        orbit.axis = spec.orbitAxis == "forward" ? Vector3.forward
+                   : spec.orbitAxis == "right"   ? Vector3.right
+                   : Vector3.up;
+
+        if (spec.orbitTarget == "origin") orbit.useWorldOrigin = true;   // orbits the wrong thing
+        else orbit.centre = FindOrCreateCube();
+    }
+
+    // ── Feedback (conditions B and C) ─────────────────────────────────────────
+    private void NotifyFeedback(OutcomeSpec spec)
+    {
+        var cond = FindObjectOfType<StudyConditionManager>(true);
+        if (cond && cond.IsConditionA()) return;   // A shows nothing, by design
+
+        var panel = FindObjectOfType<FeedbackPanelController>(true);
+        if (panel)
+        {
+            if (string.IsNullOrWhiteSpace(spec.errorText)) panel.ShowSuccess(spec.label);
+            else panel.ShowError(spec.label, spec.errorText);
+        }
+
+        if (cond && cond.IsConditionC() && !string.IsNullOrWhiteSpace(spec.agentPost))
+        {
+            var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
+            if (agent) agent.SpeakCustom(spec.agentPost);
+        }
+    }
+
+    // ── Scene management ──────────────────────────────────────────────────────
     private void ResetScene()
     {
-        // Everything the outcome system made lives under one container.
         for (int i = CreatedRoot.childCount - 1; i >= 0; i--)
             Destroy(CreatedRoot.GetChild(i).gameObject);
 
-        // Plus anything tagged by legacy paths (Editor Roslyn injections etc.).
         foreach (var go in GameObject.FindGameObjectsWithTag("Interactable")) Destroy(go);
         foreach (var go in GameObject.FindGameObjectsWithTag("game")) Destroy(go);
 
-        // Hide any lingering feedback.
         var panel = FindObjectOfType<FeedbackPanelController>(true);
         if (panel) panel.Clear();
         var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
         if (agent) agent.StopSpeaking();
     }
 
-    /// <summary>Researcher-driven push-to-talk fallback from the control panel.</summary>
     private void SetRemoteRecording(bool on)
     {
         var mic = FindObjectOfType<MicrophoneCapture>(true);
-        if (!mic) { Debug.LogWarning("[StudyOutcomes] No MicrophoneCapture found."); return; }
-        mic.SetRemoteRecordOverride(on);
+        if (mic) mic.SetRemoteRecordOverride(on);
+        else Debug.LogWarning("[StudyOutcomes] No MicrophoneCapture found.");
     }
 
-    /// <summary>Switches the visible feedback condition live (A/B/C) from the panel.</summary>
     private void SetCondition(string ab)
     {
         var mgr = FindObjectOfType<StudyConditionManager>(true);
-        if (!mgr) { Debug.LogWarning("[StudyOutcomes] No StudyConditionManager to switch."); return; }
-        switch (ab.ToUpperInvariant())
+        if (!mgr) { Debug.LogWarning("[StudyOutcomes] No StudyConditionManager."); return; }
+        switch ((ab ?? "").ToUpperInvariant())
         {
             case "A": mgr.SetConditionA(); break;
             case "B": mgr.SetConditionB(); break;
@@ -218,10 +285,10 @@ public class StudyOutcomes : MonoBehaviour
         }
     }
 
-    // ── Small helpers ─────────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
-    // Everything the study creates lives under one container so Clear/Reset can
-    // remove ALL of it reliably (tags alone missed untagged stars/planets).
+    // Everything the study creates lives under one container so a reset removes
+    // all of it — tags alone used to miss untagged objects.
     private static Transform createdRoot;
     private static Transform CreatedRoot
     {
@@ -236,7 +303,7 @@ public class StudyOutcomes : MonoBehaviour
         }
     }
 
-    private GameObject Primitive(PrimitiveType type, Vector3 pos, Vector3 scale, Color? color = null)
+    private GameObject Primitive(PrimitiveType type, Vector3 pos, Vector3 scale, Color? color)
     {
         var go = GameObject.CreatePrimitive(type);
         go.transform.SetParent(CreatedRoot, true);
@@ -246,8 +313,22 @@ public class StudyOutcomes : MonoBehaviour
         return go;
     }
 
-    private GameObject Ball(Vector3 pos, float scale, Color? color = null)
-        => Primitive(PrimitiveType.Sphere, pos, Vector3.one * scale, color);
+    private static PrimitiveType ParseShape(string s)
+    {
+        switch ((s ?? "").ToLowerInvariant())
+        {
+            case "cube":     return PrimitiveType.Cube;
+            case "cylinder": return PrimitiveType.Cylinder;
+            case "capsule":  return PrimitiveType.Capsule;
+            default:         return PrimitiveType.Sphere;
+        }
+    }
+
+    private static Color? ParseColor(string hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return null;
+        return ColorUtility.TryParseHtmlString(hex, out var c) ? c : (Color?)null;
+    }
 
     private Renderer FindInteractable()
     {
@@ -256,173 +337,27 @@ public class StudyOutcomes : MonoBehaviour
         return null;
     }
 
-    private Transform FindCube()
+    private Transform FindOrCreateCube()
     {
-        // Prefer the cube this study created earlier; otherwise create one so
-        // "orbit the cube" always has a visible, sensible target. (Scanning the
-        // scene for any BoxCollider grabbed random environment objects.)
+        // Reuse the study's own cube. (Scanning the scene for any BoxCollider
+        // used to pick up random environment objects like fences.)
         var existing = CreatedRoot.Find("OrbitCube");
         if (existing) return existing;
 
-        var cube = Primitive(PrimitiveType.Cube,
-            OriginPos + OriginFwd * 0.9f, Vector3.one * 0.25f,
-            new Color(0.85f, 0.4f, 0.15f));
+        var cube = Primitive(PrimitiveType.Cube, ResolvePosition("offset"),
+            Vector3.one * 0.25f, new Color(0.85f, 0.4f, 0.15f));
         cube.name = "OrbitCube";
         return cube.transform;
-    }
-
-    // ── TASK 1 — create a ball at hand ────────────────────────────────────────
-    private void Task1(string r)
-    {
-        switch (r)
-        {
-            case "success": {
-                var go = Ball(InFront, 0.15f);
-                go.AddComponent<Rigidbody>().useGravity = true;
-                go.tag = "Interactable";
-                break;
-            }
-            case "error1": { // wrong position: world origin
-                var go = Ball(Vector3.zero, 0.15f);
-                go.AddComponent<Rigidbody>();
-                go.tag = "Interactable";
-                break;
-            }
-            case "error2": { // wrong shape: cube not sphere
-                var go = Primitive(PrimitiveType.Cube, InFront, Vector3.one * 0.15f);
-                go.AddComponent<Rigidbody>();
-                go.tag = "Interactable";
-                break;
-            }
-            case "error3": { // collider disabled -> falls through floor
-                var go = Ball(InFront + Vector3.up * 0.5f, 0.15f);
-                var col = go.GetComponent<SphereCollider>();
-                if (col) col.enabled = false;
-                go.AddComponent<Rigidbody>().useGravity = true;
-                go.tag = "Interactable";
-                break;
-            }
-            case "error4": { // squashed ellipsoid
-                var go = Primitive(PrimitiveType.Sphere, InFront, new Vector3(0.05f, 0.25f, 0.05f));
-                go.AddComponent<Rigidbody>();
-                go.tag = "Interactable";
-                break;
-            }
-        }
-    }
-
-    // ── TASK 2 — colour the ball green ────────────────────────────────────────
-    private void Task2(string r)
-    {
-        switch (r)
-        {
-            case "success": {
-                var t = FindInteractable();
-                if (t) t.material.color = Color.green;
-                break;
-            }
-            case "error1": { // everything turns green
-                foreach (var rend in FindObjectsOfType<Renderer>()) rend.material.color = Color.green;
-                break;
-            }
-            case "error2": { // wrong shade (teal)
-                var t = FindInteractable();
-                if (t) t.material.color = new Color(0f, 0.7f, 0.7f);
-                break;
-            }
-            case "error3": { // reverts after 2s
-                StartCoroutine(RevertColour());
-                break;
-            }
-            case "error4": { // new green ball instead of recolouring
-                Ball(OriginPos + Vector3.up * 0.5f, 0.15f, Color.green);
-                break;
-            }
-        }
-    }
-
-    private IEnumerator RevertColour()
-    {
-        var t = FindInteractable();
-        if (t) t.material.color = Color.green;
-        yield return new WaitForSeconds(2f);
-        if (t) t.material.color = Color.white;
-    }
-
-    // ── TASK 3 — orbit the cube ───────────────────────────────────────────────
-    private void Task3(string r)
-    {
-        var ball = FindInteractable();
-        GameObject go = ball ? ball.gameObject : Ball(InFront, 0.15f);
-        if (!ball) go.tag = "Interactable";
-
-        // Clear any previous orbit so repeated injects don't stack.
-        foreach (var old in go.GetComponents<StudyOrbit>()) Destroy(old);
-        var orbit = go.AddComponent<StudyOrbit>();
-        orbit.centre = FindCube();
-
-        switch (r)
-        {
-            case "success": orbit.axis = Vector3.up;      orbit.speed = 60f; break;
-            case "error1":  orbit.centre = null;          orbit.useWorldOrigin = true; orbit.axis = Vector3.up; orbit.speed = 60f; break; // wrong centre
-            case "error2":  orbit.axis = Vector3.forward; orbit.speed = 60f; break;   // wrong axis
-            case "error3":  orbit.axis = Vector3.up;      orbit.speed = 60f; orbit.stopOnCollision = true; break; // crashes into cube
-            case "error4":  orbit.axis = Vector3.up;      orbit.speed = 1000f; break; // too fast
-        }
-    }
-
-    // ── TASK 4 — solar system ─────────────────────────────────────────────────
-    private void Task4(string r)
-    {
-        Vector3 centre = InFront;
-        switch (r)
-        {
-            case "success": {
-                var star = Ball(centre, 0.4f, new Color(1f, 0.8f, 0f));
-                var planet = Ball(centre + Vector3.right * 0.8f, 0.15f, new Color(0.2f, 0.4f, 1f));
-                var orbit = planet.AddComponent<StudyOrbit>();
-                orbit.centrePoint = centre; orbit.useFixedPoint = true; orbit.axis = Vector3.up; orbit.speed = 45f;
-                break;
-            }
-            case "error1": { // star only, no planet
-                Ball(centre, 0.4f, new Color(1f, 0.8f, 0f));
-                break;
-            }
-            case "error2": { // squashed star, planet parented (bad scale inherited)
-                var star = Primitive(PrimitiveType.Sphere, centre,
-                    new Vector3(0.4f, 0.2f, 0.4f), new Color(1f, 0.8f, 0f));
-                var planet = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                planet.transform.SetParent(star.transform); // inherits squashed scale (the error)
-                planet.transform.localPosition = Vector3.right * 2f;
-                var orbit = planet.AddComponent<StudyOrbit>();
-                orbit.centrePoint = centre; orbit.useFixedPoint = true; orbit.axis = Vector3.up; orbit.speed = 45f;
-                break;
-            }
-            case "error3": { // planet drifts off
-                Ball(centre, 0.4f, new Color(1f, 0.8f, 0f));
-                var planet = Ball(centre + Vector3.right * 0.8f, 0.15f);
-                planet.AddComponent<Rigidbody>().AddForce(Vector3.forward * 2f, ForceMode.VelocityChange);
-                break;
-            }
-            case "error4": { // 50 planets
-                var star = Ball(centre, 0.4f, new Color(1f, 0.8f, 0f));
-                for (int i = 0; i < 50; i++)
-                {
-                    var p = Ball(centre + Quaternion.Euler(0, i * 7.2f, 0) * Vector3.right * 0.8f, 0.07f);
-                }
-                break;
-            }
-        }
     }
 }
 
 /// <summary>Pre-compiled orbit motion (replaces the runtime-compiled orbit scripts).</summary>
 public class StudyOrbit : MonoBehaviour
 {
-    public Transform centre;          // orbit around this transform, if set
-    public Vector3 centrePoint;       // …or this fixed world point when useFixedPoint
+    public Transform centre;
+    public Vector3 centrePoint;
     public bool useFixedPoint;
-    public bool useWorldOrigin;       // …or Vector3.zero
+    public bool useWorldOrigin;
     public Vector3 axis = Vector3.up;
     public float speed = 60f;
     public bool stopOnCollision;
@@ -433,7 +368,7 @@ public class StudyOrbit : MonoBehaviour
         if (useWorldOrigin)     c = Vector3.zero;
         else if (useFixedPoint) c = centrePoint;
         else if (centre)        c = centre.position;
-        else                    return; // no valid centre yet
+        else                    return;
         transform.RotateAround(c, axis, speed * Time.deltaTime);
     }
 

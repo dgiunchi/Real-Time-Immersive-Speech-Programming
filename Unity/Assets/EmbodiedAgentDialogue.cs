@@ -123,6 +123,17 @@ public class EmbodiedAgentDialogue : MonoBehaviour
     public void SpeakPreError4()    => Speak(taskDialogues[activeTask].preError4);
     public void SpeakPostError4()   => Speak(taskDialogues[activeTask].postError4);
 
+    /// <summary>
+    /// Speak an arbitrary line supplied by the server. Used by the study so all
+    /// dialogue can be authored/edited server-side without rebuilding the APK.
+    /// Plays a matching Resources/AgentVoice clip if one has been provided.
+    /// </summary>
+    public void SpeakCustom(string text, AudioClip clip = null)
+    {
+        if (string.IsNullOrWhiteSpace(text) && !clip) return;
+        Speak(new DialogueLine { text = text, clip = clip });
+    }
+
     /// <summary>Speak the pre-execution line for a response ("success"/"error1"…"error4").</summary>
     public void SpeakPre(string response)
     {

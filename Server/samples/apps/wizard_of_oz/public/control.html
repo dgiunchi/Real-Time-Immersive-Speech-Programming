@@ -75,16 +75,26 @@
     <p class="hint">Set this before the participant starts.</p>
 
     <label>Participant ID</label>
-    <input id="participantId" placeholder="e.g. P01">
+    <input id="participantId" placeholder="e.g. P01" onchange="loadPlan()" onblur="loadPlan()">
+
+    <label>Block (each participant does all 3)</label>
+    <select id="block">
+      <option value="1">Block 1</option>
+      <option value="2">Block 2</option>
+      <option value="3">Block 3</option>
+    </select>
 
     <label>Condition</label>
     <select id="condition">
+      <option value="">Follow counterbalanced plan (recommended)</option>
       <option value="A">A — No feedback</option>
       <option value="B">B — Text panel</option>
       <option value="C">C — Embodied agent</option>
     </select>
 
     <button class="btn-accent" style="width:100%;margin-top:16px;" onclick="startSession()">Start / Update Session</button>
+
+    <div id="planBox" style="margin-top:14px;"></div>
 
     <hr style="border:none;border-top:1px solid var(--line);margin:20px 0;">
 
@@ -140,6 +150,7 @@
 const API = "";
 let tasks = [];
 let activeTask = "task1";
+let activeVariant = "v1";   // chosen by the counterbalance plan for this block
 let logLines = [];
 
 async function get(url) { const r = await fetch(API + url); return r.json(); }
@@ -181,31 +192,73 @@ function renderResponses() {
   const wrap = document.getElementById("responses");
   wrap.innerHTML = "";
   if (!t) return;
-  t.responses.forEach(r => {
-    const isSuccess = r.key === "success";
+
+  const v = t.variants.find(x => x.key === activeVariant) || t.variants[0];
+
+  // What to say to the participant, and what the planned failure is.
+  const brief = document.createElement("div");
+  brief.style.cssText = "margin-bottom:12px;padding:10px;background:#161b24;border-radius:8px;";
+  brief.innerHTML =
+    `<div style="font-size:13px;color:#9fb4d8;">Variant <b>${v.key}</b> — ${v.label}</div>` +
+    `<div style="margin-top:6px;font-size:14px;">Ask the participant: <b>${v.prompt}</b></div>` +
+    `<div style="margin-top:6px;font-size:13px;color:#e8a87c;">Planned omission: <b>${v.missing}</b></div>` +
+    `<div style="margin-top:6px;font-size:12px;color:#8b98ad;">Attempt so far: <b id="attemptCount">0</b></div>`;
+  wrap.appendChild(brief);
+
+  const mk = (outcome, title, desc, cls) => {
     const div = document.createElement("div");
-    div.className = "resp " + (isSuccess ? "success" : "error");
-    div.onclick = () => inject(r.key, r.description);
-    div.innerHTML = `<div class="rbtn">${isSuccess ? "SUCCESS" : r.key.replace("error","ERR ")}</div>
-                     <div class="desc">${r.description}</div>`;
+    div.className = "resp " + cls;
+    div.onclick = () => inject(outcome, desc);
+    div.innerHTML = `<div class="rbtn">${title}</div><div class="desc">${desc}</div>`;
     wrap.appendChild(div);
-  });
+  };
+
+  mk("error", "INJECT ERROR",
+     `Attempt 1, and again whenever they repeat the same omission (${v.missing}).`, "error");
+  mk("success", "INJECT SUCCESS",
+     "Use once they supply the missing detail.", "success");
+}
+
+function renderPlan(plan, pid) {
+  const el = document.getElementById("planBox");
+  if (!el) return;
+  if (!plan || !plan.length) { el.innerHTML = ""; return; }
+  el.innerHTML =
+    `<div class="sub" style="margin-bottom:6px;">Counterbalanced plan for <b>${pid}</b> — run blocks in this order:</div>` +
+    plan.map(p =>
+      `<div style="font-size:13px;padding:3px 0;">
+         Block ${p.block}: <span class="pill ${p.condition}">Condition ${p.condition}</span>
+         <span class="sub">variants ${Object.values(p.variants).join(" / ")}</span>
+       </div>`).join("");
+}
+
+async function loadPlan() {
+  const pid = document.getElementById("participantId").value.trim();
+  if (!pid) return;
+  const res = await get("/plan?pid=" + encodeURIComponent(pid));
+  renderPlan(res.plan, res.participantId);
 }
 
 async function selectTask(key) {
   activeTask = key;
   const num = key.replace("task","");
-  await post("/task", { task: Number(num) });
+  const res = await post("/task", { task: Number(num) });
+  if (res.variant) activeVariant = res.variant;   // set by the counterbalance plan
   renderTaskChips();
   renderResponses();
   addLog("task", "Active task → " + key);
 }
 
-async function inject(response, desc) {
+async function inject(outcome, desc) {
   const num = activeTask.replace("task","");
-  const res = await post("/inject", { task: Number(num), response });
-  if (res.ok) addLog("inject", `Injected ${activeTask}/${response} — ${desc}`);
-  else addLog("t", "Inject failed: " + (res.error||"?"));
+  const res = await post("/inject", { task: Number(num), outcome, variant: activeVariant });
+  if (res.ok) {
+    addLog("inject", `${activeTask}/${res.variant} ${outcome.toUpperCase()} (attempt ${res.attempt})`);
+    const el = document.getElementById("attemptCount");
+    if (el) el.textContent = res.attempt;
+  } else {
+    addLog("t", "Inject failed: " + (res.error||"?"));
+  }
 }
 
 async function resetScene() {
@@ -243,11 +296,22 @@ function renderMic(mic) {
 async function startSession() {
   const participantId = document.getElementById("participantId").value.trim();
   const condition = document.getElementById("condition").value;
+  const block = Number(document.getElementById("block").value) || 1;
   if (!participantId) { alert("Enter a participant ID first."); return; }
-  await post("/session", { participantId, condition });
+
+  // Blank condition = follow the counterbalanced plan for this block.
+  const res = await post("/session", {
+    participantId, block, condition: condition || undefined
+  });
+  const s = res.session || {};
+  activeVariant = (s.plan && s.plan[block - 1] && s.plan[block - 1].variants[activeTask]) || "v1";
+
   document.getElementById("sessionBadge").innerHTML =
-    `<b>${participantId}</b> &nbsp; <span class="pill ${condition}">Condition ${condition}</span>`;
-  addLog("task", `Session started: ${participantId} / Condition ${condition}`);
+    `<b>${participantId}</b> &nbsp; Block ${s.block} &nbsp;` +
+    `<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
+  addLog("task", `Session: ${participantId} block ${s.block} / Condition ${s.condition}`);
+  renderPlan(s.plan, participantId);
+  renderResponses();
 }
 
 async function logNote() {
