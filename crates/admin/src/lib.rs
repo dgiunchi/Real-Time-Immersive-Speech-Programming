@@ -28,7 +28,9 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
 
 use dcvr_control::{ControlBus, PipelineEvent, RuntimeConfig};
-use dcvr_csharp_policy::{validate_csharp_freeform, CsharpDecision};
+use dcvr_csharp_policy::{
+    validate_csharp_freeform_limited_profile, CsharpDecision, HardeningProfile,
+};
 use dcvr_personalization::PersonalizationStore;
 
 /// Optional backend-provided actions (kept behind a trait so this crate doesn't
@@ -303,25 +305,52 @@ struct ValidateReq {
     csharp: String,
 }
 
-fn verdict_json(code: &str) -> serde_json::Value {
-    let v = validate_csharp_freeform(code);
+/// The live guardrail settings the pipeline is currently using: the C# size caps
+/// and the hardening profile. Mirrors `Router::csharp_limits` /
+/// `Router::hardening_profile` so the panel's own tools agree with the real
+/// pipeline — otherwise changing "C# max chars" here would silently not apply to
+/// code pasted into this same panel.
+fn live_guardrail_settings(st: &AdminState) -> (usize, usize, HardeningProfile) {
+    let c = st.bus.config();
+    // Age-adaptive coupling: an explicit hardening switch OR a detected minor.
+    let hardened = c.perceptual_hardening || (c.age_gating_enabled && c.age_is_minor);
+    let profile = if hardened {
+        HardeningProfile::DeployHardened
+    } else {
+        HardeningProfile::CreativeFreedom
+    };
+    (c.max_csharp_chars, c.max_csharp_lines, profile)
+}
+
+fn verdict_json(code: &str, st: &AdminState) -> serde_json::Value {
+    let (max_chars, max_lines, profile) = live_guardrail_settings(st);
+    let v = validate_csharp_freeform_limited_profile(code, max_chars, max_lines, profile);
     serde_json::json!({
         "approved": v.decision == CsharpDecision::ApproveForResearch,
         "violations": v.violations.iter().map(|x| x.to_string()).collect::<Vec<_>>(),
         "chars": code.len(),
         "lines": code.lines().count(),
+        // Echo what the verdict was produced UNDER, so the panel can show that the
+        // result reflects the live settings rather than some fixed default.
+        "profile": if matches!(profile, HardeningProfile::DeployHardened) { "DeployHardened" } else { "CreativeFreedom" },
+        "max_chars": max_chars,
+        "max_lines": max_lines,
     })
 }
 
-async fn post_validate(Json(req): Json<ValidateReq>) -> impl IntoResponse {
-    Json(verdict_json(&req.csharp))
+async fn post_validate(
+    State(st): State<AdminState>,
+    Json(req): Json<ValidateReq>,
+) -> impl IntoResponse {
+    Json(verdict_json(&req.csharp, &st))
 }
 
-async fn post_redteam() -> impl IntoResponse {
+async fn post_redteam(State(st): State<AdminState>) -> impl IntoResponse {
+    let (max_chars, max_lines, profile) = live_guardrail_settings(&st);
     let results: Vec<serde_json::Value> = REDTEAM
         .iter()
         .map(|(name, code, should_block)| {
-            let v = validate_csharp_freeform(code);
+            let v = validate_csharp_freeform_limited_profile(code, max_chars, max_lines, profile);
             let blocked = v.decision != CsharpDecision::ApproveForResearch;
             serde_json::json!({
                 "name": name,
@@ -441,14 +470,70 @@ mod tests {
 
     #[test]
     fn redteam_samples_classify_correctly() {
+        // Under the DEFAULT live settings, which is what the panel's button uses.
+        let st = AdminState::new(ControlBus::new(RuntimeConfig::default()));
+        let (max_chars, max_lines, profile) = live_guardrail_settings(&st);
         for (name, code, should_block) in REDTEAM {
-            let v = validate_csharp_freeform(code);
+            let v = validate_csharp_freeform_limited_profile(code, max_chars, max_lines, profile);
             let blocked = v.decision != CsharpDecision::ApproveForResearch;
             assert_eq!(
                 blocked, *should_block,
                 "redteam sample misclassified: {name}"
             );
         }
+    }
+
+    /// The panel's own tools must obey the panel's own settings: tightening the C#
+    /// size cap has to change the verdict for pasted code, and flipping perceptual
+    /// hardening has to switch the profile. Before this was wired, `/api/validate`
+    /// silently used fixed defaults and ignored both.
+    #[test]
+    fn panel_tools_follow_the_live_config() {
+        let code = "public class GeneratedBehaviour : MonoBehaviour { void Start() { var x = OVRManager.Placeholder; } }";
+
+        let relaxed = AdminState::new(ControlBus::new(RuntimeConfig::default()));
+        let v = verdict_json(code, &relaxed);
+        assert_eq!(
+            v["approved"], true,
+            "OVRManager is free under CreativeFreedom"
+        );
+        assert_eq!(v["profile"], "CreativeFreedom");
+
+        let hardened = AdminState::new(ControlBus::new(RuntimeConfig {
+            perceptual_hardening: true,
+            ..RuntimeConfig::default()
+        }));
+        let v = verdict_json(code, &hardened);
+        assert_eq!(
+            v["approved"], false,
+            "perceptual hardening must reach the panel tool"
+        );
+        assert_eq!(v["profile"], "DeployHardened");
+
+        let tiny = AdminState::new(ControlBus::new(RuntimeConfig {
+            max_csharp_chars: 10,
+            ..RuntimeConfig::default()
+        }));
+        let v = verdict_json(code, &tiny);
+        assert_eq!(
+            v["approved"], false,
+            "the live size cap must reach the panel tool"
+        );
+        assert_eq!(v["max_chars"], 10);
+    }
+
+    /// A detected minor selects the hardened denylist even with the explicit
+    /// hardening switch off — the age-adaptive coupling, as the router does it.
+    #[test]
+    fn age_gating_minor_selects_the_hardened_profile() {
+        let st = AdminState::new(ControlBus::new(RuntimeConfig {
+            perceptual_hardening: false,
+            age_gating_enabled: true,
+            age_is_minor: true,
+            ..RuntimeConfig::default()
+        }));
+        let (_, _, profile) = live_guardrail_settings(&st);
+        assert!(matches!(profile, HardeningProfile::DeployHardened));
     }
 
     #[test]

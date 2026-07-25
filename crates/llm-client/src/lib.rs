@@ -25,6 +25,10 @@ use std::sync::{OnceLock, RwLock};
 /// request by the OpenAI client, so quality<->latency can be tuned WITHOUT a restart.
 #[derive(Debug, Clone)]
 pub struct LlmTuning {
+    /// The model id to generate with. EMPTY = keep the one the client was built
+    /// with (`OPENAI_MODEL`). Non-empty overrides it per request, so switching the
+    /// admin panel's model dropdown takes effect without a restart.
+    pub model: String,
     /// `minimal | low | medium | high` — the dominant latency/quality lever.
     pub reasoning_effort: String,
     /// `default | low | medium | high` — `default` leaves the model default (richer).
@@ -37,6 +41,9 @@ impl Default for LlmTuning {
     fn default() -> Self {
         // Best-quality default the user asked for: high reasoning, default verbosity.
         Self {
+            // Empty on purpose: defer to the client's configured model until the
+            // admin panel actually pushes a choice.
+            model: String::new(),
             reasoning_effort: "high".to_string(),
             verbosity: "default".to_string(),
             max_completion_tokens: 8000,

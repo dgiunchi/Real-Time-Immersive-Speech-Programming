@@ -187,6 +187,9 @@ impl Router {
         if let Some(b) = &self.bus {
             let c = b.config();
             dcvr_llm_client::set_llm_tuning(dcvr_llm_client::LlmTuning {
+                // Push the model too: without it the admin panel's model dropdown
+                // saved a value that generation never read (it was decorative).
+                model: c.model,
                 reasoning_effort: c.llm_reasoning_effort,
                 verbosity: c.llm_verbosity,
                 max_completion_tokens: c.llm_max_completion_tokens,

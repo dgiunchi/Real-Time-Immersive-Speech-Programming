@@ -74,6 +74,19 @@ pub struct OpenAiLlmClient {
 }
 
 impl OpenAiLlmClient {
+    /// The model to use for THIS request: the live admin-panel choice if one has
+    /// been pushed, else the model this client was constructed with
+    /// (`OPENAI_MODEL`). Resolved per request so the dropdown works without a
+    /// restart.
+    fn effective_model(&self) -> String {
+        let t = crate::current_llm_tuning();
+        if t.model.trim().is_empty() {
+            self.model.clone()
+        } else {
+            t.model
+        }
+    }
+
     pub fn new(api_key: SecretString, model: impl Into<String>) -> Self {
         // Transport-level bounds (defence-in-depth). `reqwest::Client::new()` has NO
         // default timeout, so a connection that is accepted but never answered hangs
@@ -159,7 +172,12 @@ impl LlmClient for OpenAiLlmClient {
         request_id: &str,
         transcript: &str,
     ) -> Result<ActionPlan, LlmError> {
-        let body = chat_request(&self.model, SYSTEM_PROMPT, request_id, transcript);
+        let body = chat_request(
+            &self.effective_model(),
+            SYSTEM_PROMPT,
+            request_id,
+            transcript,
+        );
 
         let resp = self
             .client
@@ -203,7 +221,12 @@ impl LlmClient for OpenAiLlmClient {
         request_id: &str,
         transcript: &str,
     ) -> Result<Generation, LlmError> {
-        let body = chat_request(&self.model, DUAL_SYSTEM_PROMPT, request_id, transcript);
+        let body = chat_request(
+            &self.effective_model(),
+            DUAL_SYSTEM_PROMPT,
+            request_id,
+            transcript,
+        );
 
         let resp = self
             .client
@@ -255,19 +278,20 @@ impl LlmClient for OpenAiLlmClient {
     ) -> Result<IntentVerdict, LlmError> {
         // A quick yes/no classification — keep it fast + cheap (own low-effort budget,
         // independent of the generation tuning).
+        let model = self.effective_model();
         let mut body = serde_json::json!({
-            "model": self.model,
+            "model": model,
             "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": INTENT_CLASSIFIER_PROMPT},
                 {"role": "user", "content": format!("command: {command}")}
             ]
         });
-        let is_gpt5 = self.model.starts_with("gpt-5");
+        let is_gpt5 = model.starts_with("gpt-5");
         let reasoning = is_gpt5
-            || self.model.starts_with("o1")
-            || self.model.starts_with("o3")
-            || self.model.starts_with("o4");
+            || model.starts_with("o1")
+            || model.starts_with("o3")
+            || model.starts_with("o4");
         if !reasoning {
             body["temperature"] = serde_json::json!(0);
         } else {
@@ -320,5 +344,45 @@ impl LlmClient for OpenAiLlmClient {
                 .unwrap_or("")
                 .to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::{set_llm_tuning, LlmTuning};
+
+    /// The admin panel's model dropdown must actually change the model used for
+    /// generation. It previously did not: the value was stored in `RuntimeConfig`
+    /// but never pushed into the LLM tuning, so it was decorative. This pins the
+    /// resolution order — live choice wins, empty falls back to `OPENAI_MODEL`.
+    #[test]
+    fn live_tuning_model_overrides_the_constructed_model() {
+        let client = OpenAiLlmClient::new(SecretString::from("test-key"), "gpt-4o-mini");
+
+        // Empty (nothing pushed yet) => keep the constructed model.
+        set_llm_tuning(LlmTuning {
+            model: String::new(),
+            ..Default::default()
+        });
+        assert_eq!(client.effective_model(), "gpt-4o-mini");
+
+        // A pushed choice overrides it, with no restart.
+        set_llm_tuning(LlmTuning {
+            model: "gpt-5.5".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(client.effective_model(), "gpt-5.5");
+
+        // Whitespace is treated as "unset" rather than as a real model id.
+        set_llm_tuning(LlmTuning {
+            model: "   ".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(client.effective_model(), "gpt-4o-mini");
+
+        // Leave the process-wide cell as we found it for any other test.
+        set_llm_tuning(LlmTuning::default());
     }
 }

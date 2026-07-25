@@ -590,7 +590,8 @@ fn spawn_utterance(
             let _ = j.write_event(&outcome.timing);
         }
         publish_pipeline_events(&services.bus, &outcome);
-        if services.mode_a {
+        // Live toggle: the admin panel can disable dispatch without a restart.
+        if services.mode_a_live() {
             // Mode A (original DreamCodeVR): hand the VALIDATED generated C# to the
             // original Unity `CodeGenerationManager` (NID 94 `{type,peer,data}`) for
             // runtime RoslynCSharp compilation. Fail-closed: only send if it passed
@@ -738,7 +739,7 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                 // validated. Target the last headset that issued a command; an empty
                 // `peer` broadcasts to every connected client.
                 let mut delivered = false;
-                if self.services.mode_a {
+                if self.services.mode_a_live() {
                     if let Some(sender) = self.services.ubiq_sender.read().await.clone() {
                         let target = self
                             .services
@@ -770,6 +771,16 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                 if delivered {
                     format!(
                         "{:?} — C# approved ({} chars) → SENT to the headset to build ✓",
+                        outcome.decision,
+                        cs.candidate.len()
+                    )
+                } else if !self.services.mode_a_live() {
+                    // Distinguish "you switched dispatch off" from "nothing is
+                    // listening" — reporting the wrong one sends an operator hunting
+                    // a connection problem that does not exist.
+                    format!(
+                        "{:?} — C# approved ({} chars); validated OK, NOT dispatched \
+                         (Mode A is off)",
                         outcome.decision,
                         cs.candidate.len()
                     )

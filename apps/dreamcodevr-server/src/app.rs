@@ -95,6 +95,19 @@ pub struct Services {
     pub auth: Arc<crate::auth_gate::ServerAuth>,
 }
 
+impl Services {
+    /// Whether Mode A may dispatch validated C# to the headset **right now**.
+    ///
+    /// The startup setting (`DCVR_MODE_A`) is the CEILING; the admin panel's live
+    /// `enable_mode_a` toggle can only narrow it. An operator must never be able to
+    /// switch runtime code dispatch ON in a process that was started without it —
+    /// that would widen the trust surface at runtime — but they must be able to
+    /// switch it OFF instantly, which is the whole point of having the toggle.
+    pub fn mode_a_live(&self) -> bool {
+        self.mode_a && self.bus.config().enable_mode_a
+    }
+}
+
 impl std::fmt::Debug for Services {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Services")
