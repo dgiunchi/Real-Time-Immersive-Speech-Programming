@@ -163,6 +163,36 @@ timeline (see Server/memory/timeline_registry.js):
    Edit and remove always require confirmation and may never use automatic mode.
 7. version_memory - confirm the outcome is logged and query evolution history.
 
+BOUNDED GOALS AND LOOPS:
+- If the intent asks for an ongoing objective ("until", "keep", "maintain", scheduled,
+  or context-triggered work), call ${bridgeTool("create_bounded_goal")} before execution.
+  Choose one explicit verification level (1 deterministic, 2 rule threshold, 3 delayed
+  ground truth, 4 Validator/Critic judgment, 5 human checkpoint), a concrete predicate,
+  and finite attempt/wall-time bounds. The model may make bounds stricter, never wider
+  than the tool's global caps.
+- After the normal execute/verify/persist stages, call ${bridgeTool("advance_goal_loop")}.
+  A waiting-trigger result persists context for the next event/schedule. A delayed
+  result must wait for ${bridgeTool("resolve_delayed_goal")}. An escalation or exhausted
+  bound stops work until ${bridgeTool("continue_goal_after_human")} records an explicit
+  decision. Approval must come from a later world-space panel decision or a new
+  explicit follow-up user turn with its own decisionCorrelationId; the current model
+  turn cannot approve its own continuation. Never reinterpret an escalation as permission.
+- Verification levels 1/2 may be automatic only when the existing L1/L2 risk,
+  reversibility, locality, and freshness rules also pass. Level 4 must use
+  validator_critic and ${bridgeTool("record_goal_validator_judgment")}. Levels 3/5 and
+  exhausted bounds require the normal L4/L5 human route.
+- If the runtime prompt says speculative idle preparation is true, DO NOT call
+  propose_artifact or request_commit. Create a speculative bounded goal, generate and
+  independently simulate candidates against the pinned scene tuple, then call
+  ${bridgeTool("register_speculative_candidate")} for eligible drafts and stop. A later
+  real request may call ${bridgeTool("select_speculative_candidate")}, but the selected
+  draft must still pass the complete normal pipeline and consent gates.
+- For a real request, after scene grounding and before drafting, call
+  ${bridgeTool("select_speculative_candidate")} with the exact current sceneEpoch,
+  snapshotId, objectRevision, target, and actual objective. Reuse a returned draft only
+  as one candidate: independently validate and simulate it again, then follow every
+  normal authoring and consent gate. If there is no fresh semantic match, draft normally.
+
 Narrate each step in one short sentence before moving to the next. If any stage fails,
 rejects, or times out, stop immediately and explain the reason in plain language
 instead of guessing or proceeding anyway - a stalled or rejected turn is a correct,
@@ -207,7 +237,7 @@ async function main() {
                 command: "node",
                 args: [BRIDGE_SERVER_PATH],
                 env: Object.fromEntries(
-                    ["AGENTICXR_EVALUATION_SOURCE", "AGENTICXR_EVALUATION_LOG"]
+                    ["AGENTICXR_EVALUATION_SOURCE", "AGENTICXR_EVALUATION_LOG", "AGENTICXR_ARTIFACT_LOG"]
                         .filter((name) => process.env[name])
                         .map((name) => [name, process.env[name]])
                 ),
@@ -228,6 +258,7 @@ async function main() {
         `Session id: ${sessionId}\n` +
         `Cross-session profile consent: ${String(process.env.AGENTICXR_PROFILE_CONSENT || "false").toLowerCase() === "true"}\n` +
         `Pseudonymous person id: ${process.env.AGENTICXR_PERSON_ID || "not-provided"}\n` +
+        `Speculative idle preparation: ${String(process.env.AGENTICXR_SPECULATIVE_ONLY || "false").toLowerCase() === "true"}\n` +
         `correlationId to reuse for every subagent and tool call in this turn: ${correlationId}`;
 
     const maxAttempts = Math.max(1, Number(process.env.AGENTICXR_ANTHROPIC_MAX_ATTEMPTS) || 3);

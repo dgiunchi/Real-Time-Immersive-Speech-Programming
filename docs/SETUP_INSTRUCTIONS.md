@@ -111,6 +111,25 @@ Expected results:
 - `npm test` passes its deterministic assertions.
 - `npm run test:integration` ends with `[mock_integration] PASS`.
 
+### Optional: prepare likely future goals while idle
+
+This feature uses the same Anthropic API key and can increase API usage. It is off
+by default. To enable it:
+
+```powershell
+$env:AGENTICXR_IDLE_PREDICTION_ENABLED="true"
+$env:AGENTICXR_IDLE_PREDICTION_THRESHOLD_MS="60000"
+$env:AGENTICXR_IDLE_PREDICTION_COOLDOWN_MS="300000"
+```
+
+Idle work only generates, validates, simulates, and stores pinned local drafts. It
+cannot propose or commit to Unity. A real request preempts idle work, and any reused
+draft must pass all normal validation, freshness, consent, and commit gates.
+
+Speculation is skipped while a study trial is active. Set
+`AGENTICXR_STUDY_ALLOW_SPECULATION=true` only when the approved study condition
+explicitly includes it. See `docs/goal-loops-and-speculative-futures.md`.
+
 ## 3. Test the Anthropic API without Quest
 
 This test isolates Claude orchestration from the microphone, STT, Unity, and Quest.

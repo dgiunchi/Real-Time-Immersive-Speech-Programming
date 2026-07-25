@@ -26,7 +26,11 @@ const TRIAL_COLUMNS = Object.freeze([
     "interruptionTotalTimeMs", "candidatesGenerated", "selectedCandidateId",
     "selectedCandidateRank", "selectedCandidateScore",
     "firstProposalAcceptedWithoutRevision", "agentStatusMessageCount",
-    "firstAgentStatusAtUtc",
+    "firstAgentStatusAtUtc", "goalCount", "goalIterationsTotal",
+    "goalIterationsToCompletionJson", "goalVerificationLevelsJson",
+    "goalEscalationCount", "goalBoundExhaustionCount",
+    "goalDelayedResolutionLatencyMsJson", "idlePredictionCount",
+    "speculativeCandidatesPrepared", "speculativeCandidatesAdopted",
 ]);
 
 const LONG_COLUMNS = Object.freeze([
@@ -35,7 +39,9 @@ const LONG_COLUMNS = Object.freeze([
     "candidateId", "candidateSetId", "status", "reasonCode", "durationMs",
     "verificationDurationMs", "commitAttachDurationMs", "timestampAgeMs",
     "correlationIdValid", "targetObjectValid", "selectedCandidateRank",
-    "selectedCandidateScore", "studySource",
+    "selectedCandidateScore", "studySource", "goalId", "goalIteration",
+    "verificationLevel", "goalStatus", "boundExhausted",
+    "resolutionLatencyMs", "speculative",
 ]);
 
 function readJsonLines(filePath) {
@@ -165,7 +171,7 @@ function aggregateTrial(events) {
     const memoryDurations = numericList(events.filter((event) => event.eventType === "memory_retrieval"), ["durationMs"]);
     const timestampAges = numericList(events.filter((event) =>
         event.eventType === "proposal_gate_checked" || event.eventType === "artifactresult"), ["timestampAgeMs"]);
-    const candidateEvents = events.filter((event) => event.candidateId);
+    const candidateEvents = events.filter((event) => event.candidateId && event.speculative !== true);
     const uniqueCandidates = new Set(candidateEvents.map((event) => event.candidateId));
     const selection = last(events, (event) => event.eventType === "candidate_selection");
     const selectedCandidateId = selection && (selection.selectedCandidateId ||
@@ -200,6 +206,13 @@ function aggregateTrial(events) {
     const intentAt = intent ? eventTime(intent) : null;
     const ackAt = acknowledgement ? eventTime(acknowledgement) : null;
     const validatedAt = validated ? eventTime(validated) : null;
+    const goalIds = new Set(events.map((event) => event.goalId).filter(Boolean));
+    const goalIterations = events.filter((event) => event.eventType === "goal_iteration_executed");
+    const goalTerminations = events.filter((event) => event.eventType === "goal_terminated");
+    const goalVerificationLevels = [...new Set(events.map((event) => event.verificationLevel)
+        .filter((value) => Number.isInteger(value)))].sort((a, b) => a - b);
+    const delayedResolutionLatencies = numericList(events.filter((event) =>
+        event.eventType === "goal_delayed_evaluation_resolved"), ["resolutionLatencyMs"]);
 
     return {
         participantId: started.participantId,
@@ -272,6 +285,20 @@ function aggregateTrial(events) {
         firstProposalAcceptedWithoutRevision: Boolean(decisionApproved && !reviseBeforeApproval),
         agentStatusMessageCount: count(events, (event) => event.eventType === "agent_status_surfaced"),
         firstAgentStatusAtUtc: iso(eventTime(first(events, (event) => event.eventType === "agent_status_surfaced"))),
+        goalCount: goalIds.size,
+        goalIterationsTotal: goalIterations.length,
+        goalIterationsToCompletionJson: JSON.stringify(numericList(goalTerminations, ["iterationsToCompletion"])),
+        goalVerificationLevelsJson: JSON.stringify(goalVerificationLevels),
+        goalEscalationCount: count(events, (event) =>
+            ["goal_escalated", "goal_bound_exhausted"].includes(event.eventType)),
+        goalBoundExhaustionCount: count(events, (event) =>
+            event.eventType === "goal_bound_exhausted" || event.boundExhausted === true),
+        goalDelayedResolutionLatencyMsJson: JSON.stringify(delayedResolutionLatencies),
+        idlePredictionCount: count(events, (event) => event.eventType === "idle_prediction_triggered"),
+        speculativeCandidatesPrepared: count(events, (event) =>
+            event.eventType === "speculative_candidate_prepared" && event.status === "prepared"),
+        speculativeCandidatesAdopted: count(events, (event) =>
+            event.eventType === "speculative_candidate_adopted"),
     };
 }
 
@@ -302,6 +329,13 @@ function longRow(event) {
         selectedCandidateScore: event.selectedCandidateScore ??
             (event.ranking && event.ranking.score) ?? event.score ?? "",
         studySource: event.studySource || "pipeline",
+        goalId: event.goalId || "",
+        goalIteration: event.goalIteration ?? "",
+        verificationLevel: event.verificationLevel ?? "",
+        goalStatus: event.goalStatus || "",
+        boundExhausted: event.boundExhausted ?? "",
+        resolutionLatencyMs: event.resolutionLatencyMs ?? "",
+        speculative: event.speculative ?? "",
     };
 }
 

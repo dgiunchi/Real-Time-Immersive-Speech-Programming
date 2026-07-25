@@ -218,6 +218,40 @@ studyLog.appendStudyEvent({
     candidateId: "candidate-1", status: "committed", timestampAgeMs: 8,
     correlationIdValid: true, targetObjectValid: true, commitAttachDurationMs: 12, at: 1500,
 });
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "goal_created", goalId: "study-goal", goalIteration: 0,
+    goalStatus: "pending", verificationLevel: 1, at: 1510,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "goal_iteration_executed", goalId: "study-goal", goalIteration: 1,
+    goalStatus: "running", verificationLevel: 1, at: 1520,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "goal_delayed_evaluation_resolved", goalId: "study-goal",
+    verificationLevel: 1, resolutionLatencyMs: 250, at: 1530,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "goal_terminated", goalId: "study-goal", goalIteration: 1,
+    goalStatus: "completed", verificationLevel: 1, iterationsToCompletion: 1, at: 1540,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "idle_prediction_triggered", speculative: true, at: 1550,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "speculative_candidate_prepared", candidateId: "future-1",
+    status: "prepared", speculative: true, at: 1560,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "speculative_candidate_adopted", candidateId: "future-1",
+    status: "selected_for_normal_pipeline", speculative: true, at: 1570,
+});
 studyLog.endStudyTrial({
     sessionId: studyContext.sessionId, trialId: studyContext.trialId,
     correlationId: "turn-correlation", taskCompletion: true, taskSuccess: true,
@@ -232,6 +266,10 @@ equal(studyExports.trialRows[0].validatedExecutionLatencyMs, 400, "validated exe
 equal(studyExports.trialRows[0].candidatesGenerated, 3, "H4 candidate count is exported");
 equal(studyExports.trialRows[0].firstProposalAcceptedWithoutRevision, true, "H4 first acceptance is cleanly derived");
 equal(studyExports.trialRows[0].interruptionTotalTimeMs, 25, "interruption/resumption duration is exported");
+equal(studyExports.trialRows[0].goalCount, 1, "goal count is exported");
+equal(studyExports.trialRows[0].goalIterationsTotal, 1, "goal iterations are exported");
+equal(studyExports.trialRows[0].goalDelayedResolutionLatencyMsJson, "[250]", "delayed goal latency is exported");
+equal(studyExports.trialRows[0].speculativeCandidatesAdopted, 1, "speculative adoption is exported");
 for (const column of TRIAL_COLUMNS) ok(Object.hasOwn(studyExports.trialRows[0], column), `trial export contains required column ${column}`);
 for (const column of LONG_COLUMNS) ok(Object.hasOwn(studyExports.longRows[0], column), `long export contains required column ${column}`);
 const trialCsvPath = path.join(testDataDir, "trials.csv");
@@ -264,6 +302,9 @@ ok(orchestrator.includes("AGENTICXR_ANTHROPIC_MAX_ATTEMPTS"), "Anthropic attempt
 ok(orchestrator.includes("sawMutatingToolCall"), "retry stops after a mutating tool call");
 const runtimeGenerator = fs.readFileSync(path.join(root, "samples", "apps", "code_runtime_generator", "app.js"), "utf8");
 ok(runtimeGenerator.includes("AGENTICXR_TURN_TIMEOUT_MS"), "authoring turn watchdog is configurable");
+ok(runtimeGenerator.includes("AGENTICXR_IDLE_PREDICTION_ENABLED"), "idle prediction requires an explicit opt-in");
+const goalLoopTest = spawnSync(process.execPath, [path.join(root, "tests", "goal_loop_test.js")], { encoding: "utf8" });
+equal(goalLoopTest.status, 0, `goal loop tests failed: ${goalLoopTest.stdout}\n${goalLoopTest.stderr}`);
 const executionWatchdog = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "GeneratedBehaviourWatchdog.cs"), "utf8");
 ok(executionWatchdog.includes("ReportExecutionWatchdog"), "generated behaviour watchdog signals Unity failure");
 

@@ -51,9 +51,18 @@ class CodeGeneration extends ApplicationController {
         this.agenticTargets = new Map();
         this.agenticRuns = new Map();
         this.agenticCorrelations = new Map();
+        this.lastAgenticActivityAt = new Map();
+        this.idlePredictionRuns = new Map();
+        this.lastIdlePredictionAt = new Map();
         this.baselinePending = null;
         this.agenticTurnTimeoutMs = Number(process.env.AGENTICXR_TURN_TIMEOUT_MS) || 180000;
         this.artifactLog = new ArtifactLog({ filePath: process.env.AGENTICXR_ARTIFACT_LOG });
+        this.idlePredictionEnabled = String(process.env.AGENTICXR_IDLE_PREDICTION_ENABLED || "false").toLowerCase() === "true";
+        this.idlePredictionThresholdMs = Math.max(30000, Number(process.env.AGENTICXR_IDLE_PREDICTION_THRESHOLD_MS) || 60000);
+        this.idlePredictionCooldownMs = Math.max(60000, Number(process.env.AGENTICXR_IDLE_PREDICTION_COOLDOWN_MS) || 300000);
+        if (this.agenticMode && this.idlePredictionEnabled) {
+            setInterval(() => this.runIdlePredictions(), 15000).unref();
+        }
 
     }
 
@@ -72,12 +81,14 @@ class CodeGeneration extends ApplicationController {
                     const targetObjectId = separator >= 0 ? actionWithTarget.slice(separator + 1) : null;
                     if (action === "start") {
                         if (targetObjectId) this.agenticTargets.set(peerUUID, targetObjectId);
+                        this.lastAgenticActivityAt.set(peerUUID, Date.now());
                         const correlationId = randomUUID();
                         this.agenticCorrelations.set(peerUUID, correlationId);
                         this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "listening", "Listening to your request.");
                         this.logEvaluation({ eventType: "recording_start", sessionId: peerUUID, correlationId, targetObjectId });
                         this.components.transcriptionService.recordingStart(peerUUID);
                     } else if (action === "stop") {
+                        this.lastAgenticActivityAt.set(peerUUID, Date.now());
                         const correlationId = this.agenticCorrelations.get(peerUUID);
                         this.sendAgenticStatus(peerUUID, this.agenticTargets.get(peerUUID), correlationId, "transcribing", "Transcribing your request.");
                         this.logEvaluation({ eventType: "recording_stop", sessionId: peerUUID, correlationId, targetObjectId: this.agenticTargets.get(peerUUID) });
@@ -118,6 +129,7 @@ class CodeGeneration extends ApplicationController {
                 if (response.startsWith(">")) response = response.slice(1);
                 if (response.trim()) {
                     if (this.agenticMode) {
+                        this.lastAgenticActivityAt.set(identifier, Date.now());
                         this.logEvaluation({
                             eventType: "transcript_ready",
                             sessionId: identifier,
@@ -180,6 +192,20 @@ class CodeGeneration extends ApplicationController {
         const targetObjectId = this.agenticTargets.get(peerUUID);
         const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
         this.agenticCorrelations.set(peerUUID, correlationId);
+        const idleRun = this.idlePredictionRuns.get(peerUUID);
+        if (idleRun) {
+            clearTimeout(idleRun.watchdog);
+            if (idleRun.child.exitCode == null && !idleRun.child.killed) idleRun.child.kill();
+            this.idlePredictionRuns.delete(peerUUID);
+            this.artifactLog.append({
+                eventType: "idle_prediction_preempted",
+                sessionId: peerUUID,
+                correlationId: idleRun.correlationId,
+                targetObjectId,
+                reason: "explicit_user_request",
+                speculative: true,
+            });
+        }
         if (!targetObjectId) {
             console.warn(`[AgenticXR] No selected stable object was supplied by Unity for peer ${peerUUID}; ignoring transcript.`);
             this.sendAgenticStatus(peerUUID, null, correlationId, "failed", "No authorable object was selected.");
@@ -238,6 +264,59 @@ class CodeGeneration extends ApplicationController {
             this.logEvaluation({ eventType: "turn_process_exit", sessionId: peerUUID, correlationId, targetObjectId, exitCode: code, signal: signal || null });
             this.agenticRuns.delete(peerUUID);
             this.agenticCorrelations.delete(peerUUID);
+            this.lastAgenticActivityAt.set(peerUUID, Date.now());
+        });
+    }
+
+    runIdlePredictions() {
+        if (!this.idlePredictionEnabled || !process.env.ANTHROPIC_API_KEY) return;
+        const now = Date.now();
+        for (const [sessionId, targetObjectId] of this.agenticTargets.entries()) {
+            if (!targetObjectId || this.agenticRuns.has(sessionId) || this.idlePredictionRuns.has(sessionId)) continue;
+            if (this.artifactLog.getStudyContext({ sessionId }) &&
+                String(process.env.AGENTICXR_STUDY_ALLOW_SPECULATION || "false").toLowerCase() !== "true") continue;
+            const lastActivity = this.lastAgenticActivityAt.get(sessionId) || now;
+            const lastPrediction = this.lastIdlePredictionAt.get(sessionId) || 0;
+            if (now - lastActivity < this.idlePredictionThresholdMs ||
+                now - lastPrediction < this.idlePredictionCooldownMs) continue;
+            this.startIdlePrediction(sessionId, targetObjectId);
+        }
+    }
+
+    startIdlePrediction(sessionId, targetObjectId) {
+        const correlationId = `idle-prediction-${randomUUID()}`;
+        const orchestrator = path.resolve(__dirname, "../../../orchestrator/app.js");
+        const objective = "Prepare likely reversible, local next-step candidates for the current object and activity context.";
+        const child = spawn(process.execPath, [orchestrator, objective, targetObjectId, sessionId, correlationId], {
+            cwd: path.resolve(__dirname, "../../.."),
+            env: { ...process.env, AGENTICXR_SPECULATIVE_ONLY: "true" },
+            stdio: "inherit",
+            windowsHide: true,
+        });
+        const watchdog = setTimeout(() => {
+            if (child.exitCode == null && !child.killed) child.kill();
+        }, Math.min(this.agenticTurnTimeoutMs, 120000));
+        this.idlePredictionRuns.set(sessionId, { child, watchdog, correlationId });
+        this.lastIdlePredictionAt.set(sessionId, Date.now());
+        this.artifactLog.append({
+            eventType: "idle_prediction_triggered",
+            sessionId,
+            correlationId,
+            targetObjectId,
+            triggerSource: "schedule",
+            speculative: true,
+        });
+        child.once("exit", (code) => {
+            clearTimeout(watchdog);
+            this.idlePredictionRuns.delete(sessionId);
+            this.artifactLog.append({
+                eventType: "idle_prediction_finished",
+                sessionId,
+                correlationId,
+                targetObjectId,
+                status: code === 0 ? "prepared" : "failed",
+                speculative: true,
+            });
         });
     }
 

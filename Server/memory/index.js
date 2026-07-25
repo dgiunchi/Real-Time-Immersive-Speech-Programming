@@ -17,6 +17,9 @@ const { ExperienceContextStore } = require("./experience_context");
 const { CheckpointStore } = require("./checkpoint_store");
 const { appendEvaluationEvent } = require("../evaluation/event_logger");
 const { STUDY_ID_PATTERN } = require("./artifact_log");
+const { GoalVerifier } = require("../orchestrator/goal_verifier");
+const { GoalLoopController } = require("../orchestrator/goal_loop_controller");
+const { FutureGoalPredictor } = require("../orchestrator/future_goal_predictor");
 
 class SharedMemory {
     constructor({ artifactLogPath, personProfilePath, experienceContextPath, checkpointPath } = {}) {
@@ -29,6 +32,14 @@ class SharedMemory {
         this.intent = new IntentStore();
         this.experienceContext = new ExperienceContextStore({ filePath: experienceContextPath });
         this.checkpoints = new CheckpointStore({ filePath: checkpointPath });
+        this.goalLoops = new GoalLoopController({
+            artifactLog: this.artifactLog,
+            verifier: new GoalVerifier({
+                llmJudge: async ({ evidence }) => evidence.validatorJudgment || null,
+                humanCheckpoint: async ({ evidence }) => ({ approved: evidence.humanApproved === true }),
+            }),
+        });
+        this.futureGoals = new FutureGoalPredictor({ artifactLog: this.artifactLog });
         this.proposalSentAt = new Map();
         this.sensors = new SensorRegistry({ visualStore: this.visual, sceneGraphStore: this.sceneGraph, regionStore: this.region });
     }

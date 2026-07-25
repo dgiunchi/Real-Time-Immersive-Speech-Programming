@@ -82,6 +82,12 @@ Common optional join/evidence fields are:
 | `verificationLiveMismatch` | boolean | Dry-run result disagreed with live result. |
 | `selectedCandidateRank` | integer | One-based deterministic rank. |
 | `selectedCandidateScore` | number | Deterministic selection score; not a probability. |
+| `goalId` / `goalIteration` | string / integer | Persistent bounded goal and trigger-driven iteration. |
+| `verificationLevel` | integer | Goal verifier route, 1 through 5. |
+| `goalStatus` | string | Persisted state such as `waiting_trigger`, `completed`, or `awaiting_human`. |
+| `boundExhausted` | boolean | Attempt or wall-time bound stopped autonomous work. |
+| `resolutionLatencyMs` | number/ms | Delay between queuing and resolving later ground truth. |
+| `speculative` | boolean | Event belongs to non-committing future-goal preparation. |
 
 ### Emission points and study mapping
 
@@ -113,6 +119,13 @@ Common optional join/evidence fields are:
 | `interruption` / `resumption` | overlapping speech detector or structured runtime event | timestamp | Interruption count/duration | Overlapping speech wired; controller/gaze interruption requires live runtime event |
 | `grounding_error` | structured runtime event or invalid join/target inference | validity flags | Grounding error; H2 | Invalid/stale inference tested; semantic rubric error remains researcher/runtime supplied |
 | `unsafe_proposal` | validator/policy structured event | risk/reason code | Unsafe proposal; H2 | Wired; requires live unsafe test cases |
+| `goal_created` / `goal_state` / `goal_triggered` | bounded goal controller | goal, iteration, verifier, trigger | Persistent loop reconstruction | Implemented and deterministic/mock-tested |
+| `goal_iteration_executed` / `goal_verification_outcome` | bounded goal controller | iteration and verifier outcome | Iterations and verification route | Implemented and deterministic/mock-tested |
+| `goal_escalated` / `goal_bound_exhausted` | bounded goal controller | reason and exhausted flag | Escalation and bounded autonomy | Implemented and deterministic-tested |
+| `goal_delayed_evaluation_pending` / `goal_delayed_evaluation_resolved` | goal memory | signal and resolution latency | Delayed ground-truth resolution | Implemented and deterministic-tested |
+| `goal_terminated` / `goal_killed` | bounded goal controller | iterations, wall time, status | Completion/termination | Implemented and deterministic/mock-tested |
+| `idle_prediction_triggered` / `idle_prediction_finished` / `idle_prediction_preempted` | code runtime | speculative flag and status | Prediction frequency and preemption | Source-complete; deterministic predictor tested, real idle timer not live-observed |
+| `speculative_candidate_prepared` / `speculative_candidate_adopted` | future-goal predictor | pinned scene tuple and candidate | Prepared/reused prediction counts | Implemented and deterministic-tested |
 
 ## Per-trial CSV
 
@@ -138,6 +151,9 @@ Common optional join/evidence fields are:
 - H4: `candidatesGenerated`, selected ID/rank/score, and
   `firstProposalAcceptedWithoutRevision`.
 - Visibility: status count and `firstAgentStatusAtUtc`.
+- Goal loops: goal/iteration counts, iterations to completion, verifier levels,
+  escalation/bound-exhaustion counts, and delayed-resolution latencies.
+- Speculation: idle prediction, prepared-candidate, and adopted-candidate counts.
 
 JSON-list columns preserve per-candidate/per-application raw durations while scalar
 columns support immediate analysis. A zero count is a real observed zero; an empty
@@ -150,6 +166,9 @@ It intentionally omits `intent`, generated code, transcript text, raw audio,
 free-form validation summaries, and free-form errors. Its columns are the required
 identity fields plus correlation/timestamp/event, object/artifact/candidate IDs,
 machine status/reason code, durations, validity flags, rank/score, and source.
+Goal-loop rows additionally retain only structured goal/iteration/verifier/status,
+bound, delayed-latency, and speculative fields. Objective text and prepared code are
+not exported.
 
 ## Researcher workflow
 

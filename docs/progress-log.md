@@ -580,7 +580,7 @@ acknowledgement.
 
 Added the offline CSV exporter:
 
-- `trials.csv`: one analysis-ready row per participant task-trial with 57 stable
+- `trials.csv`: one analysis-ready row per participant task-trial with 67 stable
   columns spanning performance, separate latency timestamps/deltas, failures,
   verification, grounding, safety, repair/consent, interruption, H4 candidates, and
   status visibility.
@@ -594,17 +594,17 @@ interactive longitudinal querying become study requirements.
 
 Verification performed:
 
-- `cd Server; npm test` — PASS, 216 assertions. Deterministic coverage checks strict
+- `cd Server; npm test` — PASS, 245 assertions. Deterministic coverage checks strict
   identifiers, joined trial export, separate acknowledgement/execution timestamps,
   task/rubric outcomes, candidate selection, memory timing, interruption duration,
-  all 57 trial columns, all long-format columns, and stable CSV headers.
+  all 67 trial columns, all long-format columns, and stable CSV headers.
 - `cd Server; npm run test:integration` — PASS with a real local Ubiq room and mock
   Unity peer. The scripted session opened/closed a study trial, exported exactly one
   joined participant/task row, observed receiver-side status visibility, three
   candidates, validation and committed execution, memory timing, and the existing
   lifecycle/staleness flows. The deliberate cache gap was detected, backfilled, and
   duplicate backfill entries were suppressed.
-- Direct exporter invocation produced one 57-column trial row and 47 whitelisted
+- Direct exporter invocation produced one 67-column trial row and whitelisted
   long-format event rows from the mock session.
 - Unity `6000.3.9f1 -batchmode -nographics -quit` — Tundra build success, no C#
   compiler errors, and `Exiting batchmode successfully now!`.
@@ -614,3 +614,43 @@ consent, Verification Space, live execution, mismatch, undo/rollback, and safety
 fields are wired but not live/on-device observed. Controller/gaze interruption and a
 baseline direct-attach acknowledgement remain partially wired. No study data has been
 collected.
+
+## 2026-07-25 — Bounded goal loops and speculative future preparation
+
+Executed `code-loop-goal-2026-07-25.md` and incorporated the requested idle-time
+future-goal strategy.
+
+Implemented:
+
+- Persistent goal schema and trigger-driven `trigger -> execute -> verify -> persist`
+  controller over the existing temporal `ArtifactLog`.
+- Deterministic, rule/constraint, delayed-ground-truth, Validator/Critic, and human
+  checkpoint verifiers with code-enforced route-by-verifiability.
+- Hard global attempt/wall-time caps, escalation on exhaustion, explicit human
+  continuation, and a persistent global kill switch.
+- MCP tools for goal creation, advancement, delayed resolution, validator judgment,
+  human continuation, state inspection, and kill-switch control.
+- Opt-in idle scheduler and future-goal predictor. It prepares at most three
+  independently validated/simulated candidates pinned to an exact scene tuple,
+  never commits, is preempted by real user work, and requires the complete normal
+  pipeline when a prediction is later selected.
+- Study export fields for loop iterations, verifier level, escalations, exhaustion,
+  delayed resolution latency, idle predictions, and speculative preparation/adoption.
+- Architecture/setup/evidence documentation in
+  `docs/goal-loops-and-speculative-futures.md`.
+
+Verification:
+
+- `node tests/goal_loop_test.js`: PASS (30 assertions).
+- `npm test`: PASS (245 assertions).
+- `npm run test:integration`: PASS, including bounded goal creation, a mock Unity
+  artifact commit, goal termination, and the 67-column study export.
+
+Evidence boundary:
+
+- Goal logic and bridge flow are deterministic/mock tested, not live Quest validated.
+- Idle scheduling is source-complete but has not been run against a real Anthropic
+  account or measured for latency/cost.
+- The paper describes related speculative-futures and Verification Space concepts,
+  but its exact bounded-loop and idle-selection protocol still needs reconciliation
+  before these additions are presented as evaluated paper functionality.

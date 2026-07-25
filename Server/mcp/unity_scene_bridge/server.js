@@ -15,6 +15,7 @@ const { z } = require("zod");
 const { SESSION_ID_PATTERN } = require("./protocol");
 const { checkModePolicy } = require("../../orchestrator/mode_policy");
 const { rankCandidates, validateLifecycle, LIFECYCLE_OPERATIONS } = require("../../orchestrator/candidate_selector");
+const { VERIFICATION_LEVELS } = require("../../orchestrator/goal_schema");
 const { appendEvaluationEvent } = require("../../evaluation/event_logger");
 const { SceneBridgeClient } = require("./scene_bridge_client");
 const { SharedMemory } = require("../../memory");
@@ -119,6 +120,38 @@ async function main() {
             validationState: args.validationState || null,
             reasonCode: !result.accepted ? "proposal_gate_rejected" : null,
         });
+    }
+
+    function deriveGoalEvidence(goal) {
+        const records = memory.artifactLog.history({ limit: Number.MAX_SAFE_INTEGER })
+            .filter((entry) =>
+                entry.correlationId === goal.correlationId &&
+                (entry.loggedAt || entry.at || 0) >= goal.createdAt
+            );
+        const statuses = records.map((entry) => String(entry.status || "").toLowerCase());
+        const latestNumeric = (field) => {
+            const found = records.find((entry) => Number.isFinite(entry[field]));
+            return found ? found[field] : null;
+        };
+        const validator = records.find((entry) => entry.eventType === "goal_validator_judgment");
+        return {
+            artifactCommitted: statuses.includes("committed") || statuses.includes("removed"),
+            validationAccepted: records.some((entry) => entry.validationState === "accepted"),
+            simulationSucceeded: statuses.includes("simulated"),
+            noRuntimeError: !records.some((entry) =>
+                entry.failureStage === "runtime" || entry.status === "watchdog_disabled"),
+            riskScore: latestNumeric("riskScore"),
+            verificationDurationMs: latestNumeric("verificationDurationMs"),
+            commitAttachDurationMs: latestNumeric("commitAttachDurationMs"),
+            currentIteration: goal.currentIteration + 1,
+            validatorJudgment: validator ? {
+                accepted: validator.accepted === true,
+                score: validator.score,
+                rationaleCode: validator.rationaleCode || null,
+            } : null,
+            humanApproved: records.some((entry) =>
+                entry.eventType === "user_decision:approved" || entry.status === "approved"),
+        };
     }
 
     // @modelcontextprotocol/sdk ships ESM-only; this package is CommonJS, so
@@ -706,6 +739,8 @@ async function main() {
                     "stale_application", "unsafe_proposal", "verification_live_mismatch",
                 ]),
                 targetObjectId: z.string().optional(),
+                artifactVersion: z.string().optional(),
+                rollbackPointer: z.string().optional(),
                 candidateId: z.string().optional(),
                 candidateSetId: z.string().optional(),
                 durationMs: z.number().nonnegative().optional(),
@@ -768,6 +803,257 @@ async function main() {
         async ({ objectId, limit, correlationId }) => {
             const result = measureMemoryRetrieval(correlationId, "get_evolution_history",
                 () => memory.artifactLog.evolution({ objectId, limit }));
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+    );
+
+    server.registerTool(
+        "create_bounded_goal",
+        {
+            title: "Create a persisted bounded autonomous goal",
+            description: "Creates goal state in the existing temporal artifact log. Every goal has a verification level, concrete predicate, attempt bound, and wall-time bound.",
+            inputSchema: {
+                goalId: z.string().optional(),
+                objective: z.string().min(1),
+                sessionId: sessionIdSchema,
+                correlationId: sessionIdSchema,
+                targetObjectId: z.string().optional(),
+                interactionMode: z.enum(["L1", "L2", "L3", "L4", "L5"]),
+                authoringMode: z.enum(["automatic", "semi_auto_confirm", "semi_auto_steer"]),
+                triggerSource: z.enum(["system_opportunity", "context", "schedule", "explicit_request"]),
+                verificationLevel: z.number().int().min(1).max(5),
+                terminationPredicate: z.record(z.string(), z.unknown()),
+                maxAttempts: z.number().int().positive(),
+                maxWallTimeMs: z.number().int().positive(),
+                sceneEpoch: z.string().optional(),
+                snapshotId: z.string().optional(),
+                objectRevision: z.number().optional(),
+                speculative: z.boolean().optional(),
+            },
+        },
+        async (args) => {
+            try {
+                const goal = memory.goalLoops.create(args);
+                return { content: [{ type: "text", text: JSON.stringify(goal, null, 2) }] };
+            } catch (error) {
+                return { content: [{ type: "text", text: `create_bounded_goal failed: ${error.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "record_goal_validator_judgment",
+        {
+            title: "Persist a Validator/Critic judgment for a level-4 goal",
+            inputSchema: {
+                goalId: z.string(),
+                sessionId: sessionIdSchema,
+                correlationId: sessionIdSchema,
+                accepted: z.boolean(),
+                score: z.number(),
+                rationaleCode: sessionIdSchema.optional(),
+            },
+        },
+        async (args) => {
+            const goal = memory.goalLoops.get(args.goalId);
+            if (!goal || goal.verificationLevel !== VERIFICATION_LEVELS.LLM_AS_JUDGE) {
+                return { content: [{ type: "text", text: "goal is missing or is not verification level 4" }], isError: true };
+            }
+            const record = memory.artifactLog.append({
+                eventType: "goal_validator_judgment",
+                ...args,
+                targetObjectId: goal.targetObjectId,
+            });
+            return { content: [{ type: "text", text: JSON.stringify(record, null, 2) }] };
+        }
+    );
+
+    server.registerTool(
+        "advance_goal_loop",
+        {
+            title: "Advance one persisted goal-loop iteration after the existing harness runs",
+            description: "Evaluates machine evidence already recorded by scene, validation, simulation, consent, and result events. Bounds and mode policy are enforced in code.",
+            inputSchema: {
+                goalId: z.string(),
+                triggerSource: z.enum(["explicit_request", "system_opportunity", "context", "schedule"]),
+                triggerId: z.string().optional(),
+                riskScore: z.number().min(0).max(1),
+                reversible: z.boolean(),
+                localOnly: z.boolean(),
+                detailResolved: z.boolean().optional(),
+            },
+        },
+        async (args) => {
+            try {
+                const goal = memory.goalLoops.get(args.goalId);
+                if (!goal) throw new Error("unknown goal");
+                const result = await memory.goalLoops.trigger(args.goalId, {
+                    source: args.triggerSource,
+                    id: args.triggerId || null,
+                }, {
+                    policy: {
+                        riskScore: args.riskScore,
+                        reversible: args.reversible,
+                        localOnly: args.localOnly,
+                        detailResolved: args.detailResolved,
+                        userPreference: memory.personPolicy.getPolicy({ sessionId: goal.sessionId }),
+                    },
+                    execute: async ({ goal: current }) => deriveGoalEvidence(current),
+                });
+                return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+            } catch (error) {
+                return { content: [{ type: "text", text: `advance_goal_loop failed: ${error.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "resolve_delayed_goal",
+        {
+            title: "Resolve delayed ground truth on a later loop iteration",
+            inputSchema: {
+                goalId: z.string(),
+                signal: z.string(),
+                value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+                riskScore: z.number().min(0).max(1),
+                reversible: z.boolean(),
+                localOnly: z.boolean(),
+            },
+        },
+        async (args) => {
+            try {
+                const goal = memory.goalLoops.get(args.goalId);
+                if (!goal) throw new Error("unknown goal");
+                const result = await memory.goalLoops.resolveDelayed(args.goalId, {
+                    signal: args.signal,
+                    value: args.value,
+                }, {
+                    policy: {
+                        riskScore: args.riskScore,
+                        reversible: args.reversible,
+                        localOnly: args.localOnly,
+                        userPreference: memory.personPolicy.getPolicy({ sessionId: goal.sessionId }),
+                    },
+                    execute: async ({ goal: current }) => deriveGoalEvidence(current),
+                });
+                return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+            } catch (error) {
+                return { content: [{ type: "text", text: `resolve_delayed_goal failed: ${error.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "continue_goal_after_human",
+        {
+            title: "Explicitly continue or cancel an escalated goal",
+            inputSchema: {
+                goalId: z.string(),
+                approved: z.boolean(),
+                decisionCorrelationId: sessionIdSchema.optional(),
+                maxAttempts: z.number().int().positive().optional(),
+                maxWallTimeMs: z.number().int().positive().optional(),
+            },
+        },
+        async (args) => {
+            try {
+                const existing = memory.goalLoops.get(args.goalId);
+                if (!existing) throw new Error("unknown goal");
+                let humanDecision = null;
+                if (args.approved === true) {
+                    humanDecision = memory.goalLoops.memory.verifiedHumanDecisionAfterEscalation(
+                        existing,
+                        args.decisionCorrelationId
+                    );
+                    if (!humanDecision) {
+                        throw new Error("no later panel approval or explicit follow-up user turn proves human continuation");
+                    }
+                }
+                const goal = memory.goalLoops.continueAfterHuman(args.goalId, { ...args, humanDecision });
+                return { content: [{ type: "text", text: JSON.stringify(goal, null, 2) }] };
+            } catch (error) {
+                return { content: [{ type: "text", text: `continue_goal_after_human failed: ${error.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "set_goal_loop_kill_switch",
+        {
+            title: "Activate or explicitly clear the persisted global goal-loop kill switch",
+            inputSchema: { active: z.boolean(), humanApproved: z.boolean().optional(), reasonCode: sessionIdSchema.optional() },
+        },
+        async ({ active, humanApproved, reasonCode }) => {
+            try {
+                const result = active
+                    ? memory.goalLoops.activateKillSwitch(reasonCode || "operator_kill_switch")
+                    : memory.goalLoops.clearKillSwitch({ humanApproved });
+                return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+            } catch (error) {
+                return { content: [{ type: "text", text: `set_goal_loop_kill_switch failed: ${error.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "get_goal_loop_state",
+        {
+            title: "Inspect one goal or list active persisted goals",
+            inputSchema: { goalId: z.string().optional(), sessionId: sessionIdSchema.optional() },
+        },
+        async ({ goalId, sessionId }) => {
+            const result = goalId ? memory.goalLoops.get(goalId) :
+                memory.goalLoops.memory.listGoals({ sessionId });
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+    );
+
+    server.registerTool(
+        "register_speculative_candidate",
+        {
+            title: "Register an idle-time future-goal candidate after independent validation and dry-run",
+            description: "Stores a prepared candidate only. It cannot commit and must later match the actual goal plus the exact scene freshness tuple.",
+            inputSchema: {
+                goalId: z.string(),
+                candidateId: z.string(),
+                candidateSetId: z.string().optional(),
+                validationState: z.enum(["accepted", "rejected"]),
+                simulationStatus: z.string(),
+                riskScore: z.number().min(0).max(1),
+                preparedArtifact: z.record(z.string(), z.unknown()).optional(),
+            },
+        },
+        async (candidate) => {
+            const goal = memory.goalLoops.get(candidate.goalId);
+            if (!goal || goal.speculative !== true) {
+                return { content: [{ type: "text", text: "speculative goal not found" }], isError: true };
+            }
+            const accepted = candidate.validationState === "accepted" && candidate.simulationStatus === "simulated";
+            const record = memory.goalLoops.memory.saveSpeculativeCandidate(goal, {
+                ...candidate,
+                status: accepted ? "prepared" : "rejected",
+            });
+            return { content: [{ type: "text", text: JSON.stringify(record, null, 2) }], isError: !accepted };
+        }
+    );
+
+    server.registerTool(
+        "select_speculative_candidate",
+        {
+            title: "Select a fresh precomputed candidate for an actual goal",
+            description: "Selection saves generation latency but never bypasses normal validation, Proposal Gate, or consent.",
+            inputSchema: {
+                sessionId: sessionIdSchema,
+                correlationId: sessionIdSchema,
+                actualObjective: z.string(),
+                targetObjectId: z.string(),
+                sceneEpoch: z.string(),
+                snapshotId: z.string(),
+                objectRevision: z.number(),
+            },
+        },
+        async (args) => {
+            const result = memory.futureGoals.selectForActualGoal(args);
             return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
     );

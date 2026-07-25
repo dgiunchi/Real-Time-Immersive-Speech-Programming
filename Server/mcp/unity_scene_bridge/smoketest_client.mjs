@@ -31,6 +31,23 @@ log("start_study_trial", await client.callTool({
         correlationId,
     },
 }));
+log("create_bounded_goal", await client.callTool({
+    name: "create_bounded_goal",
+    arguments: {
+        goalId: "mock-goal-001",
+        objective: "commit one validated behavior to the selected object",
+        sessionId,
+        correlationId,
+        targetObjectId,
+        interactionMode: "L4",
+        authoringMode: "semi_auto_confirm",
+        triggerSource: "explicit_request",
+        verificationLevel: 1,
+        terminationPredicate: { type: "field_equals", field: "artifactCommitted", value: true },
+        maxAttempts: 2,
+        maxWallTimeMs: 60000,
+    },
+}));
 log("record_intent", await client.callTool({ name: "record_intent", arguments: { text: "make this sphere pulse red when I touch it", sessionId, correlationId } }));
 log("send_agent_status", await client.callTool({ name: "send_agent_status", arguments: { sessionId, correlationId, state: "thinking", detail: "Mock status visibility check." } }));
 log("query_scene", await client.callTool({ name: "query_scene", arguments: { objectId: targetObjectId, sessionId, correlationId } }));
@@ -87,6 +104,18 @@ log(
         },
     })
 );
+log("advance_goal_loop", await client.callTool({
+    name: "advance_goal_loop",
+    arguments: {
+        goalId: "mock-goal-001",
+        triggerSource: "explicit_request",
+        triggerId: "mock-commit-result",
+        riskScore: 0.1,
+        reversible: true,
+        localOnly: true,
+        detailResolved: true,
+    },
+}));
 
 log("get_artifact_history", await client.callTool({ name: "get_artifact_history", arguments: { objectId: targetObjectId, correlationId } }));
 log("get_evolution_history", await client.callTool({ name: "get_evolution_history", arguments: { objectId: targetObjectId, correlationId } }));
