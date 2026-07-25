@@ -89,6 +89,45 @@ fn to_network_id(j: NetworkIdJson) -> NetworkId {
     NetworkId::new(j.a, j.b)
 }
 
+/// Whether `s` is an RFC 4122 **version 4** UUID in canonical 8-4-4-4-12 form.
+///
+/// Upstream Ubiq rejects a Join whose room uuid is not a v4 UUID ("we were
+/// expecting an RFC4122 v4 uuid"), so a stock client relies on that contract; we
+/// mirror it rather than silently accepting an arbitrary string as a room id.
+fn is_rfc4122_v4(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    for (i, c) in b.iter().enumerate() {
+        match i {
+            8 | 13 | 18 | 23 => {
+                if *c != b'-' {
+                    return false;
+                }
+            }
+            // Version nibble: must be '4'.
+            14 => {
+                if *c != b'4' {
+                    return false;
+                }
+            }
+            // Variant nibble: one of 8, 9, a, b.
+            19 => {
+                if !matches!(c.to_ascii_lowercase(), b'8' | b'9' | b'a' | b'b') {
+                    return false;
+                }
+            }
+            _ => {
+                if !c.is_ascii_hexdigit() {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
 /// A deterministic 3-char join code derived from the room uuid (Phase 1). The
 /// upstream server picks a random code; a stable derivation is fine until room
 /// discovery by join code is wired up.
@@ -152,9 +191,45 @@ impl RoomServer {
 
     fn on_join(&mut self, conn: ConnId, args: JoinArgs) -> Result<Vec<Outbound>, RoomError> {
         let clientid = to_network_id(args.peer.clientid);
-        // Our clients always send a room uuid; fall back to the peer uuid so a
-        // uuid-less Join still lands in a private room rather than failing.
-        let room_uuid = args.uuid.clone().unwrap_or_else(|| args.peer.uuid.clone());
+
+        // Resolve which room this Join is for, mirroring upstream Ubiq's contract.
+        // A `Rejected` reply needs an address, and the peer is not registered yet,
+        // so it goes back on the reserved control channel via `control_reply`.
+        let joincode = args.joincode.as_deref().filter(|c| !c.trim().is_empty());
+        let uuid_arg = args.uuid.as_deref().filter(|u| !u.trim().is_empty());
+        let room_uuid = if let Some(code) = joincode {
+            // Join-by-code only ever joins an EXISTING room; an unknown code is a
+            // rejection, never a silent room creation.
+            match self.rooms.values().find(|r| r.joincode == code) {
+                Some(r) => r.uuid.clone(),
+                None => {
+                    return Ok(vec![self.control_reply(
+                        conn,
+                        "Rejected",
+                        &serde_json::json!({
+                            "reason": format!("join code {code} not found"),
+                            "joinArgs": { "joincode": code },
+                        }),
+                    )?])
+                }
+            }
+        } else if let Some(uuid) = uuid_arg {
+            if !is_rfc4122_v4(uuid) {
+                return Ok(vec![self.control_reply(
+                    conn,
+                    "Rejected",
+                    &serde_json::json!({
+                        "reason": "we were expecting an RFC4122 v4 uuid",
+                        "joinArgs": { "uuid": uuid },
+                    }),
+                )?]);
+            }
+            uuid.to_string()
+        } else {
+            // Neither given: fall back to the peer's own uuid so the peer lands in a
+            // private room of its own rather than failing outright.
+            args.peer.uuid.clone()
+        };
 
         // Resolve or create the room, then record membership.
         let (room_info, existing_members) = {
@@ -462,7 +537,10 @@ mod tests {
     fn join_creates_room_and_replies_set_room() {
         let mut rs = RoomServer::new();
         let out = rs
-            .on_control(1, &join_payload("room-A", "peer-1", 111))
+            .on_control(
+                1,
+                &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+            )
             .unwrap();
         assert_eq!(rs.room_count(), 1);
         assert_eq!(rs.peer_count(), 1);
@@ -478,10 +556,16 @@ mod tests {
     #[test]
     fn second_peer_is_introduced_both_ways() {
         let mut rs = RoomServer::new();
-        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
-            .unwrap();
+        rs.on_control(
+            1,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+        )
+        .unwrap();
         let out = rs
-            .on_control(2, &join_payload("room-A", "peer-2", 222))
+            .on_control(
+                2,
+                &join_payload("11111111-1111-4111-8111-111111111111", "peer-2", 222),
+            )
             .unwrap();
         assert_eq!(rs.room_count(), 1, "both peers share one room");
         assert_eq!(rs.peer_count(), 2);
@@ -501,10 +585,16 @@ mod tests {
     #[test]
     fn app_frame_relays_to_others_only() {
         let mut rs = RoomServer::new();
-        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
-            .unwrap();
-        rs.on_control(2, &join_payload("room-A", "peer-2", 222))
-            .unwrap();
+        rs.on_control(
+            1,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+        )
+        .unwrap();
+        rs.on_control(
+            2,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-2", 222),
+        )
+        .unwrap();
         // A NID-94 application frame from conn 1.
         let frame = NetworkFrame {
             network_id: NetworkId::new(0, 94),
@@ -526,10 +616,16 @@ mod tests {
     #[test]
     fn disconnect_announces_peer_removed_and_reaps_empty_room() {
         let mut rs = RoomServer::new();
-        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
-            .unwrap();
-        rs.on_control(2, &join_payload("room-A", "peer-2", 222))
-            .unwrap();
+        rs.on_control(
+            1,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+        )
+        .unwrap();
+        rs.on_control(
+            2,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-2", 222),
+        )
+        .unwrap();
 
         let out = rs.on_disconnect(1).unwrap();
         assert_eq!(out.len(), 1, "the remaining peer is told peer-1 left");
@@ -572,10 +668,16 @@ mod tests {
     #[test]
     fn append_peer_properties_updates_peer_and_notifies_others() {
         let mut rs = RoomServer::new();
-        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
-            .unwrap();
-        rs.on_control(2, &join_payload("room-A", "peer-2", 222))
-            .unwrap();
+        rs.on_control(
+            1,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+        )
+        .unwrap();
+        rs.on_control(
+            2,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-2", 222),
+        )
+        .unwrap();
 
         let out = rs
             .on_control(
@@ -599,7 +701,10 @@ mod tests {
         // The property is persisted on the peer: a third peer joining is told
         // about peer-1 WITH the new property.
         let out3 = rs
-            .on_control(3, &join_payload("room-A", "peer-3", 333))
+            .on_control(
+                3,
+                &join_payload("11111111-1111-4111-8111-111111111111", "peer-3", 333),
+            )
             .unwrap();
         let peer_added: Vec<serde_json::Value> = out3
             .iter()
@@ -621,10 +726,16 @@ mod tests {
     #[test]
     fn append_peer_properties_overwrites_an_existing_key() {
         let mut rs = RoomServer::new();
-        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
-            .unwrap();
-        rs.on_control(2, &join_payload("room-A", "peer-2", 222))
-            .unwrap();
+        rs.on_control(
+            1,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+        )
+        .unwrap();
+        rs.on_control(
+            2,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-2", 222),
+        )
+        .unwrap();
         let set = |v: &str| {
             ctrl(
                 "AppendPeerProperties",
@@ -636,7 +747,10 @@ mod tests {
 
         // A newcomer sees exactly one `k`, with the latest value.
         let out = rs
-            .on_control(3, &join_payload("room-A", "peer-3", 333))
+            .on_control(
+                3,
+                &join_payload("11111111-1111-4111-8111-111111111111", "peer-3", 333),
+            )
             .unwrap();
         let p1 = out
             .iter()
@@ -660,10 +774,16 @@ mod tests {
     #[test]
     fn append_room_properties_notifies_every_member_including_sender() {
         let mut rs = RoomServer::new();
-        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
-            .unwrap();
-        rs.on_control(2, &join_payload("room-A", "peer-2", 222))
-            .unwrap();
+        rs.on_control(
+            1,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+        )
+        .unwrap();
+        rs.on_control(
+            2,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-2", 222),
+        )
+        .unwrap();
 
         let out = rs
             .on_control(
@@ -685,7 +805,10 @@ mod tests {
 
         // Persisted: a newcomer's SetRoom carries the property.
         let out3 = rs
-            .on_control(3, &join_payload("room-A", "peer-3", 333))
+            .on_control(
+                3,
+                &join_payload("11111111-1111-4111-8111-111111111111", "peer-3", 333),
+            )
             .unwrap();
         let set_room = out3
             .iter()
@@ -700,8 +823,12 @@ mod tests {
     fn discover_rooms_lists_only_published_rooms() {
         let mut rs = RoomServer::new();
         // A published room and an unpublished one.
-        let mut pub_join: serde_json::Value =
-            serde_json::from_slice(&join_payload("room-pub", "p1", 111)).unwrap();
+        let mut pub_join: serde_json::Value = serde_json::from_slice(&join_payload(
+            "22222222-2222-4222-8222-222222222222",
+            "p1",
+            111,
+        ))
+        .unwrap();
         let mut args: serde_json::Value =
             serde_json::from_str(pub_join["args"].as_str().unwrap()).unwrap();
         args["publish"] = serde_json::json!(true);
@@ -709,8 +836,11 @@ mod tests {
         pub_join["args"] = serde_json::json!(args.to_string());
         rs.on_control(1, &serde_json::to_vec(&pub_join).unwrap())
             .unwrap();
-        rs.on_control(2, &join_payload("room-private", "p2", 222))
-            .unwrap();
+        rs.on_control(
+            2,
+            &join_payload("33333333-3333-4333-8333-333333333333", "p2", 222),
+        )
+        .unwrap();
 
         let out = rs
             .on_control(2, &ctrl("DiscoverRooms", serde_json::json!({})))
@@ -720,7 +850,7 @@ mod tests {
         let args = outbound_args(&out[0]);
         let rooms = args["rooms"].as_array().unwrap();
         assert_eq!(rooms.len(), 1, "only the published room is discoverable");
-        assert_eq!(rooms[0]["uuid"], "room-pub");
+        assert_eq!(rooms[0]["uuid"], "22222222-2222-4222-8222-222222222222");
         assert_eq!(rooms[0]["name"], "Public Room");
         assert_eq!(args["version"], "1.0");
     }
@@ -728,8 +858,11 @@ mod tests {
     #[test]
     fn discover_rooms_by_joincode_finds_the_room_even_before_joining() {
         let mut rs = RoomServer::new();
-        rs.on_control(1, &join_payload("abc-room", "p1", 111))
-            .unwrap();
+        rs.on_control(
+            1,
+            &join_payload("abcdef01-2345-4678-89ab-cdef01234567", "p1", 111),
+        )
+        .unwrap();
         // joincode is derived from the uuid's first 3 alphanumerics -> "abc".
         let out = rs
             .on_control(
@@ -745,14 +878,17 @@ mod tests {
         assert_eq!(nid_b, ROOMSERVER_ID.b);
         let rooms = outbound_args(&out[0])["rooms"].as_array().unwrap().clone();
         assert_eq!(rooms.len(), 1);
-        assert_eq!(rooms[0]["uuid"], "abc-room");
+        assert_eq!(rooms[0]["uuid"], "abcdef01-2345-4678-89ab-cdef01234567");
     }
 
     #[test]
     fn set_blob_then_get_blob_round_trips() {
         let mut rs = RoomServer::new();
-        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
-            .unwrap();
+        rs.on_control(
+            1,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+        )
+        .unwrap();
 
         let out = rs
             .on_control(
@@ -778,12 +914,126 @@ mod tests {
     #[test]
     fn get_blob_for_unknown_uuid_returns_empty_not_an_error() {
         let mut rs = RoomServer::new();
-        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
-            .unwrap();
+        rs.on_control(
+            1,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+        )
+        .unwrap();
         let out = rs
             .on_control(1, &ctrl("GetBlob", serde_json::json!({ "uuid": "nope" })))
             .unwrap();
         assert_eq!(outbound_args(&out[0])["blob"], "");
+    }
+
+    /// Upstream Ubiq refuses a Join whose room uuid is not an RFC4122 v4 UUID
+    /// (verified against the real Node RoomServer, which logs "we were expecting an
+    /// RFC4122 v4 uuid"). We mirror that rather than accepting any string as a room
+    /// id, so a stock Ubiq client sees the reply it is written against.
+    #[test]
+    fn join_with_a_non_uuid_room_is_rejected() {
+        let mut rs = RoomServer::new();
+        let out = rs
+            .on_control(1, &join_payload("not-a-uuid", "peer-1", 111))
+            .unwrap();
+        assert_eq!(out.len(), 1);
+        let (nid_b, ty) = outbound_type(&out[0]);
+        assert_eq!(ty, "Rejected");
+        assert_eq!(
+            nid_b, ROOMSERVER_ID.b,
+            "pre-join reply uses the control channel"
+        );
+        assert!(outbound_args(&out[0])["reason"]
+            .as_str()
+            .unwrap()
+            .contains("RFC4122 v4"));
+        assert_eq!(rs.room_count(), 0, "a rejected join creates no room");
+        assert_eq!(rs.peer_count(), 0, "and registers no peer");
+    }
+
+    #[test]
+    fn uuid_validation_accepts_v4_and_rejects_near_misses() {
+        assert!(is_rfc4122_v4("6765c52b-3ad6-4fb0-9030-2c9a05dc4731"));
+        assert!(
+            is_rfc4122_v4("ABCDEF01-2345-4678-89AB-CDEF01234567"),
+            "case-insensitive"
+        );
+        assert!(
+            !is_rfc4122_v4("6765c52b-3ad6-3fb0-9030-2c9a05dc4731"),
+            "v3, not v4"
+        );
+        assert!(
+            !is_rfc4122_v4("6765c52b-3ad6-4fb0-c030-2c9a05dc4731"),
+            "bad variant nibble"
+        );
+        assert!(
+            !is_rfc4122_v4("6765c52b3ad64fb090302c9a05dc4731"),
+            "missing dashes"
+        );
+        assert!(
+            !is_rfc4122_v4("6765c52b-3ad6-4fb0-9030-2c9a05dc473"),
+            "too short"
+        );
+        assert!(
+            !is_rfc4122_v4("6765c52b-3ad6-4fb0-9030-2c9a05dc47zz"),
+            "non-hex"
+        );
+        assert!(!is_rfc4122_v4(""));
+    }
+
+    #[test]
+    fn join_by_unknown_joincode_is_rejected_and_creates_nothing() {
+        let mut rs = RoomServer::new();
+        let out = rs
+            .on_control(
+                1,
+                &ctrl(
+                    "Join",
+                    serde_json::json!({
+                        "joincode": "zzz",
+                        "peer": {
+                            "uuid": "peer-1",
+                            "sceneid": { "a": 0u32, "b": 10u32 },
+                            "clientid": { "a": 0u32, "b": 111u32 },
+                            "keys": [], "values": []
+                        }
+                    }),
+                ),
+            )
+            .unwrap();
+        assert_eq!(outbound_type(&out[0]).1, "Rejected");
+        assert_eq!(rs.room_count(), 0);
+    }
+
+    #[test]
+    fn join_by_known_joincode_lands_in_the_existing_room() {
+        let mut rs = RoomServer::new();
+        // "111…" derives joincode "111".
+        rs.on_control(
+            1,
+            &join_payload("11111111-1111-4111-8111-111111111111", "peer-1", 111),
+        )
+        .unwrap();
+        let out = rs
+            .on_control(
+                2,
+                &ctrl(
+                    "Join",
+                    serde_json::json!({
+                        "joincode": "111",
+                        "peer": {
+                            "uuid": "peer-2",
+                            "sceneid": { "a": 0u32, "b": 10u32 },
+                            "clientid": { "a": 0u32, "b": 222u32 },
+                            "keys": [], "values": []
+                        }
+                    }),
+                ),
+            )
+            .unwrap();
+        let kinds: Vec<String> = out.iter().map(|o| outbound_type(o).1).collect();
+        assert!(kinds.contains(&"SetRoom".to_string()), "joined by code");
+        assert_eq!(rs.room_count(), 1, "no second room was created");
+        assert_eq!(rs.peer_count(), 2);
     }
 
     #[test]

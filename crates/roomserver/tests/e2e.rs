@@ -17,7 +17,9 @@ async fn single_peer_join_registers_one_room() {
     let server = RoomServerHandle::bind("127.0.0.1:0").await.unwrap();
     let addr = server.local_addr().to_string();
 
-    let _peer = UbiqServicePeer::connect_and_join(&addr, "room-x")
+    // A real RFC4122 v4 uuid: the server mirrors upstream Ubiq and rejects any
+    // other form, so this is also a check that our own client sends a valid one.
+    let _peer = UbiqServicePeer::connect_and_join(&addr, "44444444-4444-4444-8444-444444444444")
         .await
         .expect("join succeeds against the Rust RoomServer");
 
