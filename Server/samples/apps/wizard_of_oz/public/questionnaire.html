@@ -57,7 +57,16 @@
           <option value="C">C — Embodied agent</option>
         </select>
       </div>
+      <div class="field">
+        <label class="lbl">Block</label>
+        <select id="block">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
     </div>
+    <p class="note">Each participant completes this once per condition (3 times).</p>
   </div>
 
   <!-- SUS -->
@@ -67,18 +76,18 @@
     <div id="sus"></div>
   </div>
 
-  <!-- Presence & embodiment -->
+  <!-- User Engagement Scale – Short Form -->
   <div class="card">
-    <h2>Presence &amp; Experience</h2>
-    <p class="note">1 = Not at all, 7 = Very much.</p>
-    <div id="presence"></div>
+    <h2>Your experience of this task</h2>
+    <p class="note">1 = Strongly disagree, 5 = Strongly agree.</p>
+    <div id="ues"></div>
   </div>
 
-  <!-- Study-specific -->
+  <!-- Perceived support -->
   <div class="card">
     <h2>System Feedback &amp; Support</h2>
-    <p class="note">These questions are about how the system communicated with you. 1 = Not at all, 7 = Very much.</p>
-    <div id="custom"></div>
+    <p class="note">These questions are about how the system communicated with you.</p>
+    <div id="support"></div>
   </div>
 
   <div class="submit">
@@ -106,21 +115,65 @@ const SUS = [
   "I needed to learn a lot of things before I could get going with this system."
 ];
 
-const PRESENCE = [
-  "I felt present in the virtual environment.",
-  "I was aware of things happening around me in the virtual scene.",
-  "I felt that the system was an entity I was interacting with.",
-  "I felt like the system responded to me as if it understood me."
+// User Engagement Scale – Short Form (O'Brien, Cairns & Hall, 2018, IJHCS 112,
+// 28–39). Wording adapted from "Application X" to "this task" / "this VR scene",
+// which the instrument's administration guidance explicitly permits.
+//
+// Item order is randomised at render time and subscale labels are NOT shown to
+// participants, per the instrument's guidance. Subscale membership is kept here
+// only so the analysis can group and reverse-score correctly:
+//   FA = focused attention, PU = perceived usability (REVERSE-SCORE),
+//   AE = aesthetic appeal, RW = reward.
+const UES = [
+  { id: "ues_fa1", sub: "FA", text: "I lost myself in this task." },
+  { id: "ues_fa2", sub: "FA", text: "The time I spent using this task just slipped away." },
+  { id: "ues_fa3", sub: "FA", text: "I was absorbed in this task." },
+  { id: "ues_pu1", sub: "PU", text: "I felt frustrated while doing this task.", reverse: true },
+  { id: "ues_pu2", sub: "PU", text: "I found this task confusing to do.", reverse: true },
+  { id: "ues_pu3", sub: "PU", text: "Using the system for this task was taxing.", reverse: true },
+  { id: "ues_ae1", sub: "AE", text: "This VR scene was attractive." },
+  { id: "ues_ae2", sub: "AE", text: "This VR scene was aesthetically appealing." },
+  { id: "ues_ae3", sub: "AE", text: "This VR scene appealed to my visual senses." },
+  { id: "ues_rw1", sub: "RW", text: "Doing this task was worthwhile." },
+  { id: "ues_rw2", sub: "RW", text: "My experience was rewarding." },
+  { id: "ues_rw3", sub: "RW", text: "I felt interested in this experience." }
 ];
 
-const CUSTOM = [
-  { id: "engagement",  text: "How engaged did you feel while working with the system?" },
-  { id: "confidence",  text: "How confident were you that the system understood what you asked?" },
-  { id: "supportive",  text: "How supportive was the system when something went wrong?" },
-  { id: "error_clarity", text: "When there was a problem, how clearly could you tell what had gone wrong?" },
-  { id: "recovery",    text: "How easy was it to recover and correct a mistake?" },
-  { id: "trust",       text: "How much did you trust the system's feedback?" }
+// Perceived support. The four statements operationalise the "how supportive was
+// the system" construct from the project brief; they are NOT from a published,
+// validated scale — flag to the supervisor if a validated instrument is required.
+const SUPPORT = [
+  { id: "sup1", text: "When something unexpected happened, I understood what had happened." },
+  { id: "sup2", text: "The system helped me understand why the unexpected result occurred." },
+  { id: "sup3", text: "I felt supported in recovering from the unexpected result." },
+  { id: "sup4", text: "I knew what to try next after the unexpected result occurred." }
 ];
+
+// Pre-session background questionnaire (once per participant, not per condition).
+const DEMOGRAPHICS = [
+  { id: "age", text: "Age range",
+    options: ["18–24", "25–34", "35–44", "45–54", "55+"] },
+  { id: "gender", text: "Gender (optional)", free: true },
+  { id: "vr_experience", text: "Prior experience with VR / head-mounted displays",
+    options: ["None", "A little (tried it a few times)", "Moderate (use occasionally)", "Extensive (use regularly)"] },
+  { id: "tech_background", text: "Programming / technical background",
+    options: ["None", "Some (e.g. one course)", "Moderate", "Extensive (e.g. degree/job in CS)"] },
+  { id: "assistant_use", text: "How often do you use voice assistants or AI chatbots?",
+    options: ["Never", "Rarely", "Sometimes", "Often", "Daily"] }
+];
+
+/** Deterministic shuffle so a participant's item order is stable on reload. */
+function shuffled(items, seedStr) {
+  let h = 0;
+  for (const ch of String(seedStr || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const a = items.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    h = (h * 1103515245 + 12345) >>> 0;
+    const j = h % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 function scale(name, n, lowLabel, highLabel) {
   let opts = "";
@@ -132,15 +185,23 @@ function scale(name, n, lowLabel, highLabel) {
 }
 
 function render() {
+  const pid = new URLSearchParams(location.search).get("pid") || "";
+
   document.getElementById("sus").innerHTML = SUS.map((q,i) =>
     `<div class="q"><div class="text">${i+1}. ${q}</div>${scale("sus"+(i+1),5,"Strongly disagree","Strongly agree")}</div>`
   ).join("");
-  document.getElementById("presence").innerHTML = PRESENCE.map((q,i) =>
-    `<div class="q"><div class="text">${q}</div>${scale("pres"+(i+1),7,"Not at all","Very much")}</div>`
+
+  // Randomised order, no subscale headings shown (per UES-SF guidance).
+  document.getElementById("ues").innerHTML = shuffled(UES, pid).map(c =>
+    `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
   ).join("");
-  document.getElementById("custom").innerHTML = CUSTOM.map(c =>
-    `<div class="q"><div class="text">${c.text}</div>${scale(c.id,7,"Not at all","Very much")}</div>`
-  ).join("");
+
+  document.getElementById("support").innerHTML =
+    SUPPORT.map(c =>
+      `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
+    ).join("") +
+    `<div class="q"><div class="text">Overall, how supportive was the system when things went wrong?</div>
+       ${scale("sup_overall",7,"Not at all supportive","Extremely supportive")}</div>`;
 }
 
 function collect() {
@@ -148,8 +209,9 @@ function collect() {
   const missingNames = [];
   const names = [];
   for (let i=1;i<=10;i++) names.push("sus"+i);
-  for (let i=1;i<=PRESENCE.length;i++) names.push("pres"+i);
-  CUSTOM.forEach(c => names.push(c.id));
+  UES.forEach(c => names.push(c.id));
+  SUPPORT.forEach(c => names.push(c.id));
+  names.push("sup_overall");
   names.forEach(n => {
     const sel = document.querySelector(`input[name="${n}"]:checked`);
     if (sel) answers[n] = sel.value; else { answers[n] = ""; missingNames.push(n); }
@@ -187,9 +249,10 @@ async function submitForm() {
   const btn = document.getElementById("submitBtn");
   btn.disabled = true; btn.textContent = "Saving…";
   try {
+    const block = document.getElementById("block").value;
     await fetch("/questionnaire", {
       method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ participantId, condition, questionnaire: "post", answers })
+      body: JSON.stringify({ participantId, condition, block, questionnaire: "post-condition", answers })
     });
     document.getElementById("form").style.display = "none";
     document.getElementById("done").style.display = "block";

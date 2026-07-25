@@ -5,10 +5,36 @@ conditions for AI/speech-pipeline errors in VR authoring.
 
 - **Condition A** — No feedback (participant sees only the scene result)
 - **Condition B** — Text panel (transcript + action + plain-language error)
-- **Condition C** — Embodied agent (agent speaks before/after; panel also visible)
+- **Condition C** — Embodied agent (visible agent speaks before/after; panel also visible)
 
 A hidden researcher triggers pre-scripted *success* or *error* outcomes, so
-every participant in a condition gets the identical experience — no live LLM.
+every participant gets the identical experience — no live LLM.
+
+## Design (agreed with the supervisor, July 2026)
+
+**Within-subjects:** every participant does **all three conditions** in three
+blocks. Condition order is counterbalanced across participants (Latin square),
+and each block uses a **different variant** of each task so nobody can carry a
+correction over from an earlier condition.
+
+**3 tasks × 3 variants.** Variants differ in *which detail the system fails on*:
+
+| Task | v1 | v2 | v3 |
+|------|----|----|----|
+| 1. Create an object | missing position | missing size | missing proportions |
+| 2. Change appearance | ambiguous target | wrong shade | doesn't persist |
+| 3. Make it move | wrong centre | wrong plane | wrong speed |
+
+**Trial protocol** (per task, per condition):
+1. Researcher selects the task; reads the prompt shown on the panel.
+2. Participant speaks their instruction → **researcher clicks INJECT ERROR**.
+3. Feedback appears according to the condition (A none / B panel / C agent).
+4. Participant tries again. If they supply the missing detail → **INJECT
+   SUCCESS**. If they repeat the same omission → **INJECT ERROR again** (do not
+   hand them the correct result), and prompt them to check the feedback.
+
+The panel shows the planned omission and the attempt count so you always know
+which button to press.
 
 ---
 
@@ -68,55 +94,70 @@ outcome runner is plain C#), so you can pilot the researcher workflow without
 the Quest.
 
 ### 3. Set up the participant on the control panel
-- Enter the **Participant ID** (e.g. `P01`) and choose the **Condition**.
-- Click **Start / Update Session**. From now on everything is logged to CSV
-  under that participant.
+- Enter the **Participant ID** (e.g. `P01`). The panel immediately shows that
+  participant's **counterbalanced plan** — which condition and variants to run
+  in each of the three blocks.
+- Leave **Condition** on *"Follow counterbalanced plan"* and pick the **Block**
+  you're about to run, then click **Start / Update Session**.
+- The headset switches to that condition automatically — no rebuild, and no need
+  to match anything by hand in Unity.
 
-> Make sure the condition on the control panel matches the condition set on the
-> `StudyUIBootstrapper` in Unity.
+Before the first block, have the participant complete the **Background form**
+(link in the panel header) — once per participant.
 
 ### 4. Run each task
-For each of the 4 tasks:
-1. Click the task chip (1–4) on the control panel.
-2. Read the task aloud to the participant.
-3. The participant gives a spoken instruction (left trigger in the headset, or
-   hold **Space** in the Unity Editor, while speaking).
-4. Their transcript appears live on the control panel (and in VR for B/C).
-5. **You click SUCCESS or one of the ERROR buttons** — this is the Wizard-of-Oz
-   step. After a short "thinking" pause, the pre-scripted outcome runs in VR.
-6. Use the **Quick note** box to log any observation.
-7. **Clear scene / Reset** before the next participant (and to go from free-play
-   into the real tasks) — it removes everything created and clears the feedback.
+For each of the 3 tasks in the block:
+1. Click the task chip on the control panel. The panel shows the **prompt to
+   read aloud**, the **planned omission**, and the **attempt count**.
+2. Read the prompt to the participant.
+3. They speak their instruction (hold the controller trigger — either hand — or
+   **Space** in the Unity Editor). The transcript appears on the panel.
+4. Click **INJECT ERROR**. After a short "thinking" pause the outcome appears
+   and the condition's feedback fires.
+5. They try again:
+   - supplied the missing detail → **INJECT SUCCESS**
+   - repeated the same omission → **INJECT ERROR again**, and say *"have another
+     look at the feedback and try once more"*
+6. Use **Quick note** for observations.
+7. **Clear scene / Reset** between tasks/participants.
 
-> **There is no live AI.** You (the researcher) decide every outcome by clicking
-> the buttons. If you click nothing, nothing happens — that is by design, and is
-> what keeps every participant's experience identical within a condition.
+> **There is no live AI.** You decide every outcome by clicking. If you click
+> nothing, nothing happens — that is the method, and it is what keeps the
+> experience identical for everyone in a condition.
 
-**What the participant sees per condition (e.g. you inject ERR 2 on task 1):**
-- **A – No feedback:** a cube appears. Nothing else — no transcript, no text,
-  no agent. They must interpret and recover alone. (This is the control.)
-- **B – Text panel:** cube appears **and** a panel shows the action, a ✗, and a
-  plain-language explanation ("a cube was created instead of a sphere…"), plus
-  their transcript.
+**What the participant sees (e.g. task 1 v1 — the position omission):**
+- **A – No feedback:** the ball appears in the wrong place. Nothing else. They
+  must work it out alone. (Control condition.)
+- **B – Text panel:** the ball appears **and** the panel explains: *"A ball was
+  created, but at the centre of the room rather than near you — no position was
+  specified."*
 - **C – Embodied agent:** everything in B **plus** a visible assistant that
-  acknowledges the request beforehand and comments on the result afterwards
-  ("Hmm — that came out as a cube. Did you mean a sphere?").
+  acknowledges beforehand (*"Okay, I'll create a ball for you."*) and comments
+  afterwards (*"…I wasn't told where to put it. Where would you like it?"*).
 
-### 4a. Optional — agent voice for condition C
+### 4a. Editing the tasks (no rebuild needed)
+Task prompts, error wording and agent dialogue live in the `TASKS` object in
+[`Server/samples/apps/wizard_of_oz/app.js`](Server/samples/apps/wizard_of_oz/app.js).
+The headset executes these as data, so **edits take effect on the next server
+restart — you do not need to rebuild or reinstall the APK.**
+
+### 4b. Optional — agent voice for condition C
 The agent speaks via on-screen subtitles by default. To give it a real voice,
-drop `.wav` clips into `Unity/Assets/Resources/AgentVoice/` named by line
-(`t1_preSuccess.wav`, `t1_postError2.wav`, … one per task/stage/response) — they
-load automatically, no wiring. Without clips, subtitles are used.
+drop `.wav` clips into `Unity/Assets/Resources/AgentVoice/` — they are picked up
+automatically. Without clips, subtitles are used.
 
-### 5. Questionnaire
-After the session, open `http://localhost:8181/questionnaire` (link is in the
-control panel header) on a laptop/tablet for the participant. It contains:
-- **SUS** (10 standard items)
-- **Presence & experience** (4 items)
-- **System feedback & support** (engagement, confidence, supportiveness,
-  error clarity, recovery, trust)
+### 5. Questionnaires
+- **Once per participant, before the first block:** `http://localhost:8181/background`
+  — age range, VR experience, technical background, assistant use.
+- **After each block (3× per participant):** `http://localhost:8181/questionnaire`
+  — **SUS** (10 items), **UES-SF** (12 items, randomised order; reverse-score the
+  three perceived-usability items), and **Perceived Support** (4 items + overall).
 
-You can pre-fill it: `…/questionnaire?pid=P01&cond=B`.
+Pre-fill either with `?pid=P01`. Both refuse to submit until every item is
+answered, highlighting anything missed.
+
+Then run the **semi-structured interview** (5–10 min) from the study materials —
+that part is on paper/audio, not in this system.
 
 ---
 
@@ -126,42 +167,45 @@ All files are written to a `Logs/` folder at the top of the project:
 ```
 Real-Time-Immersive-Speech-Programming-…/Logs/
 ```
-- `sessions.csv` — one row per session start (participant, condition)
-- `<PID>_events.csv` — every transcript, inject, task change, note, and (if
-  `StudySessionLogger` is used) speech attempts and task timing
-- `<PID>_questionnaire.csv` — questionnaire answers
+- `sessions.csv` — one row per block start, including the participant's full
+  counterbalanced condition order and variant plan
+- `<PID>_events.csv` — the analysis file. One row per event with
+  `timestamp, participantId, condition, block, task, variant, attempt,
+  errorType, eventType, msSinceTrialStart, detail`. Event types include
+  `transcript` (what they said), `inject` (what you triggered),
+  `feedback-shown` (what they were actually told), `task-change`, `note`.
+- `<PID>_background.csv` — pre-session demographics (one row)
+- `<PID>_condition.csv` — post-condition questionnaires (three rows, one per
+  condition)
 
 These CSVs are git-ignored so participant data never gets committed.
 
----
-
-## The 4 tasks and their error types
-
-Each task has a correct outcome plus 4 error types. The errors are designed so
-the scene *looks fine at first* and the problem emerges through interaction
-(the "root-cause attribution" principle from the supervisor meeting).
-
-| Task | Correct outcome | Error types |
-|------|-----------------|-------------|
-| 1. Create a ball | Ball at hand, interactable | wrong position · cube not sphere · falls through floor · squashed |
-| 2. Colour green | Ball turns green | all objects green · teal not green · reverts after 2s · new object |
-| 3. Orbit the cube | Ball orbits cube | orbits origin · wrong axis · crashes into cube · too fast |
-| 4. Solar system | Star + orbiting planet | only star · squashed planet · planet drifts off · 50 planets |
-
-Edit the code strings in
-[`Server/samples/apps/wizard_of_oz/app.js`](Server/samples/apps/wizard_of_oz/app.js)
-(the `SCRIPTS` object) to change what each button injects.
+**What you can measure from this:** number of attempts before success per
+condition; time from first utterance to success; whether the second input
+supplied the missing detail; first-vs-recovery transcript comparison — all
+grouped by condition, which is what the hypotheses need.
 
 ---
 
-## Voice transcription note
+## Voice / microphone
 
-Speech-to-text calls the lab's Whisper server
-(`http://130.136.2.161:50101`), usually only reachable on the university
-network. If you're testing at home, the transcript won't appear — but you can
-still inject responses from the control panel and run the whole flow. To point
-at a different STT server, set `STT_HTTP_URL` before launching, or ask Daniele
-for the current endpoint/key.
+**Push-to-talk:** hold the trigger on **either** controller (grip also works)
+while speaking, then release. The transcript appears 1–2 s after you release.
+
+**Check the mic before every session.** The control panel has a live
+**Microphone** card showing whether the headset's mic is capturing and a level
+meter that moves when it hears sound. If it says *"No report from headset"*, the
+app isn't running or isn't connected. If it says *"NOT capturing"*, check
+microphone permission: headset → *Settings → Apps → [the app] → Permissions →
+Microphone*.
+
+**If the trigger fails mid-session**, use **Hold to record** on the panel — it
+drives recording remotely so a session isn't lost.
+
+Speech-to-text calls the lab's Whisper server (`http://130.136.2.161:50101`).
+`npm run study` pings it at startup and prints a green/yellow banner so you know
+before a session whether live transcripts will work. To use a different
+endpoint, set `STT_HTTP_URL` before launching.
 
 ---
 
@@ -170,10 +214,10 @@ for the current endpoint/key.
 1. Pilot **one task** with the embodied-agent interaction (1–2 questions max,
    no infinite loops).
 2. Expand to 2–3 pilot participants; check the interaction feels right.
-3. Add the remaining tasks with the same narrative.
-4. Full run: ~10 participants, between-subjects (each sees only A, B, or C),
-   3–4 tasks, ~45 min per session.
+3. Then run all 3 tasks with the same narrative.
+4. Full run: ~10 participants, **within-subjects** (each does all of A, B and C
+   in counterbalanced order), 3 tasks per condition, ~45 min per session.
 
 ## Keyboard shortcuts
-- **Space** (Unity Editor / standalone) — hold to record voice
+- **Space** (Unity Editor) — hold to record voice
 - **F12** — toggle the in-Unity Wizard-of-Oz panel (alternative to the web panel)

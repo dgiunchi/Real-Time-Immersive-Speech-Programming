@@ -382,22 +382,31 @@ class WizardOfOzApp extends ApplicationController {
         ].join(",") + "\n");
     }
 
-    /** Saves a completed questionnaire to <participant>_questionnaire.csv. */
+    /**
+     * Saves a questionnaire. Background and per-condition questionnaires have
+     * different item sets, so they go to separate files — sharing one file would
+     * leave the header matching only whichever was submitted first.
+     *
+     * Per-condition questionnaires are submitted three times per participant
+     * (once per condition); the condition and block columns distinguish them.
+     */
     saveQuestionnaire(payload) {
-        const pid = payload.participantId || this.session.participantId || "unknown";
-        const file = path.join(LOG_DIR, `${pid}_questionnaire.csv`);
+        const pid  = payload.participantId || this.session.participantId || "unknown";
+        const type = payload.questionnaire === "background" ? "background" : "condition";
+        const file = path.join(LOG_DIR, `${pid}_${type}.csv`);
         const answers = payload.answers || {};
         const keys = Object.keys(answers);
         const isNew = !fs.existsSync(file);
         if (isNew) {
             fs.writeFileSync(file,
-                "timestamp,participantId,condition,questionnaire," + keys.join(",") + "\n");
+                "timestamp,participantId,condition,block,questionnaire," + keys.join(",") + "\n");
         }
         const row = [
             new Date().toISOString(),
             pid,
-            payload.condition || this.session.condition || "",
-            payload.questionnaire || "post",
+            payload.condition || (type === "background" ? "" : this.session.condition || ""),
+            payload.block || (type === "background" ? "" : this.session.block || ""),
+            payload.questionnaire || type,
             ...keys.map(k => csvEscape(String(answers[k])))
         ].join(",");
         fs.appendFileSync(file, row + "\n");
@@ -562,6 +571,10 @@ class WizardOfOzApp extends ApplicationController {
             }
             if (req.method === "GET" && url === "/questionnaire") {
                 return serveFile(res, path.join(PUBLIC_DIR, "questionnaire.html"), "text/html");
+            }
+            // Pre-session background questionnaire (once per participant).
+            if (req.method === "GET" && url === "/background") {
+                return serveFile(res, path.join(PUBLIC_DIR, "background.html"), "text/html");
             }
 
             // ── Read endpoints ────────────────────────────────────────────────

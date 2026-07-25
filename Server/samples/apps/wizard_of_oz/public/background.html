@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post-Condition Questionnaire</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --line:#e2e6ee; --text:#1c2230; --muted:#6b7488; --accent:#4f8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 22px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-bottom: 18px; }
+  .card h2 { font-size: 16px; margin: 0 0 4px; }
+  .card .note { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+  .field { margin-bottom: 6px; }
+  .setup { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  label.lbl { display:block; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:5px; }
+  input, select { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-size:15px; background:#fff; color:var(--text); }
+  .q { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .q:last-child { border-bottom: none; }
+  .q.missing { background: #3a1414; border-radius: 8px; padding: 14px 12px; }
+  .q.missing .text::after { content: " — required"; color: #ff8a8a; font-size: 12px; }
+  .q .text { font-size: 15px; margin-bottom: 10px; }
+  .scale { display: flex; gap: 6px; flex-wrap: wrap; }
+  .scale label { flex: 1; min-width: 54px; text-align: center; cursor: pointer; }
+  .scale input { display: none; }
+  .scale span { display:block; padding:9px 4px; border:1px solid var(--line); border-radius:8px; font-size:14px; user-select:none; }
+  .scale input:checked + span { background: var(--accent); color:#fff; border-color: var(--accent); font-weight:700; }
+  .ends { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; margin-top:6px; }
+  .submit { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 40%); padding: 20px 0 0; }
+  button { width:100%; padding:15px; font-size:16px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:11px; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  .ok { text-align:center; padding:60px 20px; }
+  .ok .big { font-size:52px; }
+  .req { color:#d33; }
+</style>
+</head>
+<body>
+<div class="wrap" id="form">
+  <h1>Before we begin</h1>
+  <p class="lead">A few background questions. This takes about a minute and is completed once, before the VR session starts.</p>
+
+  <div class="card">
+    <div class="setup">
+      <div class="field">
+        <label class="lbl">Participant ID <span class="req">*</span></label>
+        <input id="participantId" placeholder="e.g. P01">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Background</h2>
+    <div id="demo"></div>
+  </div>
+
+  <div class="submit">
+    <button id="submitBtn" onclick="submitForm()">Submit</button>
+  </div>
+</div>
+
+<div class="wrap ok" id="done" style="display:none;">
+  <div class="big">✅</div>
+  <h1>Thank you!</h1>
+  <p class="lead">Your responses have been saved. Please hand the device back to the researcher.</p>
+</div>
+
+<script>
+// Pre-session background questionnaire. Topics come from the project brief;
+// wording drafted for this study (not a published instrument).
+const DEMOGRAPHICS = [
+  { id: "age", text: "Age range",
+    options: ["18–24", "25–34", "35–44", "45–54", "55+"] },
+  { id: "gender", text: "Gender (optional)", free: true, optional: true },
+  { id: "vr_experience", text: "How would you rate your prior experience with VR / head-mounted displays?",
+    options: ["None", "A little (tried it a few times)", "Moderate (use occasionally)", "Extensive (use regularly)"] },
+  { id: "tech_background", text: "Do you have a programming / technical background?",
+    options: ["None", "Some (e.g. one course)", "Moderate", "Extensive (e.g. degree/job in CS)"] },
+  { id: "assistant_use", text: "How often do you use voice assistants or AI chatbots (e.g. Siri, Alexa, ChatGPT)?",
+    options: ["Never", "Rarely", "Sometimes", "Often", "Daily"] }
+];
+
+function render() {
+  document.getElementById("demo").innerHTML = DEMOGRAPHICS.map(d => {
+    if (d.free) {
+      return `<div class="q"><div class="text">${d.text}</div>
+                <input id="${d.id}" placeholder="Optional"></div>`;
+    }
+    const opts = d.options.map((o, i) =>
+      `<label style="display:block;padding:6px 0;">
+         <input type="radio" name="${d.id}" value="${o}"> <span>${o}</span>
+       </label>`).join("");
+    return `<div class="q"><div class="text">${d.text}</div>${opts}</div>`;
+  }).join("");
+}
+
+const params = new URLSearchParams(location.search);
+if (params.get("pid")) document.getElementById("participantId").value = params.get("pid");
+
+function collect() {
+  const answers = {};
+  const missingNames = [];
+  DEMOGRAPHICS.forEach(d => {
+    if (d.free) {
+      answers[d.id] = document.getElementById(d.id).value.trim();
+      return;
+    }
+    const sel = document.querySelector(`input[name="${d.id}"]:checked`);
+    if (sel) answers[d.id] = sel.value;
+    else { answers[d.id] = ""; if (!d.optional) missingNames.push(d.id); }
+  });
+  return { answers, missingNames };
+}
+
+function highlightMissing(missingNames) {
+  document.querySelectorAll(".q.missing").forEach(el => el.classList.remove("missing"));
+  let first = null;
+  missingNames.forEach(n => {
+    const input = document.querySelector(`input[name="${n}"]`);
+    const q = input && input.closest(".q");
+    if (q) { q.classList.add("missing"); if (!first) first = q; }
+  });
+  if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+async function submitForm() {
+  const participantId = document.getElementById("participantId").value.trim();
+  if (!participantId) { alert("Please enter the Participant ID."); return; }
+  const { answers, missingNames } = collect();
+  if (missingNames.length) {
+    highlightMissing(missingNames);
+    alert(missingNames.length + " question(s) still need an answer — they are highlighted.");
+    return;
+  }
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    await fetch("/questionnaire", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ participantId, questionnaire: "background", answers })
+    });
+    document.getElementById("form").style.display = "none";
+    document.getElementById("done").style.display = "block";
+    window.scrollTo(0,0);
+  } catch (e) {
+    alert("Save failed: " + e.message + "\nIs the study server running?");
+    btn.disabled = false; btn.textContent = "Submit";
+  }
+}
+
+render();
+</script>
+</body>
+</html>
