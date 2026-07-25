@@ -1,5 +1,9 @@
 use dcvr_config::Settings;
 
+/// The Ubiq RoomServer's conventional TCP port, used when nothing more specific is
+/// known (no embedded server and no explicit `DCVR_UBIQ_ADDR`).
+const DEFAULT_ROOMSERVER_PORT: u16 = 8009;
+
 #[tokio::main]
 async fn main() {
     let settings = match Settings::from_env() {
@@ -29,20 +33,6 @@ async fn main() {
         settings.csharp_research_dev,
     );
 
-    // Print the LAN address the Quest should point at. The Ubiq RoomServer listens on
-    // TCP 8009 on ALL interfaces, so on the same Wi-Fi (e.g. an iPhone hotspot) the
-    // headset connects to <this-laptop-ip>:8009. The IP changes each session on a
-    // hotspot, so surfacing it here saves a lookup. Best-effort; never fatal.
-    match primary_lan_ip() {
-        Some(ip) => eprintln!(
-            "[reachable] set the Quest app's \"Laptop server IP\" to  {ip}:8009  (RoomServer). \
-             If it won't connect, open TCP 8009 in the firewall (scripts/open-firewall.sh)."
-        ),
-        None => eprintln!(
-            "[reachable] could not auto-detect a LAN IP — run scripts/show-ip.sh to find it."
-        ),
-    }
-
     // Pull out values needed before `settings` is consumed by services_from_settings.
     let admin_port = settings.admin_port;
     let admin_token = settings.admin_token.clone();
@@ -51,12 +41,6 @@ async fn main() {
     let listen_addr = settings.listen_addr;
     let embed_roomserver = settings.embed_roomserver;
     let roomserver_bind = settings.roomserver_bind.clone();
-
-    // LAN auto-discovery beacon: lets the headset app find this laptop on ANY network
-    // (hotspot today, a different wifi tomorrow) without a baked-in IP or a rebuild.
-    // UDP 8987: answers "DCVR_DISCOVER" probes with a unicast reply; also broadcasts
-    // the same beacon to :8988 every 2 s for clients that just listen.
-    spawn_discovery_beacon(room.clone());
 
     let services = dreamcodevr_server::server::services_from_settings(settings);
 
@@ -115,6 +99,39 @@ async fn main() {
         None
     };
 
+    // LAN auto-discovery beacon: lets the headset app find this laptop on ANY network
+    // (hotspot today, a different wifi tomorrow) without a baked-in IP or a rebuild.
+    // UDP 8987: answers "DCVR_DISCOVER" probes with a unicast reply; also broadcasts
+    // the same beacon to :8988 every 2 s for clients that just listen.
+    //
+    // Started only AFTER the RoomServer address is known, and advertising THAT port:
+    // announcing a hardcoded 8009 while actually listening elsewhere would send every
+    // headset to a closed port.
+    let advertised_port = _embedded_room
+        .as_ref()
+        .map(|h| h.local_addr().port())
+        .or_else(|| {
+            ubiq.as_deref()
+                .and_then(|a| a.rsplit_once(':'))
+                .and_then(|(_, p)| p.parse().ok())
+        })
+        .unwrap_or(DEFAULT_ROOMSERVER_PORT);
+    spawn_discovery_beacon(room.clone(), advertised_port);
+
+    // Print the LAN address the Quest should point at, using the port we are ACTUALLY
+    // serving on (see above). The IP changes every session on a hotspot, so surfacing
+    // it here saves a lookup. Best-effort; never fatal.
+    match primary_lan_ip() {
+        Some(ip) => eprintln!(
+            "[reachable] set the Quest app's \"Laptop server IP\" to  {ip}:{advertised_port}  \
+             (RoomServer). If it won't connect, open TCP {advertised_port} in the firewall \
+             (scripts/open-firewall.sh)."
+        ),
+        None => eprintln!(
+            "[reachable] could not auto-detect a LAN IP — run scripts/show-ip.sh to find it."
+        ),
+    }
+
     // Ubiq service-peer mode (real Unity/Quest) if DCVR_UBIQ_ADDR is set, or the
     // loopback address of the embedded RoomServer above.
     if let Some(addr) = ubiq {
@@ -155,11 +172,11 @@ fn primary_lan_ip() -> Option<std::net::IpAddr> {
 /// `DCVR_DISCOVER` to port 8987 (we reply unicast to the sender — this path survives
 /// networks that filter broadcast *to* clients), or just listens on port 8988 for the
 /// 2-second broadcast beacon. Both carry the same JSON:
-///   {"dcvr":1,"tcp":"<lan-ip>:8009","room":"<room-guid>"}
+///   {"dcvr":1,"tcp":"<lan-ip>:<roomserver-port>","room":"<room-guid>"}
 /// The IP is re-resolved every tick so moving the laptop to a new network updates the
 /// beacon automatically. Best-effort by design: any failure only disables discovery
 /// (clients can still use a configured IP), so errors log and return, never panic.
-fn spawn_discovery_beacon(room: String) {
+fn spawn_discovery_beacon(room: String, port: u16) {
     tokio::spawn(async move {
         let sock = match tokio::net::UdpSocket::bind(("0.0.0.0", 8987u16)).await {
             Ok(s) => s,
@@ -184,7 +201,7 @@ fn spawn_discovery_beacon(room: String) {
             tokio::select! {
                 _ = tick.tick() => {
                     if let Some(ip) = primary_lan_ip() {
-                        let msg = beacon_json(ip, &room);
+                        let msg = beacon_json(ip, &room, port);
                         let _ = sock.send_to(msg.as_bytes(), ("255.255.255.255", 8988u16)).await;
                     }
                 }
@@ -192,7 +209,7 @@ fn spawn_discovery_beacon(room: String) {
                     if let Ok((n, from)) = res {
                         if &buf[..n] == b"DCVR_DISCOVER" {
                             if let Some(ip) = primary_lan_ip() {
-                                let msg = beacon_json(ip, &room);
+                                let msg = beacon_json(ip, &room, port);
                                 let _ = sock.send_to(msg.as_bytes(), from).await;
                             }
                         }
@@ -203,6 +220,6 @@ fn spawn_discovery_beacon(room: String) {
     });
 }
 
-fn beacon_json(ip: std::net::IpAddr, room: &str) -> String {
-    format!("{{\"dcvr\":1,\"tcp\":\"{ip}:8009\",\"room\":\"{room}\"}}")
+fn beacon_json(ip: std::net::IpAddr, room: &str, port: u16) -> String {
+    format!("{{\"dcvr\":1,\"tcp\":\"{ip}:{port}\",\"room\":\"{room}\"}}")
 }
