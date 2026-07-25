@@ -240,12 +240,34 @@ impl DockerSandboxRunner {
     }
 }
 
+/// Resolve the `docker` binary to an ABSOLUTE path using the parent's `PATH`.
+///
+/// The spawn below deliberately calls `.env_clear()` so no parent environment
+/// (API keys, secrets) can leak into the container launcher. But clearing the
+/// environment also clears `PATH`, and on macOS program resolution for a bare
+/// name uses the CHILD's environment — so `Command::new("docker")` + `env_clear()`
+/// fails with ENOENT even when Docker is installed and running. (Linux happens to
+/// resolve against the caller's environment, which is why this went unnoticed.)
+/// Resolving here keeps the hygiene of `env_clear()` and works on both platforms;
+/// if nothing is found we fall back to the bare name and let the spawn error.
+fn docker_program() -> String {
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            let candidate = dir.join("docker");
+            if candidate.is_file() {
+                return candidate.to_string_lossy().into_owned();
+            }
+        }
+    }
+    "docker".to_string()
+}
+
 #[async_trait]
 impl SandboxRunner for DockerSandboxRunner {
     async fn run(&self, job: SandboxJob, limits: ResourceLimits) -> SandboxReport {
         let start = Instant::now();
         let name = Self::container_name(&job.id);
-        let mut cmd = Command::new("docker");
+        let mut cmd = Command::new(docker_program());
         cmd.args(self.build_args(&name))
             .env_clear()
             .stdin(Stdio::piped())
@@ -295,7 +317,7 @@ impl SandboxRunner for DockerSandboxRunner {
             ),
             Err(_) => {
                 // The daemon owns the container — actually stop it.
-                let _ = Command::new("docker")
+                let _ = Command::new(docker_program())
                     .args(["kill", &name])
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())

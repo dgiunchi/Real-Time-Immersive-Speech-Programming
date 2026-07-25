@@ -83,3 +83,8 @@ ml/**/__pycache__/
 apps/xr-security-eval/report/*.html
 _deliverables/
 _original-dreamcodevr-daniel/
+
+# ---- third-party Ubiq RoomServer, fetched locally (not redistributed) ----
+vendor/
+services/roslyn-analyzer/bin/
+services/roslyn-analyzer/obj/
