@@ -56,6 +56,13 @@ pub trait PersonalizationStore: Send + Sync {
     fn delete(&self, _peer: &str) -> bool {
         false
     }
+    /// Drop stored data older than `ttl_secs` (retention limit, GDPR Art. 5(1)(e)),
+    /// returning how many records were removed. `now` is injected so the sweep is
+    /// deterministically testable. Default: no-op — a store that keeps nothing
+    /// durable has nothing to expire.
+    fn purge_expired(&self, _ttl_secs: u64, _now: std::time::SystemTime) -> usize {
+        0
+    }
 }
 
 /// In-memory store (tests / ephemeral demos).
@@ -139,7 +146,7 @@ impl FilePersonalizationStore {
     /// retention limit, GDPR Art. 5(1)(e)). Uses filesystem mtime, so there is no
     /// schema change. Returns the number of files purged. `now` is injected for
     /// deterministic testing.
-    pub fn purge_expired(&self, ttl_secs: u64, now: std::time::SystemTime) -> usize {
+    pub fn purge_expired_files(&self, ttl_secs: u64, now: std::time::SystemTime) -> usize {
         let _g = self.write_lock.lock();
         let mut purged = 0;
         if let Ok(entries) = std::fs::read_dir(&self.dir) {
@@ -165,6 +172,10 @@ impl FilePersonalizationStore {
 }
 
 impl PersonalizationStore for FilePersonalizationStore {
+    fn purge_expired(&self, ttl_secs: u64, now: std::time::SystemTime) -> usize {
+        self.purge_expired_files(ttl_secs, now)
+    }
+
     fn load(&self, peer: &str) -> PeerData {
         let bytes = match std::fs::read(self.path(peer)) {
             Ok(b) => b,
@@ -452,6 +463,37 @@ mod tests {
     }
 
     #[test]
+    fn purge_expired_is_reachable_through_the_trait_object() {
+        // The server holds an Arc<dyn PersonalizationStore>, so the retention sweep
+        // is only usable if it is on the TRAIT, not just the concrete type. This is
+        // what made the coded TTL dead for so long.
+        let dir = std::env::temp_dir().join(format!("dcvr-ttl-trait-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let store: std::sync::Arc<dyn PersonalizationStore> =
+            std::sync::Arc::new(FilePersonalizationStore::new(&dir));
+        store.save("p1", &PeerData::default());
+        assert_eq!(store.list_peers().len(), 1);
+
+        let future = std::time::SystemTime::now() + std::time::Duration::from_secs(10_000);
+        assert_eq!(
+            store.purge_expired(0, future),
+            1,
+            "stale profile purged via the trait"
+        );
+        assert!(store.list_peers().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn in_memory_store_purge_is_a_safe_no_op() {
+        // The default trait impl must never claim to have purged anything.
+        let s = InMemoryStore::default();
+        s.save("p", &PeerData::default());
+        assert_eq!(s.purge_expired(0, std::time::SystemTime::now()), 0);
+        assert_eq!(s.list_peers().len(), 1, "nothing was removed");
+    }
+
+    #[test]
     fn purge_expired_removes_stale_profiles() {
         let dir = std::env::temp_dir().join(format!("dcvr-perso-ttl-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -461,7 +503,7 @@ mod tests {
         // A `now` a few seconds in the future makes the just-written file's age
         // exceed a ttl of 0, so it is purged.
         let future = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
-        assert_eq!(s.purge_expired(0, future), 1);
+        assert_eq!(s.purge_expired_files(0, future), 1);
         assert!(s.list_peers().is_empty(), "expired profile removed");
         let _ = std::fs::remove_dir_all(&dir);
     }

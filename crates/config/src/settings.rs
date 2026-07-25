@@ -134,6 +134,11 @@ pub struct Settings {
     /// Bind address for the embedded RoomServer. Env `DCVR_ROOMSERVER_BIND`.
     /// Default `0.0.0.0:8009` — headsets always dial :8009 (the Ubiq RoomServer port).
     pub roomserver_bind: String,
+    /// Retention limit for stored personalization profiles, in seconds (GDPR Art.
+    /// 5(1)(e)). A background sweep deletes profiles untouched for longer than this.
+    /// `0` = disabled (default), keeping the legacy keep-forever behaviour.
+    /// Env `DCVR_PROFILE_TTL_SECS`.
+    pub profile_ttl_secs: u64,
     /// Optional .NET Roslyn semantic analyzer URL (Mode B deep check). None = mock.
     pub roslyn_url: Option<String>,
     /// Anti-flood: max generated plans per peer per minute (SOC-03/PE-02).
@@ -200,6 +205,7 @@ impl Default for Settings {
             room_guid: "6765c52b-3ad6-4fb0-9030-2c9a05dc4731".to_string(),
             embed_roomserver: false,
             roomserver_bind: "0.0.0.0:8009".to_string(),
+            profile_ttl_secs: 0,
             roslyn_url: None,
             // Mirrors `dcvr_control::RuntimeConfig` defaults (shared contract).
             max_generations_per_min: 30,
@@ -337,6 +343,11 @@ impl Settings {
         if let Ok(b) = env::var("DCVR_ROOMSERVER_BIND") {
             if !b.trim().is_empty() {
                 s.roomserver_bind = b;
+            }
+        }
+        if let Ok(v) = env::var("DCVR_PROFILE_TTL_SECS") {
+            if let Ok(n) = v.trim().parse() {
+                s.profile_ttl_secs = n;
             }
         }
         if let Ok(u) = env::var("DCVR_ROSLYN_URL") {

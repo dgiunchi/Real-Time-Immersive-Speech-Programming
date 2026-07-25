@@ -40,9 +40,37 @@ async fn main() {
     let room = settings.room_guid.clone();
     let listen_addr = settings.listen_addr;
     let embed_roomserver = settings.embed_roomserver;
+    let profile_ttl_secs = settings.profile_ttl_secs;
     let roomserver_bind = settings.roomserver_bind.clone();
 
     let services = dreamcodevr_server::server::services_from_settings(settings);
+
+    // Retention sweep (GDPR Art. 5(1)(e)): drop personalization profiles that have
+    // not been touched within the TTL. Disabled by default (ttl = 0) so behaviour is
+    // unchanged unless an operator opts in. Without this the store keeps profiles
+    // forever, which is exactly what a retention limit is supposed to prevent.
+    if profile_ttl_secs > 0 {
+        if let Some(store) = services.personalization_store.clone() {
+            // Sweep hourly, or every ttl/2 when the TTL is shorter than that, so a
+            // short TTL is still honoured promptly. Once at startup, then on a timer.
+            let period = std::time::Duration::from_secs((profile_ttl_secs / 2).clamp(1, 3600));
+            eprintln!(
+                "[retention] purging personalization profiles older than {profile_ttl_secs}s \
+                 (sweep every {}s)",
+                period.as_secs()
+            );
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(period);
+                loop {
+                    tick.tick().await;
+                    let n = store.purge_expired(profile_ttl_secs, std::time::SystemTime::now());
+                    if n > 0 {
+                        eprintln!("[retention] purged {n} expired personalization profile(s)");
+                    }
+                }
+            });
+        }
+    }
 
     // Optional web admin/debug panel (DCVR_ADMIN_PORT). Shares the live control bus
     // + personalization store with the running pipeline.
