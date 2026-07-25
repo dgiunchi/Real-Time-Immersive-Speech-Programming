@@ -51,8 +51,17 @@ process.on("SIGTERM", () => { cleanup(); process.exit(143); });
         await wait(2500);
         start(["mcp/unity_scene_bridge/mock_unity_peer.js"], "mock Unity peer");
         await wait(2500);
+        start(["orchestrator/continuous_monitor.js"], "continuous activity monitor");
+        await wait(1000);
         await run(["mcp/unity_scene_bridge/smoketest_client.mjs"]);
-        const exported = buildStudyExports(readJsonLines(process.env.AGENTICXR_ARTIFACT_LOG));
+        const allArtifacts = readJsonLines(process.env.AGENTICXR_ARTIFACT_LOG);
+        assert.ok(allArtifacts.some((entry) => entry.eventType === "activity_assist_triggered"),
+            "long-lived monitor must turn the mock sensor stream into an activity trigger");
+        assert.ok(allArtifacts.some((entry) =>
+            entry.eventType === "activity_assist_suppressed" &&
+            entry.reasonCode === "continuous_assist_disabled"),
+        "monitor-only mode must not start a proactive model turn");
+        const exported = buildStudyExports(allArtifacts);
         assert.strictEqual(exported.trialRows.length, 1, "mock pipeline must export exactly one study trial");
         const row = exported.trialRows[0];
         for (const column of TRIAL_COLUMNS) assert.ok(Object.hasOwn(row, column), `missing study export column ${column}`);

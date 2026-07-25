@@ -51,6 +51,16 @@ addCheck(
 
 if (agenticMode) {
     addCheck(
+        canResolve("@anthropic-ai/claude-agent-sdk") &&
+            canResolve("@modelcontextprotocol/sdk/server/mcp.js") &&
+            canResolve("zod"),
+        "Agentic orchestration dependencies",
+        [
+            "Requires the Claude Agent SDK, MCP SDK, and Zod from Server/package.json.",
+            "Run npm install from Server if any package is missing."
+        ]
+    );
+    addCheck(
         Boolean(process.env.ANTHROPIC_API_KEY),
         "Environment variable `ANTHROPIC_API_KEY`",
         [
@@ -71,6 +81,28 @@ if (agenticMode) {
         Boolean(process.env.OPENAI_API_KEY),
         "Environment variable `OPENAI_API_KEY`",
         ["Required by the legacy OpenAI code-generation comparison path."]
+    );
+}
+
+if (agenticMode) {
+    const bridgeConfigPath = path.join(serverRoot, "mcp", "unity_scene_bridge", "config.json");
+    const runtimeConfigPath = path.join(serverRoot, "samples", "apps", "code_runtime_generator", "config.json");
+    let matchingRoom = false;
+    try {
+        const bridgeConfig = JSON.parse(fs.readFileSync(bridgeConfigPath, "utf8"));
+        const runtimeConfig = JSON.parse(fs.readFileSync(runtimeConfigPath, "utf8"));
+        matchingRoom = Boolean(bridgeConfig.roomGuid) &&
+            bridgeConfig.roomGuid === runtimeConfig.roomGuid &&
+            bridgeConfig.roomserver && runtimeConfig.roomserver &&
+            bridgeConfig.roomserver.tcp.port === runtimeConfig.roomserver.tcp.port;
+    } catch (_) { matchingRoom = false; }
+    addCheck(
+        matchingRoom,
+        "Ubiq runtime/bridge room configuration",
+        [
+            "The speech runtime and continuous scene bridge must use the same roomGuid and TCP port.",
+            "Current expected TCP port is 8009."
+        ]
     );
 }
 

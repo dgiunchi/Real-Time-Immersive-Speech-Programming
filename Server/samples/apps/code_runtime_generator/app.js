@@ -84,6 +84,13 @@ class CodeGeneration extends ApplicationController {
                         this.lastAgenticActivityAt.set(peerUUID, Date.now());
                         const correlationId = randomUUID();
                         this.agenticCorrelations.set(peerUUID, correlationId);
+                        this.artifactLog.append({
+                            eventType: "continuous_assist_preempt_requested",
+                            sessionId: peerUUID,
+                            correlationId,
+                            targetObjectId: targetObjectId || null,
+                            reasonCode: "push_to_talk_started",
+                        });
                         this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "listening", "Listening to your request.");
                         this.logEvaluation({ eventType: "recording_start", sessionId: peerUUID, correlationId, targetObjectId });
                         this.components.transcriptionService.recordingStart(peerUUID);
@@ -192,6 +199,13 @@ class CodeGeneration extends ApplicationController {
         const targetObjectId = this.agenticTargets.get(peerUUID);
         const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
         this.agenticCorrelations.set(peerUUID, correlationId);
+        this.artifactLog.append({
+            eventType: "continuous_assist_preempt_requested",
+            sessionId: peerUUID,
+            correlationId,
+            targetObjectId: targetObjectId || null,
+            reasonCode: "explicit_user_request",
+        });
         const idleRun = this.idlePredictionRuns.get(peerUUID);
         if (idleRun) {
             clearTimeout(idleRun.watchdog);

@@ -15,6 +15,7 @@ const { PersonPolicyStore } = require("../memory/person_policy");
 const { ExperienceContextStore } = require("../memory/experience_context");
 const { ArtifactLog } = require("../memory/artifact_log");
 const { CheckpointStore } = require("../memory/checkpoint_store");
+const { ActivityMonitor } = require("../memory/activity_monitor");
 const { TRIAL_COLUMNS, LONG_COLUMNS, buildStudyExports, writeCsv } = require("../evaluation/study_export");
 
 const root = path.resolve(__dirname, "..");
@@ -118,6 +119,56 @@ ok(!checkModePolicy({ interactionMode: "L4", authoringMode: "automatic", riskSco
 ok(!checkModePolicy({ interactionMode: "L3", authoringMode: "semi_auto_confirm",
     triggerSource: "clarification", detailResolved: false }).accepted,
 "L3 cannot continue before clarification is resolved");
+ok(checkModePolicy({ interactionMode: "L2", authoringMode: "automatic", riskScore: 0.1,
+    triggerSource: "context", reversible: true, localOnly: true, verificationLevel: 1 }).accepted,
+"machine-verifiable low-risk context assistance may use L2");
+ok(!checkModePolicy({ interactionMode: "L2", authoringMode: "automatic", riskScore: 0.7,
+    triggerSource: "context", reversible: true, localOnly: true, verificationLevel: 1 }).accepted,
+"continuous context cannot make high-risk assistance automatic");
+ok(!checkModePolicy({ interactionMode: "L2", authoringMode: "automatic", riskScore: 0.1,
+    triggerSource: "context", reversible: true, localOnly: true, verificationLevel: 3 }).accepted,
+"continuous context cannot automatically execute delayed-verification assistance");
+
+let activityNow = 100000;
+const activity = new ActivityMonitor({
+    threshold: 1.1,
+    windowMs: 5000,
+    cooldownMs: 30000,
+    now: () => activityNow,
+});
+const activityOpportunity = activity.observeSceneDelta({
+    type: "SceneDelta",
+    sessionId: "activity-session",
+    timestamp: activityNow,
+    payload: {
+        focus: { id: "activity-object" },
+        sensorEvents: [
+            { sensorType: "proximity", targetObjectId: "activity-object", confidence: 1 },
+            { sensorType: "gaze", targetObjectId: "activity-object", confidence: 1 },
+            { sensorType: "locomotion", confidence: 1, value: { regionId: "workshop", entering: true } },
+        ],
+    },
+});
+ok(activityOpportunity && activityOpportunity.triggerSource === "context",
+    "combined monitored activity crossing the threshold emits a context trigger");
+equal(activityOpportunity.targetObjectId, "activity-object", "activity trigger retains the stable target");
+equal(activity.observeSceneDelta({
+    sessionId: "activity-session",
+    timestamp: activityNow + 1000,
+    payload: {
+        focus: { id: "activity-object" },
+        sensorEvents: [{ sensorType: "collision", targetObjectId: "activity-object", confidence: 1 }],
+    },
+}), null, "activity cooldown suppresses repeated assistance");
+activityNow += 31000;
+ok(activity.observeSceneDelta({
+    sessionId: "activity-session",
+    timestamp: activityNow,
+    payload: {
+        focus: { id: "activity-object" },
+        sensorEvents: [{ sensorType: "collision", targetObjectId: "activity-object", confidence: 1 }],
+    },
+}), "a later assist-worthy activity can trigger after cooldown");
 
 ok(!validateLifecycle({ operation: "remove" }).accepted, "remove requires an existing artifact");
 ok(validateLifecycle({ operation: "remove", existingArtifactId: "artifact-1" }).accepted, "remove is a first-class no-code operation");
@@ -129,6 +180,12 @@ const candidateResult = rankCandidates([
 ], { experienceContext: { mode: "training" } });
 equal(candidateResult.selected.candidateId, "safe", "ranking selects the lowest-risk verified context-fit candidate");
 ok(!candidateResult.ranked.find((candidate) => candidate.candidateId === "broken").ranking.eligible, "failed dry-run candidate cannot be selected");
+const entertainmentCandidates = rankCandidates([
+    { candidateId: "training-fit", operation: "create", code: "class Training {}", validationState: "accepted", simulationStatus: "simulated", riskScore: 0.1, experienceMode: "training" },
+    { candidateId: "entertainment-fit", operation: "create", code: "class Play {}", validationState: "accepted", simulationStatus: "simulated", riskScore: 0.1, experienceMode: "entertainment" },
+], { experienceContext: { mode: "entertainment" } });
+equal(entertainmentCandidates.selected.candidateId, "entertainment-fit",
+    "non-authoring entertainment context changes deterministic candidate ranking");
 
 const testDataDir = path.join(root, "evaluation", "data", "contract-test");
 fs.rmSync(testDataDir, { recursive: true, force: true });
@@ -303,6 +360,13 @@ ok(orchestrator.includes("sawMutatingToolCall"), "retry stops after a mutating t
 const runtimeGenerator = fs.readFileSync(path.join(root, "samples", "apps", "code_runtime_generator", "app.js"), "utf8");
 ok(runtimeGenerator.includes("AGENTICXR_TURN_TIMEOUT_MS"), "authoring turn watchdog is configurable");
 ok(runtimeGenerator.includes("AGENTICXR_IDLE_PREDICTION_ENABLED"), "idle prediction requires an explicit opt-in");
+ok(runtimeGenerator.includes("continuous_assist_preempt_requested"),
+    "explicit user activity preempts continuous assistance");
+const continuousMonitor = fs.readFileSync(path.join(root, "orchestrator", "continuous_monitor.js"), "utf8");
+ok(continuousMonitor.includes("AGENTICXR_CONTINUOUS_ASSIST_ENABLED"),
+    "continuous assistance is an explicit opt-in over always-on monitoring");
+ok(continuousMonitor.includes("sendAgentStatus"),
+    "continuous assistance surfaces visible status before starting work");
 const goalLoopTest = spawnSync(process.execPath, [path.join(root, "tests", "goal_loop_test.js")], { encoding: "utf8" });
 equal(goalLoopTest.status, 0, `goal loop tests failed: ${goalLoopTest.stdout}\n${goalLoopTest.stderr}`);
 const executionWatchdog = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "GeneratedBehaviourWatchdog.cs"), "utf8");

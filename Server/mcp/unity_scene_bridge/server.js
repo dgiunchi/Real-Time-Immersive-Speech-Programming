@@ -649,6 +649,24 @@ async function main() {
     );
 
     server.registerTool(
+        "get_activity_stream",
+        {
+            title: "Inspect recent normalized human-activity observations",
+            description:
+                "Reads the existing continuous SceneDelta/sensor stream. Threshold crossings are context " +
+                "triggers only; they do not bypass mode policy, verification, Proposal Gate, or consent.",
+            inputSchema: {
+                sessionId: sessionIdSchema.optional(),
+                targetObjectId: z.string().optional(),
+                limit: z.number().int().min(1).max(200).optional(),
+            },
+        },
+        async (args) => ({
+            content: [{ type: "text", text: JSON.stringify(memory.activity.query(args), null, 2) }],
+        })
+    );
+
+    server.registerTool(
         "commit_memory_event",
         {
             title: "Record a memory event",

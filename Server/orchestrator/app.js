@@ -61,6 +61,10 @@ const AGENTS = {
             "natural-language intent, operation (create/edit/remove), existing artifact history, and experience context, " +
             "produce exactly THREE materially distinct candidates. Create/edit candidates contain one C# MonoBehaviour; " +
             "edit names existingArtifactId and refines the current implementation; remove names existingArtifactId and has no code. " +
+            "Treat experience context as a behavioral constraint, not a label: productivity should reduce distraction, " +
+            "training should favor guidance and recoverability, entertainment may favor playful feedback, and exploration " +
+            "should preserve open-ended discovery. The architecture may assist non-authoring experiences even though dynamic " +
+            "Unity behavior authoring is the currently implemented action harness. " +
             "Constraints: ASCII only; no keyboard/mouse input APIs; no System.IO, " +
             "System.Net, System.Diagnostics, or reflection; a Component name that does not collide with a " +
             "common Unity type; if a new object is instantiated, parent it under transform; default any speed " +
@@ -164,6 +168,10 @@ timeline (see Server/memory/timeline_registry.js):
 7. version_memory - confirm the outcome is logged and query evolution history.
 
 BOUNDED GOALS AND LOOPS:
+- If External trigger source is context, this is monitored human activity crossing a
+  configured threshold, not an explicit command. Preserve L2/context classification.
+  First surface status, and stop without proposing anything when there is no useful,
+  reversible, local assistance. Never reinterpret observation as consent.
 - If the intent asks for an ongoing objective ("until", "keep", "maintain", scheduled,
   or context-triggered work), call ${bridgeTool("create_bounded_goal")} before execution.
   Choose one explicit verification level (1 deterministic, 2 rule threshold, 3 delayed
@@ -259,6 +267,8 @@ async function main() {
         `Cross-session profile consent: ${String(process.env.AGENTICXR_PROFILE_CONSENT || "false").toLowerCase() === "true"}\n` +
         `Pseudonymous person id: ${process.env.AGENTICXR_PERSON_ID || "not-provided"}\n` +
         `Speculative idle preparation: ${String(process.env.AGENTICXR_SPECULATIVE_ONLY || "false").toLowerCase() === "true"}\n` +
+        `External trigger source: ${process.env.AGENTICXR_TRIGGER_SOURCE || "explicit_request"}\n` +
+        `Experience mode supplied by the continuous runtime: ${process.env.AGENTICXR_EXPERIENCE_MODE || "not-provided"}\n` +
         `correlationId to reuse for every subagent and tool call in this turn: ${correlationId}`;
 
     const maxAttempts = Math.max(1, Number(process.env.AGENTICXR_ANTHROPIC_MAX_ATTEMPTS) || 3);

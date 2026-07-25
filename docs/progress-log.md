@@ -654,3 +654,60 @@ Evidence boundary:
 - The paper describes related speculative-futures and Verification Space concepts,
   but its exact bounded-loop and idle-selection protocol still needs reconciliation
   before these additions are presented as evaluated paper functionality.
+
+## 2026-07-25 — Continuous, human-centered, experience-agnostic alignment
+
+Executed `code-continuous-human-centered-2026-07-25.md` as an assess-and-align task.
+
+Assessment:
+
+- Experience context was already representable as productivity, training,
+  entertainment, exploration, or unspecified; it already affected candidate ranking
+  and was supplied to generation.
+- Unity already continuously published selection/gaze, locomotion, and scene revision
+  updates over the existing `SceneDelta` path. Shared XR Memory already normalized
+  sensors, region context, scene relations, decisions, and learned preferences.
+- L1–L5 mode policy, Proposal Gate, Verification Space, bounded goals, visible status,
+  interruption, confirmation, and undo already supplied the human-centered guards.
+- The genuine gap was a long-lived thresholded connection from monitored activity to
+  a context assistance opportunity outside an explicit speech turn.
+
+New alignment:
+
+- Added `ActivityMonitor`, which combines confidence-weighted observations inside a
+  bounded window, applies cooldown, and emits an L2/context opportunity only when the
+  configured assist-worthy threshold is crossed.
+- Added `continuous_monitor.js`, a long-lived service started by
+  `npm run start:agenticxr`. It reuses `SceneBridgeClient` and `SharedMemory`; it does
+  not introduce a parallel transport or memory system.
+- Monitoring is on by default; proactive Anthropic turns are opt-in. A triggered turn
+  surfaces status, preserves L2/context classification, uses the current experience
+  mode, and enters the normal orchestrator and consent pipeline.
+- Push-to-talk and explicit requests persist a preemption request that terminates a
+  running continuous turn. Continuous assistance is suppressed during study trials
+  unless explicitly enabled for that condition.
+- Strengthened the generator instruction so experience context changes intended
+  behavior rather than acting as an output label. Non-authoring experience modes are
+  representable, while Unity behavior authoring remains the only complete action
+  harness.
+- Added `get_activity_stream` to inspect recent normalized observations.
+
+Evidence boundary:
+
+- Threshold/cooldown, context routing, high-risk/delayed-verification rejection,
+  experience-aware ranking, status/preemption source contracts, and syntax are
+  deterministic-tested.
+- `cd Server; npm test` — PASS, 258 assertions.
+- `npm run doctor` — PASS with placeholder credential/endpoint presence, including
+  agentic dependencies and matching Ubiq room/port configuration. This does not test
+  real credential validity or STT reachability.
+- `cd Server; npm run test:integration` — PASS with local Ubiq and mock Unity; the
+  long-lived monitor joined the room, crossed the activity threshold, and correctly
+  suppressed proactive work in monitor-only mode. The `get_activity_stream` MCP call
+  returned normalized proximity, gaze, and locomotion observations before the
+  existing validation/commit/cache flows passed.
+- Unity `6000.3.9f1 -batchmode -nographics -quit` — exit code 0 and Tundra build
+  success; no C# compiler errors were found.
+- Proactive assistance has not been run with a live Anthropic account or Quest.
+- Entertainment/productivity/training support beyond authoring remains architectural,
+  not demonstrated application evidence.

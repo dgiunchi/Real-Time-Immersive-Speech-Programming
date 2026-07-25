@@ -20,6 +20,7 @@ const { STUDY_ID_PATTERN } = require("./artifact_log");
 const { GoalVerifier } = require("../orchestrator/goal_verifier");
 const { GoalLoopController } = require("../orchestrator/goal_loop_controller");
 const { FutureGoalPredictor } = require("../orchestrator/future_goal_predictor");
+const { ActivityMonitor } = require("./activity_monitor");
 
 class SharedMemory {
     constructor({ artifactLogPath, personProfilePath, experienceContextPath, checkpointPath } = {}) {
@@ -40,6 +41,21 @@ class SharedMemory {
             }),
         });
         this.futureGoals = new FutureGoalPredictor({ artifactLog: this.artifactLog });
+        this.activity = new ActivityMonitor({
+            threshold: process.env.AGENTICXR_ACTIVITY_THRESHOLD,
+            windowMs: process.env.AGENTICXR_ACTIVITY_WINDOW_MS,
+            cooldownMs: process.env.AGENTICXR_ACTIVITY_COOLDOWN_MS,
+        });
+        this.activity.on("assist_worthy", (opportunity) => {
+            if (String(process.env.AGENTICXR_ACTIVITY_MONITOR_PRIMARY || "false").toLowerCase() !== "true") return;
+            this.artifactLog.append({
+                eventType: "activity_assist_triggered",
+                ...opportunity,
+                correlationId: opportunity.triggerId,
+                interactionMode: "L2",
+                authoringMode: "semi_auto_confirm",
+            });
+        });
         this.proposalSentAt = new Map();
         this.sensors = new SensorRegistry({ visualStore: this.visual, sceneGraphStore: this.sceneGraph, regionStore: this.region });
     }
@@ -92,6 +108,7 @@ class SharedMemory {
                 this.visual.ingestSceneDelta(envelope);
                 this.sceneGraph.ingestSceneDelta(envelope);
                 this.sensors.ingestSceneDelta(envelope);
+                this.activity.observeSceneDelta(envelope);
                 for (const sensor of (envelope.payload && envelope.payload.sensorEvents) || []) {
                     if (["gaze", "locomotion"].includes(sensor.sensorType)) this.personPolicy.recordEvent({
                         sessionId: envelope.sessionId, eventType: `sensor:${sensor.sensorType}`,
@@ -127,6 +144,7 @@ class SharedMemory {
                 recordStudyEnvelope({ eventType: "agent_acknowledgement_surfaced" });
             }
             if (["UserDecision", "ArtifactResult", "CommitAccepted", "CommitRejected", "RollbackResult"].includes(envelope.type)) {
+                if (envelope.type === "UserDecision") this.activity.observeDecision(envelope);
                 const eventType = envelope.type === "UserDecision"
                     ? `user_decision:${(envelope.payload && envelope.payload.decision) || "unknown"}`
                     : envelope.type.toLowerCase();

@@ -130,6 +130,24 @@ Speculation is skipped while a study trial is active. Set
 `AGENTICXR_STUDY_ALLOW_SPECULATION=true` only when the approved study condition
 explicitly includes it. See `docs/goal-loops-and-speculative-futures.md`.
 
+### Optional: proactively assist from continuous activity
+
+The long-lived activity observer starts automatically. Proactive Claude turns remain
+off until explicitly enabled because they consume API credits:
+
+```powershell
+$env:AGENTICXR_CONTINUOUS_ASSIST_ENABLED="true"
+$env:AGENTICXR_ACTIVITY_THRESHOLD="1.1"
+$env:AGENTICXR_ACTIVITY_WINDOW_MS="5000"
+$env:AGENTICXR_ACTIVITY_COOLDOWN_MS="30000"
+```
+
+Continuous opportunities retain L2/context classification and still pass the normal
+verification, risk, Proposal Gate, and Unity consent checks. Push-to-talk preempts a
+continuous turn. During studies, assistance is suppressed unless
+`AGENTICXR_STUDY_ALLOW_CONTINUOUS_ASSIST=true` is explicitly set by the protocol.
+See `docs/continuous-human-centered-runtime.md`.
+
 ## 3. Test the Anthropic API without Quest
 
 This test isolates Claude orchestration from the microphone, STT, Unity, and Quest.

@@ -126,6 +126,8 @@ Common optional join/evidence fields are:
 | `goal_terminated` / `goal_killed` | bounded goal controller | iterations, wall time, status | Completion/termination | Implemented and deterministic/mock-tested |
 | `idle_prediction_triggered` / `idle_prediction_finished` / `idle_prediction_preempted` | code runtime | speculative flag and status | Prediction frequency and preemption | Source-complete; deterministic predictor tested, real idle timer not live-observed |
 | `speculative_candidate_prepared` / `speculative_candidate_adopted` | future-goal predictor | pinned scene tuple and candidate | Prepared/reused prediction counts | Implemented and deterministic-tested |
+| `activity_assist_triggered` / `activity_assist_suppressed` | continuous activity monitor | threshold, structured signal types, L2 route | Continuous-assistance opportunities | Source-complete and deterministic-tested; not live-observed |
+| `continuous_assist_started` / `continuous_assist_finished` / `continuous_assist_preempted` | continuous monitor | context trigger and bounded process status | Continuous assistance and interruption | Source-complete; mock stream tested, live agent/device unobserved |
 
 ## Per-trial CSV
 

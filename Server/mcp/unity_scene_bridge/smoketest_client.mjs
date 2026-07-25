@@ -51,6 +51,7 @@ log("create_bounded_goal", await client.callTool({
 log("record_intent", await client.callTool({ name: "record_intent", arguments: { text: "make this sphere pulse red when I touch it", sessionId, correlationId } }));
 log("send_agent_status", await client.callTool({ name: "send_agent_status", arguments: { sessionId, correlationId, state: "thinking", detail: "Mock status visibility check." } }));
 log("query_scene", await client.callTool({ name: "query_scene", arguments: { objectId: targetObjectId, sessionId, correlationId } }));
+log("get_activity_stream", await client.callTool({ name: "get_activity_stream", arguments: { sessionId, targetObjectId, limit: 20 } }));
 log("get_region_context", await client.callTool({ name: "get_region_context", arguments: { sessionId } }));
 log("query_visual_memory", await client.callTool({ name: "query_visual_memory", arguments: { objectId: targetObjectId, correlationId } }));
 log("query_scene_graph", await client.callTool({ name: "query_scene_graph", arguments: { objectId: targetObjectId, correlationId } }));
