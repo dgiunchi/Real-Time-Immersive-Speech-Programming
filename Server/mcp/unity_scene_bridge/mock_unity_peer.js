@@ -193,6 +193,20 @@ new Listener(CHANNELS.SCENE_QUERY, (envelope) => {
     console.log(`[mock_unity_peer] replied SceneDelta for correlationId ${envelope.correlationId}`);
 });
 
+new Listener(CHANNELS.AGENT_UTTERANCE, (envelope) => {
+    envelope = fromWireFormat(envelope);
+    if (envelope.type !== CACHE_MESSAGE_TYPES.AGENT_STATUS) return;
+    const visible = makeEnvelope({
+        type: CACHE_MESSAGE_TYPES.AGENT_STATUS_VISIBLE,
+        sessionId: envelope.sessionId,
+        correlationId: envelope.correlationId,
+        originAgent: "mock_unity_peer",
+        targetObjectId: envelope.targetObjectId,
+        payload: { status: envelope.payload && envelope.payload.state },
+    });
+    scene.send(CHANNELS.USER_DECISION, toWireFormat(visible));
+});
+
 new Listener(CHANNELS.ARTIFACT_CHANNEL, (envelope) => {
     if (envelope.type === CACHE_MESSAGE_TYPES.COMMIT_REQUEST) {
         const decoded = fromWireFormat(envelope);
@@ -309,7 +323,7 @@ roomClient.on("OnJoinedRoom", () => {
     // The smoke flow now exercises three candidate dry-runs plus create/edit/remove
     // before the cache client starts, so leave enough time for that first MCP client
     // to finish while still ensuring the second client observes the deliberate gap.
-    const startDelayMs = 45000;
+    const startDelayMs = 15000;
     console.log(`[mock_unity_peer] will start the automatic Cache Exchange demo sequence in ${startDelayMs}ms - start the backend MCP client now if it isn't running yet`);
     setTimeout(() => sendSnapshot(demoSession), startDelayMs);
     setTimeout(() => sendDelta(demoSession, "obj-mock-0001", "color -> red"), startDelayMs + 400); // seq 1

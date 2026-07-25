@@ -16,6 +16,7 @@ const { IntentStore } = require("./intent_store");
 const { ExperienceContextStore } = require("./experience_context");
 const { CheckpointStore } = require("./checkpoint_store");
 const { appendEvaluationEvent } = require("../evaluation/event_logger");
+const { STUDY_ID_PATTERN } = require("./artifact_log");
 
 class SharedMemory {
     constructor({ artifactLogPath, personProfilePath, experienceContextPath, checkpointPath } = {}) {
@@ -36,6 +37,26 @@ class SharedMemory {
     attach(bridge) {
         bridge.on("envelope", (envelope) => {
             this.timeline.observeEnvelope(envelope);
+            const hasStudyContext = Boolean(this.artifactLog.getStudyContext({
+                sessionId: envelope.sessionId,
+                correlationId: envelope.correlationId,
+            }));
+            const recordStudyEnvelope = (event) => {
+                if (!hasStudyContext) return null;
+                return this.artifactLog.appendStudyEvent({
+                    sessionId: envelope.sessionId,
+                    correlationId: envelope.correlationId,
+                    targetObjectId: envelope.targetObjectId || null,
+                    at: envelope.timestamp || Date.now(),
+                    correlationIdValid: typeof envelope.correlationId === "string" &&
+                        STUDY_ID_PATTERN.test(envelope.correlationId),
+                    targetObjectValid: envelope.targetObjectId == null ||
+                        (typeof envelope.targetObjectId === "string" && envelope.targetObjectId.length > 0),
+                    timestampAgeMs: Number.isFinite(envelope.timestamp)
+                        ? Math.max(0, Date.now() - envelope.timestamp) : null,
+                    ...event,
+                });
+            };
             try {
                 appendEvaluationEvent({
                     eventType: "envelope",
@@ -70,6 +91,29 @@ class SharedMemory {
             }
             if (envelope.type === "ArtifactProposal" && envelope.correlationId) {
                 this.proposalSentAt.set(envelope.correlationId, envelope.timestamp || Date.now());
+                recordStudyEnvelope({
+                    eventType: "proposal_preview_surfaced",
+                    artifactVersion: envelope.artifactVersion || null,
+                    candidateId: envelope.candidateId || null,
+                    candidateSetId: envelope.candidateSetId || null,
+                    validationState: envelope.validationState || null,
+                    riskScore: envelope.riskScore,
+                });
+            }
+            if (envelope.type === "AgentStatus") {
+                recordStudyEnvelope({
+                    eventType: "agent_status_sent",
+                    status: envelope.payload && envelope.payload.state,
+                });
+            }
+            if (envelope.type === "AgentStatusVisible") {
+                recordStudyEnvelope({
+                    eventType: "agent_status_surfaced",
+                    status: envelope.payload && envelope.payload.status,
+                });
+            }
+            if (envelope.type === "AgentUtterance") {
+                recordStudyEnvelope({ eventType: "agent_acknowledgement_surfaced" });
             }
             if (["UserDecision", "ArtifactResult", "CommitAccepted", "CommitRejected", "RollbackResult"].includes(envelope.type)) {
                 const eventType = envelope.type === "UserDecision"
@@ -91,6 +135,21 @@ class SharedMemory {
                     interactionMode: envelope.interactionMode || null,
                     authoringMode: envelope.authoringMode || null,
                     riskScore: envelope.riskScore,
+                    validationState: envelope.validationState || null,
+                    verificationDurationMs: envelope.verificationDurationMs ?? null,
+                    commitAttachDurationMs: envelope.commitAttachDurationMs ?? null,
+                    timestampAgeMs: Number.isFinite(envelope.timestamp)
+                        ? Math.max(0, Date.now() - envelope.timestamp) : null,
+                    correlationIdValid: typeof envelope.correlationId === "string" &&
+                        STUDY_ID_PATTERN.test(envelope.correlationId),
+                    targetObjectValid: typeof envelope.targetObjectId === "string" &&
+                        envelope.targetObjectId.length > 0,
+                    blockedUnsafeArtifact: Boolean(envelope.payload &&
+                        /capability|namespace|unsafe/i.test(envelope.payload.reason || envelope.payload.error || "")),
+                    staleness: envelope.staleness || null,
+                    staleApplication: Boolean(envelope.type === "ArtifactResult" &&
+                        envelope.staleness && envelope.staleness.isStale &&
+                        envelope.payload && ["committed", "removed"].includes(envelope.payload.status)),
                     at: envelope.timestamp || Date.now(),
                 });
                 this.personPolicy.recordEvent({

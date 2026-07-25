@@ -9,12 +9,40 @@
 const fs = require("fs");
 const path = require("path");
 
+const STUDY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const STUDY_CONTEXT_FIELDS = Object.freeze([
+    "participantId",
+    "sessionId",
+    "trialId",
+    "condition",
+    "taskId",
+    "interactionMode",
+]);
+
+function validateStudyContext(context, { requireCorrelationId = true } = {}) {
+    if (!context || typeof context !== "object") throw new Error("study context is required");
+    for (const field of STUDY_CONTEXT_FIELDS) {
+        const value = context[field];
+        if (typeof value !== "string" || !STUDY_ID_PATTERN.test(value)) {
+            throw new Error(`${field} must be a 1-128 character pseudonymous safe identifier`);
+        }
+    }
+    if (requireCorrelationId &&
+        (typeof context.correlationId !== "string" || !STUDY_ID_PATTERN.test(context.correlationId))) {
+        throw new Error("correlationId must be a 1-128 character safe identifier for every study event");
+    }
+    return context;
+}
+
 class ArtifactLog {
     constructor({ filePath } = {}) {
         this.filePath = filePath || path.join(__dirname, "data", "artifact_log.jsonl");
         fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+        this.records = [];
         this.byObjectId = new Map(); // objectId -> [entries]
         this.byArtifactId = new Map();
+        this.activeTrialBySession = new Map();
+        this.studyContextByCorrelation = new Map();
         this._loadExisting();
     }
 
@@ -31,23 +59,124 @@ class ArtifactLog {
     }
 
     _index(entry) {
+        this.records.push(entry);
         if (entry.artifactId) this.byArtifactId.set(entry.artifactId, entry);
-        if (!entry.targetObjectId) return;
-        if (!this.byObjectId.has(entry.targetObjectId)) this.byObjectId.set(entry.targetObjectId, []);
-        this.byObjectId.get(entry.targetObjectId).push(entry);
+        if (entry.targetObjectId) {
+            if (!this.byObjectId.has(entry.targetObjectId)) this.byObjectId.set(entry.targetObjectId, []);
+            this.byObjectId.get(entry.targetObjectId).push(entry);
+        }
+        if (entry.eventType === "study_trial_started") {
+            const context = Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]]));
+            this.activeTrialBySession.set(entry.sessionId, context);
+            this.studyContextByCorrelation.set(entry.correlationId, context);
+        } else if (entry.eventType === "study_trial_ended") {
+            const active = this.activeTrialBySession.get(entry.sessionId);
+            if (active && active.trialId === entry.trialId) this.activeTrialBySession.delete(entry.sessionId);
+        } else if (entry.studyEvent && entry.correlationId && entry.participantId) {
+            const context = Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]]));
+            this.studyContextByCorrelation.set(entry.correlationId, context);
+        }
     }
 
     append(entry) {
-        const record = { ...entry, loggedAt: Date.now() };
+        if (!entry || typeof entry !== "object") throw new Error("artifact log entry must be an object");
+        const context = this.studyContextByCorrelation.get(entry.correlationId) ||
+            this.activeTrialBySession.get(entry.sessionId) || null;
+        const now = Date.now();
+        const eventAt = Number.isFinite(entry.timestamp) ? entry.timestamp :
+            Number.isFinite(entry.at) ? entry.at : now;
+        const record = {
+            ...(context || {}),
+            ...entry,
+            studyEvent: entry.studyEvent || Boolean(context && entry.correlationId),
+            timestampUtc: entry.timestampUtc || new Date(eventAt).toISOString(),
+            loggedAt: now,
+        };
+        if (context) {
+            for (const field of STUDY_CONTEXT_FIELDS) {
+                if (record[field] == null || record[field] === "") record[field] = context[field];
+            }
+        }
+        if (record.studyEvent) validateStudyContext(record);
         fs.appendFileSync(this.filePath, JSON.stringify(record) + "\n");
         this._index(record);
         return record;
     }
 
+    startStudyTrial(context) {
+        validateStudyContext(context);
+        if (this.activeTrialBySession.has(context.sessionId)) {
+            throw new Error(`sessionId '${context.sessionId}' already has an active study trial`);
+        }
+        return this.append({
+            ...context,
+            eventType: "study_trial_started",
+            studyEvent: true,
+            taskCompletion: false,
+            at: context.at || Date.now(),
+        });
+    }
+
+    appendStudyEvent(entry) {
+        return this.append({ ...entry, studyEvent: true });
+    }
+
+    endStudyTrial({ sessionId, correlationId, trialId, taskCompletion, taskSuccess,
+        taskQualityScore = null, taskQualitySignals = null, reason = null, at } = {}) {
+        const context = this.studyContextByCorrelation.get(correlationId) ||
+            this.activeTrialBySession.get(sessionId);
+        if (!context) throw new Error(`no active study trial for sessionId '${sessionId || "missing"}'`);
+        if (trialId && trialId !== context.trialId) throw new Error("trialId does not match the active study trial");
+        if (typeof taskCompletion !== "boolean") throw new Error("taskCompletion must be boolean");
+        if (taskSuccess != null && typeof taskSuccess !== "boolean") throw new Error("taskSuccess must be boolean or null");
+        if (taskQualityScore != null && !Number.isFinite(taskQualityScore)) throw new Error("taskQualityScore must be numeric or null");
+        return this.appendStudyEvent({
+            ...context,
+            correlationId,
+            eventType: "study_trial_ended",
+            taskCompletion,
+            taskSuccess: taskSuccess ?? null,
+            taskQualityScore,
+            taskQualitySignals,
+            reason,
+            at: at || Date.now(),
+        });
+    }
+
+    getStudyContext({ sessionId, correlationId } = {}) {
+        let context = this.studyContextByCorrelation.get(correlationId) ||
+            this.activeTrialBySession.get(sessionId) || null;
+        if (context || !fs.existsSync(this.filePath)) return context;
+        // Another process (for example the researcher CLI or Unity bridge) may have
+        // opened the trial after this ArtifactLog instance started. Refresh only
+        // study context maps; do not duplicate the in-memory history index.
+        this.activeTrialBySession.clear();
+        this.studyContextByCorrelation.clear();
+        for (const line of fs.readFileSync(this.filePath, "utf8").split(/\r?\n/).filter(Boolean)) {
+            try {
+                const entry = JSON.parse(line);
+                if (entry.eventType === "study_trial_started") {
+                    const loaded = Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]]));
+                    this.activeTrialBySession.set(entry.sessionId, loaded);
+                    this.studyContextByCorrelation.set(entry.correlationId, loaded);
+                } else if (entry.eventType === "study_trial_ended") {
+                    const active = this.activeTrialBySession.get(entry.sessionId);
+                    if (active && active.trialId === entry.trialId) this.activeTrialBySession.delete(entry.sessionId);
+                } else if (entry.studyEvent && entry.correlationId && entry.participantId) {
+                    this.studyContextByCorrelation.set(entry.correlationId,
+                        Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]])));
+                }
+            } catch (_) { /* malformed lines are reported during the normal load */ }
+        }
+        context = this.studyContextByCorrelation.get(correlationId) ||
+            this.activeTrialBySession.get(sessionId) || null;
+        return context;
+    }
+
     history({ objectId, limit = 20 } = {}) {
         const entries = objectId
             ? (this.byObjectId.get(objectId) || [])
-            : Array.from(this.byObjectId.values()).flat().sort((a, b) => a.loggedAt - b.loggedAt);
+            : this.records;
         return entries.slice(-limit).reverse();
     }
 
@@ -83,4 +212,4 @@ class ArtifactLog {
     }
 }
 
-module.exports = { ArtifactLog };
+module.exports = { ArtifactLog, STUDY_CONTEXT_FIELDS, STUDY_ID_PATTERN, validateStudyContext };

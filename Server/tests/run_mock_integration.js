@@ -2,13 +2,17 @@
 
 const path = require("path");
 const fs = require("fs");
+const assert = require("assert");
 const { spawn } = require("child_process");
+const { TRIAL_COLUMNS, readJsonLines, buildStudyExports } = require("../evaluation/study_export");
 
 const root = path.resolve(__dirname, "..");
 process.env.AGENTICXR_EVALUATION_SOURCE = "mock";
 process.env.AGENTICXR_EVALUATION_LOG = path.join(root, "evaluation", "data", "mock-integration-events.jsonl");
+process.env.AGENTICXR_ARTIFACT_LOG = path.join(root, "evaluation", "data", "mock-study-artifacts.jsonl");
 fs.mkdirSync(path.dirname(process.env.AGENTICXR_EVALUATION_LOG), { recursive: true });
 fs.rmSync(process.env.AGENTICXR_EVALUATION_LOG, { force: true });
+fs.rmSync(process.env.AGENTICXR_ARTIFACT_LOG, { force: true });
 const children = new Set();
 
 function start(args, label) {
@@ -48,6 +52,18 @@ process.on("SIGTERM", () => { cleanup(); process.exit(143); });
         start(["mcp/unity_scene_bridge/mock_unity_peer.js"], "mock Unity peer");
         await wait(2500);
         await run(["mcp/unity_scene_bridge/smoketest_client.mjs"]);
+        const exported = buildStudyExports(readJsonLines(process.env.AGENTICXR_ARTIFACT_LOG));
+        assert.strictEqual(exported.trialRows.length, 1, "mock pipeline must export exactly one study trial");
+        const row = exported.trialRows[0];
+        for (const column of TRIAL_COLUMNS) assert.ok(Object.hasOwn(row, column), `missing study export column ${column}`);
+        assert.strictEqual(row.participantId, "mock-participant-001");
+        assert.strictEqual(row.taskCompletion, true);
+        assert.ok(row.generatedArtifactCount >= 1);
+        assert.ok(row.candidatesGenerated >= 3);
+        assert.ok(Number.isFinite(row.validatedExecutionLatencyMs));
+        assert.ok(Number.isFinite(row.memoryRetrievalLatencyMeanMs));
+        assert.ok(row.agentStatusMessageCount >= 1);
+        console.log(`[mock_integration] study export PASS (${TRIAL_COLUMNS.length} trial columns)`);
         await run(["mcp/unity_scene_bridge/cache_test_flow.mjs"]);
         console.log("[mock_integration] PASS");
     } finally {

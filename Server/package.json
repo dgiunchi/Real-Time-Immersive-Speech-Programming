@@ -11,7 +11,9 @@
     "start:orchestrator": "node orchestrator/app.js",
     "test": "node tests/cache_contract_test.js",
     "test:integration": "node tests/run_mock_integration.js",
-    "evaluation:report": "node evaluation/report.js"
+    "evaluation:report": "node evaluation/report.js",
+    "study:trial": "node evaluation/study_trial.js",
+    "study:export": "node evaluation/study_export.js"
   },
   "author": "UCL VECG",
   "license": "Apache-2.0",

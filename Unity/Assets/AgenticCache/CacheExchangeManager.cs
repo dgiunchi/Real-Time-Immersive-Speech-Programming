@@ -230,6 +230,11 @@ namespace AgenticCache
                 var status = Parse<AgentStatusPayload>(envelope.payload);
                 localCache.SetAgentStatus(status != null ? status.state : null, status != null ? status.detail : null);
                 ShowStatus(status != null ? status.state : "working", status != null ? status.detail : null);
+                var visible = NewEnvelope(CacheMessageTypes.AgentStatusVisible, envelope.correlationId,
+                    envelope.targetObjectId, "{\"status\":\"" +
+                    AgenticSceneRegistry.Escape(status != null ? status.state : "working") + "\"}");
+                visible.sessionId = envelope.sessionId;
+                SendDecision(visible);
             }
             else if (envelope.type == CacheMessageTypes.AgentUtterance)
             {

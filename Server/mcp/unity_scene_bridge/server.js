@@ -32,7 +32,7 @@ async function main() {
     }
 
     const bridge = new SceneBridgeClient(config);
-    const memory = new SharedMemory();
+    const memory = new SharedMemory({ artifactLogPath: process.env.AGENTICXR_ARTIFACT_LOG });
     memory.attach(bridge);
     const cacheExchange = new CacheExchangeLayer();
     cacheExchange.attach(bridge);
@@ -56,9 +56,12 @@ async function main() {
     bridge.on("stale_proposal", (envelope) => {
         memory.artifactLog.append({
             eventType: "stale_proposal",
+            sessionId: envelope.sessionId,
             targetObjectId: envelope.targetObjectId,
             correlationId: envelope.correlationId,
             staleness: envelope.staleness,
+            stale: true,
+            groundingError: true,
         });
         memory.personPolicy.recordEvent({
             sessionId: envelope.sessionId,
@@ -74,8 +77,48 @@ async function main() {
     // matters for the paper's "memory retrieval latency" measure is marking WHEN
     // each retrieval happens within a turn's deliberation timeline. Only marks if
     // the caller supplied a correlationId (docs/next-build-prompt.md §2.6).
-    function markMemoryRetrieval(correlationId, toolName) {
-        if (correlationId) memory.timeline.mark(correlationId, "deliberation", `memory_retrieval:${toolName}`);
+    function measureMemoryRetrieval(correlationId, toolName, retrieve) {
+        const started = process.hrtime.bigint();
+        const result = retrieve();
+        const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
+        if (correlationId) {
+            memory.timeline.mark(correlationId, "deliberation", `memory_retrieval:${toolName}`);
+            if (memory.artifactLog.getStudyContext({ correlationId })) {
+                memory.artifactLog.appendStudyEvent({
+                    correlationId,
+                    eventType: "memory_retrieval",
+                    memoryOperation: toolName,
+                    durationMs,
+                });
+            }
+        }
+        return result;
+    }
+
+    function appendStudyIfActive({ sessionId, correlationId } = {}, event) {
+        if (!memory.artifactLog.getStudyContext({ sessionId, correlationId })) return null;
+        return memory.artifactLog.appendStudyEvent({
+            ...(sessionId ? { sessionId } : {}),
+            correlationId,
+            ...event,
+        });
+    }
+
+    function recordProposalGate(args, result) {
+        const reasons = result.reasons || [];
+        const timestampAgeMs = Number.isFinite(args.snapshotTakenAt)
+            ? Math.max(0, result.checkedAt - args.snapshotTakenAt) : null;
+        return appendStudyIfActive(args, {
+            eventType: "proposal_gate_checked",
+            targetObjectId: args.targetObjectId || null,
+            status: result.accepted ? "accepted" : "rejected",
+            correlationIdValid: !reasons.some((reason) => /correlationId/i.test(reason)),
+            targetObjectValid: !reasons.some((reason) => /target object/i.test(reason)),
+            timestampAgeMs,
+            stale: reasons.some((reason) => /epoch|snapshot|revision|too old|stale/i.test(reason)),
+            validationState: args.validationState || null,
+            reasonCode: !result.accepted ? "proposal_gate_rejected" : null,
+        });
     }
 
     // @modelcontextprotocol/sdk ships ESM-only; this package is CommonJS, so
@@ -161,19 +204,41 @@ async function main() {
             const { code, targetObjectId, intent, authoringMode, interactionMode, sessionId, correlationId } = args;
             try {
                 const lifecycle = validateLifecycle(args);
-                if (!lifecycle.accepted) return { content: [{ type: "text", text: `propose_artifact lifecycle rejected: ${lifecycle.reasons.join("; ")}` }], isError: true };
+                if (!lifecycle.accepted) {
+                    appendStudyIfActive(args, {
+                        eventType: "validation_failure",
+                        targetObjectId,
+                        failureStage: "validation",
+                        reasonCode: "lifecycle_invariant",
+                    });
+                    return { content: [{ type: "text", text: `propose_artifact lifecycle rejected: ${lifecycle.reasons.join("; ")}` }], isError: true };
+                }
                 if (["edit", "remove"].includes(lifecycle.operation) && authoringMode === "automatic") {
+                    appendStudyIfActive(args, {
+                        eventType: "validation_failure",
+                        targetObjectId,
+                        failureStage: "validation",
+                        reasonCode: "confirmation_required",
+                    });
                     return { content: [{ type: "text", text: `${lifecycle.operation} requires explicit confirmation` }], isError: true };
                 }
                 if (interactionMode) {
                     const policy = checkModePolicy({ ...args, userPreference: memory.personPolicy.getPolicy({ sessionId }) });
                     if (!policy.accepted) {
+                        appendStudyIfActive(args, {
+                            eventType: "validation_failure",
+                            targetObjectId,
+                            failureStage: "validation",
+                            reasonCode: "interaction_mode_policy",
+                            unsafeProposal: Number(args.riskScore) >= 0.7,
+                        });
                         return { content: [{ type: "text", text: `propose_artifact rejected by interaction-mode policy: ${policy.reasons.join("; ")}` }], isError: true };
                     }
                 }
                 const result = await bridge.proposeArtifact(args);
                 memory.artifactLog.append({
                     eventType: "propose_artifact",
+                    sessionId,
                     targetObjectId,
                     correlationId: result.correlationId,
                     intent: intent || null,
@@ -196,10 +261,18 @@ async function main() {
                     selectionReason: args.selectionReason || null,
                     status: result.payload && result.payload.status,
                     artifactId: result.payload && result.payload.artifactId,
+                    timestampAgeMs: Number.isFinite(args.snapshotTakenAt)
+                        ? Math.max(0, Date.now() - args.snapshotTakenAt) : null,
                 });
                 memory.personPolicy.recordEvent({ sessionId, eventType: `propose_artifact:${result.payload && result.payload.status}`, targetObjectId, at: Date.now() });
                 return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
             } catch (err) {
+                appendStudyIfActive(args, {
+                    eventType: "artifact_pipeline_failure",
+                    targetObjectId,
+                    reasonCode: /capability|namespace/i.test(err.message) ? "capability_policy" : "transport_or_runtime",
+                    blockedUnsafeArtifact: /capability|namespace/i.test(err.message),
+                });
                 return { content: [{ type: "text", text: `propose_artifact failed: ${err.message}` }], isError: true };
             }
         }
@@ -230,12 +303,26 @@ async function main() {
             for (const candidate of result.ranked) {
                 memory.artifactLog.append({
                     eventType: candidate === result.selected ? "candidate_selected" : "candidate_rejected",
-                    operation: candidate.operation, targetObjectId, correlationId, candidateSetId,
+                    sessionId, operation: candidate.operation, targetObjectId, correlationId, candidateSetId,
                     candidateId: candidate.candidateId, riskScore: candidate.riskScore,
+                    selectedCandidateRank: result.ranked.indexOf(candidate) + 1,
+                    selectedCandidateScore: candidate.ranking.score,
                     status: candidate.ranking.eligible ? (candidate === result.selected ? "selected" : "not_selected") : "ineligible",
                     selectionReason: candidate === result.selected ? `highest deterministic score ${candidate.ranking.score}` : `score ${candidate.ranking.score}`,
                 });
             }
+            memory.artifactLog.append({
+                eventType: "candidate_selection",
+                sessionId,
+                correlationId,
+                targetObjectId,
+                candidateSetId,
+                candidateCount: candidates.length,
+                selectedCandidateId: result.selected && result.selected.candidateId,
+                selectedCandidateRank: result.selected ? result.ranked.indexOf(result.selected) + 1 : null,
+                selectedCandidateScore: result.selected && result.selected.ranking.score,
+                status: result.selected ? "selected" : "no_eligible_candidate",
+            });
             appendEvaluationEvent({
                 eventType: "candidate_selection", sessionId, correlationId, targetObjectId, candidateSetId,
                 candidateCount: candidates.length, eligibleCount: result.ranked.filter((item) => item.ranking.eligible).length,
@@ -275,10 +362,19 @@ async function main() {
             const { code, targetObjectId, intent, interactionMode, sessionId, correlationId, timeoutMs } = args;
             try {
                 const lifecycle = validateLifecycle(args);
-                if (!lifecycle.accepted) return { content: [{ type: "text", text: `simulate_artifact lifecycle rejected: ${lifecycle.reasons.join("; ")}` }], isError: true };
+                if (!lifecycle.accepted) {
+                    appendStudyIfActive(args, {
+                        eventType: "validation_failure",
+                        targetObjectId,
+                        failureStage: "validation",
+                        reasonCode: "lifecycle_invariant",
+                    });
+                    return { content: [{ type: "text", text: `simulate_artifact lifecycle rejected: ${lifecycle.reasons.join("; ")}` }], isError: true };
+                }
                 const result = await bridge.proposeArtifact({ ...args, simulate: true });
                 memory.artifactLog.append({
                     eventType: "simulate_artifact",
+                    sessionId,
                     targetObjectId,
                     correlationId: result.correlationId,
                     intent: intent || null,
@@ -288,6 +384,8 @@ async function main() {
                     candidateId: args.candidateId || null,
                     candidateSetId: args.candidateSetId || null,
                     status: result.payload && result.payload.status,
+                    verificationOutcome: result.payload && result.payload.status === "simulated" ? "apply" : "reject",
+                    verificationDurationMs: result.verificationDurationMs ?? null,
                 });
                 memory.personPolicy.recordEvent({ sessionId, eventType: `simulate_artifact:${result.payload && result.payload.status}`, targetObjectId, at: Date.now() });
                 if (result.payload && result.payload.status === "simulated") {
@@ -295,6 +393,16 @@ async function main() {
                 }
                 return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
             } catch (err) {
+                appendStudyIfActive(args, {
+                    eventType: "verification_outcome",
+                    targetObjectId,
+                    candidateId: args.candidateId || null,
+                    candidateSetId: args.candidateSetId || null,
+                    verificationOutcome: "reject",
+                    status: "error",
+                    reasonCode: /capability|namespace/i.test(err.message) ? "capability_policy" : "verification_failure",
+                    blockedUnsafeArtifact: /capability|namespace/i.test(err.message),
+                });
                 return { content: [{ type: "text", text: `simulate_artifact failed: ${err.message}` }], isError: true };
             }
         }
@@ -348,8 +456,9 @@ async function main() {
             },
         },
         async ({ objectId, filter, correlationId }) => {
-            markMemoryRetrieval(correlationId, "query_visual_memory");
-            return { content: [{ type: "text", text: JSON.stringify(memory.visual.query({ objectId, filter }), null, 2) }] };
+            const result = measureMemoryRetrieval(correlationId, "query_visual_memory",
+                () => memory.visual.query({ objectId, filter }));
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
     );
 
@@ -365,8 +474,9 @@ async function main() {
             inputSchema: { objectId: z.string().optional(), correlationId: z.string().optional() },
         },
         async ({ objectId, correlationId }) => {
-            markMemoryRetrieval(correlationId, "query_scene_graph");
-            return { content: [{ type: "text", text: JSON.stringify(memory.sceneGraph.queryGraph({ objectId }), null, 2) }] };
+            const result = measureMemoryRetrieval(correlationId, "query_scene_graph",
+                () => memory.sceneGraph.queryGraph({ objectId }));
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
     );
 
@@ -381,8 +491,9 @@ async function main() {
             inputSchema: { objectId: z.string(), correlationId: z.string().optional() },
         },
         async ({ objectId, correlationId }) => {
-            markMemoryRetrieval(correlationId, "query_affordances");
-            return { content: [{ type: "text", text: JSON.stringify(memory.sceneGraph.queryAffordances({ objectId }), null, 2) }] };
+            const result = measureMemoryRetrieval(correlationId, "query_affordances",
+                () => memory.sceneGraph.queryAffordances({ objectId }));
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
     );
 
@@ -396,18 +507,19 @@ async function main() {
             inputSchema: { objectId: z.string(), correlationId: z.string().optional() },
         },
         async ({ objectId, correlationId }) => {
-            markMemoryRetrieval(correlationId, "get_script_context");
-            const visualEntry = memory.visual.byObjectId.get(objectId);
-            const result = {
-                objectId,
-                components: (visualEntry && visualEntry.focus && visualEntry.focus.components) || [],
-                recentArtifacts: memory.artifactLog.history({ objectId, limit: 5 }),
-                capabilityPolicy: {
-                    allowedNamespaces: ["UnityEngine"],
-                    deniedNamespaces: ["System.IO", "System.Net", "System.Diagnostics", "System.Reflection"],
-                    note: "Unity enforces a structured namespace/capability guard plus RoslynCSharp UseSettings security checks; this is defense in depth, not a formal process sandbox.",
-                },
-            };
+            const result = measureMemoryRetrieval(correlationId, "get_script_context", () => {
+                const visualEntry = memory.visual.byObjectId.get(objectId);
+                return {
+                    objectId,
+                    components: (visualEntry && visualEntry.focus && visualEntry.focus.components) || [],
+                    recentArtifacts: memory.artifactLog.history({ objectId, limit: 5 }),
+                    capabilityPolicy: {
+                        allowedNamespaces: ["UnityEngine"],
+                        deniedNamespaces: ["System.IO", "System.Net", "System.Diagnostics", "System.Reflection"],
+                        note: "Unity enforces a structured namespace/capability guard plus RoslynCSharp UseSettings security checks; this is defense in depth, not a formal process sandbox.",
+                    },
+                };
+            });
             return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
     );
@@ -424,8 +536,9 @@ async function main() {
             },
         },
         async ({ objectId, limit, correlationId }) => {
-            markMemoryRetrieval(correlationId, "get_artifact_history");
-            return { content: [{ type: "text", text: JSON.stringify(memory.artifactLog.history({ objectId, limit }), null, 2) }] };
+            const result = measureMemoryRetrieval(correlationId, "get_artifact_history",
+                () => memory.artifactLog.history({ objectId, limit }));
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
     );
 
@@ -440,8 +553,9 @@ async function main() {
             inputSchema: { sessionId: sessionIdSchema, correlationId: z.string().optional() },
         },
         async ({ sessionId, correlationId }) => {
-            markMemoryRetrieval(correlationId, "get_person_policy");
-            return { content: [{ type: "text", text: JSON.stringify(memory.personPolicy.getPolicy({ sessionId }), null, 2) }] };
+            const result = measureMemoryRetrieval(correlationId, "get_person_policy",
+                () => memory.personPolicy.getPolicy({ sessionId }));
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
     );
 
@@ -469,9 +583,13 @@ async function main() {
         "get_experience_context",
         {
             title: "Inspect the current activity/experience context",
-            inputSchema: { sessionId: sessionIdSchema },
+            inputSchema: { sessionId: sessionIdSchema, correlationId: z.string().optional() },
         },
-        async ({ sessionId }) => ({ content: [{ type: "text", text: JSON.stringify(memory.experienceContext.get(sessionId), null, 2) }] })
+        async ({ sessionId, correlationId }) => {
+            const result = measureMemoryRetrieval(correlationId, "get_experience_context",
+                () => memory.experienceContext.get(sessionId));
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
     );
 
     server.registerTool(
@@ -524,6 +642,95 @@ async function main() {
     );
 
     server.registerTool(
+        "start_study_trial",
+        {
+            title: "Start a validated objective-measurement trial",
+            description: "Registers pseudonymous study identifiers in the existing temporal artifact log. No transcript or raw audio is stored.",
+            inputSchema: {
+                participantId: sessionIdSchema,
+                sessionId: sessionIdSchema,
+                trialId: sessionIdSchema,
+                condition: sessionIdSchema,
+                taskId: sessionIdSchema,
+                interactionMode: z.enum(["baseline", "L1", "L2", "L3", "L4", "L5"]),
+                correlationId: sessionIdSchema,
+            },
+        },
+        async (context) => {
+            try {
+                const record = memory.artifactLog.startStudyTrial({ ...context, studySource: "mcp" });
+                return { content: [{ type: "text", text: JSON.stringify(record, null, 2) }] };
+            } catch (error) {
+                return { content: [{ type: "text", text: `start_study_trial failed: ${error.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "end_study_trial",
+        {
+            title: "Close a study trial with task/rubric outcomes",
+            description: "Records completion, optional success, and structured rubric signals. Free-form transcripts and identifying content are not accepted.",
+            inputSchema: {
+                sessionId: sessionIdSchema,
+                trialId: sessionIdSchema,
+                correlationId: sessionIdSchema,
+                taskCompletion: z.boolean(),
+                taskSuccess: z.boolean().nullable().optional(),
+                taskQualityScore: z.number().nullable().optional(),
+                taskQualitySignals: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+                reason: sessionIdSchema.optional(),
+            },
+        },
+        async (args) => {
+            try {
+                const record = memory.artifactLog.endStudyTrial(args);
+                return { content: [{ type: "text", text: JSON.stringify(record, null, 2) }] };
+            } catch (error) {
+                return { content: [{ type: "text", text: `end_study_trial failed: ${error.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
+        "record_study_event",
+        {
+            title: "Record a structured study event not inferable from envelopes",
+            description: "For researcher/runtime signals such as interruption, resumption, repair, clarification, grounding error, or explicit verification/live mismatch. No transcript field is accepted.",
+            inputSchema: {
+                sessionId: sessionIdSchema,
+                correlationId: sessionIdSchema,
+                eventType: z.enum([
+                    "repair_attempt", "clarification_turn", "confirmation", "rejection",
+                    "revision_requested", "interruption", "resumption", "grounding_error",
+                    "stale_application", "unsafe_proposal", "verification_live_mismatch",
+                ]),
+                targetObjectId: z.string().optional(),
+                candidateId: z.string().optional(),
+                candidateSetId: z.string().optional(),
+                durationMs: z.number().nonnegative().optional(),
+                status: sessionIdSchema.optional(),
+                reasonCode: sessionIdSchema.optional(),
+            },
+        },
+        async (args) => {
+            try {
+                const context = memory.artifactLog.getStudyContext(args);
+                if (!context) throw new Error("no active study trial for these identifiers");
+                const record = memory.artifactLog.appendStudyEvent({
+                    ...args,
+                    unsafeProposal: args.eventType === "unsafe_proposal",
+                    verificationLiveMismatch: args.eventType === "verification_live_mismatch",
+                    studySource: "mcp",
+                });
+                return { content: [{ type: "text", text: JSON.stringify(record, null, 2) }] };
+            } catch (error) {
+                return { content: [{ type: "text", text: `record_study_event failed: ${error.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
         "record_intent",
         {
             title: "Record a speech/text intent",
@@ -543,6 +750,10 @@ async function main() {
         async ({ text, sessionId, correlationId }) => {
             const entry = memory.intent.record({ sessionId, text, correlationId });
             const experienceContext = memory.experienceContext.observeIntent({ sessionId, text });
+            appendStudyIfActive({ sessionId, correlationId }, {
+                eventType: "intent_captured",
+                studySource: "pipeline",
+            });
             return { content: [{ type: "text", text: JSON.stringify({ intent: entry, experienceContext }, null, 2) }] };
         }
     );
@@ -555,8 +766,9 @@ async function main() {
             inputSchema: { objectId: z.string().optional(), limit: z.number().int().positive().max(500).optional(), correlationId: z.string().optional() },
         },
         async ({ objectId, limit, correlationId }) => {
-            markMemoryRetrieval(correlationId, "get_evolution_history");
-            return { content: [{ type: "text", text: JSON.stringify(memory.artifactLog.evolution({ objectId, limit }), null, 2) }] };
+            const result = measureMemoryRetrieval(correlationId, "get_evolution_history",
+                () => memory.artifactLog.evolution({ objectId, limit }));
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
     );
 
@@ -678,6 +890,7 @@ async function main() {
             inputSchema: {
                 correlationId: z.string(),
                 targetObjectId: z.string(),
+                sessionId: sessionIdSchema.optional(),
                 sceneEpoch: z.string().optional(),
                 objectRevision: z.number().optional(),
                 snapshotId: z.string().optional(),
@@ -687,7 +900,11 @@ async function main() {
                 validationState: z.string().optional(),
             },
         },
-        async (args) => ({ content: [{ type: "text", text: JSON.stringify(cacheExchange.proposalGate.checkProposal(args), null, 2) }] })
+        async (args) => {
+            const result = cacheExchange.proposalGate.checkProposal(args);
+            recordProposalGate(args, result);
+            return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
     );
 
     server.registerTool(
@@ -714,6 +931,7 @@ async function main() {
         },
         async (args) => {
             const preflight = cacheExchange.proposalGate.checkProposal(args);
+            recordProposalGate(args, preflight);
             cacheExchange.journal.append(args.sessionId, "validation", { correlationId: args.correlationId, preflight });
             if (!preflight.accepted) {
                 return { content: [{ type: "text", text: JSON.stringify({ committed: false, stage: "preflight", ...preflight }, null, 2) }] };

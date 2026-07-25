@@ -9,6 +9,7 @@ const { randomUUID } = require("crypto");
 const { makeEnvelope } = require("../../../mcp/unity_scene_bridge/protocol");
 const { toWireFormat } = require("../../../cache/protocol");
 const { appendEvaluationEvent } = require("../../../evaluation/event_logger");
+const { ArtifactLog } = require("../../../memory/artifact_log");
 
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 const DATA_DIR = "data";
@@ -50,7 +51,9 @@ class CodeGeneration extends ApplicationController {
         this.agenticTargets = new Map();
         this.agenticRuns = new Map();
         this.agenticCorrelations = new Map();
+        this.baselinePending = null;
         this.agenticTurnTimeoutMs = Number(process.env.AGENTICXR_TURN_TIMEOUT_MS) || 180000;
+        this.artifactLog = new ArtifactLog({ filePath: process.env.AGENTICXR_ARTIFACT_LOG });
 
     }
 
@@ -125,6 +128,16 @@ class CodeGeneration extends ApplicationController {
                         this.startAgenticTurn(response.trim(), identifier);
                     } else if (this.isGenerating == false) {
                         this.isGenerating = true;
+                        const correlationId = this.agenticCorrelations.get(identifier) || randomUUID();
+                        const targetObjectId = this.agenticTargets.get(identifier) || null;
+                        this.baselinePending = { sessionId: identifier, correlationId, targetObjectId };
+                        this.logStudyEvent({
+                            eventType: "intent_captured",
+                            sessionId: identifier,
+                            correlationId,
+                            targetObjectId,
+                            studySource: "baseline_runtime",
+                        });
                         console.log(peerName + " -> Agent:: " + response);
 
                         // this.components.textToSpeechService.sendToChildProcess("default", response + "\n");
@@ -148,6 +161,16 @@ class CodeGeneration extends ApplicationController {
                         peer: identifier,
                         data: response,
                     });
+                if (this.baselinePending) {
+                    this.logStudyEvent({
+                        ...this.baselinePending,
+                        eventType: "propose_artifact",
+                        status: "sent_unvalidated",
+                        operation: "create",
+                        studySource: "baseline_runtime",
+                    });
+                    this.baselinePending = null;
+                }
                 this.isGenerating = false;
             }
         });
@@ -167,12 +190,26 @@ class CodeGeneration extends ApplicationController {
             console.warn(`[AgenticXR] Claude is already handling a request for peer ${peerUUID}; ignoring overlapping transcript.`);
             this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "A previous request is still running.");
             this.logEvaluation({ eventType: "turn_rejected", sessionId: peerUUID, correlationId, targetObjectId, reason: "overlapping_turn" });
+            this.logStudyEvent({
+                eventType: "interruption",
+                sessionId: peerUUID,
+                correlationId,
+                targetObjectId,
+                reasonCode: "overlapping_user_input",
+            });
             return;
         }
         const orchestrator = path.resolve(__dirname, "../../../orchestrator/app.js");
         console.log(`[AgenticXR] starting Claude turn peer=${peerUUID} correlationId=${correlationId} target=${targetObjectId} intent=${JSON.stringify(intent)}`);
         this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "thinking", "Claude is grounding and validating your request.");
         this.logEvaluation({ eventType: "turn_started", sessionId: peerUUID, correlationId, targetObjectId });
+        this.logStudyEvent({
+            eventType: "intent_captured",
+            sessionId: peerUUID,
+            correlationId,
+            targetObjectId,
+            studySource: "code_runtime_generator",
+        });
         const child = spawn(process.execPath, [orchestrator, intent, targetObjectId, peerUUID, correlationId], {
             cwd: path.resolve(__dirname, "../../.."),
             env: process.env,
@@ -215,11 +252,28 @@ class CodeGeneration extends ApplicationController {
             payload: { state, detail },
         });
         this.scene.send(97, toWireFormat(envelope));
+        this.logStudyEvent({
+            eventType: "agent_status_sent",
+            sessionId,
+            correlationId,
+            targetObjectId: targetObjectId || null,
+            status: state,
+            studySource: "code_runtime_generator",
+        });
     }
 
     logEvaluation(event) {
         try { appendEvaluationEvent(event); }
         catch (error) { console.error(`[AgenticXR] evaluation log error: ${error.message}`); }
+    }
+
+    logStudyEvent(event) {
+        try {
+            if (!this.artifactLog.getStudyContext(event)) return;
+            this.artifactLog.appendStudyEvent(event);
+        } catch (error) {
+            console.error(`[AgenticXR] study log error: ${error.message}`);
+        }
     }
 }
 

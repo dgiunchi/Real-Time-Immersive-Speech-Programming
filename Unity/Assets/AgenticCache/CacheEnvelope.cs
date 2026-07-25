@@ -87,6 +87,7 @@ namespace AgenticCache
         public const string BackfillResponse = "BackfillResponse";
         public const string CacheInvalidation = "CacheInvalidation";
         public const string AgentStatus = "AgentStatus";
+        public const string AgentStatusVisible = "AgentStatusVisible";
         public const string DetailRequest = "DetailRequest";
         public const string DetailResponse = "DetailResponse";
         public const string ArtifactProposal = "ArtifactProposal";

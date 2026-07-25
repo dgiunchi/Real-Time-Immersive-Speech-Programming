@@ -19,7 +19,20 @@ function log(label, result) {
 }
 
 // --- Core round trip, with sessionId + interactionMode + region/intent (docs/next-build-prompt.md) ---
+log("start_study_trial", await client.callTool({
+    name: "start_study_trial",
+    arguments: {
+        participantId: "mock-participant-001",
+        sessionId,
+        trialId: "mock-trial-001",
+        condition: "agenticxr_verification",
+        taskId: "mock-authoring-task",
+        interactionMode: "L4",
+        correlationId,
+    },
+}));
 log("record_intent", await client.callTool({ name: "record_intent", arguments: { text: "make this sphere pulse red when I touch it", sessionId, correlationId } }));
+log("send_agent_status", await client.callTool({ name: "send_agent_status", arguments: { sessionId, correlationId, state: "thinking", detail: "Mock status visibility check." } }));
 log("query_scene", await client.callTool({ name: "query_scene", arguments: { objectId: targetObjectId, sessionId, correlationId } }));
 log("get_region_context", await client.callTool({ name: "get_region_context", arguments: { sessionId } }));
 log("query_visual_memory", await client.callTool({ name: "query_visual_memory", arguments: { objectId: targetObjectId, correlationId } }));
@@ -68,6 +81,7 @@ log(
             candidateCount: 3,
             selectionReason: "highest deterministic score after three independent dry-runs",
             experienceMode: "training",
+            snapshotTakenAt: Date.now(),
             sessionId,
             correlationId,
         },
@@ -123,6 +137,18 @@ log(
 );
 log("get_artifact_history(A) - expect a stale_proposal eventType entry", await client.callTool({ name: "get_artifact_history", arguments: { objectId: objectA } }));
 log("reset_person_profile", await client.callTool({ name: "reset_person_profile", arguments: { sessionId, confirmReset: true } }));
+log("end_study_trial", await client.callTool({
+    name: "end_study_trial",
+    arguments: {
+        sessionId,
+        trialId: "mock-trial-001",
+        correlationId,
+        taskCompletion: true,
+        taskSuccess: true,
+        taskQualityScore: 4,
+        taskQualitySignals: { rubricVersion: "mock-v1", behaviorMatched: true },
+    },
+}));
 
 await client.close();
 process.exit(0);

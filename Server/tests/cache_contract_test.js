@@ -15,6 +15,7 @@ const { PersonPolicyStore } = require("../memory/person_policy");
 const { ExperienceContextStore } = require("../memory/experience_context");
 const { ArtifactLog } = require("../memory/artifact_log");
 const { CheckpointStore } = require("../memory/checkpoint_store");
+const { TRIAL_COLUMNS, LONG_COLUMNS, buildStudyExports, writeCsv } = require("../evaluation/study_export");
 
 const root = path.resolve(__dirname, "..");
 let assertions = 0;
@@ -162,9 +163,87 @@ checkpoints.save({ artifactLog: evolutionLog, personPolicy: people, experienceCo
 const resumed = checkpoints.load({ currentObjectIds: ["different-object"] });
 equal(resumed.orphaned.length, 1, "checkpoint explicitly classifies missing object references as orphaned");
 
+const studyLogPath = path.join(testDataDir, "study-artifacts.jsonl");
+const studyLog = new ArtifactLog({ filePath: studyLogPath });
+assert.throws(() => studyLog.startStudyTrial({ sessionId: "study-session" }), /participantId/,
+    "study trial identifiers fail loudly when incomplete");
+assertions += 1;
+const studyContext = {
+    participantId: "participant-001",
+    sessionId: "study-session",
+    trialId: "trial-01",
+    condition: "agenticxr_verification",
+    taskId: "task-door-guidance",
+    interactionMode: "L4",
+    correlationId: "trial-correlation",
+};
+studyLog.startStudyTrial({ ...studyContext, at: 1000 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "intent_captured", at: 1100 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "agent_status_surfaced", status: "thinking", at: 1125 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "memory_retrieval", durationMs: 4.5, at: 1150 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "interruption", at: 1175 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "resumption", at: 1200 });
+for (let rank = 1; rank <= 3; rank += 1) {
+    studyLog.appendStudyEvent({
+        sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+        eventType: rank === 1 ? "candidate_selected" : "candidate_rejected",
+        candidateId: `candidate-${rank}`, candidateSetId: "candidate-set-1",
+        selectedCandidateRank: rank, selectedCandidateScore: 110 - rank,
+        status: rank === 1 ? "selected" : "not_selected", at: 1220 + rank,
+    });
+}
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "candidate_selection", candidateSetId: "candidate-set-1",
+    candidateCount: 3, selectedCandidateId: "candidate-1",
+    selectedCandidateRank: 1, selectedCandidateScore: 109, at: 1230,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "simulate_artifact", candidateId: "candidate-1", candidateSetId: "candidate-set-1",
+    status: "simulated", verificationOutcome: "apply", verificationDurationMs: 40, at: 1250,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "propose_artifact", candidateId: "candidate-1", candidateSetId: "candidate-set-1",
+    targetObjectId: "object-study", status: "pending", at: 1300,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "user_decision:approved", targetObjectId: "object-study", status: "approved", at: 1400,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "artifactresult", targetObjectId: "object-study", artifactId: "artifact-study",
+    candidateId: "candidate-1", status: "committed", timestampAgeMs: 8,
+    correlationIdValid: true, targetObjectValid: true, commitAttachDurationMs: 12, at: 1500,
+});
+studyLog.endStudyTrial({
+    sessionId: studyContext.sessionId, trialId: studyContext.trialId,
+    correlationId: "turn-correlation", taskCompletion: true, taskSuccess: true,
+    taskQualityScore: 4, taskQualitySignals: { rubricVersion: "v1", behaviorMatched: true }, at: 2000,
+});
+const studyExports = buildStudyExports(fs.readFileSync(studyLogPath, "utf8").trim().split(/\r?\n/).map(JSON.parse));
+equal(studyExports.trialRows.length, 1, "study exporter emits one row per participant task-trial");
+equal(studyExports.trialRows[0].participantId, studyContext.participantId, "study exporter joins the pseudonymous participant");
+equal(studyExports.trialRows[0].trialId, studyContext.trialId, "study exporter joins events to the correct trial");
+equal(studyExports.trialRows[0].immediateAcknowledgementLatencyMs, 25, "acknowledgement latency uses separate timestamps");
+equal(studyExports.trialRows[0].validatedExecutionLatencyMs, 400, "validated execution latency uses intent and committed timestamps");
+equal(studyExports.trialRows[0].candidatesGenerated, 3, "H4 candidate count is exported");
+equal(studyExports.trialRows[0].firstProposalAcceptedWithoutRevision, true, "H4 first acceptance is cleanly derived");
+equal(studyExports.trialRows[0].interruptionTotalTimeMs, 25, "interruption/resumption duration is exported");
+for (const column of TRIAL_COLUMNS) ok(Object.hasOwn(studyExports.trialRows[0], column), `trial export contains required column ${column}`);
+for (const column of LONG_COLUMNS) ok(Object.hasOwn(studyExports.longRows[0], column), `long export contains required column ${column}`);
+const trialCsvPath = path.join(testDataDir, "trials.csv");
+const eventCsvPath = path.join(testDataDir, "events.csv");
+writeCsv(trialCsvPath, TRIAL_COLUMNS, studyExports.trialRows);
+writeCsv(eventCsvPath, LONG_COLUMNS, studyExports.longRows);
+ok(fs.readFileSync(trialCsvPath, "utf8").startsWith(TRIAL_COLUMNS.join(",")), "trial CSV has the stable analysis header");
+ok(fs.readFileSync(eventCsvPath, "utf8").startsWith(LONG_COLUMNS.join(",")), "long CSV has the stable event header");
+
 const unityManager = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CacheExchangeManager.cs"), "utf8");
 const unityPublisher = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CachePublisher.cs"), "utf8");
-for (const required of ["CommitAccepted", "CommitRejected", "UserDecision", "RollbackResult", "ValidateProposalEnvelope", "BuildBackfillPayload"]) {
+for (const required of ["CommitAccepted", "CommitRejected", "UserDecision", "RollbackResult", "AgentStatusVisible", "ValidateProposalEnvelope", "BuildBackfillPayload"]) {
     ok(unityManager.includes(required) || unityPublisher.includes(required), `Unity contract contains ${required}`);
 }
 ok(unityPublisher.includes("PublishCurrentSnapshot();"), "production Unity publisher emits a snapshot");

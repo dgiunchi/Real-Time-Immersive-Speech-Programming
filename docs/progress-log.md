@@ -555,3 +555,62 @@ Acceptance boundary: the backend behaviors are deterministic-tested, the extende
 transport/lifecycle is mock-integrated, and Unity source compiles. Cross-session use by
 real participants, a live Claude turn, Unity Play Mode restart/resume, Quest speech and
 interaction, and study outcomes remain unverified.
+
+## 2026-07-25 — Objective study logging and export
+
+Executed `code-objective-logging-spec-2026-07-25.md`. The referenced companion
+study-coherence audit was not present, so the paper's H1--H4 Measures subsection and
+the prompt's explicit objective-measure list were used as the contract.
+
+Extended the existing append-only temporal artifact log with validated pseudonymous
+participant/session/trial/condition/task/mode/correlation context and UTC timestamps.
+Missing study identifiers fail before write. Null transport metadata cannot erase
+trial identifiers. Trial start/end records capture task completion, success, structured
+quality-rubric signals, and total task time without adding audio or transcript content
+to the objective export.
+
+Wired study events at intent capture, receiver-confirmed status visibility, proposal
+and candidate selection, Verification Space results, Proposal Gate checks, Unity
+artifact/consent/rollback results, memory reads, stale results, policy/capability
+failures, and overlapping-speech interruptions. Added a structured API/CLI for the
+repair, clarification, interruption/resumption, grounding, unsafe, and mismatch events
+that cannot always be inferred. Baseline generation records intent and generated-code
+delivery, but validated baseline application still needs a Unity legacy attach
+acknowledgement.
+
+Added the offline CSV exporter:
+
+- `trials.csv`: one analysis-ready row per participant task-trial with 57 stable
+  columns spanning performance, separate latency timestamps/deltas, failures,
+  verification, grounding, safety, repair/consent, interruption, H4 candidates, and
+  status visibility.
+- `events.csv`: a whitelisted long-format event table. It excludes intent text,
+  generated code, raw audio, free-form summaries, and free-form errors.
+
+Kept JSONL rather than migrating to SQLite because the existing append-only log plus
+offline export meets the immediate single-participant trial requirement without a
+storage rewrite. SQLite remains warranted if concurrent multi-user writes or
+interactive longitudinal querying become study requirements.
+
+Verification performed:
+
+- `cd Server; npm test` — PASS, 216 assertions. Deterministic coverage checks strict
+  identifiers, joined trial export, separate acknowledgement/execution timestamps,
+  task/rubric outcomes, candidate selection, memory timing, interruption duration,
+  all 57 trial columns, all long-format columns, and stable CSV headers.
+- `cd Server; npm run test:integration` — PASS with a real local Ubiq room and mock
+  Unity peer. The scripted session opened/closed a study trial, exported exactly one
+  joined participant/task row, observed receiver-side status visibility, three
+  candidates, validation and committed execution, memory timing, and the existing
+  lifecycle/staleness flows. The deliberate cache gap was detected, backfilled, and
+  duplicate backfill entries were suppressed.
+- Direct exporter invocation produced one 57-column trial row and 47 whitelisted
+  long-format event rows from the mock session.
+- Unity `6000.3.9f1 -batchmode -nographics -quit` — Tundra build success, no C#
+  compiler errors, and `Exiting batchmode successfully now!`.
+
+Status boundary: objective logging is source-complete and mock-tested. Unity status,
+consent, Verification Space, live execution, mismatch, undo/rollback, and safety
+fields are wired but not live/on-device observed. Controller/gaze interruption and a
+baseline direct-attach acknowledgement remain partially wired. No study data has been
+collected.
