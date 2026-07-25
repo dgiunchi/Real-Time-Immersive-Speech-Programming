@@ -103,6 +103,18 @@
     </div>
 
     <div class="card">
+      <h2>Microphone</h2>
+      <p class="sub">Live status from the headset. Check this before every session.</p>
+      <div id="micStatus" style="font-size:14px;line-height:1.9;">Waiting for headset…</div>
+      <button class="btn-accent" style="width:100%;margin-top:10px;background:#2b4a7a;"
+              onmousedown="remoteRecord(true)" onmouseup="remoteRecord(false)"
+              onmouseleave="remoteRecord(false)"
+              ontouchstart="remoteRecord(true)" ontouchend="remoteRecord(false)">
+        Hold to record (fallback if trigger fails)
+      </button>
+    </div>
+
+    <div class="card">
       <h2>Active task</h2>
       <p class="sub">Pick the task the participant is currently doing.</p>
       <div class="tasks" id="taskChips"></div>
@@ -201,6 +213,33 @@ async function resetScene() {
   if (res.ok) addLog("task", "Scene cleared — ready for a clean start.");
 }
 
+let recordHeld = false;
+async function remoteRecord(on) {
+  if (on === recordHeld) return;      // ignore repeat events from touch/mouse
+  recordHeld = on;
+  await post("/record", { recording: on });
+  addLog("task", on ? "Remote recording STARTED" : "Remote recording stopped");
+}
+
+function renderMic(mic) {
+  const el = document.getElementById("micStatus");
+  if (!mic || mic.stale) {
+    el.innerHTML = '<span style="color:#ff8a8a">● No report from headset</span>' +
+      '<br><span class="sub">Is the app open and connected?</span>';
+    return;
+  }
+  const ok = mic.devices > 0 && mic.live;
+  const bar = Math.min(100, Math.round(mic.level * 800));
+  el.innerHTML =
+    (ok ? '<span style="color:#8aff9e">● Microphone live</span>'
+        : '<span style="color:#ff8a8a">● Microphone NOT capturing</span>') +
+    `<br><span class="sub">devices: ${mic.devices} · ${mic.recording ? "RECORDING" : "idle"}</span>` +
+    `<div style="margin-top:6px;height:8px;background:#222;border-radius:4px;overflow:hidden;">
+       <div style="height:100%;width:${bar}%;background:${bar > 3 ? "#8aff9e" : "#555"};"></div>
+     </div>` +
+    `<span class="sub">${bar > 3 ? "hearing sound" : "silent — speak while holding the trigger"}</span>`;
+}
+
 async function startSession() {
   const participantId = document.getElementById("participantId").value.trim();
   const condition = document.getElementById("condition").value;
@@ -225,6 +264,7 @@ async function poll() {
   try {
     const s = await get("/status");
     document.getElementById("liveDot").classList.add("live");
+    renderMic(s.mic);
     const tEl = document.getElementById("transcript");
     if (s.lastTranscript) {
       if (s.lastTranscript !== lastTranscript) {

@@ -19,6 +19,10 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     public float triggerThreshold = 0.75f;
     public float releaseDebounceSeconds = 0.15f;
     public bool logRecordingState = true;
+    [Tooltip("If true, only the LEFT controller arms push-to-talk. Off by default so either hand works — a mistracked left controller used to silently disable speech.")]
+    public bool preferLeftControllerOnly = false;
+    [Tooltip("Seconds between mic status reports to the researcher panel (0 = off).")]
+    public float statusReportInterval = 1f;
     public PlaybackStats lastFrameStats { get; private set; }
     public NetworkId networkId = new NetworkId(98);
 
@@ -37,10 +41,19 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private bool loggedMicrophoneStarted;
     private float lastTriggerPressedTime;
     private readonly List<InputDevice> leftControllers = new List<InputDevice>();
+    private bool remoteRecordOverride;
+    private float lastStatusReportTime;
+    private float lastLevel;
 
     private void Start()
     {
         context = NetworkScene.Register(this, networkId);
+
+        // A 1-second loop buffer loses audio whenever a frame hitches longer than
+        // that (common on device during compilation/GC), which shows up as an
+        // empty transcript. Ten seconds costs ~320 KB and removes the failure mode.
+        microphoneBufferSeconds = Mathf.Max(10, microphoneBufferSeconds);
+
         EnsureMicrophoneStarted();
     }
 
@@ -62,6 +75,48 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         EnsureMicrophoneStarted();
         UpdateRecordingFromLeftTrigger();
         SendPendingMicrophoneSamples();
+        ReportMicStatus();
+    }
+
+    // Android can silently stop a capture (focus loss, another app grabbing the
+    // mic, permission granted after start). Detect that and restart, otherwise the
+    // app looks fine but records nothing for the rest of the session.
+    private void RestartMicrophoneIfStopped()
+    {
+        if (!microphoneClip) return;
+        if (Microphone.IsRecording(null)) return;
+
+        if (logRecordingState)
+        {
+            Debug.LogWarning("[MicrophoneCapture] capture stopped unexpectedly — restarting");
+        }
+        Microphone.End(null);
+        microphoneClip = null;
+        loggedMicrophoneStarted = false;
+        EnsureMicrophoneStarted();
+    }
+
+    // Publishes mic health to the researcher's control panel so a dead microphone
+    // is visible before a participant is in the headset, instead of being
+    // discovered as an empty transcript mid-session.
+    private void ReportMicStatus()
+    {
+        if (statusReportInterval <= 0f || !sendToServer) return;
+        if (Time.unscaledTime - lastStatusReportTime < statusReportInterval) return;
+        lastStatusReportTime = Time.unscaledTime;
+
+        RestartMicrophoneIfStopped();
+
+        int devices = Microphone.devices.Length;
+        bool live = microphoneClip && Microphone.IsRecording(null);
+        float level = lastFrameStats.sampleCount > 0
+            ? lastFrameStats.volumeSum / lastFrameStats.sampleCount
+            : 0f;
+        lastLevel = Mathf.Max(level, lastLevel * 0.7f); // brief decay so peaks stay readable
+
+        // Kept well under the server's 64-byte control-message threshold.
+        SendPayloadToServer(Encoding.UTF8.GetBytes(
+            $"__MIC_STATUS__:d{devices}|l{(live ? 1 : 0)}|r{(isRecording ? 1 : 0)}|v{lastLevel:F3}"));
     }
 
     private void EnsureMicrophoneStarted()
@@ -129,9 +184,30 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 
     private bool GetLeftTriggerPressed()
     {
+        // Push-to-talk must never be the reason a session fails. Historically this
+        // only polled the LEFT controller's trigger, so a controller that wasn't
+        // tracked (or a participant using the other hand) meant the mic never armed
+        // and the transcript stayed empty with no visible reason.
+        //
+        // Now: either controller, trigger OR grip, plus a remote override the
+        // researcher can drive from the control panel, plus Space in the Editor.
+        if (remoteRecordOverride)
+        {
+            return true;
+        }
+
+#if UNITY_EDITOR || UNITY_STANDALONE
+        if (Input.GetKey(KeyCode.Space))
+        {
+            return true;
+        }
+#endif
+
         leftControllers.Clear();
         InputDevices.GetDevicesWithCharacteristics(
-            InputDeviceCharacteristics.Left | InputDeviceCharacteristics.Controller,
+            preferLeftControllerOnly
+                ? InputDeviceCharacteristics.Left | InputDeviceCharacteristics.Controller
+                : InputDeviceCharacteristics.Controller,
             leftControllers);
 
         foreach (var controller in leftControllers)
@@ -145,9 +221,32 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             {
                 return true;
             }
+
+            if (controller.TryGetFeatureValue(CommonUsages.gripButton, out bool grip) && grip)
+            {
+                return true;
+            }
+
+            if (controller.TryGetFeatureValue(CommonUsages.grip, out float gripValue) && gripValue >= triggerThreshold)
+            {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Researcher fallback: hold recording open from the control panel when the
+    /// controller trigger is unavailable. Driven via StudyOutcomes ("mic/start").
+    /// </summary>
+    public void SetRemoteRecordOverride(bool held)
+    {
+        remoteRecordOverride = held;
+        if (logRecordingState)
+        {
+            Debug.Log($"[MicrophoneCapture] remote record override {(held ? "ON" : "OFF")}");
+        }
     }
 
     public void SetRecording(bool recording)

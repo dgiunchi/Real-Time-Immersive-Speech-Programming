@@ -107,6 +107,7 @@ public class StudyOutcomes : MonoBehaviour
         {
             case "reset": ResetScene(); break;
             case "condition": SetCondition(response); break;
+            case "mic": SetRemoteRecording(response == "start"); break;
             case "task1": Task1(response); break;
             case "task2": Task2(response); break;
             case "task3": Task3(response); break;
@@ -193,6 +194,14 @@ public class StudyOutcomes : MonoBehaviour
         if (panel) panel.Clear();
         var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
         if (agent) agent.StopSpeaking();
+    }
+
+    /// <summary>Researcher-driven push-to-talk fallback from the control panel.</summary>
+    private void SetRemoteRecording(bool on)
+    {
+        var mic = FindObjectOfType<MicrophoneCapture>(true);
+        if (!mic) { Debug.LogWarning("[StudyOutcomes] No MicrophoneCapture found."); return; }
+        mic.SetRemoteRecordOverride(on);
     }
 
     /// <summary>Switches the visible feedback condition live (A/B/C) from the panel.</summary>

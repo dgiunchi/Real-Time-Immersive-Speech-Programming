@@ -34,6 +34,7 @@ const { SpeechToTextService } = require("ubiq-genie-services");
 const nconf = require("nconf");
 
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
+const MIC_STATUS_PREFIX  = "__MIC_STATUS__:";
 const CODE_NETWORK_ID    = 94;  // CodeGenerationManager (runtime Roslyn — Editor only)
 const OUTCOME_NETWORK_ID = 99;  // StudyOutcomes (pre-compiled — works on the Quest)
 const STT_NETWORK_ID     = 98;
@@ -374,6 +375,20 @@ class WizardOfOzApp extends ApplicationController {
                     else if (action === "stop") this.components.transcriptionService.recordingStop(peerUUID);
                     return;
                 }
+                // Mic health from the headset — surfaced on the control panel so a
+                // dead microphone is obvious before a participant is mid-session.
+                // Must return, or this text would be fed to STT as audio.
+                if (ctrl.startsWith(MIC_STATUS_PREFIX)) {
+                    const f = ctrl.slice(MIC_STATUS_PREFIX.length).split("|");
+                    this.micStatus = {
+                        devices:   parseInt((f[0] || "d0").slice(1), 10) || 0,
+                        live:      (f[1] || "l0").slice(1) === "1",
+                        recording: (f[2] || "r0").slice(1) === "1",
+                        level:     parseFloat((f[3] || "v0").slice(1)) || 0,
+                        at:        Date.now()
+                    };
+                    return;
+                }
             }
             this.components.transcriptionService.addAudioChunk(peerUUID, chunk);
         });
@@ -454,8 +469,14 @@ class WizardOfOzApp extends ApplicationController {
 
             // ── Read endpoints ────────────────────────────────────────────────
             if (req.method === "GET" && url === "/status") {
+                // Mic is considered stale if the headset hasn't reported in 5s
+                // (app closed, headset asleep, or network dropped).
+                const mic = this.micStatus
+                    ? { ...this.micStatus, stale: Date.now() - this.micStatus.at > 5000 }
+                    : null;
                 return send(200, {
                     session: this.session,
+                    mic,
                     lastTranscript: this.lastTranscript,
                     transcriptHistory: this.transcriptHistory.slice(-8),
                     activeTask: this.activeTask,
@@ -512,6 +533,18 @@ class WizardOfOzApp extends ApplicationController {
 
                     if (req.method === "POST" && url === "/reset") {
                         return send(200, this.resetScene());
+                    }
+
+                    // Researcher fallback for push-to-talk: hold recording open
+                    // from the panel when the controller trigger isn't usable.
+                    if (req.method === "POST" && url === "/record") {
+                        const on = !!payload.recording;
+                        this.scene.send(new NetworkId(OUTCOME_NETWORK_ID), {
+                            type: "StudyOutcome", peer: "WizardOfOz",
+                            data: `mic/${on ? "start" : "stop"}`
+                        });
+                        this.logEvent("remote-record", on ? "start" : "stop");
+                        return send(200, { ok: true, recording: on });
                     }
 
                     if (req.method === "POST" && url === "/event") {
