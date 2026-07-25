@@ -99,6 +99,24 @@ cargo build --workspace
 cargo test --workspace
 ```
 
+### Verifying the whole system
+
+One command checks every feature end to end — the quality gate, the benchmark and
+its determinism, the guardrail, the live one-binary pipeline, the admin API, the
+intent screen, the 1,057-vector red-team campaign, the ML suites and Mode-D
+container isolation:
+
+```bash
+bash scripts/verify-all.sh
+```
+
+It prints a PASS/FAIL table and exits non-zero if anything fails. Optional tools
+(Docker, .NET, Node, cargo-deny) are reported as SKIP when absent, so a clone with
+only Rust installed still gets a clean run. `--baseline` records the current
+results as the known-good reference; later runs diff against it and report any
+drift, which together with the pinned toolchain is what makes the result
+reproducible over time.
+
 ## Running it
 
 The `run.sh` launcher covers the common cases:
