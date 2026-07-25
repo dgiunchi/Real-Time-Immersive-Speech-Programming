@@ -40,6 +40,10 @@ struct Room {
     name: String,
     publish: bool,
     members: Vec<ConnId>,
+    /// Room-scoped key/value properties, kept as two aligned arrays because that
+    /// is how Ubiq serialises them on the wire.
+    keys: Vec<String>,
+    values: Vec<String>,
 }
 
 /// The in-memory room registry. Not `Clone`; the transport layer holds a single
@@ -48,6 +52,37 @@ struct Room {
 pub struct RoomServer {
     peers: HashMap<ConnId, Peer>,
     rooms: HashMap<String, Room>,
+    /// Opaque client-stored blobs, keyed by uuid (Ubiq `SetBlob`/`GetBlob`).
+    blobs: HashMap<String, String>,
+}
+
+/// The `version` string reported in a `Rooms` discovery response.
+const ROOMS_VERSION: &str = "1.0";
+
+/// Upsert parallel key/value arrays into an existing pair of arrays, keeping the
+/// two in lockstep. A repeated key overwrites; a new key is appended.
+fn upsert_props(
+    keys: &mut Vec<String>,
+    values: &mut Vec<String>,
+    new_keys: &[String],
+    new_values: &[String],
+) {
+    // Defensive: an earlier malformed update could have desynced the arrays.
+    values.resize(keys.len(), String::new());
+    for (i, k) in new_keys.iter().enumerate() {
+        let v = new_values.get(i).cloned().unwrap_or_default();
+        match keys.iter().position(|existing| existing == k) {
+            Some(idx) => {
+                if let Some(slot) = values.get_mut(idx) {
+                    *slot = v;
+                }
+            }
+            None => {
+                keys.push(k.clone());
+                values.push(v);
+            }
+        }
+    }
 }
 
 fn to_network_id(j: NetworkIdJson) -> NetworkId {
@@ -70,8 +105,8 @@ fn room_info_json(room: &Room) -> serde_json::Value {
         "joincode": room.joincode,
         "publish": room.publish,
         "name": room.name,
-        "keys": Vec::<String>::new(),
-        "values": Vec::<String>::new(),
+        "keys": room.keys,
+        "values": room.values,
     })
 }
 
@@ -99,6 +134,18 @@ impl RoomServer {
         match crate::message::parse_control(payload)? {
             ClientMessage::Join(args) => self.on_join(conn, args),
             ClientMessage::Ping(_) => self.on_ping(conn),
+            ClientMessage::AppendPeerProperties(a) => {
+                self.on_append_peer_properties(conn, &a.keys, &a.values)
+            }
+            ClientMessage::AppendRoomProperties(a) => {
+                self.on_append_room_properties(conn, &a.keys, &a.values)
+            }
+            ClientMessage::DiscoverRooms(a) => self.on_discover_rooms(conn, a.joincode.as_deref()),
+            ClientMessage::SetBlob(a) => {
+                self.blobs.insert(a.uuid, a.blob);
+                Ok(Vec::new())
+            }
+            ClientMessage::GetBlob(a) => self.on_get_blob(conn, &a.uuid),
             ClientMessage::Other(_) => Ok(Vec::new()),
         }
     }
@@ -117,6 +164,8 @@ impl RoomServer {
                 name: args.name.clone().unwrap_or_default(),
                 publish: args.publish.unwrap_or(false),
                 members: Vec::new(),
+                keys: Vec::new(),
+                values: Vec::new(),
             });
             let existing = room.members.clone();
             room.members.push(conn);
@@ -172,6 +221,107 @@ impl RoomServer {
             "Ping",
             &serde_json::json!({ "sessionId": session }),
         )?])
+    }
+
+    /// `AppendPeerProperties`: upsert the sender's own key/value properties and
+    /// tell the rest of the room. The sender is not echoed — it set the value and
+    /// already knows it.
+    fn on_append_peer_properties(
+        &mut self,
+        conn: ConnId,
+        keys: &[String],
+        values: &[String],
+    ) -> Result<Vec<Outbound>, RoomError> {
+        let (uuid, room_uuid) = {
+            let peer = match self.peers.get_mut(&conn) {
+                Some(p) => p,
+                None => return Ok(Vec::new()),
+            };
+            upsert_props(&mut peer.info.keys, &mut peer.info.values, keys, values);
+            (peer.info.uuid.clone(), peer.room.clone())
+        };
+        let room_uuid = match room_uuid {
+            Some(r) => r,
+            None => return Ok(Vec::new()),
+        };
+        let members = match self.rooms.get(&room_uuid) {
+            Some(r) => r.members.clone(),
+            None => return Ok(Vec::new()),
+        };
+        let args = serde_json::json!({ "uuid": uuid, "keys": keys, "values": values });
+        let mut out = Vec::new();
+        for member in members {
+            if member != conn {
+                out.push(self.control_to(member, "PeerPropertiesAppended", &args)?);
+            }
+        }
+        Ok(out)
+    }
+
+    /// `AppendRoomProperties`: upsert the room's shared properties and tell every
+    /// member, including the sender — the room state is authoritative, so all
+    /// peers converge on the server's view.
+    fn on_append_room_properties(
+        &mut self,
+        conn: ConnId,
+        keys: &[String],
+        values: &[String],
+    ) -> Result<Vec<Outbound>, RoomError> {
+        let room_uuid = match self.peers.get(&conn).and_then(|p| p.room.clone()) {
+            Some(r) => r,
+            None => return Ok(Vec::new()),
+        };
+        let members = {
+            let room = match self.rooms.get_mut(&room_uuid) {
+                Some(r) => r,
+                None => return Ok(Vec::new()),
+            };
+            upsert_props(&mut room.keys, &mut room.values, keys, values);
+            room.members.clone()
+        };
+        let args = serde_json::json!({ "keys": keys, "values": values });
+        let mut out = Vec::new();
+        for member in members {
+            out.push(self.control_to(member, "RoomPropertiesAppended", &args)?);
+        }
+        Ok(out)
+    }
+
+    /// `DiscoverRooms`: with a joincode, return that one room; without, return
+    /// every room flagged `publish`. Answered even before the caller has joined.
+    fn on_discover_rooms(
+        &self,
+        conn: ConnId,
+        joincode: Option<&str>,
+    ) -> Result<Vec<Outbound>, RoomError> {
+        let rooms: Vec<serde_json::Value> = match joincode {
+            Some(code) => self
+                .rooms
+                .values()
+                .filter(|r| r.joincode == code)
+                .map(room_info_json)
+                .collect(),
+            None => self
+                .rooms
+                .values()
+                .filter(|r| r.publish)
+                .map(room_info_json)
+                .collect(),
+        };
+        let args = serde_json::json!({
+            "rooms": rooms,
+            "version": ROOMS_VERSION,
+            "request": { "joincode": joincode.unwrap_or_default() },
+        });
+        Ok(vec![self.control_reply(conn, "Rooms", &args)?])
+    }
+
+    /// `GetBlob`: return the stored blob, or an empty string if the uuid is
+    /// unknown (Ubiq treats a missing blob as empty rather than an error).
+    fn on_get_blob(&self, conn: ConnId, uuid: &str) -> Result<Vec<Outbound>, RoomError> {
+        let blob = self.blobs.get(uuid).cloned().unwrap_or_default();
+        let args = serde_json::json!({ "uuid": uuid, "blob": blob });
+        Ok(vec![self.control_reply(conn, "Blob", &args)?])
     }
 
     /// Relay an application frame (any NID other than `{0,1}`) from `conn` to the
@@ -236,6 +386,26 @@ impl RoomServer {
             self.rooms.remove(&room_uuid);
         }
         Ok(out)
+    }
+
+    /// Like [`Self::control_to`], but tolerates a connection that has not joined
+    /// yet: `DiscoverRooms`/`GetBlob` may legitimately precede `Join`, in which
+    /// case there is no `clientid` to address, so the reply goes back on the
+    /// reserved RoomServer channel the client is already using.
+    fn control_reply(
+        &self,
+        target: ConnId,
+        ty: &str,
+        args: &serde_json::Value,
+    ) -> Result<Outbound, RoomError> {
+        let nid = self
+            .peers
+            .get(&target)
+            .map(|p| p.clientid)
+            .unwrap_or(ROOMSERVER_ID);
+        let payload = build_server_message(ty, args)?;
+        let bytes = encode_frame(nid, &payload)?;
+        Ok(Outbound { to: target, bytes })
     }
 
     /// Build a control reply of type `ty` addressed to `target`'s `clientid`.
@@ -374,11 +544,254 @@ mod tests {
         assert_eq!(rs.peer_count(), 0);
     }
 
+    /// Build a control-frame payload for an arbitrary `{type, args}` message.
+    fn ctrl(ty: &str, args: serde_json::Value) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            "type": ty,
+            "args": args.to_string(),
+        }))
+        .unwrap()
+    }
+
+    /// Decode an outbound frame's parsed `args` object.
+    fn outbound_args(o: &Outbound) -> serde_json::Value {
+        let d = decode_frame(&o.bytes).unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&d.frame.payload).unwrap();
+        serde_json::from_str(v["args"].as_str().unwrap()).unwrap()
+    }
+
+    /// Look up a property value by key in a `{keys:[…], values:[…]}` object.
+    /// (Peers already carry `ubiq.samples.social.name` from Join, so positional
+    /// indexing is not safe.)
+    fn prop(obj: &serde_json::Value, key: &str) -> Option<String> {
+        let keys = obj["keys"].as_array()?;
+        let idx = keys.iter().position(|k| k == key)?;
+        Some(obj["values"].as_array()?.get(idx)?.as_str()?.to_string())
+    }
+
+    #[test]
+    fn append_peer_properties_updates_peer_and_notifies_others() {
+        let mut rs = RoomServer::new();
+        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
+            .unwrap();
+        rs.on_control(2, &join_payload("room-A", "peer-2", 222))
+            .unwrap();
+
+        let out = rs
+            .on_control(
+                1,
+                &ctrl(
+                    "AppendPeerProperties",
+                    serde_json::json!({ "keys": ["nickname"], "values": ["Sandeep"] }),
+                ),
+            )
+            .unwrap();
+
+        assert_eq!(out.len(), 1, "only the OTHER member is notified");
+        assert_eq!(out[0].to, 2);
+        let (_, ty) = outbound_type(&out[0]);
+        assert_eq!(ty, "PeerPropertiesAppended");
+        let args = outbound_args(&out[0]);
+        assert_eq!(args["uuid"], "peer-1");
+        assert_eq!(args["keys"][0], "nickname");
+        assert_eq!(args["values"][0], "Sandeep");
+
+        // The property is persisted on the peer: a third peer joining is told
+        // about peer-1 WITH the new property.
+        let out3 = rs
+            .on_control(3, &join_payload("room-A", "peer-3", 333))
+            .unwrap();
+        let peer_added: Vec<serde_json::Value> = out3
+            .iter()
+            .filter(|o| o.to == 3 && outbound_type(o).1 == "PeerAdded")
+            .map(|o| outbound_args(o)["peer"].clone())
+            .collect();
+        let p1 = peer_added
+            .iter()
+            .find(|p| p["uuid"] == "peer-1")
+            .expect("peer-1 announced to the newcomer");
+        assert_eq!(prop(p1, "nickname").as_deref(), Some("Sandeep"));
+        // The property set at Join survives alongside the new one.
+        assert_eq!(
+            prop(p1, "ubiq.samples.social.name").as_deref(),
+            Some("Tester")
+        );
+    }
+
+    #[test]
+    fn append_peer_properties_overwrites_an_existing_key() {
+        let mut rs = RoomServer::new();
+        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
+            .unwrap();
+        rs.on_control(2, &join_payload("room-A", "peer-2", 222))
+            .unwrap();
+        let set = |v: &str| {
+            ctrl(
+                "AppendPeerProperties",
+                serde_json::json!({ "keys": ["k"], "values": [v] }),
+            )
+        };
+        rs.on_control(1, &set("first")).unwrap();
+        rs.on_control(1, &set("second")).unwrap();
+
+        // A newcomer sees exactly one `k`, with the latest value.
+        let out = rs
+            .on_control(3, &join_payload("room-A", "peer-3", 333))
+            .unwrap();
+        let p1 = out
+            .iter()
+            .filter(|o| o.to == 3 && outbound_type(o).1 == "PeerAdded")
+            .map(|o| outbound_args(o)["peer"].clone())
+            .find(|p| p["uuid"] == "peer-1")
+            .unwrap();
+        let keys = p1["keys"].as_array().unwrap();
+        assert_eq!(
+            keys.iter().filter(|k| *k == "k").count(),
+            1,
+            "key `k` must appear exactly once, not be appended twice"
+        );
+        assert_eq!(
+            prop(&p1, "k").as_deref(),
+            Some("second"),
+            "value overwritten, not appended"
+        );
+    }
+
+    #[test]
+    fn append_room_properties_notifies_every_member_including_sender() {
+        let mut rs = RoomServer::new();
+        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
+            .unwrap();
+        rs.on_control(2, &join_payload("room-A", "peer-2", 222))
+            .unwrap();
+
+        let out = rs
+            .on_control(
+                1,
+                &ctrl(
+                    "AppendRoomProperties",
+                    serde_json::json!({ "keys": ["scene"], "values": ["forest"] }),
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            out.len(),
+            2,
+            "room state is authoritative: everyone is told"
+        );
+        for o in &out {
+            assert_eq!(outbound_type(o).1, "RoomPropertiesAppended");
+        }
+
+        // Persisted: a newcomer's SetRoom carries the property.
+        let out3 = rs
+            .on_control(3, &join_payload("room-A", "peer-3", 333))
+            .unwrap();
+        let set_room = out3
+            .iter()
+            .find(|o| outbound_type(o).1 == "SetRoom")
+            .expect("SetRoom present");
+        let room = outbound_args(set_room)["room"].clone();
+        assert_eq!(room["keys"][0], "scene");
+        assert_eq!(room["values"][0], "forest");
+    }
+
+    #[test]
+    fn discover_rooms_lists_only_published_rooms() {
+        let mut rs = RoomServer::new();
+        // A published room and an unpublished one.
+        let mut pub_join: serde_json::Value =
+            serde_json::from_slice(&join_payload("room-pub", "p1", 111)).unwrap();
+        let mut args: serde_json::Value =
+            serde_json::from_str(pub_join["args"].as_str().unwrap()).unwrap();
+        args["publish"] = serde_json::json!(true);
+        args["name"] = serde_json::json!("Public Room");
+        pub_join["args"] = serde_json::json!(args.to_string());
+        rs.on_control(1, &serde_json::to_vec(&pub_join).unwrap())
+            .unwrap();
+        rs.on_control(2, &join_payload("room-private", "p2", 222))
+            .unwrap();
+
+        let out = rs
+            .on_control(2, &ctrl("DiscoverRooms", serde_json::json!({})))
+            .unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(outbound_type(&out[0]).1, "Rooms");
+        let args = outbound_args(&out[0]);
+        let rooms = args["rooms"].as_array().unwrap();
+        assert_eq!(rooms.len(), 1, "only the published room is discoverable");
+        assert_eq!(rooms[0]["uuid"], "room-pub");
+        assert_eq!(rooms[0]["name"], "Public Room");
+        assert_eq!(args["version"], "1.0");
+    }
+
+    #[test]
+    fn discover_rooms_by_joincode_finds_the_room_even_before_joining() {
+        let mut rs = RoomServer::new();
+        rs.on_control(1, &join_payload("abc-room", "p1", 111))
+            .unwrap();
+        // joincode is derived from the uuid's first 3 alphanumerics -> "abc".
+        let out = rs
+            .on_control(
+                9, // conn 9 has NOT joined — the reply must still be addressable
+                &ctrl("DiscoverRooms", serde_json::json!({ "joincode": "abc" })),
+            )
+            .unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].to, 9);
+        // Pre-join replies go out on the reserved RoomServer channel.
+        let (nid_b, ty) = outbound_type(&out[0]);
+        assert_eq!(ty, "Rooms");
+        assert_eq!(nid_b, ROOMSERVER_ID.b);
+        let rooms = outbound_args(&out[0])["rooms"].as_array().unwrap().clone();
+        assert_eq!(rooms.len(), 1);
+        assert_eq!(rooms[0]["uuid"], "abc-room");
+    }
+
+    #[test]
+    fn set_blob_then_get_blob_round_trips() {
+        let mut rs = RoomServer::new();
+        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
+            .unwrap();
+
+        let out = rs
+            .on_control(
+                1,
+                &ctrl(
+                    "SetBlob",
+                    serde_json::json!({ "uuid": "blob-1", "blob": "hello-world" }),
+                ),
+            )
+            .unwrap();
+        assert!(out.is_empty(), "SetBlob has no reply");
+
+        let out = rs
+            .on_control(1, &ctrl("GetBlob", serde_json::json!({ "uuid": "blob-1" })))
+            .unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(outbound_type(&out[0]).1, "Blob");
+        let args = outbound_args(&out[0]);
+        assert_eq!(args["uuid"], "blob-1");
+        assert_eq!(args["blob"], "hello-world");
+    }
+
+    #[test]
+    fn get_blob_for_unknown_uuid_returns_empty_not_an_error() {
+        let mut rs = RoomServer::new();
+        rs.on_control(1, &join_payload("room-A", "peer-1", 111))
+            .unwrap();
+        let out = rs
+            .on_control(1, &ctrl("GetBlob", serde_json::json!({ "uuid": "nope" })))
+            .unwrap();
+        assert_eq!(outbound_args(&out[0])["blob"], "");
+    }
+
     #[test]
     fn unknown_control_type_is_ignored() {
         let mut rs = RoomServer::new();
+        // A type this server does not implement (and Ubiq may add later).
         let env = serde_json::to_vec(&serde_json::json!({
-            "type": "DiscoverRooms",
+            "type": "SomeFutureUbiqMessage",
             "args": "{}"
         }))
         .unwrap();

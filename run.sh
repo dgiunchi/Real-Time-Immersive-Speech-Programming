@@ -9,8 +9,11 @@
 #                        (admin dashboard at http://127.0.0.1:7878 — type commands
 #                         in the "manual command" box and watch the guardrail)
 #
+#   ./run.sh embedded    ONE binary, NO Node.js — the Rust RoomServer runs inside
+#                        the backend (point a headset at <laptop-ip>:8009)
+#
 #   ./run.sh quest       the FULL pipeline with a REAL Meta Quest 3 headset
-#                        (Ubiq RoomServer + backend, joined over wifi)
+#                        (external Ubiq RoomServer + backend, joined over wifi)
 #
 #   ./run.sh stop        stop everything started by 'local' / 'quest'
 #   ./run.sh             show this menu
@@ -29,6 +32,7 @@ menu() {
 
     ./run.sh console    security benchmark console (no Quest, no key) — the demo
     ./run.sh local      full pipeline on this laptop, no Quest (admin panel :7878)
+    ./run.sh embedded   ONE binary, no Node.js (Rust RoomServer built in, :8009)
     ./run.sh quest      full pipeline with a real Meta Quest 3 headset
     ./run.sh stop       stop the local/quest stack
 
@@ -59,6 +63,24 @@ case "${1:-}" in
     # Standalone TCP listener mode: do NOT set DCVR_UBIQ_ADDR (that is Quest mode).
     unset DCVR_UBIQ_ADDR
     exec env DCVR_MODE_A=true DCVR_CSHARP_RESEARCH=true \
+         DCVR_ADMIN_PORT=7878 DCVR_ADMIN_BIND=127.0.0.1 \
+         ./target/debug/dreamcodevr-server
+    ;;
+
+  embedded|onebinary|solo)
+    [ -f .env ] && { set -a; . ./.env; set +a; }
+    echo "[embedded] building backend…"
+    cargo build -q -p dreamcodevr-server || { echo "build failed"; exit 1; }
+    echo
+    echo "  ┌────────────────────────────────────────────────────────────────┐"
+    echo "  │  EMBEDDED mode — ONE binary, NO Node.js                         │"
+    echo "  │  The Rust RoomServer runs inside the backend process.           │"
+    echo "  │  RoomServer      : 0.0.0.0:8009  (point the headset here)       │"
+    echo "  │  Admin dashboard : http://127.0.0.1:7878                        │"
+    echo "  └────────────────────────────────────────────────────────────────┘"
+    echo
+    exec env DCVR_EMBED_ROOMSERVER=true \
+         DCVR_MODE_A=true DCVR_CSHARP_RESEARCH=true \
          DCVR_ADMIN_PORT=7878 DCVR_ADMIN_BIND=127.0.0.1 \
          ./target/debug/dreamcodevr-server
     ;;
