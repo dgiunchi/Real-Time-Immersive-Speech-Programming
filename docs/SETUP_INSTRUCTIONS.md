@@ -4,6 +4,10 @@ This guide covers the complete live Quest speech-to-AgenticXR workflow: required
 credentials, speech-to-text, Unity, networking, startup order, acceptance testing,
 and common failure points.
 
+For the maintained one-page source of truth covering all current prerequisites,
+user-supplied information, live acceptance checks, and newly discovered requirements,
+use `docs/LIVE_SYSTEM_REQUIREMENTS.md`.
+
 ## 1. What you need
 
 ### Required credentials
