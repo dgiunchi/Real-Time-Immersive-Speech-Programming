@@ -129,17 +129,37 @@
     </div>
 
     <div class="card">
-      <h2>Active task</h2>
-      <p class="sub">Pick the task the participant is currently doing.</p>
+      <h2>Trial</h2>
+      <p class="sub">Set the task and error category below, then start. Starting a trial clears the scene automatically.</p>
+      <div id="trialStatus" style="font-size:14px;line-height:1.8;padding:10px;background:#161b24;border-radius:8px;">No trial running.</div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button class="btn-accent" style="flex:1;min-width:130px;" onclick="startTrial()">▶ Start trial</button>
+        <button class="btn-ghost"  style="flex:1;min-width:130px;" onclick="completeTrial('completed')">✓ End trial</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+        <button class="btn-ghost"  style="flex:1;min-width:130px;background:#7a2b2b;color:#fff;" onclick="resetScene()">Reset scene</button>
+        <button class="btn-accent" style="flex:1;min-width:130px;background:#2b5c3a;" onclick="nextBlock()">⏭ Next condition</button>
+      </div>
+      <p class="sub" style="margin-top:8px;"><b>Next condition</b> ends this trial, switches the headset to the next assigned condition, loads its task and clears the scene.</p>
+    </div>
+
+    <div class="card">
+      <h2>Task</h2>
+      <p class="sub">The task assigned by the plan is marked ★. Each participant does a different task in each condition.</p>
       <div class="tasks" id="taskChips"></div>
+      <div id="taskPrompt" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Error category</h2>
+      <p class="sub">Which stage of the AI pipeline appears to fail. Fixed for the trial once started.</p>
+      <div class="tasks" id="errorChips"></div>
     </div>
 
     <div class="card">
       <h2>Inject response</h2>
       <p class="sub">Click to send the pre-scripted outcome into the VR scene.</p>
       <div class="responses" id="responses"></div>
-      <button class="btn-accent" style="width:100%;margin-top:12px;background:#7a2b2b;" onclick="resetScene()">Clear scene / Reset for next participant</button>
-      <p class="sub" style="margin-top:6px;">Destroys everything created so far. Use it after free-play (before the real tasks) and between participants.</p>
     </div>
 
     <div class="card">
@@ -153,8 +173,11 @@
 <script>
 const API = "";
 let tasks = [];
+let errorCategories = [];
 let activeTask = "task1";
-let activeVariant = "v1";   // chosen by the counterbalance plan for this block
+let activeError = "parameter";
+let plannedTask = "task1";   // what the counterbalance plan assigns to this block
+let currentTrial = null;
 let logLines = [];
 
 async function get(url) { const r = await fetch(API + url); return r.json(); }
@@ -174,7 +197,13 @@ function addLog(kind, text) {
 
 async function loadTasks() {
   tasks = await get("/tasks");
+  const s = await get("/status");
+  errorCategories = s.errorCategories || [];
+  activeError = s.activeError || activeError;
+  activeTask  = s.activeTask  || activeTask;
+  plannedTask = s.plannedTask || plannedTask;
   renderTaskChips();
+  renderErrorChips();
   renderResponses();
 }
 
@@ -185,8 +214,29 @@ function renderTaskChips() {
     const chip = document.createElement("div");
     chip.className = "task-chip" + (t.key === activeTask ? " active" : "");
     const num = t.key.replace("task","");
-    chip.textContent = `${num}. ${t.name}`;
+    // ★ marks the task the plan assigns, so an off-plan pick is visible at a glance.
+    chip.textContent = (t.key === plannedTask ? "★ " : "") + `${num}. ${t.name}`;
     chip.onclick = () => selectTask(t.key);
+    wrap.appendChild(chip);
+  });
+
+  const t = tasks.find(x => x.key === activeTask);
+  const p = document.getElementById("taskPrompt");
+  if (p) p.innerHTML = t
+    ? `<div style="padding:10px;background:#161b24;border-radius:8px;font-size:14px;">
+         Read to the participant: <b>${t.prompt}</b></div>`
+    : "";
+}
+
+function renderErrorChips() {
+  const wrap = document.getElementById("errorChips");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  errorCategories.forEach(c => {
+    const chip = document.createElement("div");
+    chip.className = "task-chip" + (c.key === activeError ? " active" : "");
+    chip.innerHTML = `${c.name}<br><span style="font-size:11px;opacity:.7;">${c.short}</span>`;
+    chip.onclick = () => selectError(c.key);
     wrap.appendChild(chip);
   });
 }
@@ -197,16 +247,14 @@ function renderResponses() {
   wrap.innerHTML = "";
   if (!t) return;
 
-  const v = t.variants.find(x => x.key === activeVariant) || t.variants[0];
+  const err = (t.errors || []).find(x => x.key === activeError);
+  const cat = errorCategories.find(c => c.key === activeError);
 
-  // What to say to the participant, and what the planned failure is.
   const brief = document.createElement("div");
   brief.style.cssText = "margin-bottom:12px;padding:10px;background:#161b24;border-radius:8px;";
   brief.innerHTML =
-    `<div style="font-size:13px;color:#9fb4d8;">Variant <b>${v.key}</b> — ${v.label}</div>` +
-    `<div style="margin-top:6px;font-size:14px;">Ask the participant: <b>${v.prompt}</b></div>` +
-    `<div style="margin-top:6px;font-size:13px;color:#e8a87c;">Planned omission: <b>${v.missing}</b></div>` +
-    `<div style="margin-top:6px;font-size:12px;color:#8b98ad;">Attempt so far: <b id="attemptCount">0</b></div>`;
+    `<div style="font-size:13px;color:#9fb4d8;">${t.name} · <b>${cat ? cat.name : activeError}</b> error</div>` +
+    (err ? `<div style="margin-top:6px;font-size:13px;color:#e8a87c;">${err.errorText}</div>` : "");
   wrap.appendChild(brief);
 
   const mk = (outcome, title, desc, cls) => {
@@ -218,9 +266,23 @@ function renderResponses() {
   };
 
   mk("error", "INJECT ERROR",
-     `Attempt 1, and again whenever they repeat the same omission (${v.missing}).`, "error");
+     "First attempt, and again whenever they repeat the same mistake.", "error");
   mk("success", "INJECT SUCCESS",
-     "Use once they supply the missing detail.", "success");
+     "Use once they have repaired the problem.", "success");
+}
+
+function renderTrial(trial) {
+  currentTrial = trial;
+  const el = document.getElementById("trialStatus");
+  if (!el) return;
+  if (!trial) { el.innerHTML = "No trial running."; return; }
+  const running = !trial.endedAt;
+  const secs = Math.round(((running ? Date.now() : trial.endedAt) - trial.startedAt) / 1000);
+  el.innerHTML =
+    `<div>${running ? '<span style="color:#8aff9e">● running</span>' : '<span class="sub">● ended — ' + trial.status + '</span>'}
+       &nbsp; Trial <b>${trial.number}</b> &nbsp;
+       <span class="pill ${trial.condition}">Condition ${trial.condition}</span></div>` +
+    `<div class="sub">${trial.task} · ${trial.errorCategory} error · attempts <b>${trial.attempts}</b> · injects ${trial.injects} · ${secs}s</div>`;
 }
 
 function renderPlan(plan, pid) {
@@ -232,7 +294,7 @@ function renderPlan(plan, pid) {
     plan.map(p =>
       `<div style="font-size:13px;padding:3px 0;">
          Block ${p.block}: <span class="pill ${p.condition}">Condition ${p.condition}</span>
-         <span class="sub">variants ${Object.values(p.variants).join(" / ")}</span>
+         <span class="sub">${p.taskName}</span>
        </div>`).join("");
 }
 
@@ -245,24 +307,65 @@ async function loadPlan() {
 
 async function selectTask(key) {
   activeTask = key;
-  const num = key.replace("task","");
-  const res = await post("/task", { task: Number(num) });
-  if (res.variant) activeVariant = res.variant;   // set by the counterbalance plan
+  await post("/task", { task: key });
   renderTaskChips();
   renderResponses();
-  addLog("task", "Active task → " + key);
+  addLog("task", "Task → " + key);
 }
 
-async function inject(outcome, desc) {
-  const num = activeTask.replace("task","");
-  const res = await post("/inject", { task: Number(num), outcome, variant: activeVariant });
+async function selectError(key) {
+  activeError = key;
+  await post("/error-category", { category: key });
+  renderErrorChips();
+  renderResponses();
+  addLog("task", "Error category → " + key);
+}
+
+async function inject(outcome) {
+  const res = await post("/inject", { task: activeTask, outcome, category: activeError });
   if (res.ok) {
-    addLog("inject", `${activeTask}/${res.variant} ${outcome.toUpperCase()} (attempt ${res.attempt})`);
-    const el = document.getElementById("attemptCount");
-    if (el) el.textContent = res.attempt;
+    addLog("inject", `${res.task} ${outcome.toUpperCase()}` +
+      (res.errorCategory ? ` / ${res.errorCategory}` : "") +
+      ` (attempts ${res.attempts}, injects ${res.injects})`);
   } else {
-    addLog("t", "Inject failed: " + (res.error||"?"));
+    addLog("t", "Inject failed: " + (res.error || "?"));
   }
+}
+
+async function startTrial() {
+  const res = await post("/trial/start", { task: activeTask, category: activeError });
+  if (res.ok) {
+    renderTrial(res.trial);
+    addLog("task", `Trial ${res.trial.number} started — ${res.trial.task} / ${res.trial.errorCategory}`);
+  } else {
+    addLog("t", "Start failed: " + (res.error || "?"));
+  }
+}
+
+async function completeTrial(status) {
+  const res = await post("/trial/complete", { status });
+  if (res.ok && res.trial) {
+    renderTrial(res.trial);
+    addLog("task", `Trial ${res.trial.number} ${status} — ${res.trial.attempts} attempts`);
+  } else {
+    addLog("t", res.error || "No active trial");
+  }
+}
+
+async function nextBlock() {
+  const res = await post("/next-block", {});
+  if (res.finished) { addLog("task", "All blocks done for this participant."); return; }
+  const s = res.session || {};
+  plannedTask = res.planned ? res.planned.task : plannedTask;
+  activeTask  = plannedTask;
+  document.getElementById("block").value = s.block;
+  document.getElementById("sessionBadge").innerHTML =
+    `<b>${s.participantId}</b> &nbsp; Block ${s.block} &nbsp;` +
+    `<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
+  renderTaskChips();
+  renderResponses();
+  renderTrial(null);
+  addLog("task", `→ Block ${s.block}: Condition ${s.condition}, ${plannedTask}. Scene cleared.`);
 }
 
 async function resetScene() {
@@ -308,13 +411,16 @@ async function startSession() {
     participantId, block, condition: condition || undefined
   });
   const s = res.session || {};
-  activeVariant = (s.plan && s.plan[block - 1] && s.plan[block - 1].variants[activeTask]) || "v1";
+  // Follow the plan's task for this block so the Wizard doesn't have to look it up.
+  plannedTask = (s.plan && s.plan[block - 1] && s.plan[block - 1].task) || plannedTask;
+  activeTask = plannedTask;
 
   document.getElementById("sessionBadge").innerHTML =
     `<b>${participantId}</b> &nbsp; Block ${s.block} &nbsp;` +
     `<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
-  addLog("task", `Session: ${participantId} block ${s.block} / Condition ${s.condition}`);
+  addLog("task", `Session: ${participantId} block ${s.block} / Condition ${s.condition} / ${plannedTask}`);
   renderPlan(s.plan, participantId);
+  renderTaskChips();
   renderResponses();
 }
 
@@ -333,6 +439,13 @@ async function poll() {
     const s = await get("/status");
     document.getElementById("liveDot").classList.add("live");
     renderMic(s.mic);
+    // Attempts tick up as the participant speaks, so the trial card is polled
+    // rather than only refreshed on button presses.
+    renderTrial(s.trial);
+    if (s.plannedTask && s.plannedTask !== plannedTask) {
+      plannedTask = s.plannedTask;
+      renderTaskChips();
+    }
     const tEl = document.getElementById("transcript");
     if (s.lastTranscript) {
       if (s.lastTranscript !== lastTranscript) {

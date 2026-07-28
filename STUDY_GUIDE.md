@@ -4,37 +4,59 @@ Everything you need to run the Wizard-of-Oz study comparing three feedback
 conditions for AI/speech-pipeline errors in VR authoring.
 
 - **Condition A** — No feedback (participant sees only the scene result)
-- **Condition B** — Text panel (transcript + action + plain-language error)
-- **Condition C** — Embodied agent (visible agent speaks before/after; panel also visible)
+- **Condition B** — Text panel **only** (no agent)
+- **Condition C** — Embodied agent **only** (agent speaks the explanation; no text panel)
+
+B and C are deliberately exclusive: each carries the explanation exactly once, so
+the comparison isolates *modality* rather than *amount* of information. The
+transcript strip ("what the system heard") stays visible in both — it is not an
+explanation, and holding it constant keeps B and C differing in one thing only.
 
 A hidden researcher triggers pre-scripted *success* or *error* outcomes, so
 every participant gets the identical experience — no live LLM.
 
-## Design (agreed with the supervisor, July 2026)
+## Design (agreed with Daniele, July 2026)
 
 **Within-subjects:** every participant does **all three conditions** in three
-blocks. Condition order is counterbalanced across participants (Latin square),
-and each block uses a **different variant** of each task so nobody can carry a
-correction over from an earlier condition.
+blocks, and a **different task in each**. No task is ever repeated within a
+participant, so a correction learned in one condition cannot carry into the next.
 
-**3 tasks × 3 variants.** Variants differ in *which detail the system fails on*:
+**Counterbalancing.** Six condition orders (A-B-C, A-C-B, B-A-C, B-C-A, C-A-B,
+C-B-A) are assigned by participant number. The task rotation advances
+independently — every 6 participants rather than every participant — because
+deriving both from the same number would lock each condition to the same tasks
+forever. Across 18 participants all nine (condition × task) cells are used
+equally.
 
-| Task | v1 | v2 | v3 |
-|------|----|----|----|
-| 1. Create an object | missing position | missing size | missing proportions |
-| 2. Change appearance | ambiguous target | wrong shade | doesn't persist |
-| 3. Make it move | wrong centre | wrong plane | wrong speed |
+Type the participant ID into the panel and it shows the assigned plan.
 
-**Trial protocol** (per task, per condition):
-1. Researcher selects the task; reads the prompt shown on the panel.
-2. Participant speaks their instruction → **researcher clicks INJECT ERROR**.
-3. Feedback appears according to the condition (A none / B panel / C agent).
-4. Participant tries again. If they supply the missing detail → **INJECT
-   SUCCESS**. If they repeat the same omission → **INJECT ERROR again** (do not
-   hand them the correct result), and prompt them to check the feedback.
+**3 tasks × 4 AI-pipeline error categories.** Any task can be made to fail at any
+stage of the pipeline the participant believes is running:
 
-The panel shows the planned omission and the attempt count so you always know
-which button to press.
+| Category | What appears to have gone wrong |
+|---|---|
+| **Speech recognition** | the words were mis-heard ("wall" for "ball") |
+| **Intent interpretation** | words right, wrong action inferred (five balls, not one) |
+| **Missing parameter** | action right, a needed detail absent (no position given) |
+| **Execution** | understood correctly, performed badly (falls through the floor) |
+
+The Wizard picks the category before starting each trial.
+
+**Trial protocol:**
+1. Select the **task** (★ = the one the plan assigns) and the **error category**.
+2. Click **▶ Start trial** — this clears the scene and starts the clock.
+3. Read the prompt shown on the panel to the participant.
+4. They speak → click **INJECT ERROR**.
+5. Feedback appears per condition (A none / B panel / C agent).
+6. They try again:
+   - problem repaired → **INJECT SUCCESS**, then **✓ End trial**
+   - same mistake repeated → **INJECT ERROR again** (do not hand them the
+     answer), and prompt them to check the feedback
+7. Click **⏭ Next condition** — ends the trial, switches the headset to the next
+   assigned condition, loads its task and clears the scene in one press.
+
+Every trial starts from an identical scene: generated objects removed,
+environment colours restored, agent returned to idle.
 
 ---
 
@@ -95,7 +117,7 @@ the Quest.
 
 ### 3. Set up the participant on the control panel
 - Enter the **Participant ID** (e.g. `P01`). The panel immediately shows that
-  participant's **counterbalanced plan** — which condition and variants to run
+  participant's **counterbalanced plan** — which condition and which task to run
   in each of the three blocks.
 - Leave **Condition** on *"Follow counterbalanced plan"* and pick the **Block**
   you're about to run, then click **Start / Update Session**.
@@ -105,39 +127,42 @@ the Quest.
 Before the first block, have the participant complete the **Background form**
 (link in the panel header) — once per participant.
 
-### 4. Run each task
-For each of the 3 tasks in the block:
-1. Click the task chip on the control panel. The panel shows the **prompt to
-   read aloud**, the **planned omission**, and the **attempt count**.
-2. Read the prompt to the participant.
-3. They speak their instruction (hold the controller trigger — either hand — or
+### 4. Run the block's task
+Each block is **one task** in **one condition**.
+
+1. Check the **Task** card — ★ marks the task the plan assigns. Pick the **error
+   category** you are injecting.
+2. Click **▶ Start trial**. The scene clears and the clock starts.
+3. Read the prompt shown on the panel to the participant.
+4. They speak their instruction (hold the controller trigger — either hand — or
    **Space** in the Unity Editor). The transcript appears on the panel.
-4. Click **INJECT ERROR**. After a short "thinking" pause the outcome appears
+5. Click **INJECT ERROR**. After a short "thinking" pause the outcome appears
    and the condition's feedback fires.
-5. They try again:
-   - supplied the missing detail → **INJECT SUCCESS**
-   - repeated the same omission → **INJECT ERROR again**, and say *"have another
+6. They try again:
+   - problem repaired → **INJECT SUCCESS**
+   - same mistake repeated → **INJECT ERROR again**, and say *"have another
      look at the feedback and try once more"*
-6. Use **Quick note** for observations.
-7. **Clear scene / Reset** between tasks/participants.
+7. Click **✓ End trial**, then **⏭ Next condition** to move on.
+8. Use **Quick note** for observations at any point.
 
 > **There is no live AI.** You decide every outcome by clicking. If you click
 > nothing, nothing happens — that is the method, and it is what keeps the
 > experience identical for everyone in a condition.
 
-**What the participant sees (e.g. task 1 v1 — the position omission):**
+**What the participant sees (task 1, missing-parameter error):**
 - **A – No feedback:** the ball appears in the wrong place. Nothing else. They
   must work it out alone. (Control condition.)
-- **B – Text panel:** the ball appears **and** the panel explains: *"A ball was
+- **B – Text panel:** the ball appears and the panel explains: *"A ball was
   created, but at the centre of the room rather than near you — no position was
-  specified."*
-- **C – Embodied agent:** everything in B **plus** a visible assistant that
-  acknowledges beforehand (*"Okay, I'll create a ball for you."*) and comments
-  afterwards (*"…I wasn't told where to put it. Where would you like it?"*).
+  specified."* No agent.
+- **C – Embodied agent:** the ball appears and a visible assistant acknowledges
+  beforehand (*"Okay, I'll create a ball for you."*) then explains afterwards
+  (*"…I wasn't told where to put it. Where would you like it?"*). No text panel.
 
 ### 4a. Editing the tasks (no rebuild needed)
 Task prompts, error wording and agent dialogue live in the `TASKS` object in
-[`Server/samples/apps/wizard_of_oz/app.js`](Server/samples/apps/wizard_of_oz/app.js).
+[`Server/samples/apps/wizard_of_oz/app.js`](Server/samples/apps/wizard_of_oz/app.js)
+— three tasks, each with all four error categories and a success outcome.
 The headset executes these as data, so **edits take effect on the next server
 restart — you do not need to rebuild or reinstall the APK.**
 
@@ -167,23 +192,32 @@ All files are written to a `Logs/` folder at the top of the project:
 ```
 Real-Time-Immersive-Speech-Programming-…/Logs/
 ```
-- `sessions.csv` — one row per block start, including the participant's full
-  counterbalanced condition order and variant plan
-- `<PID>_events.csv` — the analysis file. One row per event with
-  `timestamp, participantId, condition, block, task, variant, attempt,
-  errorType, eventType, msSinceTrialStart, detail`. Event types include
+- **`trials.csv` — the primary analysis file.** One row per trial:
+  `participantId, conditionOrder, block, condition, trial, task, errorCategory,
+  startTime, endTime, durationMs, completionStatus, attempts, injects`.
+  This is everything the design calls for in one place — no joining needed for
+  per-condition comparisons.
+- `sessions.csv` — one row per block start, with the participant's condition
+  order and task plan
+- `<PID>_events.csv` — the fine-grained trace. One row per event with
+  `timestamp, participantId, condition, block, trial, task, errorCategory,
+  attempt, eventType, msSinceTrialStart, detail`. Event types include
   `transcript` (what they said), `inject` (what you triggered),
-  `feedback-shown` (what they were actually told), `task-change`, `note`.
+  `feedback-shown` (what they were actually told), `trial-start`, `trial-end`,
+  `block-advance`, `note`.
 - `<PID>_background.csv` — pre-session demographics (one row)
 - `<PID>_condition.csv` — post-condition questionnaires (three rows, one per
   condition)
 
 These CSVs are git-ignored so participant data never gets committed.
 
-**What you can measure from this:** number of attempts before success per
-condition; time from first utterance to success; whether the second input
-supplied the missing detail; first-vs-recovery transcript comparison — all
-grouped by condition, which is what the hypotheses need.
+**What you can measure from this:** attempts to recovery per condition; trial
+duration; completion status; first-vs-recovery transcript comparison — grouped
+by condition and by error category, which is what the hypotheses need.
+
+> **`attempts` counts participant utterances**, not your button presses (those
+> are `injects`). It is a measure of how much the participant had to try, which
+> is the recovery measure the study is about.
 
 ---
 

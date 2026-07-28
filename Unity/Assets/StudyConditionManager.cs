@@ -3,9 +3,18 @@ using TMPro;
 
 /// <summary>
 /// Manages the three study conditions:
-///   A – No feedback: participant sees only the scene result.
-///   B – Text panel:  a 2D panel shows transcript, code summary, and error message.
-///   C – Embodied agent: the virtual agent speaks and the text panel is also available.
+///   A – No feedback:    participant sees only the scene result.
+///   B – Text panel:     a 2D panel explains what happened. No agent.
+///   C – Embodied agent: the agent speaks the explanation. NO text panel.
+///
+/// B and C are deliberately exclusive. Showing the panel in C as well would mean
+/// C differed from B by *adding* a channel rather than *replacing* one, so any
+/// difference between them could just be "more information" — the comparison
+/// only isolates modality if each condition carries the explanation once.
+///
+/// The transcript panel ("what the system heard") is not an explanation, so it
+/// stays visible in both B and C; it is infrastructure held constant across the
+/// two feedback conditions rather than part of the manipulation.
 ///
 /// Set the condition in the Inspector before a session, or call SetCondition() at runtime.
 /// All condition-specific GameObjects are toggled here so the session is reproducible.
@@ -43,7 +52,8 @@ public class StudyConditionManager : MonoBehaviour
     {
         activeCondition = condition;
 
-        bool showPanel  = condition == Condition.B_TextPanel || condition == Condition.C_EmbodiedAgent;
+        // Explanation panel in B only — in C the agent carries the explanation.
+        bool showPanel  = condition == Condition.B_TextPanel;
         bool showAgent  = condition == Condition.C_EmbodiedAgent;
         bool showTranscript = condition != Condition.A_NoFeedback;
 
@@ -55,8 +65,8 @@ public class StudyConditionManager : MonoBehaviour
         var label = condition switch
         {
             Condition.A_NoFeedback    => "Condition A – No Feedback",
-            Condition.B_TextPanel     => "Condition B – Text Panel",
-            Condition.C_EmbodiedAgent => "Condition C – Embodied Agent",
+            Condition.B_TextPanel     => "Condition B – Text Panel Only",
+            Condition.C_EmbodiedAgent => "Condition C – Embodied Agent Only",
             _                         => ""
         };
 

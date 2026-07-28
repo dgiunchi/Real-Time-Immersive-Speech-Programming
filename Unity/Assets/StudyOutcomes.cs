@@ -117,7 +117,9 @@ public class StudyOutcomes : MonoBehaviour
         bool feedback = !cond || !cond.IsConditionA();
         bool embodied = cond && cond.IsConditionC();
 
-        if (feedback)
+        // The "thinking" state belongs to whichever channel will deliver the
+        // explanation, so it must not appear on the panel in condition C.
+        if (feedback && !embodied)
         {
             var panel = FindObjectOfType<FeedbackPanelController>(true);
             if (panel) panel.ShowProcessing();
@@ -194,21 +196,49 @@ public class StudyOutcomes : MonoBehaviour
 
         if (spec.applyToAll)
         {
-            foreach (var r in FindObjectsOfType<Renderer>()) r.material.color = c;
+            // The "wrong target" error repaints the whole environment, including
+            // scenery the study did not create. Those renderers are not destroyed
+            // by a reset, so their colours have to be remembered and put back —
+            // otherwise the next condition starts in a green room.
+            foreach (var r in FindObjectsOfType<Renderer>())
+            {
+                Remember(r);
+                r.material.color = c;
+            }
             return;
         }
 
         var target = FindInteractable();
         if (!target) { Debug.LogWarning("[StudyOutcomes] recolor: nothing to recolor"); return; }
 
+        Remember(target);
         target.material.color = c;
         if (spec.revert) StartCoroutine(RevertColour(target));
     }
 
+    /// Restores the object's real previous colour, not an assumed white — the
+    /// participant must see it return to how it actually was.
     private IEnumerator RevertColour(Renderer target)
     {
         yield return new WaitForSeconds(2f);
-        if (target) target.material.color = Color.white;
+        if (target && originalColours.TryGetValue(target, out var original))
+            target.material.color = original;
+    }
+
+    // ── Original-colour bookkeeping ───────────────────────────────────────────
+    private readonly Dictionary<Renderer, Color> originalColours = new Dictionary<Renderer, Color>();
+
+    /// Records a renderer's colour the first time the study changes it.
+    private void Remember(Renderer r)
+    {
+        if (r && !originalColours.ContainsKey(r)) originalColours[r] = r.material.color;
+    }
+
+    private void RestoreColours()
+    {
+        foreach (var kv in originalColours)
+            if (kv.Key) kv.Key.material.color = kv.Value;
+        originalColours.Clear();
     }
 
     private void DoOrbit(OutcomeSpec spec)
@@ -219,6 +249,18 @@ public class StudyOutcomes : MonoBehaviour
         go.tag = "Interactable";
 
         foreach (var old in go.GetComponents<StudyOrbit>()) Destroy(old);   // don't stack orbits
+
+        // "drift" is the mis-heard-verb error: the object is sent away instead of
+        // being set circling, so it must not get an orbit component at all.
+        if (spec.drift)
+        {
+            var rb = go.GetComponent<Rigidbody>() ?? go.AddComponent<Rigidbody>();
+            rb.useGravity = false;
+            rb.linearVelocity = Vector3.zero;
+            rb.AddForce(OriginFwd * 1.5f + Vector3.up * 0.4f, ForceMode.VelocityChange);
+            return;
+        }
+
         var orbit = go.AddComponent<StudyOrbit>();
         orbit.speed = spec.orbitSpeed;
         orbit.stopOnCollision = spec.stopOnCollision;
@@ -231,19 +273,26 @@ public class StudyOutcomes : MonoBehaviour
     }
 
     // ── Feedback (conditions B and C) ─────────────────────────────────────────
+    // Exactly one channel carries the explanation: the panel in B, the agent in
+    // C. See StudyConditionManager for why these are exclusive rather than
+    // cumulative.
     private void NotifyFeedback(OutcomeSpec spec)
     {
         var cond = FindObjectOfType<StudyConditionManager>(true);
         if (cond && cond.IsConditionA()) return;   // A shows nothing, by design
 
-        var panel = FindObjectOfType<FeedbackPanelController>(true);
-        if (panel)
-        {
-            if (string.IsNullOrWhiteSpace(spec.errorText)) panel.ShowSuccess(spec.label);
-            else panel.ShowError(spec.label, spec.errorText);
-        }
+        bool embodied = cond && cond.IsConditionC();
 
-        if (cond && cond.IsConditionC() && !string.IsNullOrWhiteSpace(spec.agentPost))
+        if (!embodied)
+        {
+            var panel = FindObjectOfType<FeedbackPanelController>(true);
+            if (panel)
+            {
+                if (string.IsNullOrWhiteSpace(spec.errorText)) panel.ShowSuccess(spec.label);
+                else panel.ShowError(spec.label, spec.errorText);
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(spec.agentPost))
         {
             var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
             if (agent) agent.SpeakCustom(spec.agentPost);
@@ -251,8 +300,15 @@ public class StudyOutcomes : MonoBehaviour
     }
 
     // ── Scene management ──────────────────────────────────────────────────────
+    /// Returns the scene to its pre-trial state: generated objects removed,
+    /// environment colours restored, feedback and agent cleared. Every trial
+    /// starts from here so no participant inherits the previous condition.
     private void ResetScene()
     {
+        StopAllCoroutines();          // cancel a pending colour revert or thinking delay
+
+        RestoreColours();
+
         for (int i = CreatedRoot.childCount - 1; i >= 0; i--)
             Destroy(CreatedRoot.GetChild(i).gameObject);
 
@@ -261,8 +317,15 @@ public class StudyOutcomes : MonoBehaviour
 
         var panel = FindObjectOfType<FeedbackPanelController>(true);
         if (panel) panel.Clear();
+
+        // Agent must return to idle, not be left mid-sentence from the last trial.
         var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
         if (agent) agent.StopSpeaking();
+        var body = FindObjectOfType<EmbodiedAgentBody>(true);
+        if (body) body.OnFinishedSpeaking();
+
+        var transcript = FindObjectOfType<TranscriptDisplay>(true);
+        if (transcript) transcript.ClearTranscript();
     }
 
     private void SetRemoteRecording(bool on)
