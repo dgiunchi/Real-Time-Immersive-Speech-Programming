@@ -43,181 +43,224 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 // Study results live in <project root>/Logs (git-ignored, human-findable).
 const LOG_DIR    = path.resolve(__dirname, "..", "..", "..", "..", "Logs");
 
-// ── Study content: 3 tasks × 4 AI-pipeline error categories ──────────────────
+// ── Study content: 3 tasks × 3 variants × 4 error types ──────────────────────
 //
-// DESIGN (per implementation note agreed with Daniele, July 2026)
-// Within-subjects: every participant does all three conditions, and a DIFFERENT
-// task in each. Because no task is ever repeated within a participant, tasks no
-// longer need equivalent "variants" — the task rotation itself is what stops a
-// correction learned in condition 1 from carrying into conditions 2 and 3.
+// ROOT-CAUSE ATTRIBUTION (agreed with supervisor)
+// Every error must be a plausible consequence of something ambiguous, missing or
+// underspecified in the participant's OWN instruction — never an arbitrary system
+// glitch. The scene stays coherent at first; only through further interaction does
+// the participant realise the ambiguity was on their end. All wording below is
+// written to that principle: the feedback names the missing detail, it does not
+// announce a malfunction.
 //
-// Each task instead carries the FOUR AI-pipeline error categories, so the same
-// task can fail in four distinguishable ways and the Wizard chooses which one to
-// inject. The categories follow the stages of the speech→action pipeline the
-// participant believes is running:
+// The scene is the DreamCodeVR campfire scene: a sphere, a cube and a campfire.
+// StudyOutcomes rebuilds the sphere and cube on every trial start so each trial
+// begins from an identical arrangement.
 //
-//   speech    — speech recognition mis-heard the words
-//   intent    — the words were right, the interpreted action was wrong
-//   parameter — the action was right, but a needed detail was missing/ambiguous
-//   execution — the action was right and understood, but performed incorrectly
-//
-// TRIAL PROTOCOL
-//   attempt 1 → Wizard injects the selected error category
-//   feedback  → per condition (A: none, B: text panel only, C: agent only)
-//   attempt 2 → if the participant repairs the problem, inject SUCCESS;
-//               if they repeat the same mistake, inject the SAME error again.
+// Errors are pre-scripted and injected by the Wizard REGARDLESS of what the
+// participant actually says — the participant is never told what to say.
 //
 // Everything here is data, not code: the headset runs these specs directly, so
-// tasks/wording/dialogue can be edited WITHOUT rebuilding and redeploying the
-// Quest APK. Edit freely, then restart the server.
+// wording and dialogue can be edited WITHOUT rebuilding the APK. Restart the
+// server to pick up changes.
 
 const ERROR_CATEGORIES = [
-    { key: "speech",    name: "Speech recognition",   short: "Mis-heard the words" },
-    { key: "intent",    name: "Intent interpretation", short: "Wrong action inferred" },
-    { key: "parameter", name: "Missing parameter",     short: "Needed detail absent" },
-    { key: "execution", name: "Execution",             short: "Performed incorrectly" }
+    { key: "missing_detail",       name: "Missing Detail",       short: "Nothing happened" },
+    { key: "misrecognition",       name: "Misrecognition",       short: "Wrong thing acted on" },
+    { key: "happened_differently", name: "Happened Differently", short: "Right action, wrong result" },
+    { key: "happened_plus_extra",  name: "Happened Plus Extra",  short: "Correct, plus something extra" }
 ];
+
+const ERROR_KEYS = ERROR_CATEGORIES.map(c => c.key);
+
+// ── Task builders ────────────────────────────────────────────────────────────
+// Variants share one structure and differ only in the object/colour/target named.
+// Generating them from a template rather than writing 36 blocks by hand keeps the
+// four error types genuinely parallel across variants — the property the design
+// depends on for variants to be interchangeable.
+
+/** Task 1 — create an object that appears in the participant's hand. */
+function buildTask1(v) {
+    const o = v.object;                       // display name, e.g. "ball"
+    return {
+        label: `Create a ${o} in your hand`,
+        prompt: `In this scene you can see a sphere, a cube, and a campfire. We would ` +
+                `like you to ask the system to create a ${o} that appears in your hand ` +
+                `when you raise it. Use your own words, as if you were talking to someone.`,
+        errors: {
+            // Root cause: hand height not specified → nothing appears.
+            missing_detail: {
+                action: "noop",
+                errorText: `The ${o} did not appear. Missing detail: hand height.`,
+                agentPost: `It looks like the hand height wasn't specified — try saying: ` +
+                           `create a ${o} when my hand is above shoulder level.`
+            },
+            // Root cause: the object word was spoken quietly → a wall appears instead.
+            misrecognition: {
+                action: "spawn", shape: "cube", pos: "hand",
+                scaleX: 1.2, scaleY: 0.9, scaleZ: 0.08,
+                errorText: `Wrong object created. Please say '${o}' clearly.`,
+                agentPost: `I think I created the wrong object — could you say '${o}' ` +
+                           `a little more slowly?`
+            },
+            // Root cause: exact hand placement ambiguous → it lands on the floor.
+            happened_differently: {
+                action: "spawn", shape: v.shape, pos: "floor", physics: true,
+                scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
+                errorText: `The ${o} appeared, but not in your hand. Please specify the location.`,
+                agentPost: `The ${o} was created, but I wasn't sure exactly where you wanted it.`
+            },
+            // Root cause: quantity never specified → several appear.
+            happened_plus_extra: {
+                action: "spawn", shape: v.shape, pos: "hand", physics: true, count: 5,
+                scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
+                errorText: `Multiple ${o}s appeared. Please specify: only one ${o}.`,
+                agentPost: `A ${o} appeared, but I wasn't sure how many you wanted.`
+            }
+        },
+        // Correct outcome: no agent intervention in C, no panel in B, nothing in A.
+        success: {
+            action: "spawn", shape: v.shape, pos: "hand",
+            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color
+        }
+    };
+}
+
+/** Task 2 — move an object so it comes to rest next to a target. */
+function buildTask2(v) {
+    const m = v.mover, t = v.target, w = v.wrongMover;
+    return {
+        label: `Move the ${m} to the ${t}`,
+        prompt: `In this scene you can see a sphere, a cube, and a campfire. We would ` +
+                `like you to ask the system to move the ${m} so that it ends up next to ` +
+                `the ${t}. Use your own words.`,
+        errors: {
+            // Root cause: exact distance not specified → it does not move.
+            missing_detail: {
+                action: "noop",
+                errorText: `The ${m} did not move. Missing detail: exact distance.`,
+                agentPost: `I wasn't sure exactly how close to the ${t} you wanted the ${m}.`
+            },
+            // Root cause: the object word was not caught → the other object moves.
+            misrecognition: {
+                action: "move", target: w, moveTo: t,
+                errorText: `Wrong object moved. Please say '${m}' clearly.`,
+                agentPost: `I think I moved the wrong object — could you say '${m}' ` +
+                           `a little more slowly?`
+            },
+            // Root cause: direction ambiguous → it moves the wrong way.
+            happened_differently: {
+                action: "move", target: m, moveTo: t, away: true,
+                errorText: `The ${m} moved in the wrong direction.`,
+                agentPost: `The ${m} moved, but I think I went the wrong way.`
+            },
+            // Root cause: size constraint never specified → it arrives but grows.
+            happened_plus_extra: {
+                action: "move", target: m, moveTo: t, scaleMultiplier: 2.2,
+                errorText: `The ${m} moved, but its size also changed unexpectedly.`,
+                agentPost: `The ${m} moved to the ${t}, but I think I also changed its size.`
+            }
+        },
+        success: { action: "move", target: m, moveTo: t }
+    };
+}
+
+/** Task 3 — recolour an object and move it next to a target. */
+function buildTask3(v) {
+    const o = v.object, c = v.colourName, t = v.target;
+    return {
+        label: `Make the ${o} ${c} and move it next to the ${t}`,
+        prompt: `In this scene you can see a sphere, a cube, and a campfire. We would ` +
+                `like you to ask the system to change the colour of the ${o} and move it ` +
+                `next to the ${t}. Use your own words.`,
+        errors: {
+            // Root cause: exact position not specified → colour lands, move does not.
+            missing_detail: {
+                action: "recolor", target: o, color: v.colour,
+                errorText: `The colour changed, but the ${o} did not move.`,
+                agentPost: `I changed the colour, but I wasn't sure exactly where you ` +
+                           `wanted the ${o}.`
+            },
+            // Root cause: colour word not caught → the wrong colour is applied.
+            misrecognition: {
+                action: "recolor", target: o, color: v.wrongColour, moveTo: t,
+                errorText: `Wrong colour applied. Please say the colour clearly.`,
+                agentPost: `I think I got the wrong colour — could you say the colour ` +
+                           `a little more slowly?`
+            },
+            // Root cause: "next to" interpreted imprecisely → it ends up far away.
+            happened_differently: {
+                action: "recolor", target: o, color: v.colour, moveTo: t, far: true,
+                errorText: `The ${o} moved, but not to the right place.`,
+                agentPost: `I moved the ${o}, but I don't think I put it in the right place.`
+            },
+            // Root cause: stillness never specified → it arrives correctly but spins.
+            happened_plus_extra: {
+                action: "recolor", target: o, color: v.colour, moveTo: t, spin: true,
+                errorText: `The ${o} changed colour and moved correctly, but it is now spinning.`,
+                agentPost: `The ${o} is right, but I think I also made it spin.`
+            }
+        },
+        success: { action: "recolor", target: o, color: v.colour, moveTo: t }
+    };
+}
 
 const TASKS = {
     task1: {
-        name: "Create an object",
-        prompt: "Ask the system to create a ball in front of you.",
-        errors: {
-            speech: {
-                action: "spawn", shape: "cube", pos: "hand", physics: false,
-                scaleX: 1.2, scaleY: 0.9, scaleZ: 0.08,
-                label: "Created a wall",
-                errorText: "A wall was created. The speech was heard as \"wall\" rather than \"ball\".",
-                agentPre: "Okay, creating that for you.",
-                agentPost: "I've made a wall — I heard \"wall\" rather than \"ball\". Could you say that again?"
-            },
-            intent: {
-                action: "spawn", shape: "sphere", pos: "hand", physics: true, count: 5,
-                scaleX: 0.15, scaleY: 0.15, scaleZ: 0.15,
-                label: "Created balls",
-                errorText: "Five balls were created instead of one — the request was taken as a request for several.",
-                agentPre: "Sure, I'll create that now.",
-                agentPost: "I've made five balls — I took that as a request for several. Did you want just one?"
-            },
-            parameter: {
-                action: "spawn", shape: "sphere", pos: "origin", physics: true,
-                scaleX: 0.15, scaleY: 0.15, scaleZ: 0.15,
-                label: "Created a ball",
-                errorText: "A ball was created, but at the centre of the room rather than near you — no position was specified.",
-                agentPre: "Okay, I'll create a ball for you.",
-                agentPost: "I made the ball, but I wasn't told where to put it, so it went to the centre of the room. Where would you like it?"
-            },
-            execution: {
-                action: "spawn", shape: "sphere", pos: "high", physics: true, useCollider: false,
-                scaleX: 0.15, scaleY: 0.15, scaleZ: 0.15,
-                label: "Created a ball",
-                errorText: "The ball was created in the right place but fell straight through the floor — it was made without a solid surface.",
-                agentPre: "Alright, making a ball in front of you.",
-                agentPost: "The ball was created, but it dropped through the floor — it came out without a solid surface. Shall I try again?"
-            }
-        },
-        success: {
-            action: "spawn", shape: "sphere", pos: "hand", physics: true,
-            scaleX: 0.15, scaleY: 0.15, scaleZ: 0.15,
-            label: "Created a ball in front of you",
-            agentPre: "Alright, creating a ball right in front of you.",
-            agentPost: "There you go — a ball just in front of you."
+        name: "Create an object in your hand",
+        variants: {
+            v1: buildTask1({ object: "ball",   shape: "sphere",   scale: 0.15, color: "" }),
+            v2: buildTask1({ object: "cube",   shape: "cube",     scale: 0.15, color: "" }),
+            v3: buildTask1({ object: "lantern", shape: "capsule", scale: 0.16, color: "#ffd66b" })
         }
     },
-
     task2: {
-        name: "Change an object's appearance",
-        prompt: "Ask the system to make the object green.",
-        errors: {
-            speech: {
-                action: "recolor", color: "#efe3c0",
-                label: "Applied cream",
-                errorText: "The object was coloured cream. The speech was heard as \"cream\" rather than \"green\".",
-                agentPre: "Okay, applying that colour.",
-                agentPost: "I've made it cream — I heard \"cream\" rather than \"green\". Could you repeat that?"
-            },
-            intent: {
-                action: "recolor", color: "#2ecc40", applyToAll: true,
-                label: "Applied green",
-                errorText: "Everything in the scene turned green — the colour was applied to the whole scene rather than to one object.",
-                agentPre: "You'd like something green — let me apply that.",
-                agentPost: "I turned everything green because I wasn't sure which object you meant. Which one should it be?"
-            },
-            parameter: {
-                action: "recolor", color: "#00b3b3",
-                label: "Applied a green",
-                errorText: "The object was coloured, but it came out teal — no particular shade of green was specified.",
-                agentPre: "Sure, making it green.",
-                agentPost: "It's coloured, but the shade came out teal. No particular green was specified — which shade did you want?"
-            },
-            execution: {
-                action: "recolor", color: "#2ecc40", revert: true,
-                label: "Applied green",
-                errorText: "The colour was applied but did not persist — it reverted to the original after a moment.",
-                agentPre: "Applying green now.",
-                agentPost: "It turned green briefly and then reverted — the change didn't stick. Shall I try again?"
-            }
-        },
-        success: {
-            action: "recolor", color: "#2ecc40",
-            label: "Coloured the object green",
-            agentPre: "Okay, colouring that object green.",
-            agentPost: "Done — that object is now green."
+        name: "Move an object to a target",
+        variants: {
+            v1: buildTask2({ mover: "sphere", target: "campfire", wrongMover: "cube"   }),
+            v2: buildTask2({ mover: "cube",   target: "campfire", wrongMover: "sphere" }),
+            v3: buildTask2({ mover: "sphere", target: "cube",     wrongMover: "cube"   })
         }
     },
-
     task3: {
-        name: "Make an object move",
-        prompt: "Ask the system to make the object circle slowly around the cube.",
-        errors: {
-            speech: {
-                action: "orbit", orbitTarget: "cube", orbitAxis: "up", orbitSpeed: 60, drift: true,
-                label: "Sent the object away",
-                errorText: "The object drifted off instead of circling. The speech was heard as \"cross\" rather than \"circle\".",
-                agentPre: "Okay, setting that motion up.",
-                agentPost: "It's moved away rather than circling — I heard \"cross\" rather than \"circle\". Could you say that again?"
-            },
-            intent: {
-                action: "orbit", orbitTarget: "origin", orbitAxis: "up", orbitSpeed: 60,
-                label: "Started an orbit",
-                errorText: "The object is circling the centre of the room rather than the cube — the wrong thing was taken as the centre.",
-                agentPre: "Okay, I'll set it circling.",
-                agentPost: "It's circling, but around the centre of the room rather than the cube. What should it circle around?"
-            },
-            parameter: {
-                action: "orbit", orbitTarget: "cube", orbitAxis: "up", orbitSpeed: 900,
-                label: "Started an orbit",
-                errorText: "The object is circling far too fast to follow — no speed was specified.",
-                agentPre: "Okay, making it circle the cube.",
-                agentPost: "It's circling, but very fast — no speed was given. How fast should it go?"
-            },
-            execution: {
-                action: "orbit", orbitTarget: "cube", orbitAxis: "forward", orbitSpeed: 60,
-                label: "Started an orbit",
-                errorText: "The object is circling the cube, but on a vertical plane instead of flat around it.",
-                agentPre: "Alright, setting up the circling motion.",
-                agentPost: "It's circling the cube, but vertically rather than flat around it. Shall I correct the plane?"
-            }
-        },
-        success: {
-            action: "orbit", orbitTarget: "cube", orbitAxis: "up", orbitSpeed: 25,
-            label: "Object orbits the cube slowly",
-            agentPre: "Setting a slow, steady circle around the cube.",
-            agentPost: "There — a slow, steady orbit around the cube."
+        name: "Recolour an object and move it",
+        variants: {
+            v1: buildTask3({ object: "cube",   colourName: "red",   colour: "#e02020",
+                             wrongColour: "#1560ff", target: "sphere"   }),
+            v2: buildTask3({ object: "sphere", colourName: "blue",  colour: "#1560ff",
+                             wrongColour: "#2ecc40", target: "cube"     }),
+            v3: buildTask3({ object: "cube",   colourName: "green", colour: "#2ecc40",
+                             wrongColour: "#e02020", target: "campfire" })
         }
     }
 };
 
-// ── Counterbalancing ─────────────────────────────────────────────────────────
-// Within-subjects with task rotation: each participant is assigned one of the
-// six condition orders AND one of three task rotations. Rotating the task order
-// independently of the condition order matters — if task order were fixed, then
-// "Task 1" would always be the participant's first (least practised) trial and
-// task would be confounded with practice.
+// ── Counterbalancing (master table) ──────────────────────────────────────────
 //
-// Across 6 participants every condition order is used once; across any 3
-// consecutive participants each task appears in each ordinal position.
+// Systematic rotation, not random, reproducing the agreed master table exactly:
+//
+//   condition      = cycles A, B, C by participant   → 4×A, 3×B, 3×C over 10
+//   variant(p,t)   = ((p-1) + (t-1)) mod 3
+//   error pair(p,t)= two consecutive types from the 4-type rotation starting at
+//                    (p + t - 2) mod 4
+//
+// Each participant does all three tasks, sees each variant once, and gets two of
+// the four error types per task. Every cell of the printed P1–P10 table is
+// reproduced by these formulas (verified against the document).
+//
+// ⚠ DESIGN CONFLICT — READ BEFORE RUNNING PARTICIPANTS
+// The master table assigns ONE condition per participant (between-subjects), but
+// the previous implementation note specified within-subjects, every participant
+// doing all three conditions. These cannot both be true and they imply different
+// sample sizes and analyses. The table is marked "Proposed — for Supervisor
+// Confirmation", so it is implemented as the default here; flip STUDY_DESIGN to
+// "within" if the supervisor confirms otherwise. Nothing else needs to change.
 
+const STUDY_DESIGN = "between";   // "between" = master table | "within" = 3 conditions per participant
+
+const CONDITIONS = ["A", "B", "C"];
+
+// Used only when STUDY_DESIGN === "within".
 const CONDITION_ORDERS = [
     ["A", "B", "C"], ["A", "C", "B"],
     ["B", "A", "C"], ["B", "C", "A"],
@@ -225,38 +268,39 @@ const CONDITION_ORDERS = [
 ];
 
 const TASK_KEYS = ["task1", "task2", "task3"];
+const VARIANT_KEYS = ["v1", "v2", "v3"];
 
-/** Stable small integer from a participant id (P01, 7, anything). */
+/** Participant number from an id (P01 → 1, 7 → 7). 1-based, as the table is. */
 function participantIndex(pid) {
     const digits = String(pid || "").match(/\d+/);
     if (digits) return parseInt(digits[0], 10);
     let h = 0;
     for (const ch of String(pid || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return h;
+    return (h % 10) + 1;
 }
 
 /**
- * The full plan for a participant: which condition each block uses, and which
- * single task is run in that block. One task per condition, never repeated.
- *
- * The task rotation advances only once the six condition orders are exhausted.
- * Deriving both from n directly (n%6 and n%3) would NOT work: n%3 is fully
- * determined by n%6, which locks each condition to the same tasks forever — in
- * testing that left condition C never paired with task 1. Stepping the task
- * offset every 6 participants crosses the two factors instead, so all nine
- * (condition, task) cells are used.
+ * The full plan for a participant: one entry per task, giving the condition,
+ * the content variant and the two error types to inject.
  */
 function planForParticipant(pid) {
-    const n = participantIndex(pid);
-    const order = CONDITION_ORDERS[n % CONDITION_ORDERS.length];
-    const taskOffset = Math.floor(n / CONDITION_ORDERS.length) % TASK_KEYS.length;
-    return order.map((condition, block) => {
-        const task = TASK_KEYS[(block + taskOffset) % TASK_KEYS.length];
+    const p = participantIndex(pid);
+    return TASK_KEYS.map((taskKey, ti) => {
+        const t = ti + 1;
+        const variant = VARIANT_KEYS[((p - 1) + ti) % VARIANT_KEYS.length];
+        const start = (p + t - 2) % ERROR_KEYS.length;
+        const errors = [ERROR_KEYS[start], ERROR_KEYS[(start + 1) % ERROR_KEYS.length]];
+        const condition = STUDY_DESIGN === "within"
+            ? CONDITION_ORDERS[p % CONDITION_ORDERS.length][ti]
+            : CONDITIONS[(p - 1) % CONDITIONS.length];
         return {
-            block: block + 1,
+            block: t,
             condition,
-            task,
-            taskName: TASKS[task].name
+            task: taskKey,
+            taskName: TASKS[taskKey].name,
+            variant,
+            variantLabel: TASKS[taskKey].variants[variant].label,
+            errors
         };
     });
 }
@@ -269,7 +313,8 @@ class WizardOfOzApp extends ApplicationController {
         this.lastTranscript  = "";
         this.transcriptHistory = [];
         this.activeTask      = "task1";
-        this.activeError     = "parameter";   // error category armed for the next inject
+        this.activeError     = ERROR_KEYS[0];  // error type armed for the next inject
+        this.activeVariant   = "v1";           // content variant, normally from the plan
         this.controlPort     = nconf.get("wizardControlPort") || 8181;
         this.micStatus       = null;
 
@@ -304,26 +349,46 @@ class WizardOfOzApp extends ApplicationController {
         return b ? b.task : "task1";
     }
 
+    /** Content variant the master table assigns to a task for this participant. */
+    plannedVariant(taskKey = this.activeTask) {
+        const b = (this.session.plan || []).find(x => x.task === taskKey);
+        return b ? b.variant : "v1";
+    }
+
+    /** The two error types the master table assigns to a task. */
+    plannedErrors(taskKey = this.activeTask) {
+        const b = (this.session.plan || []).find(x => x.task === taskKey);
+        return b ? b.errors : ERROR_KEYS.slice(0, 2);
+    }
+
     attemptCount() {
         return this.trial ? this.trial.attempts : 0;
     }
 
     /**
-     * Begins a trial: clears the scene, arms an error category, and starts the
+     * Begins a trial: clears the scene, arms an error type, and starts the
      * clock. Every trial starts from an identical scene so a participant never
-     * inherits objects or colours from the previous condition.
+     * inherits objects or colours from the previous trial.
      */
-    startTrial(taskKey, errorCategory) {
+    startTrial(taskKey, errorCategory, variantKey) {
         // An abandoned trial still gets a row — silently dropping it would make
-        // the trial count disagree with the number of conditions run.
+        // the trial count disagree with the number of trials run.
         if (this.trial && !this.trial.endedAt) this.completeTrial("abandoned");
 
         const task = taskKey || this.plannedTask();
         if (!TASKS[task]) return { ok: false, error: "Unknown task: " + task };
-        const category = errorCategory || this.activeError;
 
-        this.activeTask  = task;
-        this.activeError = category;
+        // Default to what the master table assigns, so the Wizard only has to
+        // override when deliberately going off-plan.
+        const variant = variantKey || this.plannedVariant(task);
+        if (!TASKS[task].variants[variant]) {
+            return { ok: false, error: `Unknown variant: ${variant} for ${task}` };
+        }
+        const category = errorCategory || this.plannedErrors(task)[0];
+
+        this.activeTask    = task;
+        this.activeError   = category;
+        this.activeVariant = variant;
         this.trialCounter += 1;
 
         this.resetScene();
@@ -333,7 +398,9 @@ class WizardOfOzApp extends ApplicationController {
             block:         this.session.block,
             condition:     this.session.condition,
             task,
+            variant,
             errorCategory: category,
+            plannedErrors: this.plannedErrors(task),
             startedAt:     Date.now(),
             startedAtIso:  new Date().toISOString(),
             endedAt:       null,
@@ -342,9 +409,10 @@ class WizardOfOzApp extends ApplicationController {
             injects:       0    // wizard injections
         };
 
-        this.logEvent("trial-start", `${task}/${category}`, { task, errorCategory: category, attempt: 0 });
+        this.logEvent("trial-start", `${task}/${variant}/${category}`,
+            { task, variant, errorCategory: category, attempt: 0 });
         console.log(`\x1b[35m[Trial ${this.trialCounter}]\x1b[0m start ` +
-            `condition=${this.session.condition} task=${task} error=${category}`);
+            `condition=${this.session.condition} task=${task} variant=${variant} error=${category}`);
         return { ok: true, trial: this.trial };
     }
 
@@ -390,7 +458,9 @@ class WizardOfOzApp extends ApplicationController {
         this.session.block = next;
         const planned = this.plannedBlock(next);
         this.session.condition = planned.condition;
-        this.activeTask = planned.task;
+        this.activeTask    = planned.task;
+        this.activeVariant = planned.variant;
+        this.activeError   = planned.errors[0];
 
         this.sendControl("condition", this.session.condition);
         this.resetScene();
@@ -413,7 +483,6 @@ class WizardOfOzApp extends ApplicationController {
         // of participant data files.
         const pid = this.session.participantId || "warmup";
         const file = path.join(LOG_DIR, `${pid}_events.csv`);
-        const isNew = !fs.existsSync(file);
         const taskKey = extra.task || this.activeTask;
         const row = [
             new Date().toISOString(),
@@ -422,6 +491,7 @@ class WizardOfOzApp extends ApplicationController {
             this.session.block || "",
             this.trial ? this.trial.number : "",
             taskKey,
+            extra.variant || (this.trial ? this.trial.variant : ""),
             extra.errorCategory !== undefined ? extra.errorCategory
                 : (this.trial ? this.trial.errorCategory : ""),
             extra.attempt !== undefined ? extra.attempt : this.attemptCount(),
@@ -429,12 +499,9 @@ class WizardOfOzApp extends ApplicationController {
             extra.msSinceTrialStart !== undefined ? extra.msSinceTrialStart : "",
             csvEscape(detail)
         ].join(",");
-        if (isNew) {
-            fs.writeFileSync(file,
-                "timestamp,participantId,condition,block,trial,task,errorCategory,attempt," +
-                "eventType,msSinceTrialStart,detail\n");
-        }
-        fs.appendFileSync(file, row + "\n");
+        appendCsv(file,
+            "timestamp,participantId,condition,block,trial,task,variant,errorType,attempt," +
+            "eventType,msSinceTrialStart,detail", row);
     }
 
     /**
@@ -444,18 +511,17 @@ class WizardOfOzApp extends ApplicationController {
      */
     logTrial(trial) {
         const file = path.join(LOG_DIR, "trials.csv");
-        const isNew = !fs.existsSync(file);
-        if (isNew) fs.writeFileSync(file,
-            "participantId,conditionOrder,block,condition,trial,task,errorCategory," +
-            "startTime,endTime,durationMs,completionStatus,attempts,injects\n");
         const order = (this.session.plan || []).map(p => p.condition).join("-");
-        fs.appendFileSync(file, [
+        appendCsv(file,
+            "participantId,conditionOrder,block,condition,trial,task,variant,errorType," +
+            "startTime,endTime,durationMs,completionStatus,attempts,injects", [
             this.session.participantId,
             order,
             trial.block,
             trial.condition,
             trial.number,
             trial.task,
+            trial.variant,
             trial.errorCategory,
             trial.startedAtIso,
             trial.endedAtIso || "",
@@ -463,22 +529,23 @@ class WizardOfOzApp extends ApplicationController {
             trial.status,
             trial.attempts,
             trial.injects
-        ].join(",") + "\n");
+        ].join(","));
     }
 
     /** Records the session/block start row in the master sessions.csv. */
     logSessionStart() {
         const file = path.join(LOG_DIR, "sessions.csv");
-        const isNew = !fs.existsSync(file);
-        if (isNew) fs.writeFileSync(file,
-            "timestamp,participantId,condition,block,conditionOrder,taskPlan\n");
         const order = (this.session.plan || []).map(p => p.condition).join("-");
-        const tasks = (this.session.plan || [])
-            .map(p => `${p.condition}:${p.task}`).join(" ");
-        fs.appendFileSync(file, [
-            new Date().toISOString(), this.session.participantId, this.session.condition,
-            this.session.block, order, csvEscape(tasks)
-        ].join(",") + "\n");
+        // Records the assigned variant and error pair too, so the plan actually
+        // run is recoverable from the data even if the table is later revised.
+        const plan = (this.session.plan || [])
+            .map(p => `${p.condition}:${p.task}:${p.variant}:${(p.errors||[]).join("+")}`).join(" ");
+        appendCsv(file,
+            "timestamp,participantId,condition,block,conditionOrder,plan",
+            [
+                new Date().toISOString(), this.session.participantId, this.session.condition,
+                this.session.block, order, csvEscape(plan)
+            ].join(","));
     }
 
     /**
@@ -495,11 +562,6 @@ class WizardOfOzApp extends ApplicationController {
         const file = path.join(LOG_DIR, `${pid}_${type}.csv`);
         const answers = payload.answers || {};
         const keys = Object.keys(answers);
-        const isNew = !fs.existsSync(file);
-        if (isNew) {
-            fs.writeFileSync(file,
-                "timestamp,participantId,condition,block,questionnaire," + keys.join(",") + "\n");
-        }
         const row = [
             new Date().toISOString(),
             pid,
@@ -508,7 +570,8 @@ class WizardOfOzApp extends ApplicationController {
             payload.questionnaire || type,
             ...keys.map(k => csvEscape(String(answers[k])))
         ].join(",");
-        fs.appendFileSync(file, row + "\n");
+        appendCsv(file,
+            "timestamp,participantId,condition,block,questionnaire," + keys.join(","), row);
         return file;
     }
 
@@ -589,6 +652,8 @@ class WizardOfOzApp extends ApplicationController {
     resetScene() {
         console.log(`\x1b[33m[WoZ Reset]\x1b[0m clearing created objects`);
         this.logEvent("reset", "clear-scene");
+        // "clear" removes trial debris and rebuilds the sphere and cube, so the
+        // participant always opens on the arrangement the briefing describes.
         this.sendControl("clear");
         return { ok: true, reset: true };
     }
@@ -604,35 +669,43 @@ class WizardOfOzApp extends ApplicationController {
      * The headset receives a JSON spec and performs it with compiled code, so
      * content can be edited here without rebuilding the APK.
      */
-    injectResponse(taskKey, outcome, errorCategory) {
+    injectResponse(taskKey, outcome, errorCategory, variantKey) {
         const task = TASKS[taskKey];
         if (!task) return { ok: false, error: `Unknown task: ${taskKey}` };
+
+        const vKey = variantKey ||
+            (this.trial ? this.trial.variant : this.activeVariant);
+        const variant = task.variants[vKey];
+        if (!variant) return { ok: false, error: `Unknown variant: ${vKey} for ${taskKey}` };
 
         const category = errorCategory ||
             (this.trial ? this.trial.errorCategory : this.activeError);
 
         let spec;
         if (outcome === "success") {
-            spec = task.success;
+            spec = variant.success;
         } else {
-            spec = task.errors[category];
-            if (!spec) return { ok: false, error: `Unknown error category: ${category}` };
+            spec = variant.errors[category];
+            if (!spec) return { ok: false, error: `Unknown error type: ${category}` };
         }
         if (!spec) return { ok: false, error: `Unknown outcome: ${outcome}` };
 
         if (this.trial && !this.trial.endedAt) this.trial.injects += 1;
         const msSinceTrialStart = this.trial ? Date.now() - this.trial.startedAt : "";
 
-        console.log(`\x1b[32m[WoZ Inject]\x1b[0m ${taskKey} ${outcome}` +
+        console.log(`\x1b[32m[WoZ Inject]\x1b[0m ${taskKey}/${vKey} ${outcome}` +
             (outcome === "success" ? "" : `/${category}`));
         this.logEvent("inject", outcome === "success" ? "success" : `error/${category}`, {
-            task: taskKey,
+            task: taskKey, variant: vKey,
             errorCategory: outcome === "success" ? "" : category,
             msSinceTrialStart
         });
-        // What the participant was actually shown — needed to interpret their next input.
-        this.logEvent("feedback-shown", spec.errorText || spec.label || "", {
-            task: taskKey,
+        // A correct outcome is silent by design, so recording "nothing was shown"
+        // matters as much as recording the error text — without this row the log
+        // cannot distinguish a silent success from a missing feedback event.
+        this.logEvent("feedback-shown",
+            outcome === "success" ? "(silent — correct outcome)" : (spec.errorText || ""), {
+            task: taskKey, variant: vKey,
             errorCategory: outcome === "success" ? "" : category
         });
 
@@ -643,7 +716,7 @@ class WizardOfOzApp extends ApplicationController {
         });
 
         return {
-            ok: true, task: taskKey, outcome,
+            ok: true, task: taskKey, variant: vKey, outcome,
             errorCategory: outcome === "success" ? "" : category,
             attempts: this.attemptCount(),
             injects: this.trial ? this.trial.injects : 0
@@ -693,21 +766,25 @@ class WizardOfOzApp extends ApplicationController {
                     transcriptHistory: this.transcriptHistory.slice(-8),
                     activeTask: this.activeTask,
                     activeError: this.activeError,
+                    activeVariant: this.activeVariant,
                     plannedTask: this.plannedTask(),
+                    plannedVariant: this.plannedVariant(),
+                    plannedErrors: this.plannedErrors(),
                     trial: this.trial,
                     attempt: this.attemptCount(),
                     errorCategories: ERROR_CATEGORIES,
-                    availableTasks: Object.keys(TASKS).map(k => ({
-                        key: k, name: TASKS[k].name, prompt: TASKS[k].prompt
-                    }))
+                    availableTasks: Object.keys(TASKS).map(k => ({ key: k, name: TASKS[k].name }))
                 });
             }
 
             if (req.method === "GET" && url === "/tasks") {
                 return send(200, Object.entries(TASKS).map(([k, v]) => ({
-                    key: k, name: v.name, prompt: v.prompt,
-                    errors: Object.entries(v.errors).map(([ek, ev]) => ({
-                        key: ek, label: ev.label, errorText: ev.errorText
+                    key: k, name: v.name,
+                    variants: Object.entries(v.variants).map(([vk, vv]) => ({
+                        key: vk, label: vv.label, prompt: vv.prompt,
+                        errors: Object.entries(vv.errors).map(([ek, ev]) => ({
+                            key: ek, errorText: ev.errorText, agentPost: ev.agentPost
+                        }))
                     }))
                 })));
             }
@@ -746,8 +823,13 @@ class WizardOfOzApp extends ApplicationController {
                         // new participant restarts the count.
                         if (newParticipant) { this.trial = null; this.trialCounter = 0; }
 
-                        // Follow the plan's task for this block unless overridden.
-                        this.activeTask = planned ? planned.task : this.activeTask;
+                        // Follow the plan for this block unless overridden, so the
+                        // Wizard never has to read the master table by hand.
+                        if (planned) {
+                            this.activeTask    = planned.task;
+                            this.activeVariant = planned.variant;
+                            this.activeError   = planned.errors[0];
+                        }
 
                         this.logSessionStart();
                         console.log(`\x1b[35m[Session]\x1b[0m participant=${pid} ` +
@@ -771,25 +853,35 @@ class WizardOfOzApp extends ApplicationController {
                         return send(200, { activeTask: this.activeTask, plannedTask: this.plannedTask() });
                     }
 
-                    // Arms which of the four AI-pipeline error categories the
-                    // next inject will use.
+                    // Arms which of the four error types the next inject will use.
                     if (req.method === "POST" && url === "/error-category") {
                         const cat = String(payload.category || "");
-                        if (!ERROR_CATEGORIES.some(c => c.key === cat)) {
-                            return send(400, { error: "Unknown error category: " + cat });
+                        if (!ERROR_KEYS.includes(cat)) {
+                            return send(400, { error: "Unknown error type: " + cat });
                         }
                         this.activeError = cat;
                         if (this.trial && !this.trial.endedAt) this.trial.errorCategory = cat;
                         return send(200, { ok: true, activeError: cat });
                     }
 
+                    // Selects the content variant (normally set by the plan).
+                    if (req.method === "POST" && url === "/variant") {
+                        const v = String(payload.variant || "");
+                        if (!TASKS[this.activeTask].variants[v]) {
+                            return send(400, { error: "Unknown variant: " + v });
+                        }
+                        this.activeVariant = v;
+                        if (this.trial && !this.trial.endedAt) this.trial.variant = v;
+                        return send(200, { ok: true, activeVariant: v });
+                    }
+
                     // Start trial: resets the scene, starts the clock, fixes the
-                    // (task, error category) pair for this trial.
+                    // (task, variant, error type) triple for this trial.
                     if (req.method === "POST" && url === "/trial/start") {
                         const key = payload.task
                             ? (String(payload.task).startsWith("task") ? String(payload.task) : `task${payload.task}`)
                             : null;
-                        return send(200, this.startTrial(key, payload.category));
+                        return send(200, this.startTrial(key, payload.category, payload.variant));
                     }
 
                     // End trial and write its summary row.
@@ -809,7 +901,8 @@ class WizardOfOzApp extends ApplicationController {
                         // "error" replays the selected category (use again when the
                         // participant repeats the same mistake); "success" resolves it.
                         const outcome = payload.outcome || payload.response || "error";
-                        return send(200, this.injectResponse(taskKey, outcome, payload.category));
+                        return send(200, this.injectResponse(
+                            taskKey, outcome, payload.category, payload.variant));
                     }
 
                     if (req.method === "POST" && url === "/reset") {
@@ -857,6 +950,31 @@ class WizardOfOzApp extends ApplicationController {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Appends a row to a CSV, guaranteeing the file's header matches the row.
+ *
+ * Writing the header only when the file is new is not enough: if the columns
+ * change between runs — a task edit, a new field — the old file keeps its old
+ * header and every new row lands under the wrong column names. That corrupts
+ * the data silently, and mid-study it would not be noticed until analysis.
+ * Here a stale file is set aside with a timestamped name and a fresh one is
+ * started, so no row is ever written under a header it does not match.
+ */
+function appendCsv(file, header, row) {
+    if (fs.existsSync(file)) {
+        const first = fs.readFileSync(file, "utf8").split("\n", 1)[0];
+        if (first.trim() !== header.trim()) {
+            const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+            const retired = file.replace(/\.csv$/, `_pre-${stamp}.csv`);
+            fs.renameSync(file, retired);
+            console.log(`\x1b[33m[Logs]\x1b[0m column layout changed — ` +
+                `previous ${path.basename(file)} kept as ${path.basename(retired)}`);
+        }
+    }
+    if (!fs.existsSync(file)) fs.writeFileSync(file, header + "\n");
+    fs.appendFileSync(file, row + "\n");
+}
 
 function csvEscape(value) {
     const s = String(value == null ? "" : value);

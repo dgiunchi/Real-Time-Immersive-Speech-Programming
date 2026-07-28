@@ -144,15 +144,16 @@
     </div>
 
     <div class="card">
-      <h2>Task</h2>
-      <p class="sub">The task assigned by the plan is marked ★. Each participant does a different task in each condition.</p>
+      <h2>Task &amp; variant</h2>
+      <p class="sub">★ marks what the master table assigns to this participant. Each participant does all three tasks, one variant each.</p>
       <div class="tasks" id="taskChips"></div>
+      <div class="tasks" id="variantChips" style="margin-top:10px;"></div>
       <div id="taskPrompt" style="margin-top:12px;"></div>
     </div>
 
     <div class="card">
-      <h2>Error category</h2>
-      <p class="sub">Which stage of the AI pipeline appears to fail. Fixed for the trial once started.</p>
+      <h2>Error type</h2>
+      <p class="sub">★ marks the two types assigned to this participant + task. Every error is written so the cause traces back to something the participant left unsaid.</p>
       <div class="tasks" id="errorChips"></div>
     </div>
 
@@ -175,8 +176,11 @@ const API = "";
 let tasks = [];
 let errorCategories = [];
 let activeTask = "task1";
-let activeError = "parameter";
-let plannedTask = "task1";   // what the counterbalance plan assigns to this block
+let activeError = "missing_detail";
+let activeVariant = "v1";
+let plannedTask = "task1";      // what the master table assigns to this block
+let plannedVariant = "v1";
+let plannedErrors = [];         // the two error types assigned to this task
 let currentTrial = null;
 let logLines = [];
 
@@ -195,13 +199,22 @@ function addLog(kind, text) {
   el.scrollTop = el.scrollHeight;
 }
 
+function currentVariantObj() {
+  const t = tasks.find(x => x.key === activeTask);
+  if (!t) return null;
+  return t.variants.find(v => v.key === activeVariant) || t.variants[0];
+}
+
 async function loadTasks() {
   tasks = await get("/tasks");
   const s = await get("/status");
   errorCategories = s.errorCategories || [];
-  activeError = s.activeError || activeError;
-  activeTask  = s.activeTask  || activeTask;
-  plannedTask = s.plannedTask || plannedTask;
+  activeError    = s.activeError    || activeError;
+  activeTask     = s.activeTask     || activeTask;
+  activeVariant  = s.activeVariant  || activeVariant;
+  plannedTask    = s.plannedTask    || plannedTask;
+  plannedVariant = s.plannedVariant || plannedVariant;
+  plannedErrors  = s.plannedErrors  || [];
   renderTaskChips();
   renderErrorChips();
   renderResponses();
@@ -214,17 +227,33 @@ function renderTaskChips() {
     const chip = document.createElement("div");
     chip.className = "task-chip" + (t.key === activeTask ? " active" : "");
     const num = t.key.replace("task","");
-    // ★ marks the task the plan assigns, so an off-plan pick is visible at a glance.
+    // ★ marks what the master table assigns, so going off-plan is visible.
     chip.textContent = (t.key === plannedTask ? "★ " : "") + `${num}. ${t.name}`;
     chip.onclick = () => selectTask(t.key);
     wrap.appendChild(chip);
   });
 
+  // Variant chips for the selected task.
   const t = tasks.find(x => x.key === activeTask);
+  const vw = document.getElementById("variantChips");
+  if (vw) {
+    vw.innerHTML = "";
+    (t ? t.variants : []).forEach(v => {
+      const chip = document.createElement("div");
+      chip.className = "task-chip" + (v.key === activeVariant ? " active" : "");
+      chip.innerHTML = (v.key === plannedVariant ? "★ " : "") +
+        `${v.key.toUpperCase()}<br><span style="font-size:11px;opacity:.7;">${v.label}</span>`;
+      chip.onclick = () => selectVariant(v.key);
+      vw.appendChild(chip);
+    });
+  }
+
+  const vObj = currentVariantObj();
   const p = document.getElementById("taskPrompt");
-  if (p) p.innerHTML = t
+  if (p) p.innerHTML = vObj
     ? `<div style="padding:10px;background:#161b24;border-radius:8px;font-size:14px;">
-         Read to the participant: <b>${t.prompt}</b></div>`
+         <div class="sub" style="margin-bottom:4px;">Read this briefing to the participant — do <b>not</b> tell them what to say:</div>
+         ${vObj.prompt}</div>`
     : "";
 }
 
@@ -234,27 +263,34 @@ function renderErrorChips() {
   wrap.innerHTML = "";
   errorCategories.forEach(c => {
     const chip = document.createElement("div");
+    // ★ marks the two types the master table assigns to this participant+task.
+    const assigned = plannedErrors.includes(c.key);
     chip.className = "task-chip" + (c.key === activeError ? " active" : "");
-    chip.innerHTML = `${c.name}<br><span style="font-size:11px;opacity:.7;">${c.short}</span>`;
+    if (assigned && c.key !== activeError) chip.style.borderColor = "#e8a87c";
+    chip.innerHTML = (assigned ? "★ " : "") +
+      `${c.name}<br><span style="font-size:11px;opacity:.7;">${c.short}</span>`;
     chip.onclick = () => selectError(c.key);
     wrap.appendChild(chip);
   });
 }
 
 function renderResponses() {
-  const t = tasks.find(x => x.key === activeTask);
   const wrap = document.getElementById("responses");
   wrap.innerHTML = "";
-  if (!t) return;
+  const vObj = currentVariantObj();
+  if (!vObj) return;
 
-  const err = (t.errors || []).find(x => x.key === activeError);
+  const err = (vObj.errors || []).find(x => x.key === activeError);
   const cat = errorCategories.find(c => c.key === activeError);
 
+  // Show exactly what the participant will get, so the Wizard can read the
+  // agent line aloud if the voice clip is missing.
   const brief = document.createElement("div");
   brief.style.cssText = "margin-bottom:12px;padding:10px;background:#161b24;border-radius:8px;";
   brief.innerHTML =
-    `<div style="font-size:13px;color:#9fb4d8;">${t.name} · <b>${cat ? cat.name : activeError}</b> error</div>` +
-    (err ? `<div style="margin-top:6px;font-size:13px;color:#e8a87c;">${err.errorText}</div>` : "");
+    `<div style="font-size:13px;color:#9fb4d8;">${vObj.label} · <b>${cat ? cat.name : activeError}</b></div>` +
+    (err ? `<div style="margin-top:6px;font-size:13px;color:#e8a87c;">Panel (B): ${err.errorText}</div>
+            <div style="margin-top:4px;font-size:13px;color:#9fd8b4;">Agent (C): “${err.agentPost}”</div>` : "");
   wrap.appendChild(brief);
 
   const mk = (outcome, title, desc, cls) => {
@@ -268,7 +304,7 @@ function renderResponses() {
   mk("error", "INJECT ERROR",
      "First attempt, and again whenever they repeat the same mistake.", "error");
   mk("success", "INJECT SUCCESS",
-     "Use once they have repaired the problem.", "success");
+     "Use once they have repaired the problem. Deliberately silent — no panel, no agent.", "success");
 }
 
 function renderTrial(trial) {
@@ -282,19 +318,22 @@ function renderTrial(trial) {
     `<div>${running ? '<span style="color:#8aff9e">● running</span>' : '<span class="sub">● ended — ' + trial.status + '</span>'}
        &nbsp; Trial <b>${trial.number}</b> &nbsp;
        <span class="pill ${trial.condition}">Condition ${trial.condition}</span></div>` +
-    `<div class="sub">${trial.task} · ${trial.errorCategory} error · attempts <b>${trial.attempts}</b> · injects ${trial.injects} · ${secs}s</div>`;
+    `<div class="sub">${trial.task}/${trial.variant} · ${trial.errorCategory} · attempts <b>${trial.attempts}</b> · injects ${trial.injects} · ${secs}s</div>`;
 }
 
 function renderPlan(plan, pid) {
   const el = document.getElementById("planBox");
   if (!el) return;
   if (!plan || !plan.length) { el.innerHTML = ""; return; }
+  const NAMES = Object.fromEntries(errorCategories.map(c => [c.key, c.name]));
   el.innerHTML =
-    `<div class="sub" style="margin-bottom:6px;">Counterbalanced plan for <b>${pid}</b> — run blocks in this order:</div>` +
+    `<div class="sub" style="margin-bottom:6px;">Master-table plan for <b>${pid}</b> — run in this order:</div>` +
     plan.map(p =>
-      `<div style="font-size:13px;padding:3px 0;">
-         Block ${p.block}: <span class="pill ${p.condition}">Condition ${p.condition}</span>
-         <span class="sub">${p.taskName}</span>
+      `<div style="font-size:13px;padding:5px 0;border-top:1px solid var(--line);">
+         <span class="pill ${p.condition}">Cond ${p.condition}</span>
+         <b>${p.task.replace("task","Task ")}</b> · ${p.variant.toUpperCase()}
+         <div class="sub">${p.variantLabel}</div>
+         <div class="sub" style="color:#e8a87c;">${(p.errors||[]).map(e => NAMES[e]||e).join(" + ")}</div>
        </div>`).join("");
 }
 
@@ -313,16 +352,25 @@ async function selectTask(key) {
   addLog("task", "Task → " + key);
 }
 
+async function selectVariant(key) {
+  activeVariant = key;
+  await post("/variant", { variant: key });
+  renderTaskChips();
+  renderResponses();
+  addLog("task", "Variant → " + key);
+}
+
 async function selectError(key) {
   activeError = key;
   await post("/error-category", { category: key });
   renderErrorChips();
   renderResponses();
-  addLog("task", "Error category → " + key);
+  addLog("task", "Error type → " + key);
 }
 
 async function inject(outcome) {
-  const res = await post("/inject", { task: activeTask, outcome, category: activeError });
+  const res = await post("/inject",
+    { task: activeTask, outcome, category: activeError, variant: activeVariant });
   if (res.ok) {
     addLog("inject", `${res.task} ${outcome.toUpperCase()}` +
       (res.errorCategory ? ` / ${res.errorCategory}` : "") +
@@ -333,10 +381,11 @@ async function inject(outcome) {
 }
 
 async function startTrial() {
-  const res = await post("/trial/start", { task: activeTask, category: activeError });
+  const res = await post("/trial/start",
+    { task: activeTask, category: activeError, variant: activeVariant });
   if (res.ok) {
     renderTrial(res.trial);
-    addLog("task", `Trial ${res.trial.number} started — ${res.trial.task} / ${res.trial.errorCategory}`);
+    addLog("task", `Trial ${res.trial.number} started — ${res.trial.task}/${res.trial.variant} / ${res.trial.errorCategory}`);
   } else {
     addLog("t", "Start failed: " + (res.error || "?"));
   }
@@ -356,16 +405,23 @@ async function nextBlock() {
   const res = await post("/next-block", {});
   if (res.finished) { addLog("task", "All blocks done for this participant."); return; }
   const s = res.session || {};
-  plannedTask = res.planned ? res.planned.task : plannedTask;
-  activeTask  = plannedTask;
+  if (res.planned) {
+    plannedTask    = res.planned.task;
+    plannedVariant = res.planned.variant;
+    plannedErrors  = res.planned.errors || [];
+    activeTask     = plannedTask;
+    activeVariant  = plannedVariant;
+    activeError    = plannedErrors[0] || activeError;
+  }
   document.getElementById("block").value = s.block;
   document.getElementById("sessionBadge").innerHTML =
     `<b>${s.participantId}</b> &nbsp; Block ${s.block} &nbsp;` +
     `<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
   renderTaskChips();
+  renderErrorChips();
   renderResponses();
   renderTrial(null);
-  addLog("task", `→ Block ${s.block}: Condition ${s.condition}, ${plannedTask}. Scene cleared.`);
+  addLog("task", `→ Block ${s.block}: Condition ${s.condition}, ${plannedTask}/${plannedVariant}. Scene cleared.`);
 }
 
 async function resetScene() {
@@ -411,16 +467,21 @@ async function startSession() {
     participantId, block, condition: condition || undefined
   });
   const s = res.session || {};
-  // Follow the plan's task for this block so the Wizard doesn't have to look it up.
-  plannedTask = (s.plan && s.plan[block - 1] && s.plan[block - 1].task) || plannedTask;
-  activeTask = plannedTask;
+  // Follow the master table for this block so the Wizard doesn't look it up by hand.
+  const b = s.plan && s.plan[block - 1];
+  if (b) {
+    plannedTask = b.task; plannedVariant = b.variant; plannedErrors = b.errors || [];
+    activeTask = plannedTask; activeVariant = plannedVariant;
+    activeError = plannedErrors[0] || activeError;
+  }
 
   document.getElementById("sessionBadge").innerHTML =
     `<b>${participantId}</b> &nbsp; Block ${s.block} &nbsp;` +
     `<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
-  addLog("task", `Session: ${participantId} block ${s.block} / Condition ${s.condition} / ${plannedTask}`);
+  addLog("task", `Session: ${participantId} block ${s.block} / Condition ${s.condition} / ${plannedTask}/${plannedVariant}`);
   renderPlan(s.plan, participantId);
   renderTaskChips();
+  renderErrorChips();
   renderResponses();
 }
 

@@ -5,7 +5,7 @@ conditions for AI/speech-pipeline errors in VR authoring.
 
 - **Condition A** — No feedback (participant sees only the scene result)
 - **Condition B** — Text panel **only** (no agent)
-- **Condition C** — Embodied agent **only** (agent speaks the explanation; no text panel)
+- **Condition C** — Embodied agent **only** (agent speaks it; no text panel)
 
 B and C are deliberately exclusive: each carries the explanation exactly once, so
 the comparison isolates *modality* rather than *amount* of information. The
@@ -17,46 +17,77 @@ every participant gets the identical experience — no live LLM.
 
 ## Design (agreed with Daniele, July 2026)
 
-**Within-subjects:** every participant does **all three conditions** in three
-blocks, and a **different task in each**. No task is ever repeated within a
-participant, so a correction learned in one condition cannot carry into the next.
+### Root-cause attribution (the governing principle)
 
-**Counterbalancing.** Six condition orders (A-B-C, A-C-B, B-A-C, B-C-A, C-A-B,
-C-B-A) are assigned by participant number. The task rotation advances
-independently — every 6 participants rather than every participant — because
-deriving both from the same number would lock each condition to the same tasks
-forever. Across 18 participants all nine (condition × task) cells are used
-equally.
+Every error must be a plausible consequence of something **ambiguous, missing or
+underspecified in the participant's own instruction** — never an arbitrary system
+glitch. The scene looks coherent at first; only through further interaction does
+the participant realise the ambiguity was on their end. All the feedback wording
+follows this: it names the missing detail, it never announces a malfunction.
 
-Type the participant ID into the panel and it shows the assigned plan.
+**The participant is never told what to say.** They get a briefing describing the
+scene and the goal, and use their own words. Errors are injected regardless of
+what they actually say.
 
-**3 tasks × 4 AI-pipeline error categories.** Any task can be made to fail at any
-stage of the pipeline the participant believes is running:
+### Structure
 
-| Category | What appears to have gone wrong |
+**Each participant does all three tasks**, one content variant of each, in a
+single feedback condition. The scene throughout is the DreamCodeVR campfire
+scene: a sphere, a cube and a campfire.
+
+| Task | Goal |
 |---|---|
-| **Speech recognition** | the words were mis-heard ("wall" for "ball") |
-| **Intent interpretation** | words right, wrong action inferred (five balls, not one) |
-| **Missing parameter** | action right, a needed detail absent (no position given) |
-| **Execution** | understood correctly, performed badly (falls through the floor) |
+| 1 | Create an object that appears in your hand when you raise it |
+| 2 | Move an object so it comes to rest next to a target |
+| 3 | Change an object's colour and move it next to another |
 
-The Wizard picks the category before starting each trial.
+**Four error types**, applied identically to every task and variant:
 
-**Trial protocol:**
-1. Select the **task** (★ = the one the plan assigns) and the **error category**.
-2. Click **▶ Start trial** — this clears the scene and starts the clock.
-3. Read the prompt shown on the panel to the participant.
+| Error type | What happens |
+|---|---|
+| **Missing Detail** | nothing happens at all |
+| **Misrecognition** | the wrong object/colour is acted on |
+| **Happened Differently** | right action, wrong result (wrong place, wrong way) |
+| **Happened Plus Extra** | correct, plus something unasked-for (extra copies, growth, spin) |
+
+**A correct outcome is silent** — no panel in B, no agent in C, nothing in A. Only
+errors are ever explained, so the feedback itself never signals success.
+
+### Counterbalancing (master table)
+
+Systematic rotation, not random. Type the participant ID into the panel and it
+prints the assigned plan; ★ marks the assigned task, variant and error types.
+
+- **Condition** cycles A, B, C by participant → 4×A, 3×B, 3×C over ten
+- **Variant** for task *t* = `((p-1) + (t-1)) mod 3`
+- **Error pair** for task *t* = two consecutive types from the four-type rotation
+  starting at `(p + t - 2) mod 4`
+
+Each participant sees each variant once and gets two of the four error types per
+task. These formulas reproduce the agreed P1–P10 table exactly.
+
+> ⚠ **One open question for the supervisor.** The master table assigns *one*
+> condition per participant (between-subjects), but the earlier implementation
+> note specified within-subjects — every participant doing all three conditions.
+> These imply different sample sizes and analyses. The table is implemented as
+> the default since it is the more recent document; switching back is a one-line
+> change (`STUDY_DESIGN` at the top of `app.js`). Worth confirming before running
+> participants.
+
+### Trial protocol
+1. Check the **task**, **variant** and **error type** (★ = assigned).
+2. Click **▶ Start trial** — clears the scene and starts the clock.
+3. Read the **briefing** shown on the panel. Do not tell them what to say.
 4. They speak → click **INJECT ERROR**.
 5. Feedback appears per condition (A none / B panel / C agent).
 6. They try again:
    - problem repaired → **INJECT SUCCESS**, then **✓ End trial**
    - same mistake repeated → **INJECT ERROR again** (do not hand them the
      answer), and prompt them to check the feedback
-7. Click **⏭ Next condition** — ends the trial, switches the headset to the next
-   assigned condition, loads its task and clears the scene in one press.
+7. Run the task's **second** assigned error type, then **⏭ Next condition**.
 
-Every trial starts from an identical scene: generated objects removed,
-environment colours restored, agent returned to idle.
+Every trial starts from an identical scene: trial objects removed, environment
+colours restored, sphere and cube rebuilt, agent returned to idle.
 
 ---
 
@@ -127,42 +158,51 @@ the Quest.
 Before the first block, have the participant complete the **Background form**
 (link in the panel header) — once per participant.
 
-### 4. Run the block's task
-Each block is **one task** in **one condition**.
+### 4. Run each task
+Each participant does all three tasks, with two error types per task.
 
-1. Check the **Task** card — ★ marks the task the plan assigns. Pick the **error
-   category** you are injecting.
+1. Check the **Task & variant** card — ★ marks what the master table assigns.
+   Pick the **error type** (★ marks the two assigned to this participant + task).
 2. Click **▶ Start trial**. The scene clears and the clock starts.
-3. Read the prompt shown on the panel to the participant.
+3. Read the **briefing** shown on the panel. **Do not tell them what to say** —
+   they must phrase the instruction themselves.
 4. They speak their instruction (hold the controller trigger — either hand — or
    **Space** in the Unity Editor). The transcript appears on the panel.
 5. Click **INJECT ERROR**. After a short "thinking" pause the outcome appears
-   and the condition's feedback fires.
+   and the condition's feedback fires. The panel shows you the exact panel text
+   and agent line, so you can read the agent line aloud if a voice clip is missing.
 6. They try again:
-   - problem repaired → **INJECT SUCCESS**
+   - problem repaired → **INJECT SUCCESS** (deliberately silent — no feedback)
    - same mistake repeated → **INJECT ERROR again**, and say *"have another
      look at the feedback and try once more"*
-7. Click **✓ End trial**, then **⏭ Next condition** to move on.
+7. Click **✓ End trial**. Repeat from step 1 with the task's **second** assigned
+   error type, then **⏭ Next condition** for the next task.
 8. Use **Quick note** for observations at any point.
 
 > **There is no live AI.** You decide every outcome by clicking. If you click
 > nothing, nothing happens — that is the method, and it is what keeps the
 > experience identical for everyone in a condition.
 
-**What the participant sees (task 1, missing-parameter error):**
-- **A – No feedback:** the ball appears in the wrong place. Nothing else. They
-  must work it out alone. (Control condition.)
-- **B – Text panel:** the ball appears and the panel explains: *"A ball was
-  created, but at the centre of the room rather than near you — no position was
-  specified."* No agent.
-- **C – Embodied agent:** the ball appears and a visible assistant acknowledges
-  beforehand (*"Okay, I'll create a ball for you."*) then explains afterwards
-  (*"…I wasn't told where to put it. Where would you like it?"*). No text panel.
+**What the participant sees (task 1, "Happened Differently"):**
+- **A – No feedback:** the ball appears on the floor instead of their hand.
+  Nothing else. They must work it out alone. (Control condition.)
+- **B – Text panel:** the ball appears on the floor and the panel reads *"The
+  ball appeared, but not in your hand. Please specify the location."* No agent.
+- **C – Embodied agent:** the ball appears on the floor and the assistant says
+  *"The ball was created, but I wasn't sure exactly where you wanted it."* No panel.
+
+In every case the cause traces back to the participant's own phrasing — they
+never said where the ball should appear.
 
 ### 4a. Editing the tasks (no rebuild needed)
-Task prompts, error wording and agent dialogue live in the `TASKS` object in
-[`Server/samples/apps/wizard_of_oz/app.js`](Server/samples/apps/wizard_of_oz/app.js)
-— three tasks, each with all four error categories and a success outcome.
+Briefings, panel wording and agent dialogue live in
+[`Server/samples/apps/wizard_of_oz/app.js`](Server/samples/apps/wizard_of_oz/app.js).
+Variants are generated from three builder functions (`buildTask1/2/3`) rather
+than written out 36 times, so editing one line of wording updates that error
+across all three variants and keeps them parallel — which is what makes variants
+interchangeable in the first place. To change only one variant, edit its entry in
+the `TASKS` table below the builders.
+
 The headset executes these as data, so **edits take effect on the next server
 restart — you do not need to rebuild or reinstall the APK.**
 
@@ -193,14 +233,14 @@ All files are written to a `Logs/` folder at the top of the project:
 Real-Time-Immersive-Speech-Programming-…/Logs/
 ```
 - **`trials.csv` — the primary analysis file.** One row per trial:
-  `participantId, conditionOrder, block, condition, trial, task, errorCategory,
-  startTime, endTime, durationMs, completionStatus, attempts, injects`.
+  `participantId, conditionOrder, block, condition, trial, task, variant,
+  errorType, startTime, endTime, durationMs, completionStatus, attempts, injects`.
   This is everything the design calls for in one place — no joining needed for
   per-condition comparisons.
-- `sessions.csv` — one row per block start, with the participant's condition
-  order and task plan
+- `sessions.csv` — one row per block start, with the participant's condition and
+  full assigned plan (task, variant and error pair)
 - `<PID>_events.csv` — the fine-grained trace. One row per event with
-  `timestamp, participantId, condition, block, trial, task, errorCategory,
+  `timestamp, participantId, condition, block, trial, task, variant, errorType,
   attempt, eventType, msSinceTrialStart, detail`. Event types include
   `transcript` (what they said), `inject` (what you triggered),
   `feedback-shown` (what they were actually told), `trial-start`, `trial-end`,
@@ -218,6 +258,11 @@ by condition and by error category, which is what the hypotheses need.
 > **`attempts` counts participant utterances**, not your button presses (those
 > are `injects`). It is a measure of how much the participant had to try, which
 > is the recovery measure the study is about.
+
+If the column layout ever changes (a new field, an edited task), the old CSV is
+set aside as `<name>_pre-<timestamp>.csv` and a fresh one started, rather than
+new rows being appended under a header that no longer matches. Nothing is
+overwritten and no file ever mixes two layouts.
 
 ---
 
