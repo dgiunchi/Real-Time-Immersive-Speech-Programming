@@ -81,13 +81,6 @@
     <label>Participant ID</label>
     <input id="participantId" placeholder="e.g. P01" onchange="loadPlan()" onblur="loadPlan()">
 
-    <label>Block (each participant does all 3)</label>
-    <select id="block">
-      <option value="1">Block 1</option>
-      <option value="2">Block 2</option>
-      <option value="3">Block 3</option>
-    </select>
-
     <label>Condition</label>
     <select id="condition">
       <option value="">Follow counterbalanced plan (recommended)</option>
@@ -138,9 +131,9 @@
       </div>
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
         <button class="btn-ghost"  style="flex:1;min-width:130px;background:#7a2b2b;color:#fff;" onclick="resetScene()">Reset scene</button>
-        <button class="btn-accent" style="flex:1;min-width:130px;background:#2b5c3a;" onclick="nextBlock()">⏭ Next condition</button>
+        <button class="btn-accent" style="flex:1;min-width:130px;background:#2b5c3a;" onclick="nextBlock()">⏭ Next task</button>
       </div>
-      <p class="sub" style="margin-top:8px;"><b>Next condition</b> ends this trial, switches the headset to the next assigned condition, loads its task and clears the scene.</p>
+      <p class="sub" style="margin-top:8px;"><b>Next task</b> ends the current trial, loads the next task (auto-assigned by plan) and clears the scene.</p>
     </div>
 
     <div class="card">
@@ -153,7 +146,7 @@
 
     <div class="card">
       <h2>Error type</h2>
-      <p class="sub">★ marks the two types assigned to this participant + task. Every error is written so the cause traces back to something the participant left unsaid.</p>
+      <p class="sub">★① run first, ★② run second — always inject these regardless of what the participant says. Errors are pre-scripted and identical for everyone in this condition.</p>
       <div class="tasks" id="errorChips"></div>
     </div>
 
@@ -178,9 +171,10 @@ let errorCategories = [];
 let activeTask = "task1";
 let activeError = "missing_detail";
 let activeVariant = "v1";
-let plannedTask = "task1";      // what the master table assigns to this block
+let plannedTask = "task1";      // what the master table assigns to this task
 let plannedVariant = "v1";
-let plannedErrors = [];         // the two error types assigned to this task
+let plannedErrors = [];         // the two error types assigned to this task (run in order)
+let currentBlock = 1;           // auto-tracked; no manual dropdown needed
 let currentTrial = null;
 let logLines = [];
 
@@ -263,11 +257,13 @@ function renderErrorChips() {
   wrap.innerHTML = "";
   errorCategories.forEach(c => {
     const chip = document.createElement("div");
-    // ★ marks the two types the master table assigns to this participant+task.
-    const assigned = plannedErrors.includes(c.key);
+    // ★ marks the two types the master table assigns; numbered ①② for run order.
+    const assignedIdx = plannedErrors.indexOf(c.key);
+    const assigned = assignedIdx !== -1;
+    const orderLabel = assignedIdx === 0 ? "★① " : assignedIdx === 1 ? "★② " : "";
     chip.className = "task-chip" + (c.key === activeError ? " active" : "");
     if (assigned && c.key !== activeError) chip.style.borderColor = "#e8a87c";
-    chip.innerHTML = (assigned ? "★ " : "") +
+    chip.innerHTML = orderLabel +
       `${c.name}<br><span style="font-size:11px;opacity:.7;">${c.short}</span>`;
     chip.onclick = () => selectError(c.key);
     wrap.appendChild(chip);
@@ -396,6 +392,10 @@ async function completeTrial(status) {
   if (res.ok && res.trial) {
     renderTrial(res.trial);
     addLog("task", `Trial ${res.trial.number} ${status} — ${res.trial.attempts} attempts`);
+    // Auto-advance to ★② error so the wizard doesn't have to click it manually.
+    if (plannedErrors.length > 1 && activeError === plannedErrors[0]) {
+      await selectError(plannedErrors[1]);
+    }
   } else {
     addLog("t", res.error || "No active trial");
   }
@@ -413,15 +413,15 @@ async function nextBlock() {
     activeVariant  = plannedVariant;
     activeError    = plannedErrors[0] || activeError;
   }
-  document.getElementById("block").value = s.block;
+  currentBlock = s.block || currentBlock;
   document.getElementById("sessionBadge").innerHTML =
-    `<b>${s.participantId}</b> &nbsp; Block ${s.block} &nbsp;` +
+    `<b>${s.participantId}</b> &nbsp; Task ${s.block} of 3 &nbsp;` +
     `<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
   renderTaskChips();
   renderErrorChips();
   renderResponses();
   renderTrial(null);
-  addLog("task", `→ Block ${s.block}: Condition ${s.condition}, ${plannedTask}/${plannedVariant}. Scene cleared.`);
+  addLog("task", `→ Task ${s.block}/3: Condition ${s.condition}, ${plannedTask}/${plannedVariant}. Scene cleared.`);
 }
 
 async function resetScene() {
@@ -459,7 +459,7 @@ function renderMic(mic) {
 async function startSession() {
   const participantId = document.getElementById("participantId").value.trim();
   const condition = document.getElementById("condition").value;
-  const block = Number(document.getElementById("block").value) || 1;
+  const block = currentBlock;
   if (!participantId) { alert("Enter a participant ID first."); return; }
 
   // Blank condition = follow the counterbalanced plan for this block.
@@ -475,10 +475,11 @@ async function startSession() {
     activeError = plannedErrors[0] || activeError;
   }
 
+  currentBlock = s.block || 1;
   document.getElementById("sessionBadge").innerHTML =
-    `<b>${participantId}</b> &nbsp; Block ${s.block} &nbsp;` +
+    `<b>${participantId}</b> &nbsp; Task ${s.block} of 3 &nbsp;` +
     `<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
-  addLog("task", `Session: ${participantId} block ${s.block} / Condition ${s.condition} / ${plannedTask}/${plannedVariant}`);
+  addLog("task", `Session: ${participantId} task ${s.block}/3 / Condition ${s.condition} / ${plannedTask}/${plannedVariant}`);
   renderPlan(s.plan, participantId);
   renderTaskChips();
   renderErrorChips();
