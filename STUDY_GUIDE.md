@@ -135,11 +135,32 @@ researcher control panel.
   Switch Platform); **Player → Other Settings → Scripting Backend = IL2CPP**,
   **Target Architectures = ARM64**; **XR Plug-in Management → Android → Oculus**.
 - Each build: **File → Build Profiles → Build And Run**. Unity builds the APK,
-  installs it, and launches it on the headset. The headset finds the Mac
-  automatically (LAN auto-discovery) — no IP setup.
-- You only need to **rebuild** when the code changes or you switch to a
-  different Wi-Fi network. Between participants, just relaunch the app on the
-  headset — no rebuild.
+  installs it, and launches it on the headset.
+- You only need to **rebuild when the C# changes** — never for a new location,
+  network or participant. Between participants just relaunch the app.
+
+**Networking — plug the cable in before `npm run study`, then unplug.**
+
+That one habit is all you need anywhere in the world. On startup the launcher
+finds the Mac's current IP and writes it straight into the app's storage over
+USB, so the headset knows where to connect before it even starts looking. Once
+connected the session runs over Wi-Fi and **the cable can come out**.
+
+It also opens a USB tunnel as a backup, which works even on networks that block
+everything else — but that one needs the cable to stay in.
+
+<details>
+<summary>Why the cable, when there's auto-discovery?</summary>
+
+Discovery works by UDP broadcast, and broadcasts do not cross subnets. Labs
+routinely put the headset on a local AP and the Mac on the institutional
+network — different subnets, so the beacon never arrives. The app then falls
+back to `localhost`, which on the headset is *itself*: **"connection lost."**
+
+Ordinary TCP between the two is fine (verified across exactly that split); only
+the *discovery* step was broken. The cable supplies the address once, and Wi-Fi
+does the rest.
+</details>
 
 **Testing in the Editor (no headset):** you can also press **Play** in the Editor
 to rehearse the whole flow on the desktop. Everything works there too (the

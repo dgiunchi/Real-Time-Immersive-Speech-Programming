@@ -28,6 +28,8 @@ const controlUrl  = "http://localhost:8181";
 const STUDY_PORTS = [8005, 8010, 8181, 8007];
 const UBIQ_PORT   = 8005;   // Ubiq RoomServer TCP port (matches config.json)
 const BEACON_PORT = 8007;   // UDP port the Quest listens on for auto-discovery
+const ANDROID_PACKAGE = "com.DefaultCompany.ubiqgenie";  // must match Player Settings
+const HANDOFF_FILE    = "study_server.txt";              // matches ServerAutoDiscovery.cs
 
 function log(msg) { console.log(`\x1b[1m\x1b[36m[study]\x1b[0m ${msg}`); }
 
@@ -73,6 +75,77 @@ function patchServerAsset(ip) {
 const lanIp = getLanIp();
 log(`LAN IP: ${lanIp}`);
 patchServerAsset(lanIp);
+
+// ── 2a. USB fallback: adb reverse ─────────────────────────────────────────────
+// Wi-Fi auto-discovery only works when the Quest and Mac share a subnet. In a lab
+// that is often false — the headset sits on the lab AP while the Mac is on the
+// institutional network, so the UDP beacon never reaches it (broadcasts do not
+// route) and the app falls back to localhost, which on the headset is itself:
+// "connection lost".
+//
+// `adb reverse` maps the headset's OWN localhost:PORT back to this Mac over the
+// USB cable. Because the app already dials localhost, that fallback becomes the
+// working path — no rebuild, no IP config, and immune to subnet layout, client
+// isolation and the missing multicast permission. Wi-Fi still works when the two
+// do share a network; this simply means a session is never lost to the network.
+function findAdb() {
+    const candidates = [
+        "adb",
+        `${process.env.HOME}/Library/Android/sdk/platform-tools/adb`,
+        `${process.env.HOME}/Library/Android/Sdk/platform-tools/adb`,
+        "/opt/homebrew/bin/adb",
+        "/usr/local/bin/adb"
+    ];
+    for (const c of candidates) {
+        try {
+            execSync(`"${c}" version`, { stdio: "pipe", shell: true });
+            return c;
+        } catch (_) {}
+    }
+    return null;
+}
+
+function setupUsbTunnel() {
+    const adb = findAdb();
+    if (!adb) { log("adb not found — USB fallback unavailable (Wi-Fi only)."); return; }
+    let devices = "";
+    try {
+        devices = execSync(`"${adb}" devices`, { stdio: "pipe", shell: true }).toString();
+    } catch (_) { return; }
+    const connected = devices.split("\n").slice(1)
+        .filter(l => l.trim() && l.includes("\tdevice")).length;
+    if (!connected) { log("No headset on USB — relying on Wi-Fi discovery."); return; }
+
+    // (a) IP handoff. Write this Mac's current address into the app's own storage
+    // so the headset connects over Wi-Fi immediately, wherever we are today. This
+    // is what lets the cable come off: the tunnel below dies with the cable, but
+    // an address learned this way keeps working over Wi-Fi.
+    try {
+        const dest = `/sdcard/Android/data/${ANDROID_PACKAGE}/files/${HANDOFF_FILE}`;
+        const tmp = path.join(os.tmpdir(), HANDOFF_FILE);
+        fs.writeFileSync(tmp, `${lanIp}:${UBIQ_PORT}`);
+        execSync(`"${adb}" shell mkdir -p /sdcard/Android/data/${ANDROID_PACKAGE}/files`,
+                 { stdio: "pipe", shell: true });
+        execSync(`"${adb}" push "${tmp}" "${dest}"`, { stdio: "pipe", shell: true });
+        fs.unlinkSync(tmp);
+        log(`Headset told to use ${lanIp}:${UBIQ_PORT} — it can run unplugged on Wi-Fi.`);
+    } catch (e) {
+        log(`Could not write IP to headset (${e.message.split("\n")[0]}).`);
+    }
+
+    // (b) USB tunnel. Maps the headset's own localhost back here, so it connects
+    // even on a network where nothing else would work (client isolation, blocked
+    // ports). Requires the cable to stay in.
+    try {
+        for (const port of [UBIQ_PORT, 8010, 8181]) {
+            execSync(`"${adb}" reverse tcp:${port} tcp:${port}`, { stdio: "pipe", shell: true });
+        }
+        log(`USB tunnel active (ports ${UBIQ_PORT}/8010/8181) — backup if Wi-Fi is locked down.`);
+    } catch (e) {
+        log(`USB tunnel failed (${e.message.split("\n")[0]}) — relying on Wi-Fi discovery.`);
+    }
+}
+setupUsbTunnel();
 
 // ── 2b. Discovery beacon ──────────────────────────────────────────────────────
 // The Quest headset listens on UDP BEACON_PORT and connects to whatever server

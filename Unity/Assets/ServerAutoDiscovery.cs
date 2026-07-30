@@ -8,20 +8,32 @@ using Ubiq.Networking;
 using Ubiq.Rooms;
 
 /// <summary>
-/// Zero-configuration LAN discovery for the study server.
+/// Zero-configuration discovery for the study server. Two independent paths, so
+/// a session is never lost to whatever network the room happens to have.
 ///
-/// The Mac's launcher (`npm run study`) broadcasts a small UDP beacon
-///   "UBIQ_DISCOVERY:&lt;ip&gt;:&lt;port&gt;"
-/// on the local network every second. This component listens for that beacon
-/// and points the Ubiq RoomClient at whatever address it hears.
+/// 1. HANDOFF FILE (primary — fast, works across subnets).
+///    While the headset is on the USB cable, `npm run study` pushes the Mac's
+///    current IP to a small file in this app's storage. We read it at startup and
+///    connect straight away — no waiting, no broadcast involved.
 ///
-/// Effect: the headset finds the Mac automatically on ANY Wi-Fi the two share
-/// — no baked IP, no rebuild when the network changes. Both devices just need
-/// to be on the same network (which they always are for a co-located study).
+///    This matters because the UDP beacon below only works when the Mac and the
+///    headset share a subnet. In a lab that is frequently false: the headset sits
+///    on the lab AP while the Mac is on the institutional network. Broadcasts do
+///    not route between them, so the beacon never arrives and the app falls back
+///    to localhost — which on the headset is itself, hence "connection lost".
+///    Ordinary TCP between the two still works fine; only the *discovery* was
+///    broken, which is exactly what this file supplies.
 ///
-/// The RoomClient re-reads its server list on every reconnect cycle, so once
-/// we call SetDefaultServer with the discovered address, the next reconnect
-/// (a few seconds at most) locks straight on.
+///    The cable is needed only for that one-off write at launch. Once connected,
+///    the session runs over Wi-Fi and the headset can be unplugged.
+///
+/// 2. UDP BEACON (fallback). The launcher broadcasts
+///    "UBIQ_DISCOVERY:&lt;ip&gt;:&lt;port&gt;" every second; we listen and point the
+///    RoomClient at whatever we hear. Requires a shared subnet, so it is the
+///    backup rather than the primary.
+///
+/// The file is re-read while we are still unconnected, so starting the app before
+/// the server also works — it locks on within a second of the server coming up.
 ///
 /// Add this component to the StudyManager object (the StudyUIBootstrapper adds
 /// it automatically if it is missing).
@@ -35,18 +47,27 @@ public class ServerAutoDiscovery : MonoBehaviour
     [Tooltip("Also run discovery in the Unity Editor. Off by default so the editor keeps using its known-good localhost connection.")]
     public bool runInEditor = false;
 
+    [Tooltip("File the launcher writes the Mac's IP into over USB. Relative to this app's persistent data path.")]
+    public string handoffFileName = "study_server.txt";
+
     private const string PREFIX = "UBIQ_DISCOVERY:";
     private const string QUERY  = "UBIQ_QUERY";
 
     private UdpClient udp;
     private Thread listenThread;
     private Thread queryThread;
+    private Thread handoffThread;
     private volatile bool running;
+
+    // Resolved on the main thread in Start(); persistentDataPath is not safe to
+    // touch from a worker thread.
+    private string handoffPath;
 
     // Set by the listen thread, consumed on the main thread in Update().
     private volatile string pendingIp;
     private volatile string pendingPort;
-    private string appliedIp;
+    // Read by the query and handoff threads to know when to stop polling.
+    private volatile string appliedIp;
 
     private AndroidJavaObject multicastLock;
 
@@ -59,8 +80,58 @@ public class ServerAutoDiscovery : MonoBehaviour
             return;
         }
 #endif
+        handoffPath = System.IO.Path.Combine(Application.persistentDataPath, handoffFileName);
+
+        // Try the handoff file first and synchronously — when the launcher has
+        // already pushed it, this connects on frame one with nothing to wait for.
+        ReadHandoffFile();
+
         AcquireMulticastLock();
         StartListening();
+        StartHandoffWatch();
+    }
+
+    /// <summary>
+    /// Reads "ip:port" from the handoff file, if present. Stages the address for
+    /// Update() rather than applying it here so both discovery paths converge on
+    /// the same main-thread code.
+    /// </summary>
+    private void ReadHandoffFile()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(handoffPath) || !System.IO.File.Exists(handoffPath)) return;
+            var text = System.IO.File.ReadAllText(handoffPath).Trim();
+            if (text.Length == 0) return;
+
+            var parts = text.Split(':');
+            if (parts.Length != 2) return;
+
+            var ip = parts[0].Trim();
+            if (ip.Length == 0 || ip == "127.0.0.1" || ip == "localhost") return;
+
+            pendingIp = ip;
+            pendingPort = parts[1].Trim();
+        }
+        catch (Exception) { /* unreadable or mid-write — the watch thread retries */ }
+    }
+
+    /// <summary>
+    /// Keeps re-reading the handoff file until we have applied an address, so
+    /// launching the app before the server still connects promptly.
+    /// </summary>
+    private void StartHandoffWatch()
+    {
+        handoffThread = new Thread(() =>
+        {
+            while (running && appliedIp == null)
+            {
+                ReadHandoffFile();
+                Thread.Sleep(1000);
+            }
+        })
+        { IsBackground = true };
+        handoffThread.Start();
     }
 
     private void Update()
@@ -90,7 +161,8 @@ public class ServerAutoDiscovery : MonoBehaviour
         def.type = ConnectionType.TcpClient;
 
         room.SetDefaultServer(def);
-        Debug.Log($"[ServerAutoDiscovery] Discovered study server at {ip}:{port} — reconnecting.");
+        Debug.Log($"[ServerAutoDiscovery] Study server at {ip}:{port} — reconnecting. " +
+                  $"(source: {(System.IO.File.Exists(handoffPath) ? "USB handoff file" : "UDP beacon")})");
 
         // Force an immediate reconnect so we don't wait for the heartbeat timeout.
         try { room.Reconnect(); }
@@ -192,6 +264,7 @@ public class ServerAutoDiscovery : MonoBehaviour
         try { udp?.Close(); } catch (Exception) { }
         try { listenThread?.Join(200); } catch (Exception) { }
         try { queryThread?.Join(200); } catch (Exception) { }
+        try { handoffThread?.Join(1200); } catch (Exception) { }
 #if UNITY_ANDROID && !UNITY_EDITOR
         try { multicastLock?.Call("release"); } catch (Exception) { }
 #endif
