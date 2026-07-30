@@ -167,6 +167,37 @@ to rehearse the whole flow on the desktop. Everything works there too (the
 outcome runner is plain C#), so you can pilot the researcher workflow without
 the Quest.
 
+### Black screen, frozen app, or "connection lost"
+
+Almost always one of three things, in this order:
+
+**1. The headset is off your head.** The Quest sleeps the moment you take it off
+and Unity suspends with it — black screen, no response, no logs. Put it on. To
+check: `adb shell dumpsys power | grep mWakefulness` (`Asleep` = this is it).
+
+**2. The server isn't running.** The app connects but nothing responds to your
+clicks. `npm run study` must stay running the whole session.
+
+**3. No guardian boundary set.** The app gains focus then immediately loses it,
+so you see a partial view or the grey boundary screen instead of the scene.
+Set the boundary in the headset.
+
+**Desk testing without wearing it** — these two make the headset behave as if
+worn, which is handy while you rehearse:
+
+```bash
+adb shell am broadcast -a com.oculus.vrpowermanager.prox_close  # stay awake off-head
+adb shell setprop debug.oculus.guardian_pause 1                 # run with no boundary
+```
+
+⚠ **Turn the guardian back on before any participant wears it** — it is the
+boundary that stops them walking into things:
+
+```bash
+adb shell setprop debug.oculus.guardian_pause 0
+adb shell am broadcast -a com.oculus.vrpowermanager.automation_disable
+```
+
 ### 3. Set up the participant on the control panel
 - Enter the **Participant ID** (e.g. `P01`). The panel immediately shows that
   participant's **counterbalanced plan** — which condition and which task to run
