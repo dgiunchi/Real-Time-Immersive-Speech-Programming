@@ -306,6 +306,7 @@ function renderErrorChips() {
 
 function renderResponses() {
   const wrap = document.getElementById("responses");
+  if (!wrap) return;
   wrap.innerHTML = "";
   const vObj = currentVariantObj();
   if (!vObj) return;
@@ -314,31 +315,34 @@ function renderResponses() {
   const cat = errorCategories.find(c => c.key === activeError);
 
   // Show what the participant will get + the research metadata.
-  const brief = document.createElement(“div”);
-  brief.style.cssText = “margin-bottom:12px;padding:10px;background:#161b24;border-radius:8px;”;
+  const brief = document.createElement("div");
+  brief.style.cssText = "margin-bottom:12px;padding:10px;background:#161b24;border-radius:8px;";
   brief.innerHTML =
-    `<div style=”font-size:13px;color:#9fb4d8;”>${vObj.label} · <b>${cat ? cat.name : activeError}</b></div>` +
-    (err ? `<div style=”margin-top:6px;font-size:13px;color:#e8a87c;”>Panel (B): ${err.errorText}</div>
-            <div style=”margin-top:4px;font-size:13px;color:#9fd8b4;”>Agent (C): “${err.agentPost}”</div>
-            <div style=”margin-top:6px;font-size:12px;color:#6a7a94;”>
-              Missing slot: <b style=”color:#c9a96e”>${err.missingSlot || “—“}</b>
-              &nbsp;·&nbsp; Correct attribution: <b style=”color:${err.attribution==='self'?'#ffb648':'#7ec8e3'}”>${err.attribution || “—“}</b>
-            </div>` : “”);
+    '<div style="font-size:13px;color:#9fb4d8;">' + vObj.label +
+      ' &middot; <b>' + (cat ? cat.name : activeError) + '</b></div>' +
+    (err
+      ? '<div style="margin-top:6px;font-size:13px;color:#e8a87c;">Panel (B): ' + err.errorText + '</div>' +
+        '<div style="margin-top:4px;font-size:13px;color:#9fd8b4;">Agent (C): &ldquo;' + err.agentPost + '&rdquo;</div>' +
+        '<div style="margin-top:6px;font-size:12px;color:#6a7a94;">Missing slot: ' +
+          '<b style="color:#c9a96e">' + (err.missingSlot || "&mdash;") + '</b>' +
+          ' &nbsp;&middot;&nbsp; Correct attribution: ' +
+          '<b style="color:' + (err.attribution === "self" ? "#ffb648" : "#7ec8e3") + '">' +
+          (err.attribution || "&mdash;") + '</b></div>'
+      : "");
   wrap.appendChild(brief);
 
   const mk = (outcome, title, desc, cls) => {
-    const div = document.createElement(“div”);
-    div.className = “resp “ + cls;
+    const div = document.createElement("div");
+    div.className = "resp " + cls;
     div.onclick = () => inject(outcome, desc);
-    div.innerHTML = `<div class=”rbtn”>${title}</div><div class=”desc”>${desc}</div>`;
+    div.innerHTML = '<div class="rbtn">' + title + '</div><div class="desc">' + desc + '</div>';
     wrap.appendChild(div);
   };
 
-  mk(“error”, “INJECT ERROR”,
-     “First attempt, and again whenever they repeat the same mistake.”, “error”);
-  mk(“success”, “INJECT SUCCESS”,
-     “Use once they have repaired the problem. Deliberately silent — no panel, no agent.”, “success”);
-
+  mk("error", "INJECT ERROR",
+     "First attempt, and again whenever they repeat the same mistake.", "error");
+  mk("success", "INJECT SUCCESS",
+     "Use once they have repaired the problem. Deliberately silent \u2014 no panel, no agent.", "success");
 }
 
 function renderTrial(trial) {
