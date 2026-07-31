@@ -73,6 +73,48 @@ const ERROR_CATEGORIES = [
 
 const ERROR_KEYS = ERROR_CATEGORIES.map(c => c.key);
 
+// ── Ground-truth attribution per error type ──────────────────────────────────
+// Fixed at the TYPE level, not per task, because error type is a factor in the
+// design: if "happened_plus_extra" meant the user's fault in task 1 and the
+// system's in task 2, attributionCorrect would not be comparable across the
+// task/error combinations that counterbalancing hands to different people.
+//
+// The split is principled rather than arbitrary:
+//   self   — the instruction was incomplete or ambiguous (omission, vagueness)
+//   system — the instruction was fine; the pipeline mis-heard it or overreached
+//
+// Every error's wording MUST agree with its attribution here. Feedback that
+// says "speak more clearly" while the ground truth is "system" would penalise
+// participants for believing what they were just told — a confound running in
+// the direction of the hypothesis.
+const ERROR_ATTRIBUTION = {
+    missing_detail:       "self",     // they left a required detail out
+    misrecognition:       "system",   // they said it; ASR heard something else
+    happened_differently: "self",     // their phrasing allowed another reading
+    happened_plus_extra:  "system"    // they never asked for the extra behaviour
+};
+
+/**
+ * Does a repair utterance supply the detail the error was about?
+ *
+ * Accepts a set of equivalent terms rather than one keyword, and matches on
+ * word boundaries. Plain substring matching fails both ways here: "one" hits
+ * "stone" and "someone", while a perfectly good repair phrased as "in my palm"
+ * or "beside the campfire" misses "hand" and "next to" entirely. This measure
+ * backs the training-signal claim, so its false-positive and false-negative
+ * rates are the study's, not an implementation detail.
+ */
+function slotMatched(text, terms) {
+    if (!terms || !terms.length) return null;   // null = not scoreable
+    const haystack = String(text || "").toLowerCase();
+    return terms.some(term => {
+        const s = String(term).toLowerCase().trim();
+        if (!s) return false;
+        const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`(^|\\W)${escaped}(\\W|$)`).test(haystack);
+    });
+}
+
 // ── Task builders ────────────────────────────────────────────────────────────
 // Variants share one structure and differ only in the object/colour/target named.
 // Generating them from a template rather than writing 36 blocks by hand keeps the
@@ -91,39 +133,47 @@ function buildTask1(v) {
             // Root cause: hand height not specified → nothing appears.
             missing_detail: {
                 action: "noop",
-                errorText: `The ${o} did not appear. Missing detail: hand height.`,
-                agentPost: `It looks like the hand height wasn't specified — try saying: ` +
-                           `create a ${o} when my hand is above shoulder level.`,
-                missingSlot: "height",         // what the repair must supply
-                attribution: "self"            // correct answer: user left this out
+                errorText: `The ${o} did not appear — no hand height was given.`,
+                agentPost: `I wasn't told how high your hand needed to be, so I didn't ` +
+                           `know when to create the ${o}.`,
+                missingSlot: "hand height",
+                slotTerms: ["height", "high", "above", "shoulder", "chest", "eye level",
+                            "level", "raise", "raised", "up", "upward", "lift"]
             },
-            // Root cause: the object word was spoken quietly → a wall appears instead.
+            // Root cause: ASR mis-heard a clearly spoken word → a wall appears.
+            // Wording must NOT ask them to speak more clearly: the ground truth
+            // is that the pipeline erred, and telling them otherwise would make
+            // the honest answer ("I wasn't clear") score as wrong.
             misrecognition: {
                 action: "spawn", shape: "cube", pos: "hand",
                 scaleX: 1.2, scaleY: 0.9, scaleZ: 0.08,
-                errorText: `Wrong object created. Please say '${o}' clearly.`,
-                agentPost: `I think I created the wrong object — could you say '${o}' ` +
-                           `a little more slowly?`,
-                missingSlot: o,                // repair must name the object clearly
-                attribution: "system"          // system misheard a clear word
+                errorText: `I heard "wall" and created that instead of the ${o}.`,
+                agentPost: `I think I misheard you — I picked up "wall" rather than ` +
+                           `"${o}", so I made the wrong thing.`,
+                missingSlot: o,
+                slotTerms: [o]
             },
             // Root cause: exact hand placement ambiguous → it lands on the floor.
             happened_differently: {
                 action: "spawn", shape: v.shape, pos: "floor", physics: true,
                 scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
-                errorText: `The ${o} appeared, but not in your hand. Please specify the location.`,
-                agentPost: `The ${o} was created, but I wasn't sure exactly where you wanted it.`,
-                missingSlot: "hand",
-                attribution: "self"
+                errorText: `The ${o} appeared, but no location was specified.`,
+                agentPost: `The ${o} was created, but I wasn't sure where you wanted it.`,
+                missingSlot: "in my hand",
+                slotTerms: ["hand", "hands", "palm", "holding", "hold", "grip",
+                            "grasp", "fingers"]
             },
-            // Root cause: quantity never specified → several appear.
+            // Root cause: system created more than asked — an overreach, not an
+            // omission, so this is "system" like every happened_plus_extra.
             happened_plus_extra: {
                 action: "spawn", shape: v.shape, pos: "hand", physics: true, count: 5,
                 scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
-                errorText: `Multiple ${o}s appeared. Please specify: only one ${o}.`,
-                agentPost: `A ${o} appeared, but I wasn't sure how many you wanted.`,
-                missingSlot: "one",
-                attribution: "self"
+                errorText: `I created several ${o}s when only one was asked for.`,
+                agentPost: `That went further than you asked — I made a whole group of ` +
+                           `${o}s instead of the one.`,
+                missingSlot: "only one",
+                slotTerms: ["one", "single", "just one", "only one", "a single",
+                            "one only", "1"]
             }
         },
         // Correct outcome: no agent intervention in C, no panel in B, nothing in A.
@@ -143,38 +193,43 @@ function buildTask2(v) {
                 `like you to ask the system to move the ${m} so that it ends up next to ` +
                 `the ${t}. Use your own words.`,
         errors: {
-            // Root cause: exact distance not specified → it does not move.
+            // Root cause: how close was never stated → it does not move.
             missing_detail: {
                 action: "noop",
-                errorText: `The ${m} did not move. Missing detail: exact distance.`,
-                agentPost: `I wasn't sure exactly how close to the ${t} you wanted the ${m}.`,
-                missingSlot: "next to",
-                attribution: "self"
+                errorText: `The ${m} did not move — no destination distance was given.`,
+                agentPost: `I wasn't told how close to the ${t} you wanted the ${m}, ` +
+                           `so I left it where it was.`,
+                missingSlot: `next to the ${t}`,
+                slotTerms: ["next to", "beside", "near", "close", "closer", "adjacent",
+                            "by the", "against", "touching", "up to", "alongside", t]
             },
-            // Root cause: the object word was not caught → the other object moves.
+            // Root cause: ASR mis-heard the object word → the other one moves.
             misrecognition: {
                 action: "move", target: w, moveTo: t,
-                errorText: `Wrong object moved. Please say '${m}' clearly.`,
-                agentPost: `I think I moved the wrong object — could you say '${m}' ` +
-                           `a little more slowly?`,
+                errorText: `I heard "${w}" and moved that instead of the ${m}.`,
+                agentPost: `I think I misheard you — I picked up "${w}" rather than ` +
+                           `"${m}", so I moved the wrong one.`,
                 missingSlot: m,
-                attribution: "system"
+                slotTerms: [m]
             },
             // Root cause: direction ambiguous → it moves the wrong way.
             happened_differently: {
                 action: "move", target: m, moveTo: t, away: true,
-                errorText: `The ${m} moved in the wrong direction.`,
-                agentPost: `The ${m} moved, but I think I went the wrong way.`,
-                missingSlot: t,
-                attribution: "self"
+                errorText: `The ${m} moved, but no direction was specified.`,
+                agentPost: `The ${m} moved, but I wasn't sure which way you meant.`,
+                missingSlot: `toward the ${t}`,
+                slotTerms: [t, "toward", "towards", "to the", "into", "onto",
+                            "next to", "beside", "near", "closer"]
             },
-            // Root cause: size constraint never specified → it arrives but grows.
+            // Root cause: system resized it unasked — overreach, so "system".
             happened_plus_extra: {
                 action: "move", target: m, moveTo: t, scaleMultiplier: 2.2,
-                errorText: `The ${m} moved, but its size also changed unexpectedly.`,
-                agentPost: `The ${m} moved to the ${t}, but I think I also changed its size.`,
-                missingSlot: "size",
-                attribution: "system"
+                errorText: `The ${m} reached the ${t}, but I also resized it unasked.`,
+                agentPost: `That went further than you asked — I moved the ${m} but ` +
+                           `changed its size as well.`,
+                missingSlot: "keep the same size",
+                slotTerms: ["size", "scale", "same size", "keep", "dont", "don't",
+                            "do not", "without", "bigger", "smaller", "resize", "grow"]
             }
         },
         success: { action: "move", target: m, moveTo: t }
@@ -190,39 +245,44 @@ function buildTask3(v) {
                 `like you to ask the system to change the colour of the ${o} and move it ` +
                 `next to the ${t}. Use your own words.`,
         errors: {
-            // Root cause: exact position not specified → colour lands, move does not.
+            // Root cause: destination never stated → colour lands, move does not.
             missing_detail: {
                 action: "recolor", target: o, color: v.colour,
-                errorText: `The colour changed, but the ${o} did not move.`,
-                agentPost: `I changed the colour, but I wasn't sure exactly where you ` +
-                           `wanted the ${o}.`,
-                missingSlot: t,
-                attribution: "self"
+                errorText: `The colour changed, but no destination was given.`,
+                agentPost: `I changed the colour, but I wasn't told where to put the ${o}.`,
+                missingSlot: `next to the ${t}`,
+                slotTerms: [t, "next to", "beside", "near", "close", "adjacent",
+                            "by the", "move", "put", "place"]
             },
-            // Root cause: colour word not caught → the wrong colour is applied.
+            // Root cause: ASR mis-heard the colour word.
             misrecognition: {
                 action: "recolor", target: o, color: v.wrongColour, moveTo: t,
-                errorText: `Wrong colour applied. Please say the colour clearly.`,
-                agentPost: `I think I got the wrong colour — could you say the colour ` +
-                           `a little more slowly?`,
+                errorText: `I heard a different colour and applied that instead of ${c}.`,
+                agentPost: `I think I misheard the colour — I didn't pick up "${c}", ` +
+                           `so I used the wrong one.`,
                 missingSlot: c,
-                attribution: "system"
+                slotTerms: [c]
             },
-            // Root cause: "next to" interpreted imprecisely → it ends up far away.
+            // Root cause: "next to" left the exact placement open → ends up far.
             happened_differently: {
                 action: "recolor", target: o, color: v.colour, moveTo: t, far: true,
-                errorText: `The ${o} moved, but not to the right place.`,
-                agentPost: `I moved the ${o}, but I don't think I put it in the right place.`,
-                missingSlot: "next to",
-                attribution: "self"
+                errorText: `The ${o} moved, but how close to place it was left open.`,
+                agentPost: `I moved the ${o}, but I wasn't sure how near the ${t} ` +
+                           `you wanted it.`,
+                missingSlot: "right next to it",
+                slotTerms: ["next to", "beside", "near", "close", "closer", "touching",
+                            "against", "adjacent", "right by", "alongside", t]
             },
-            // Root cause: stillness never specified → it arrives correctly but spins.
+            // Root cause: system added spin unasked — overreach, so "system".
             happened_plus_extra: {
                 action: "recolor", target: o, color: v.colour, moveTo: t, spin: true,
-                errorText: `The ${o} changed colour and moved correctly, but it is now spinning.`,
-                agentPost: `The ${o} is right, but I think I also made it spin.`,
-                missingSlot: "still",
-                attribution: "system"
+                errorText: `The ${o} is correct, but I also set it spinning unasked.`,
+                agentPost: `That went further than you asked — the ${o} is right, but ` +
+                           `I made it spin as well.`,
+                missingSlot: "keep it still",
+                slotTerms: ["still", "stop", "spin", "spinning", "rotate", "rotating",
+                            "steady", "static", "dont", "don't", "do not", "without",
+                            "motionless", "stationary"]
             }
         },
         success: { action: "recolor", target: o, color: v.colour, moveTo: t }
@@ -432,7 +492,10 @@ class WizardOfOzApp extends ApplicationController {
             errorCategory:     category,
             plannedErrors:     this.plannedErrors(task),
             missingSlot:       errorSpec ? (errorSpec.missingSlot || "") : "",
-            correctAttribution: errorSpec ? (errorSpec.attribution || "") : "",
+            slotTerms:         errorSpec ? (errorSpec.slotTerms || []) : [],
+            // Attribution is a property of the error TYPE, so it stays constant
+            // across tasks and variants and remains comparable between people.
+            correctAttribution: ERROR_ATTRIBUTION[category] || "",
             attribution:       null,   // filled by POST /attribution
             repairContainsSlot: null,  // filled automatically on next transcript
             startedAt:         Date.now(),
@@ -677,14 +740,15 @@ class WizardOfOzApp extends ApplicationController {
             // capture whether the feedback caused an immediate targeted fix —
             // if they say it first time without the slot the flag stays false.
             if (this.trial && !this.trial.endedAt &&
-                this.trial.missingSlot && this.trial.repairContainsSlot === null &&
-                this.trial.injects > 0) {
-                const slot = this.trial.missingSlot.toLowerCase();
-                this.trial.repairContainsSlot = text.toLowerCase().includes(slot);
-                this.logEvent("repair-slot-check",
-                    `slot="${slot}" found=${this.trial.repairContainsSlot}`, {
-                    msSinceTrialStart: this.trial ? Date.now() - this.trial.startedAt : ""
-                });
+                this.trial.repairContainsSlot === null && this.trial.injects > 0) {
+                const matched = slotMatched(text, this.trial.slotTerms);
+                if (matched !== null) {
+                    this.trial.repairContainsSlot = matched;
+                    this.logEvent("repair-slot-check",
+                        `slot="${this.trial.missingSlot}" found=${matched}`, {
+                        msSinceTrialStart: Date.now() - this.trial.startedAt
+                    });
+                }
             }
 
             this.logEvent("transcript", text, {
@@ -842,7 +906,7 @@ class WizardOfOzApp extends ApplicationController {
                         errors: Object.entries(vv.errors).map(([ek, ev]) => ({
                             key: ek, errorText: ev.errorText, agentPost: ev.agentPost,
                             missingSlot: ev.missingSlot || "",
-                            attribution: ev.attribution || ""
+                            attribution: ERROR_ATTRIBUTION[ek] || ""
                         }))
                     }))
                 })));
