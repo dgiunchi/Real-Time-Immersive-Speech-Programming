@@ -73,6 +73,51 @@ explained, so the feedback channel never doubles as a success signal.
   colour how they read tasks 1 and 2.
 - **Variant** = `((p-1) + position) mod 3`, for content variety.
 
+### Measures and analysis plan
+
+Fix this before collecting data. Deciding what counts as a result after seeing
+the numbers is the single easiest way to lose a paper.
+
+**Primary — attribution accuracy.** Per trial, did the participant's stated
+cause match the ground truth (`attributionCorrect`)? Analysed as a mixed-effects
+logistic regression: `correct ~ condition * scenarioType + (1|participant)`.
+The interaction is the interesting term: feedback may help on user-fault tasks
+while doing nothing, or actively harming, on system-fault ones.
+
+**Secondary — repair quality** (`repairContainsSlot`), **attempts to recovery**
+(`attempts`), **time to first repair**, **completion** (`completionStatus`).
+
+**Manipulation check** (`noticedFeedback`). Report it. A null result means
+nothing if participants never registered the feedback.
+
+**Power.** n=10 per cell detects only large between-group effects (d≈1.3 at
+80%). Treat the modality main effect as **exploratory** and say so in the paper.
+The within-participant contrast — user-fault vs system-fault scenarios, where
+every participant is their own control — is far better powered and is where the
+real claim lives.
+
+**Pre-register** the above before participant 1. It costs an hour and converts
+every later choice from a judgement call into a plan.
+
+### Threats handled, and the ones remaining
+
+| Threat | Handling |
+|---|---|
+| Experimenter bias in the probe | Ground truth hidden from the wizard until the answer is recorded; prompt is scripted verbatim |
+| Learning the interface on task 1 | Practice trial first, always succeeds, not analysed |
+| Order effects | Balanced Williams square |
+| Drift over recruitment | Conditions interleaved A,B,C rather than blocked |
+| "Feedback didn't help" vs "never saw it" | Manipulation check per trial |
+| Success acting as a second feedback channel | Correct outcomes are silent in all conditions |
+| Feedback contradicting ground truth | Tasks 3-4 never imply user fault |
+| Repair measure inflated by loose matching | Word-boundary synonym sets; agreement tokens excluded |
+
+**Still open, disclose in the limitations:** the wizard is not blind to
+condition (unavoidable in WoZ, since they operate the feedback); coding of vague
+attribution answers is a judgement call, so record audio and have a second coder
+rate ~20% for inter-rater reliability; scripted failures are not naturalistic
+errors.
+
 ### Trial protocol
 
 One trial per task, four tasks per participant.

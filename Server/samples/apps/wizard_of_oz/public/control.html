@@ -161,18 +161,44 @@
     </div>
 
     <!-- ── Step 3: Attribution probe ─────────────────────────────── -->
+    <!-- The ground-truth answer is hidden until after recording, so that knowing
+         it cannot colour how the question is asked or how a vague reply is
+         coded. Read the prompt verbatim; improvising it varies the stimulus
+         across participants, which is the measure itself. -->
     <div class="card" id="step3" style="border-color:#3a3020;">
-      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 3 — after injecting error</span>
-      <h2 style="margin:2px 0 8px;">Ask: <em style="font-weight:400;color:var(--muted);">"Why do you think that happened?"</em></h2>
+      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 3 &mdash; immediately after the error</span>
+      <h2 style="margin:2px 0 4px;">Read this out, word for word</h2>
+      <div style="padding:12px;background:#0d1117;border-radius:8px;border-left:3px solid #c9a96e;font-size:15px;margin-bottom:6px;">
+        &ldquo;In your own words, why do you think that happened?&rdquo;
+      </div>
+      <p class="sub" style="margin:0 0 10px;">
+        Do not paraphrase, prompt, or react to the answer. If they are vague, say
+        &ldquo;whatever you think&rdquo; once, then code the closest option.
+      </p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <button class="btn-ghost" style="flex:1;background:#3a2a0a;color:#ffb648;font-size:13px;"
-                onclick="recordAttribution('self')">I didn't say enough</button>
-        <button class="btn-ghost" style="flex:1;background:#0a2030;color:#7ec8e3;font-size:13px;"
-                onclick="recordAttribution('system')">System misunderstood me</button>
-        <button class="btn-ghost" style="flex:1;font-size:13px;"
-                onclick="recordAttribution('unsure')">Not sure</button>
+        <button class="btn-ghost" style="flex:1;font-size:13px;" onclick="recordAttribution('self')">
+          Blamed themselves<br><span style="font-size:11px;opacity:.65;">&ldquo;I wasn't clear / I left something out&rdquo;</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;font-size:13px;" onclick="recordAttribution('system')">
+          Blamed the system<br><span style="font-size:11px;opacity:.65;">&ldquo;It misheard / it can't do that&rdquo;</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;font-size:13px;" onclick="recordAttribution('unsure')">
+          Genuinely unsure<br><span style="font-size:11px;opacity:.65;">no clear cause given</span>
+        </button>
       </div>
       <div id="attrResult" style="font-size:12px;color:var(--muted);min-height:18px;"></div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:14px 0 10px;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
+        Manipulation check &mdash; did they register the feedback?
+        <span style="opacity:.7;">(condition A: did they notice the failure at all)</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordNoticed('yes')">Yes</button>
+        <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordNoticed('partial')">Partly</button>
+        <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordNoticed('no')">No</button>
+      </div>
+      <div id="noticedResult" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:6px;"></div>
     </div>
 
     <!-- ── Step 4: End trial / next ───────────────────────────────── -->
@@ -289,22 +315,17 @@ function renderResponses() {
   if (!vObj || !tObj) return;
 
   const err = vObj.error || {};
-  const isUserFault = tObj.attribution === "self";
 
+  // The ground-truth attribution is deliberately NOT shown here. The wizard asks
+  // the participant why they think the error happened, and knowing the "right"
+  // answer while asking is a direct route for experimenter bias into the primary
+  // measure. It is revealed only after the answer has been recorded.
   const brief = document.createElement("div");
   brief.style.cssText = "margin-bottom:12px;padding:10px;background:#161b24;border-radius:8px;";
   brief.innerHTML =
     '<div style="font-size:13px;color:#9fb4d8;">' + vObj.label + '</div>' +
-    '<div style="margin-top:4px;font-size:12px;">' +
-      '<span style="padding:2px 8px;border-radius:10px;font-weight:700;background:' +
-      (isUserFault ? "#4a3b1a;color:#ffb648" : "#0a2f40;color:#7ec8e3") + ';">' +
-      (isUserFault ? "USER ERROR" : "SYSTEM ISSUE") + '</span>' +
-      '<span style="color:#6a7a94;margin-left:8px;">correct attribution: ' +
-      tObj.attribution + '</span></div>' +
     '<div style="margin-top:8px;font-size:13px;color:#e8a87c;">Panel (B): ' + (err.errorText || "") + '</div>' +
-    '<div style="margin-top:4px;font-size:13px;color:#9fd8b4;">Agent (C): &ldquo;' + (err.agentPost || "") + '&rdquo;</div>' +
-    '<div style="margin-top:6px;font-size:12px;color:#6a7a94;">Repair should mention: ' +
-      '<b style="color:#c9a96e">' + (err.missingSlot || "&mdash;") + '</b></div>';
+    '<div style="margin-top:4px;font-size:13px;color:#9fd8b4;">Agent (C): &ldquo;' + (err.agentPost || "") + '&rdquo;</div>';
   wrap.appendChild(brief);
 
   const mk = (outcome, title, desc, cls) => {
@@ -344,13 +365,10 @@ function renderPlan(plan, pid) {
       '</b> \u2014 condition <span class="pill ' + plan[0].condition + '">' +
       plan[0].condition + '</span>, run in this order:</div>' +
     plan.map(function (p) {
-      const self = p.attribution === "self";
       return '<div style="font-size:13px;padding:6px 0;border-top:1px solid var(--line);">' +
         '<b>' + p.block + '. ' + p.taskName + '</b> \u00b7 ' + p.variant.toUpperCase() +
         '<div class="sub">' + p.variantLabel + '</div>' +
-        '<div style="font-size:11px;margin-top:2px;"><span style="padding:1px 7px;border-radius:9px;background:' +
-        (self ? "#4a3b1a;color:#ffb648" : "#0a2f40;color:#7ec8e3") + ';">' +
-        (self ? "user error" : "system issue") + '</span></div></div>';
+        '</div>';
     }).join("");
 }
 
@@ -391,6 +409,13 @@ async function inject(outcome) {
   } else {
     addLog("t", "Inject failed: " + (res.error || "?"));
   }
+}
+
+async function recordNoticed(value) {
+  const res = await post("/noticed", { noticed: value });
+  const el = document.getElementById("noticedResult");
+  if (el) el.textContent = res.ok ? ("Recorded: " + value) : (res.error || "no active trial");
+  addLog("t", "Manipulation check: noticed=" + value);
 }
 
 async function recordAttribution(value) {

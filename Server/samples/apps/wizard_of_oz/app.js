@@ -165,8 +165,9 @@ function buildTask3(v) {
         scenario: "system_limit",
         prompt: `Ask the system to fill the area around the campfire with about ` +
                 `${n} ${o}s. Use your own words.`,
-        // Nothing is wrong with what they said. The feedback must own the limit
-        // and offer a workable number, never suggest they rephrase.
+        // Nothing is wrong with what they said. The feedback owns the limit and
+        // offers a workable number; it must never suggest they rephrase, because
+        // there is nothing to rephrase.
         error: {
             action: "spawn", shape: v.shape, pos: "floor", physics: true, count: 8,
             scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
@@ -175,12 +176,19 @@ function buildTask3(v) {
             agentPost: `Your request was clear, but ${n} ${o}s is more than I can ` +
                        `handle at once. I have made 8. Would a smaller number work?`,
             missingSlot: "a smaller number",
-            slotTerms: ["fewer", "less", "smaller", "reduce", "ten", "twenty", "fifty",
-                        "hundred", "10", "20", "30", "50", "100", "few", "couple",
-                        "some", "instead", "ok", "okay", "fine", "that works"]
+            // Deliberately conservative: only an explicit smaller quantity counts.
+            // Bare agreement ("ok", "fine") is excluded because those strings
+            // appear inside ordinary speech and would inflate the measure. A
+            // false negative costs a data point; a false positive corrupts the
+            // claim that these repairs are usable training signal.
+            slotTerms: ["fewer", "less", "smaller", "reduce", "reduced", "lower",
+                        "ten", "twenty", "thirty", "fifty", "hundred", "dozen",
+                        "5", "8", "10", "12", "15", "20", "25", "30", "50", "100"]
         },
+        // Their revised, smaller request is honoured — visibly more than the 8
+        // the limit produced, so the adaptation is seen to have worked.
         success: {
-            action: "spawn", shape: v.shape, pos: "floor", physics: true, count: 8,
+            action: "spawn", shape: v.shape, pos: "floor", physics: true, count: 20,
             scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color
         }
     };
@@ -216,6 +224,34 @@ function buildTask4(v) {
 }
 
 const TASKS = {
+    // Practice. Not counterbalanced, not analysed, always run first. Without it
+    // the first real task doubles as push-to-talk training, and whatever that
+    // costs in attempts and time lands on whichever task the square put first.
+    // It always succeeds: the participant must not meet a failure until the
+    // measured tasks begin.
+    practice: {
+        name: "Practice (not analysed)",
+        scenario: "practice",
+        practice: true,
+        variants: {
+            v1: {
+                label: "Practice: change the cube's colour",
+                scenario: "practice",
+                prompt: `Before we start, a practice round so you can get used to ` +
+                        `talking to the system. Hold the trigger, ask it to change ` +
+                        `the cube to any colour you like, then let go. Nothing here ` +
+                        `is being recorded as part of the study.`,
+                error: {
+                    action: "noop",
+                    errorText: "",
+                    agentPost: "",
+                    missingSlot: "",
+                    slotTerms: []
+                },
+                success: { action: "recolor", target: "cube", color: "#39a0ed" }
+            }
+        }
+    },
     task1: {
         name: "Create an object in your hand",
         scenario: "user_error",
@@ -257,6 +293,7 @@ const TASKS = {
 // Ground-truth attribution, fixed per task because task IS scenario type here.
 // Tasks 1-2 are the participant's doing; tasks 3-4 are not.
 const TASK_ATTRIBUTION = {
+    practice: "",          // not scored
     task1: "self",
     task2: "self",
     task3: "system",
@@ -436,6 +473,11 @@ class WizardOfOzApp extends ApplicationController {
             // across tasks and variants and remains comparable between people.
             correctAttribution: TASK_ATTRIBUTION[task] || "",
             attribution:       null,   // filled by POST /attribution
+            // Manipulation check. Without it, "feedback made no difference"
+            // cannot be told apart from "they never registered the feedback",
+            // and in condition A it records whether they noticed the failure
+            // at all with nothing to tell them.
+            noticedFeedback:   null,   // filled by POST /noticed
             repairContainsSlot: null,  // filled automatically on next transcript
             startedAt:         Date.now(),
             startedAtIso:      new Date().toISOString(),
@@ -546,11 +588,15 @@ class WizardOfOzApp extends ApplicationController {
      */
     logTrial(trial) {
         const file = path.join(LOG_DIR, "trials.csv");
-        const order = (this.session.plan || []).map(p => p.condition).join("-");
+        // Between-subjects: condition is constant within a participant, so the
+        // task sequence is what actually varies and what order effects are
+        // checked against.
+        const order = (this.session.plan || []).map(p => p.task.replace("task", "")).join("-");
         appendCsv(file,
             "participantId,taskOrder,block,condition,trial,task,variant,scenario," +
             "startTime,endTime,durationMs,completionStatus,attempts,injects," +
-            "attribution,correctAttribution,attributionCorrect,repairContainsSlot,missingSlot", [
+            "attribution,correctAttribution,attributionCorrect,noticedFeedback," +
+            "repairContainsSlot,missingSlot", [
             this.session.participantId,
             order,
             trial.block,
@@ -570,6 +616,7 @@ class WizardOfOzApp extends ApplicationController {
             trial.attribution !== null
                 ? (trial.attribution === trial.correctAttribution ? "yes" : "no")
                 : "",
+            trial.noticedFeedback || "",
             trial.repairContainsSlot !== null ? trial.repairContainsSlot : "",
             csvEscape(trial.missingSlot || "")
         ].join(","));
@@ -951,6 +998,22 @@ class WizardOfOzApp extends ApplicationController {
                         // they repeat the mistake); "success" resolves it.
                         const outcome = payload.outcome || payload.response || "error";
                         return send(200, this.injectResponse(taskKey, outcome, payload.variant));
+                    }
+
+                    // Manipulation check: did the feedback actually land?
+                    // In A there is none, so this records noticing the failure.
+                    if (req.method === "POST" && url === "/noticed") {
+                        const val = String(payload.noticed || "").toLowerCase();
+                        if (!["yes", "no", "partial"].includes(val)) {
+                            return send(400, { error: "noticed must be yes|no|partial" });
+                        }
+                        if (this.trial) {
+                            this.trial.noticedFeedback = val;
+                            this.logEvent("manipulation-check", `noticed=${val}`, {
+                                msSinceTrialStart: Date.now() - this.trial.startedAt
+                            });
+                        }
+                        return send(200, { ok: true, noticed: val });
                     }
 
                     // Attribution probe: wizard records what the participant said
