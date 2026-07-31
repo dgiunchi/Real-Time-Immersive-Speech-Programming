@@ -279,28 +279,51 @@ function renderResponses() {
   const err = (vObj.errors || []).find(x => x.key === activeError);
   const cat = errorCategories.find(c => c.key === activeError);
 
-  // Show exactly what the participant will get, so the Wizard can read the
-  // agent line aloud if the voice clip is missing.
-  const brief = document.createElement("div");
-  brief.style.cssText = "margin-bottom:12px;padding:10px;background:#161b24;border-radius:8px;";
+  // Show what the participant will get + the research metadata.
+  const brief = document.createElement(“div”);
+  brief.style.cssText = “margin-bottom:12px;padding:10px;background:#161b24;border-radius:8px;”;
   brief.innerHTML =
-    `<div style="font-size:13px;color:#9fb4d8;">${vObj.label} · <b>${cat ? cat.name : activeError}</b></div>` +
-    (err ? `<div style="margin-top:6px;font-size:13px;color:#e8a87c;">Panel (B): ${err.errorText}</div>
-            <div style="margin-top:4px;font-size:13px;color:#9fd8b4;">Agent (C): “${err.agentPost}”</div>` : "");
+    `<div style=”font-size:13px;color:#9fb4d8;”>${vObj.label} · <b>${cat ? cat.name : activeError}</b></div>` +
+    (err ? `<div style=”margin-top:6px;font-size:13px;color:#e8a87c;”>Panel (B): ${err.errorText}</div>
+            <div style=”margin-top:4px;font-size:13px;color:#9fd8b4;”>Agent (C): “${err.agentPost}”</div>
+            <div style=”margin-top:6px;font-size:12px;color:#6a7a94;”>
+              Missing slot: <b style=”color:#c9a96e”>${err.missingSlot || “—“}</b>
+              &nbsp;·&nbsp; Correct attribution: <b style=”color:${err.attribution==='self'?'#ffb648':'#7ec8e3'}”>${err.attribution || “—“}</b>
+            </div>` : “”);
   wrap.appendChild(brief);
 
   const mk = (outcome, title, desc, cls) => {
-    const div = document.createElement("div");
-    div.className = "resp " + cls;
+    const div = document.createElement(“div”);
+    div.className = “resp “ + cls;
     div.onclick = () => inject(outcome, desc);
-    div.innerHTML = `<div class="rbtn">${title}</div><div class="desc">${desc}</div>`;
+    div.innerHTML = `<div class=”rbtn”>${title}</div><div class=”desc”>${desc}</div>`;
     wrap.appendChild(div);
   };
 
-  mk("error", "INJECT ERROR",
-     "First attempt, and again whenever they repeat the same mistake.", "error");
-  mk("success", "INJECT SUCCESS",
-     "Use once they have repaired the problem. Deliberately silent — no panel, no agent.", "success");
+  mk(“error”, “INJECT ERROR”,
+     “First attempt, and again whenever they repeat the same mistake.”, “error”);
+  mk(“success”, “INJECT SUCCESS”,
+     “Use once they have repaired the problem. Deliberately silent — no panel, no agent.”, “success”);
+
+  // Attribution probe — appears after INJECT ERROR. Wizard clicks what the
+  // participant said when you ask “why do you think that happened?”.
+  const attrDiv = document.createElement(“div”);
+  attrDiv.id = “attrProbe”;
+  attrDiv.style.cssText = “margin-top:14px;padding:10px;background:#1a2236;border-radius:8px;display:none;”;
+  attrDiv.innerHTML = `
+    <div style=”font-size:13px;color:#9fb4d8;margin-bottom:8px;”>
+      Ask: <em>”Why do you think that happened?”</em> — click their answer:
+    </div>
+    <div style=”display:flex;gap:8px;flex-wrap:wrap;”>
+      <button class=”btn-ghost” style=”flex:1;background:#4a3b1a;color:#ffb648;”
+              onclick=”recordAttribution('self')”>I didn't say enough</button>
+      <button class=”btn-ghost” style=”flex:1;background:#1a3040;color:#7ec8e3;”
+              onclick=”recordAttribution('system')”>System misunderstood me</button>
+      <button class=”btn-ghost” style=”flex:1;”
+              onclick=”recordAttribution('unsure')”>Not sure</button>
+    </div>
+    <div id=”attrResult” style=”margin-top:6px;font-size:12px;color:#6a7a94;”></div>`;
+  wrap.appendChild(attrDiv);
 }
 
 function renderTrial(trial) {
@@ -371,9 +394,28 @@ async function inject(outcome) {
     addLog("inject", `${res.task} ${outcome.toUpperCase()}` +
       (res.errorCategory ? ` / ${res.errorCategory}` : "") +
       ` (attempts ${res.attempts}, injects ${res.injects})`);
+    // Show attribution probe after an error inject (not after success).
+    const probe = document.getElementById("attrProbe");
+    const attrRes = document.getElementById("attrResult");
+    if (probe) {
+      probe.style.display = outcome === "error" ? "block" : "none";
+      if (attrRes) attrRes.textContent = "";
+    }
   } else {
     addLog("t", "Inject failed: " + (res.error || "?"));
   }
+}
+
+async function recordAttribution(value) {
+  const res = await post("/attribution", { attribution: value });
+  const attrRes = document.getElementById("attrResult");
+  if (attrRes) {
+    const correct = res.correct || "?";
+    const match = value === correct;
+    attrRes.innerHTML = `Recorded: <b>${value}</b> · correct answer: <b>${correct}</b> · ` +
+      `<span style="color:${match?'#8aff9e':'#ff8a8a'}">${match ? "✓ matches" : "✗ mismatch"}</span>`;
+  }
+  addLog("t", `Attribution: participant said "${value}", correct="${res.correct}"`);
 }
 
 async function startTrial() {

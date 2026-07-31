@@ -93,7 +93,9 @@ function buildTask1(v) {
                 action: "noop",
                 errorText: `The ${o} did not appear. Missing detail: hand height.`,
                 agentPost: `It looks like the hand height wasn't specified — try saying: ` +
-                           `create a ${o} when my hand is above shoulder level.`
+                           `create a ${o} when my hand is above shoulder level.`,
+                missingSlot: "height",         // what the repair must supply
+                attribution: "self"            // correct answer: user left this out
             },
             // Root cause: the object word was spoken quietly → a wall appears instead.
             misrecognition: {
@@ -101,21 +103,27 @@ function buildTask1(v) {
                 scaleX: 1.2, scaleY: 0.9, scaleZ: 0.08,
                 errorText: `Wrong object created. Please say '${o}' clearly.`,
                 agentPost: `I think I created the wrong object — could you say '${o}' ` +
-                           `a little more slowly?`
+                           `a little more slowly?`,
+                missingSlot: o,                // repair must name the object clearly
+                attribution: "system"          // system misheard a clear word
             },
             // Root cause: exact hand placement ambiguous → it lands on the floor.
             happened_differently: {
                 action: "spawn", shape: v.shape, pos: "floor", physics: true,
                 scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
                 errorText: `The ${o} appeared, but not in your hand. Please specify the location.`,
-                agentPost: `The ${o} was created, but I wasn't sure exactly where you wanted it.`
+                agentPost: `The ${o} was created, but I wasn't sure exactly where you wanted it.`,
+                missingSlot: "hand",
+                attribution: "self"
             },
             // Root cause: quantity never specified → several appear.
             happened_plus_extra: {
                 action: "spawn", shape: v.shape, pos: "hand", physics: true, count: 5,
                 scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
                 errorText: `Multiple ${o}s appeared. Please specify: only one ${o}.`,
-                agentPost: `A ${o} appeared, but I wasn't sure how many you wanted.`
+                agentPost: `A ${o} appeared, but I wasn't sure how many you wanted.`,
+                missingSlot: "one",
+                attribution: "self"
             }
         },
         // Correct outcome: no agent intervention in C, no panel in B, nothing in A.
@@ -139,26 +147,34 @@ function buildTask2(v) {
             missing_detail: {
                 action: "noop",
                 errorText: `The ${m} did not move. Missing detail: exact distance.`,
-                agentPost: `I wasn't sure exactly how close to the ${t} you wanted the ${m}.`
+                agentPost: `I wasn't sure exactly how close to the ${t} you wanted the ${m}.`,
+                missingSlot: "next to",
+                attribution: "self"
             },
             // Root cause: the object word was not caught → the other object moves.
             misrecognition: {
                 action: "move", target: w, moveTo: t,
                 errorText: `Wrong object moved. Please say '${m}' clearly.`,
                 agentPost: `I think I moved the wrong object — could you say '${m}' ` +
-                           `a little more slowly?`
+                           `a little more slowly?`,
+                missingSlot: m,
+                attribution: "system"
             },
             // Root cause: direction ambiguous → it moves the wrong way.
             happened_differently: {
                 action: "move", target: m, moveTo: t, away: true,
                 errorText: `The ${m} moved in the wrong direction.`,
-                agentPost: `The ${m} moved, but I think I went the wrong way.`
+                agentPost: `The ${m} moved, but I think I went the wrong way.`,
+                missingSlot: t,
+                attribution: "self"
             },
             // Root cause: size constraint never specified → it arrives but grows.
             happened_plus_extra: {
                 action: "move", target: m, moveTo: t, scaleMultiplier: 2.2,
                 errorText: `The ${m} moved, but its size also changed unexpectedly.`,
-                agentPost: `The ${m} moved to the ${t}, but I think I also changed its size.`
+                agentPost: `The ${m} moved to the ${t}, but I think I also changed its size.`,
+                missingSlot: "size",
+                attribution: "system"
             }
         },
         success: { action: "move", target: m, moveTo: t }
@@ -179,26 +195,34 @@ function buildTask3(v) {
                 action: "recolor", target: o, color: v.colour,
                 errorText: `The colour changed, but the ${o} did not move.`,
                 agentPost: `I changed the colour, but I wasn't sure exactly where you ` +
-                           `wanted the ${o}.`
+                           `wanted the ${o}.`,
+                missingSlot: t,
+                attribution: "self"
             },
             // Root cause: colour word not caught → the wrong colour is applied.
             misrecognition: {
                 action: "recolor", target: o, color: v.wrongColour, moveTo: t,
                 errorText: `Wrong colour applied. Please say the colour clearly.`,
                 agentPost: `I think I got the wrong colour — could you say the colour ` +
-                           `a little more slowly?`
+                           `a little more slowly?`,
+                missingSlot: c,
+                attribution: "system"
             },
             // Root cause: "next to" interpreted imprecisely → it ends up far away.
             happened_differently: {
                 action: "recolor", target: o, color: v.colour, moveTo: t, far: true,
                 errorText: `The ${o} moved, but not to the right place.`,
-                agentPost: `I moved the ${o}, but I don't think I put it in the right place.`
+                agentPost: `I moved the ${o}, but I don't think I put it in the right place.`,
+                missingSlot: "next to",
+                attribution: "self"
             },
             // Root cause: stillness never specified → it arrives correctly but spins.
             happened_plus_extra: {
                 action: "recolor", target: o, color: v.colour, moveTo: t, spin: true,
                 errorText: `The ${o} changed colour and moved correctly, but it is now spinning.`,
-                agentPost: `The ${o} is right, but I think I also made it spin.`
+                agentPost: `The ${o} is right, but I think I also made it spin.`,
+                missingSlot: "still",
+                attribution: "system"
             }
         },
         success: { action: "recolor", target: o, color: v.colour, moveTo: t }
@@ -393,20 +417,30 @@ class WizardOfOzApp extends ApplicationController {
 
         this.resetScene();
 
+        // Look up the missingSlot and correct attribution for this error type
+        // so the trial record can later flag whether the repair supplied the slot.
+        const taskObj = TASKS[task];
+        const variantObj = taskObj && taskObj.variants[variant];
+        const errorSpec = variantObj && variantObj.errors[category];
+
         this.trial = {
-            number:        this.trialCounter,
-            block:         this.session.block,
-            condition:     this.session.condition,
+            number:            this.trialCounter,
+            block:             this.session.block,
+            condition:         this.session.condition,
             task,
             variant,
-            errorCategory: category,
-            plannedErrors: this.plannedErrors(task),
-            startedAt:     Date.now(),
-            startedAtIso:  new Date().toISOString(),
-            endedAt:       null,
-            status:        "in-progress",
-            attempts:      0,   // participant utterances
-            injects:       0    // wizard injections
+            errorCategory:     category,
+            plannedErrors:     this.plannedErrors(task),
+            missingSlot:       errorSpec ? (errorSpec.missingSlot || "") : "",
+            correctAttribution: errorSpec ? (errorSpec.attribution || "") : "",
+            attribution:       null,   // filled by POST /attribution
+            repairContainsSlot: null,  // filled automatically on next transcript
+            startedAt:         Date.now(),
+            startedAtIso:      new Date().toISOString(),
+            endedAt:           null,
+            status:            "in-progress",
+            attempts:          0,   // participant utterances
+            injects:           0    // wizard injections
         };
 
         this.logEvent("trial-start", `${task}/${variant}/${category}`,
@@ -514,7 +548,8 @@ class WizardOfOzApp extends ApplicationController {
         const order = (this.session.plan || []).map(p => p.condition).join("-");
         appendCsv(file,
             "participantId,conditionOrder,block,condition,trial,task,variant,errorType," +
-            "startTime,endTime,durationMs,completionStatus,attempts,injects", [
+            "startTime,endTime,durationMs,completionStatus,attempts,injects," +
+            "attribution,correctAttribution,attributionCorrect,repairContainsSlot,missingSlot", [
             this.session.participantId,
             order,
             trial.block,
@@ -528,7 +563,14 @@ class WizardOfOzApp extends ApplicationController {
             trial.endedAt ? trial.endedAt - trial.startedAt : "",
             trial.status,
             trial.attempts,
-            trial.injects
+            trial.injects,
+            trial.attribution   || "",
+            trial.correctAttribution || "",
+            trial.attribution !== null
+                ? (trial.attribution === trial.correctAttribution ? "yes" : "no")
+                : "",
+            trial.repairContainsSlot !== null ? trial.repairContainsSlot : "",
+            csvEscape(trial.missingSlot || "")
         ].join(","));
     }
 
@@ -629,6 +671,21 @@ class WizardOfOzApp extends ApplicationController {
             // participant speech (rather than wizard injections) is what makes
             // it a measure of the participant's recovery effort.
             if (this.trial && !this.trial.endedAt) this.trial.attempts += 1;
+
+            // Auto-flag whether the repair contains the missing slot keyword.
+            // Only set once (first repair attempt after an error inject) so we
+            // capture whether the feedback caused an immediate targeted fix —
+            // if they say it first time without the slot the flag stays false.
+            if (this.trial && !this.trial.endedAt &&
+                this.trial.missingSlot && this.trial.repairContainsSlot === null &&
+                this.trial.injects > 0) {
+                const slot = this.trial.missingSlot.toLowerCase();
+                this.trial.repairContainsSlot = text.toLowerCase().includes(slot);
+                this.logEvent("repair-slot-check",
+                    `slot="${slot}" found=${this.trial.repairContainsSlot}`, {
+                    msSinceTrialStart: this.trial ? Date.now() - this.trial.startedAt : ""
+                });
+            }
 
             this.logEvent("transcript", text, {
                 msSinceTrialStart: this.trial ? Date.now() - this.trial.startedAt : ""
@@ -783,7 +840,9 @@ class WizardOfOzApp extends ApplicationController {
                     variants: Object.entries(v.variants).map(([vk, vv]) => ({
                         key: vk, label: vv.label, prompt: vv.prompt,
                         errors: Object.entries(vv.errors).map(([ek, ev]) => ({
-                            key: ek, errorText: ev.errorText, agentPost: ev.agentPost
+                            key: ek, errorText: ev.errorText, agentPost: ev.agentPost,
+                            missingSlot: ev.missingSlot || "",
+                            attribution: ev.attribution || ""
                         }))
                     }))
                 })));
@@ -903,6 +962,27 @@ class WizardOfOzApp extends ApplicationController {
                         const outcome = payload.outcome || payload.response || "error";
                         return send(200, this.injectResponse(
                             taskKey, outcome, payload.category, payload.variant));
+                    }
+
+                    // Attribution probe: wizard records what the participant said
+                    // when asked why they think the error happened.
+                    // Values: "self" | "system" | "unsure"
+                    if (req.method === "POST" && url === "/attribution") {
+                        const val = String(payload.attribution || "").toLowerCase();
+                        if (!["self", "system", "unsure"].includes(val)) {
+                            return send(400, { error: "attribution must be self|system|unsure" });
+                        }
+                        if (this.trial) {
+                            this.trial.attribution = val;
+                            const correct = this.trial.correctAttribution;
+                            const isCorrect = val === correct;
+                            this.logEvent("attribution",
+                                `participant=${val} correct=${correct} match=${isCorrect}`, {
+                                msSinceTrialStart: Date.now() - this.trial.startedAt
+                            });
+                        }
+                        return send(200, { ok: true, attribution: val,
+                            correct: this.trial ? this.trial.correctAttribution : "" });
                     }
 
                     if (req.method === "POST" && url === "/reset") {
