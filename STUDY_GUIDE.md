@@ -17,17 +17,25 @@ every participant gets the identical experience — no live LLM.
 
 ## Design (agreed with Daniele, July 2026)
 
-### Root-cause attribution (the governing principle)
+### Attribution (the governing principle)
 
-Every error must be a plausible consequence of something **ambiguous, missing or
-underspecified in the participant's own instruction** — never an arbitrary system
-glitch. The scene looks coherent at first; only through further interaction does
-the participant realise the ambiguity was on their end. All the feedback wording
-follows this: it names the missing detail, it never announces a malfunction.
+Every failure has a **ground truth about whose fault it is**, and the feedback
+wording must agree with it.
 
-**The participant is never told what to say.** They get a briefing describing the
-scene and the goal, and use their own words. Errors are injected regardless of
-what they actually say.
+- On tasks 1 and 2 the cause really is something the participant left out or
+  phrased ambiguously. Feedback names the missing detail.
+- On tasks 3 and 4 the participant did nothing wrong. Feedback owns the limit
+  or explains where the object went. It must **never** suggest they rephrase,
+  because there is nothing to rephrase.
+
+Getting this wrong invalidates the results. If feedback says "please speak more
+clearly" when the ground truth is a system fault, a participant who believes it
+is scored as mis-attributing, and conditions B and C are penalised for carrying
+a message the study itself wrote.
+
+**The participant is never told what to say.** They get a briefing describing
+the scene and the goal, and use their own words. The scripted failure is
+injected regardless of what they actually say.
 
 ### Structure
 
@@ -66,16 +74,20 @@ explained, so the feedback channel never doubles as a success signal.
 - **Variant** = `((p-1) + position) mod 3`, for content variety.
 
 ### Trial protocol
-1. Check the **task**, **variant** and **error type** (★ = assigned).
+
+One trial per task, four tasks per participant.
+
+1. Confirm the **task** and **variant** on the panel (★ = assigned by the plan).
 2. Click **▶ Start trial** — clears the scene and starts the clock.
-3. Read the **briefing** shown on the panel. Do not tell them what to say.
+3. Read the **briefing**. Do not tell them what to say.
 4. They speak → click **INJECT ERROR**.
 5. Feedback appears per condition (A none / B panel / C agent).
-6. They try again:
-   - problem repaired → **INJECT SUCCESS**, then **✓ End trial**
-   - same mistake repeated → **INJECT ERROR again** (do not hand them the
-     answer), and prompt them to check the feedback
-7. Run the task's **second** assigned error type, then **⏭ Next condition**.
+6. Ask **"Why do you think that happened?"** and click their answer in Step 3.
+   Ask it the same way every time and do not react to whether they are right.
+7. They try again:
+   - adapted → **INJECT SUCCESS** (silent), then **✓ End trial**
+   - same mistake → **INJECT ERROR again**; do not hand them the answer
+8. Click **⏭ Next task** and repeat. Four tasks, then the questionnaire.
 
 Every trial starts from an identical scene: trial objects removed, environment
 colours restored, sphere and cube rebuilt, agent returned to idle.
