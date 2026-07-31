@@ -101,66 +101,100 @@
     <p class="hint">Notes are timestamped and saved to the participant's event CSV.</p>
   </div>
 
-  <!-- MAIN: live control -->
+  <!-- MAIN: step-by-step guided flow -->
   <div class="content">
-    <div class="card">
-      <h2>Live transcript</h2>
-      <p class="sub">What the system heard from the participant. Updates automatically.</p>
-      <div id="transcript" class="transcript empty">Waiting for speech…</div>
-    </div>
 
-    <div class="card">
-      <h2>Microphone</h2>
-      <p class="sub">Live status from the headset. Check this before every session.</p>
-      <div id="micStatus" style="font-size:14px;line-height:1.9;">Waiting for headset…</div>
-      <button class="btn-accent" style="width:100%;margin-top:10px;background:#2b4a7a;"
-              onmousedown="remoteRecord(true)" onmouseup="remoteRecord(false)"
-              onmouseleave="remoteRecord(false)"
-              ontouchstart="remoteRecord(true)" ontouchend="remoteRecord(false)">
-        Hold to record (fallback if trigger fails)
-      </button>
-    </div>
-
-    <div class="card">
-      <h2>Trial</h2>
-      <p class="sub">Set the task and error category below, then start. Starting a trial clears the scene automatically.</p>
-      <div id="trialStatus" style="font-size:14px;line-height:1.8;padding:10px;background:#161b24;border-radius:8px;">No trial running.</div>
-      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
-        <button class="btn-accent" style="flex:1;min-width:130px;" onclick="startTrial()">▶ Start trial</button>
-        <button class="btn-ghost"  style="flex:1;min-width:130px;" onclick="completeTrial('completed')">✓ End trial</button>
+    <!-- ── Status bar: mic + transcript ───────────────────────────── -->
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:16px;">
+      <div class="card" style="margin:0;padding:14px;">
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Microphone</div>
+        <div id="micStatus" style="font-size:13px;line-height:1.7;">Waiting for headset…</div>
+        <button class="btn-ghost" style="width:100%;margin-top:8px;font-size:12px;padding:6px;background:#1a2a40;"
+                onmousedown="remoteRecord(true)" onmouseup="remoteRecord(false)"
+                onmouseleave="remoteRecord(false)" ontouchstart="remoteRecord(true)" ontouchend="remoteRecord(false)">
+          Hold to record (fallback)
+        </button>
       </div>
-      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-        <button class="btn-ghost"  style="flex:1;min-width:130px;background:#7a2b2b;color:#fff;" onclick="resetScene()">Reset scene</button>
-        <button class="btn-accent" style="flex:1;min-width:130px;background:#2b5c3a;" onclick="nextBlock()">⏭ Next task</button>
+      <div class="card" style="margin:0;padding:14px;">
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">What the system heard</div>
+        <div id="transcript" class="transcript empty" style="min-height:52px;font-size:17px;">Waiting for speech…</div>
       </div>
-      <p class="sub" style="margin-top:8px;"><b>Next task</b> ends the current trial, loads the next task (auto-assigned by plan) and clears the scene.</p>
     </div>
 
-    <div class="card">
-      <h2>Task &amp; variant</h2>
-      <p class="sub">★ marks what the master table assigns to this participant. Each participant does all three tasks, one variant each.</p>
-      <div class="tasks" id="taskChips"></div>
-      <div class="tasks" id="variantChips" style="margin-top:10px;"></div>
-      <div id="taskPrompt" style="margin-top:12px;"></div>
+    <!-- ── Trial status strip ──────────────────────────────────────── -->
+    <div id="trialStatus" style="padding:10px 14px;background:#161b24;border-radius:10px;font-size:13px;line-height:1.8;margin-bottom:16px;border:1px solid var(--line);">
+      No trial running — start a session on the left, then follow the steps below.
     </div>
 
-    <div class="card">
-      <h2>Error type</h2>
-      <p class="sub">★① run first, ★② run second — always inject these regardless of what the participant says. Errors are pre-scripted and identical for everyone in this condition.</p>
-      <div class="tasks" id="errorChips"></div>
+    <!-- ── Step 1: Briefing ───────────────────────────────────────── -->
+    <div class="card" id="step1">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div>
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 1</span>
+          <h2 style="margin:2px 0 0;">Read briefing to participant</h2>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <div id="taskChips" class="tasks" style="margin:0;"></div>
+          <div id="variantChips" class="tasks" style="margin:0;"></div>
+        </div>
+      </div>
+      <div id="taskPrompt" style="padding:12px;background:#0d1117;border-radius:8px;font-size:14px;line-height:1.6;border-left:3px solid var(--accent);">
+        <span style="color:var(--muted);">Enter a participant ID and click Start Session →</span>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted);">
+        Do <b>not</b> tell them what to say. They must phrase it themselves.
+      </div>
     </div>
 
-    <div class="card">
-      <h2>Inject response</h2>
-      <p class="sub">Click to send the pre-scripted outcome into the VR scene.</p>
-      <div class="responses" id="responses"></div>
+    <!-- ── Step 2: Error type selection + inject ─────────────────── -->
+    <div class="card" id="step2">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:220px;">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 2</span>
+          <h2 style="margin:2px 0 8px;">They speak → inject error</h2>
+          <p class="sub" style="margin:0 0 10px;">★① first, ★② second. Inject regardless of what they say.</p>
+          <div class="tasks" id="errorChips"></div>
+        </div>
+        <div style="flex:1;min-width:220px;">
+          <div id="responses"></div>
+        </div>
+      </div>
     </div>
 
-    <div class="card">
-      <h2>Event log</h2>
-      <p class="sub">Everything is saved to CSV in real time.</p>
-      <div class="log" id="log"></div>
+    <!-- ── Step 3: Attribution probe ─────────────────────────────── -->
+    <div class="card" id="step3" style="border-color:#3a3020;">
+      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 3 — after injecting error</span>
+      <h2 style="margin:2px 0 8px;">Ask: <em style="font-weight:400;color:var(--muted);">"Why do you think that happened?"</em></h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="btn-ghost" style="flex:1;background:#3a2a0a;color:#ffb648;font-size:13px;"
+                onclick="recordAttribution('self')">I didn't say enough</button>
+        <button class="btn-ghost" style="flex:1;background:#0a2030;color:#7ec8e3;font-size:13px;"
+                onclick="recordAttribution('system')">System misunderstood me</button>
+        <button class="btn-ghost" style="flex:1;font-size:13px;"
+                onclick="recordAttribution('unsure')">Not sure</button>
+      </div>
+      <div id="attrResult" style="font-size:12px;color:var(--muted);min-height:18px;"></div>
     </div>
+
+    <!-- ── Step 4: End trial / next ───────────────────────────────── -->
+    <div class="card" id="step4">
+      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 4</span>
+      <h2 style="margin:2px 0 10px;">They repair → end trial</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-accent" style="flex:2;min-width:160px;font-size:15px;padding:13px;" onclick="startTrial()">▶ Start trial</button>
+        <button class="btn-ghost"  style="flex:2;min-width:160px;font-size:15px;padding:13px;" onclick="completeTrial('completed')">✓ End trial</button>
+        <button class="btn-ghost"  style="flex:1;min-width:110px;background:#7a2b2b;color:#fff;" onclick="resetScene()">↺ Reset scene</button>
+        <button class="btn-accent" style="flex:1;min-width:110px;background:#2b5c3a;" onclick="nextBlock()">⏭ Next task</button>
+      </div>
+      <p class="sub" style="margin-top:8px;">Run ★① error, end trial → run ★② error, end trial → Next task.</p>
+    </div>
+
+    <!-- ── Event log (collapsed by default) ──────────────────────── -->
+    <details style="margin-top:4px;">
+      <summary style="cursor:pointer;font-size:13px;color:var(--muted);padding:8px 0;">Event log (expand)</summary>
+      <div class="log" id="log" style="margin-top:8px;"></div>
+    </details>
+
   </div>
 </main>
 
@@ -305,25 +339,6 @@ function renderResponses() {
   mk(“success”, “INJECT SUCCESS”,
      “Use once they have repaired the problem. Deliberately silent — no panel, no agent.”, “success”);
 
-  // Attribution probe — appears after INJECT ERROR. Wizard clicks what the
-  // participant said when you ask “why do you think that happened?”.
-  const attrDiv = document.createElement(“div”);
-  attrDiv.id = “attrProbe”;
-  attrDiv.style.cssText = “margin-top:14px;padding:10px;background:#1a2236;border-radius:8px;display:none;”;
-  attrDiv.innerHTML = `
-    <div style=”font-size:13px;color:#9fb4d8;margin-bottom:8px;”>
-      Ask: <em>”Why do you think that happened?”</em> — click their answer:
-    </div>
-    <div style=”display:flex;gap:8px;flex-wrap:wrap;”>
-      <button class=”btn-ghost” style=”flex:1;background:#4a3b1a;color:#ffb648;”
-              onclick=”recordAttribution('self')”>I didn't say enough</button>
-      <button class=”btn-ghost” style=”flex:1;background:#1a3040;color:#7ec8e3;”
-              onclick=”recordAttribution('system')”>System misunderstood me</button>
-      <button class=”btn-ghost” style=”flex:1;”
-              onclick=”recordAttribution('unsure')”>Not sure</button>
-    </div>
-    <div id=”attrResult” style=”margin-top:6px;font-size:12px;color:#6a7a94;”></div>`;
-  wrap.appendChild(attrDiv);
 }
 
 function renderTrial(trial) {
@@ -394,13 +409,9 @@ async function inject(outcome) {
     addLog("inject", `${res.task} ${outcome.toUpperCase()}` +
       (res.errorCategory ? ` / ${res.errorCategory}` : "") +
       ` (attempts ${res.attempts}, injects ${res.injects})`);
-    // Show attribution probe after an error inject (not after success).
-    const probe = document.getElementById("attrProbe");
+    // Clear the attribution result display on each new inject.
     const attrRes = document.getElementById("attrResult");
-    if (probe) {
-      probe.style.display = outcome === "error" ? "block" : "none";
-      if (attrRes) attrRes.textContent = "";
-    }
+    if (attrRes) attrRes.textContent = "";
   } else {
     addLog("t", "Inject failed: " + (res.error || "?"));
   }
