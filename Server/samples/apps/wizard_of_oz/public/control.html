@@ -152,8 +152,7 @@
         <div style="flex:1;min-width:220px;">
           <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 2</span>
           <h2 style="margin:2px 0 8px;">They speak → inject error</h2>
-          <p class="sub" style="margin:0 0 10px;">★① first, ★② second. Inject regardless of what they say.</p>
-          <div class="tasks" id="errorChips"></div>
+          <p class="sub" style="margin:0 0 10px;">One scripted failure per task. Inject regardless of what they say.</p>
         </div>
         <div style="flex:1;min-width:220px;">
           <div id="responses"></div>
@@ -186,7 +185,7 @@
         <button class="btn-ghost"  style="flex:1;min-width:110px;background:#7a2b2b;color:#fff;" onclick="resetScene()">↺ Reset scene</button>
         <button class="btn-accent" style="flex:1;min-width:110px;background:#2b5c3a;" onclick="nextBlock()">⏭ Next task</button>
       </div>
-      <p class="sub" style="margin-top:8px;">Run ★① error, end trial → run ★② error, end trial → Next task.</p>
+      <p class="sub" style="margin-top:8px;">One trial per task: inject error, they adapt, inject success, end trial, next task. Four tasks total.</p>
     </div>
 
     <!-- ── Event log (collapsed by default) ──────────────────────── -->
@@ -201,13 +200,10 @@
 <script>
 const API = "";
 let tasks = [];
-let errorCategories = [];
 let activeTask = "task1";
-let activeError = "missing_detail";
 let activeVariant = "v1";
 let plannedTask = "task1";      // what the master table assigns to this task
 let plannedVariant = "v1";
-let plannedErrors = [];         // the two error types assigned to this task (run in order)
 let currentBlock = 1;           // auto-tracked; no manual dropdown needed
 let currentTrial = null;
 let logLines = [];
@@ -236,13 +232,10 @@ function currentVariantObj() {
 async function loadTasks() {
   tasks = await get("/tasks");
   const s = await get("/status");
-  errorCategories = s.errorCategories || [];
-  activeError    = s.activeError    || activeError;
   activeTask     = s.activeTask     || activeTask;
   activeVariant  = s.activeVariant  || activeVariant;
   plannedTask    = s.plannedTask    || plannedTask;
   plannedVariant = s.plannedVariant || plannedVariant;
-  plannedErrors  = s.plannedErrors  || [];
   renderTaskChips();
   renderErrorChips();
   renderResponses();
@@ -285,50 +278,33 @@ function renderTaskChips() {
     : "";
 }
 
-function renderErrorChips() {
-  const wrap = document.getElementById("errorChips");
-  if (!wrap) return;
-  wrap.innerHTML = "";
-  errorCategories.forEach(c => {
-    const chip = document.createElement("div");
-    // ★ marks the two types the master table assigns; numbered ①② for run order.
-    const assignedIdx = plannedErrors.indexOf(c.key);
-    const assigned = assignedIdx !== -1;
-    const orderLabel = assignedIdx === 0 ? "★① " : assignedIdx === 1 ? "★② " : "";
-    chip.className = "task-chip" + (c.key === activeError ? " active" : "");
-    if (assigned && c.key !== activeError) chip.style.borderColor = "#e8a87c";
-    chip.innerHTML = orderLabel +
-      `${c.name}<br><span style="font-size:11px;opacity:.7;">${c.short}</span>`;
-    chip.onclick = () => selectError(c.key);
-    wrap.appendChild(chip);
-  });
-}
+function renderErrorChips() { /* error types folded into tasks */ }
 
 function renderResponses() {
   const wrap = document.getElementById("responses");
   if (!wrap) return;
   wrap.innerHTML = "";
   const vObj = currentVariantObj();
-  if (!vObj) return;
+  const tObj = tasks.find(x => x.key === activeTask);
+  if (!vObj || !tObj) return;
 
-  const err = (vObj.errors || []).find(x => x.key === activeError);
-  const cat = errorCategories.find(c => c.key === activeError);
+  const err = vObj.error || {};
+  const isUserFault = tObj.attribution === "self";
 
-  // Show what the participant will get + the research metadata.
   const brief = document.createElement("div");
   brief.style.cssText = "margin-bottom:12px;padding:10px;background:#161b24;border-radius:8px;";
   brief.innerHTML =
-    '<div style="font-size:13px;color:#9fb4d8;">' + vObj.label +
-      ' &middot; <b>' + (cat ? cat.name : activeError) + '</b></div>' +
-    (err
-      ? '<div style="margin-top:6px;font-size:13px;color:#e8a87c;">Panel (B): ' + err.errorText + '</div>' +
-        '<div style="margin-top:4px;font-size:13px;color:#9fd8b4;">Agent (C): &ldquo;' + err.agentPost + '&rdquo;</div>' +
-        '<div style="margin-top:6px;font-size:12px;color:#6a7a94;">Missing slot: ' +
-          '<b style="color:#c9a96e">' + (err.missingSlot || "&mdash;") + '</b>' +
-          ' &nbsp;&middot;&nbsp; Correct attribution: ' +
-          '<b style="color:' + (err.attribution === "self" ? "#ffb648" : "#7ec8e3") + '">' +
-          (err.attribution || "&mdash;") + '</b></div>'
-      : "");
+    '<div style="font-size:13px;color:#9fb4d8;">' + vObj.label + '</div>' +
+    '<div style="margin-top:4px;font-size:12px;">' +
+      '<span style="padding:2px 8px;border-radius:10px;font-weight:700;background:' +
+      (isUserFault ? "#4a3b1a;color:#ffb648" : "#0a2f40;color:#7ec8e3") + ';">' +
+      (isUserFault ? "USER ERROR" : "SYSTEM ISSUE") + '</span>' +
+      '<span style="color:#6a7a94;margin-left:8px;">correct attribution: ' +
+      tObj.attribution + '</span></div>' +
+    '<div style="margin-top:8px;font-size:13px;color:#e8a87c;">Panel (B): ' + (err.errorText || "") + '</div>' +
+    '<div style="margin-top:4px;font-size:13px;color:#9fd8b4;">Agent (C): &ldquo;' + (err.agentPost || "") + '&rdquo;</div>' +
+    '<div style="margin-top:6px;font-size:12px;color:#6a7a94;">Repair should mention: ' +
+      '<b style="color:#c9a96e">' + (err.missingSlot || "&mdash;") + '</b></div>';
   wrap.appendChild(brief);
 
   const mk = (outcome, title, desc, cls) => {
@@ -340,9 +316,9 @@ function renderResponses() {
   };
 
   mk("error", "INJECT ERROR",
-     "First attempt, and again whenever they repeat the same mistake.", "error");
+     "Send the scripted failure. Use again if they repeat the same mistake.", "error");
   mk("success", "INJECT SUCCESS",
-     "Use once they have repaired the problem. Deliberately silent \u2014 no panel, no agent.", "success");
+     "Once they have adapted. Deliberately silent \u2014 no panel, no agent.", "success");
 }
 
 function renderTrial(trial) {
@@ -363,16 +339,19 @@ function renderPlan(plan, pid) {
   const el = document.getElementById("planBox");
   if (!el) return;
   if (!plan || !plan.length) { el.innerHTML = ""; return; }
-  const NAMES = Object.fromEntries(errorCategories.map(c => [c.key, c.name]));
   el.innerHTML =
-    `<div class="sub" style="margin-bottom:6px;">Master-table plan for <b>${pid}</b> — run in this order:</div>` +
-    plan.map(p =>
-      `<div style="font-size:13px;padding:5px 0;border-top:1px solid var(--line);">
-         <span class="pill ${p.condition}">Cond ${p.condition}</span>
-         <b>${p.task.replace("task","Task ")}</b> · ${p.variant.toUpperCase()}
-         <div class="sub">${p.variantLabel}</div>
-         <div class="sub" style="color:#e8a87c;">${(p.errors||[]).map(e => NAMES[e]||e).join(" + ")}</div>
-       </div>`).join("");
+    '<div class="sub" style="margin-bottom:6px;">Plan for <b>' + pid +
+      '</b> \u2014 condition <span class="pill ' + plan[0].condition + '">' +
+      plan[0].condition + '</span>, run in this order:</div>' +
+    plan.map(function (p) {
+      const self = p.attribution === "self";
+      return '<div style="font-size:13px;padding:6px 0;border-top:1px solid var(--line);">' +
+        '<b>' + p.block + '. ' + p.taskName + '</b> \u00b7 ' + p.variant.toUpperCase() +
+        '<div class="sub">' + p.variantLabel + '</div>' +
+        '<div style="font-size:11px;margin-top:2px;"><span style="padding:1px 7px;border-radius:9px;background:' +
+        (self ? "#4a3b1a;color:#ffb648" : "#0a2f40;color:#7ec8e3") + ';">' +
+        (self ? "user error" : "system issue") + '</span></div></div>';
+    }).join("");
 }
 
 async function loadPlan() {
@@ -398,17 +377,10 @@ async function selectVariant(key) {
   addLog("task", "Variant → " + key);
 }
 
-async function selectError(key) {
-  activeError = key;
-  await post("/error-category", { category: key });
-  renderErrorChips();
-  renderResponses();
-  addLog("task", "Error type → " + key);
-}
 
 async function inject(outcome) {
   const res = await post("/inject",
-    { task: activeTask, outcome, category: activeError, variant: activeVariant });
+    { task: activeTask, outcome, variant: activeVariant });
   if (res.ok) {
     addLog("inject", `${res.task} ${outcome.toUpperCase()}` +
       (res.errorCategory ? ` / ${res.errorCategory}` : "") +
@@ -435,7 +407,7 @@ async function recordAttribution(value) {
 
 async function startTrial() {
   const res = await post("/trial/start",
-    { task: activeTask, category: activeError, variant: activeVariant });
+    { task: activeTask, variant: activeVariant });
   if (res.ok) {
     renderTrial(res.trial);
     addLog("task", `Trial ${res.trial.number} started — ${res.trial.task}/${res.trial.variant} / ${res.trial.errorCategory}`);
@@ -449,10 +421,6 @@ async function completeTrial(status) {
   if (res.ok && res.trial) {
     renderTrial(res.trial);
     addLog("task", `Trial ${res.trial.number} ${status} — ${res.trial.attempts} attempts`);
-    // Auto-advance to ★② error so the wizard doesn't have to click it manually.
-    if (plannedErrors.length > 1 && activeError === plannedErrors[0]) {
-      await selectError(plannedErrors[1]);
-    }
   } else {
     addLog("t", res.error || "No active trial");
   }
@@ -465,10 +433,8 @@ async function nextBlock() {
   if (res.planned) {
     plannedTask    = res.planned.task;
     plannedVariant = res.planned.variant;
-    plannedErrors  = res.planned.errors || [];
     activeTask     = plannedTask;
     activeVariant  = plannedVariant;
-    activeError    = plannedErrors[0] || activeError;
   }
   currentBlock = s.block || currentBlock;
   document.getElementById("sessionBadge").innerHTML =
@@ -527,9 +493,8 @@ async function startSession() {
   // Follow the master table for this block so the Wizard doesn't look it up by hand.
   const b = s.plan && s.plan[block - 1];
   if (b) {
-    plannedTask = b.task; plannedVariant = b.variant; plannedErrors = b.errors || [];
+    plannedTask = b.task; plannedVariant = b.variant;
     activeTask = plannedTask; activeVariant = plannedVariant;
-    activeError = plannedErrors[0] || activeError;
   }
 
   currentBlock = s.block || 1;

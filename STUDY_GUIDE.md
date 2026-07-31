@@ -31,48 +31,39 @@ what they actually say.
 
 ### Structure
 
-**Each participant does all three tasks**, one content variant of each, in a
-single feedback condition. The scene throughout is the DreamCodeVR campfire
-scene: a sphere, a cube and a campfire.
+**Between-subjects, 30 participants, 10 per condition.** Each participant
+experiences ONE feedback condition and completes all four tasks.
 
-| Task | Goal |
-|---|---|
-| 1 | Create an object that appears in your hand when you raise it |
-| 2 | Move an object so it comes to rest next to a target |
-| 3 | Change an object's colour and move it next to another |
+Each task is a different failure scenario, and only half are the participant's
+doing:
 
-**Four error types**, applied identically to every task and variant:
+| Task | Scenario | Whose fault | What happens |
+|---|---|---|---|
+| 1 | Create object in hand | **User** | A required detail (hand height) was never given |
+| 2 | Move object to target | **User** | Phrasing allowed more than one reading |
+| 3 | Create 1000+ objects | **System** | Valid request, beyond what the system can render |
+| 4 | Create object above fire | **System** | Executed correctly, but lands out of view |
 
-| Error type | What happens |
-|---|---|
-| **Missing Detail** | nothing happens at all |
-| **Misrecognition** | the wrong object/colour is acted on |
-| **Happened Differently** | right action, wrong result (wrong place, wrong way) |
-| **Happened Plus Extra** | correct, plus something unasked-for (extra copies, growth, spin) |
+**That split is the study.** Tasks 3 and 4 are the important half: a memory
+ceiling is nobody's fault and *cannot* be fixed by rephrasing. A participant who
+blames themselves there will burn attempts rewording a request that can never
+succeed. So the feedback on tasks 3 and 4 must never imply user fault, or it
+manufactures the exact mis-attribution being measured.
 
-**A correct outcome is silent** — no panel in B, no agent in C, nothing in A. Only
-errors are ever explained, so the feedback itself never signals success.
+**A correct outcome is silent** in every condition. Only failures are ever
+explained, so the feedback channel never doubles as a success signal.
 
-### Counterbalancing (master table)
+### Counterbalancing
 
-Systematic rotation, not random. Type the participant ID into the panel and it
-prints the assigned plan; ★ marks the assigned task, variant and error types.
-
-- **Condition** cycles A, B, C by participant → 4×A, 3×B, 3×C over ten
-- **Variant** for task *t* = `((p-1) + (t-1)) mod 3`
-- **Error pair** for task *t* = two consecutive types from the four-type rotation
-  starting at `(p + t - 2) mod 4`
-
-Each participant sees each variant once and gets two of the four error types per
-task. These formulas reproduce the agreed P1–P10 table exactly.
-
-> ⚠ **One open question for the supervisor.** The master table assigns *one*
-> condition per participant (between-subjects), but the earlier implementation
-> note specified within-subjects — every participant doing all three conditions.
-> These imply different sample sizes and analyses. The table is implemented as
-> the default since it is the more recent document; switching back is a one-line
-> change (`STUDY_DESIGN` at the top of `app.js`). Worth confirming before running
-> participants.
+- **Condition** = `CONDITIONS[(p-1) mod 3]`, interleaved A,B,C,A,B,C... so that
+  drift over the recruitment period spreads across all three groups rather than
+  loading onto whichever ran first. Gives exactly 10 per condition over P01-P30.
+- **Task order** = balanced (Williams) Latin square, row `(p-1) mod 4`. Not a
+  plain rotation: it ensures each task appears in each position equally often
+  *and* each task precedes every other equally often. That matters because
+  tasks 3 and 4 teach participants the system has limits, which would otherwise
+  colour how they read tasks 1 and 2.
+- **Variant** = `((p-1) + position) mod 3`, for content variety.
 
 ### Trial protocol
 1. Check the **task**, **variant** and **error type** (★ = assigned).

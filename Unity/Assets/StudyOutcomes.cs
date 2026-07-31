@@ -103,6 +103,13 @@ public class StudyOutcomes : MonoBehaviour
             // "floor" is the ambiguous-placement error: it appears, but at the
             // participant's feet rather than in their hand.
             case "floor":  return new Vector3(OriginPos.x, 0.05f, OriginPos.z) + OriginFwd * 0.5f;
+            // Task 4 (system behaviour): the object is created correctly but
+            // lands outside the field of view. Placed well behind and slightly
+            // up so it is unmistakable once they turn, but invisible until then.
+            case "behind": return OriginPos - OriginFwd * 2.5f + Vector3.up * 1.2f;
+            // Its success counterpart: clearly in front and above, where they
+            // would actually look for something "above the campfire".
+            case "front":  return OriginPos + OriginFwd * 2.0f + Vector3.up * 1.4f;
             default:       return OriginPos + OriginFwd * 0.3f;       // "hand"
         }
     }
