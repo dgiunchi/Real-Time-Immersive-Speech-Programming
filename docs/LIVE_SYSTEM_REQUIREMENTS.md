@@ -1,6 +1,6 @@
 # AgenticXR live-system requirements
 
-Last reviewed: 2026-07-25
+Last reviewed: 2026-07-31
 
 This is the living checklist for running the complete AgenticXR system with Unity,
 Meta Quest, Ubiq, speech recognition, Claude orchestration, continuous activity
@@ -261,11 +261,13 @@ unredacted credentials.
 
 Confirmed as of the review date:
 
-- [x] Node deterministic tests pass.
-- [x] Local Ubiq + mock Unity integration passes.
+- [x] Node deterministic tests pass (`258` assertions on 2026-07-31).
+- [x] Local Ubiq + mock Unity integration passes on 2026-07-31.
 - [x] Long-lived monitor joins mock Ubiq and observes activity.
 - [x] Mock threshold crossing and monitor-only suppression pass.
 - [x] Unity `6000.3.9f1` batch compilation succeeds.
+- [x] Setup doctor passes in Claude mode when credential/endpoint presence is
+  represented; this does not prove that either external service is reachable.
 
 Still requires user/device validation:
 
@@ -280,7 +282,111 @@ Still requires user/device validation:
 - [ ] Performance, API cost, and latency measurement.
 - [ ] Entertainment/productivity/training application-level evaluation.
 
-## 12. Related documentation
+## 12. Paper-to-code gap ledger
+
+This ledger compares the repository with paper commit `00ef077` dated 2026-07-26.
+It distinguishes missing implementation from implemented work that still lacks live
+evidence.
+
+### Implemented or scaffolded, but not yet live-evaluated
+
+- [x] Bounded goal-loop controller, verification levels, delayed evidence, escalation,
+  and kill switch have deterministic tests.
+- [x] Idle future-goal prediction and speculative candidate storage exist and are
+  exercised with mock harnesses.
+- [x] Multi-candidate generation metadata, independent simulation calls, ranking, and
+  create/edit/remove lifecycle validation exist in the server and mock integration.
+- [x] Experience-context inference/override and a consented pseudonymous person-profile
+  store exist.
+- [x] Checkpoint metadata can be saved and classified as resumable or orphaned.
+- [x] Continuous gaze/proximity/locomotion monitoring exists and is mock-integrated.
+- [ ] None of the above has been validated through the complete live
+  Claude + Unity Play Mode + physical Quest path.
+
+### Partially implemented
+
+- [ ] Full-system checkpoint/resume: metadata is persisted, but attached Unity
+  procedures are not automatically reconstructed and resumed after restart.
+- [ ] Persistent person memory: opt-in, retention, inspection, and reset exist, but
+  privacy behavior, cross-session usefulness, and real consent UI flow are unevaluated.
+- [ ] Persistent/provenanced memory: the artifact event log persists decisions and
+  failures, but visual state, semantic relations, timelines, and most scene knowledge
+  remain bounded in-memory stores rather than a durable compounding knowledge base.
+- [ ] Scene graph: `near` and sensor-derived relations exist; hierarchy relations such
+  as `on`, `inside`, `attached-to`, and `supports` need richer Unity publication.
+  Affordances are static rules, not learned inference.
+- [ ] Verification Space: the clone/compiler path exists in Unity source, but has only
+  compiled in batch mode and has not executed in Play Mode or on Quest.
+- [ ] Conflict resolution: the model can return `proceed`, `queue`, or `redirect`, but
+  only `proceed` has an acted-on runtime path; queueing and redirection need deterministic
+  orchestration.
+- [ ] Orchestration ordering: the six-step agent pipeline is prompt-enforced rather
+  than represented as a deterministic state machine.
+
+### Not implemented
+
+- [ ] The paper's future XR "second-brain" knowledge graph: durable concept/object/
+  behaviour nodes, typed edges, spatial anchors, contradiction records, and
+  attachable/detachable knowledge modules.
+- [ ] A human-facing memory inspector/editor for reviewing provenance, correcting or
+  removing stored claims, and steering durable knowledge.
+- [ ] Shared semantic reuse cache for non-code artifacts such as textures, 3D assets,
+  and procedural configurations.
+- [ ] Real multi-user roles, ownership, conflicts, and permissions. The current
+  person-policy path is a single-owner stub.
+- [ ] Fine scene geometry, occlusion-aware visual memory, and learned semantic
+  affordances.
+
+### Paper/study work that cannot be claimed complete yet
+
+- [ ] Real API/model run and real Faster Whisper run.
+- [ ] Unity-side control-flow execution evidence.
+- [ ] Physical Quest execution evidence.
+- [ ] Performance, latency, API-cost, safety, and Verification-Space/live mismatch data.
+- [ ] Institutional ethics approval before recruiting or recording participants.
+- [ ] Human study with the planned tasks, conditions, questionnaires, interviews, and
+  approximately 20--24 participants.
+- [ ] Replace the paper's planned-results placeholders with observed results.
+
+## 13. Inputs the project team must provide
+
+Required now for the first complete live run:
+
+- [ ] A funded Anthropic API key, supplied privately as `ANTHROPIC_API_KEY`.
+- [ ] A deployed Faster Whisper-compatible endpoint, supplied as `STT_HTTP_URL`, or
+  authorization and host/GPU details so one can be deployed.
+- [ ] The server PC LAN IPv4 address and confirmation that TCP `8009` is reachable from
+  the Quest.
+- [ ] Quest model, OS version, Developer Mode/USB-debugging status, and microphone
+  permission.
+- [ ] Confirmation that Unity Hub has Android Build Support, SDK, NDK, and OpenJDK for
+  Unity `6000.3.9f1`.
+- [ ] The first approved test scene, target object, spoken request, and expected safe
+  behavior.
+- [ ] A decision on whether continuous assistance and idle speculation should be
+  enabled during engineering tests. Leave both disabled for initial study trials unless
+  the approved protocol explicitly includes them.
+- [ ] A pseudonymous test person ID only if cross-session profile behavior is being
+  tested; never provide a participant's real identity.
+
+Required before a human study:
+
+- [ ] Institutional ethics/IRB approval and the approved protocol.
+- [ ] Final tasks, conditions, counterbalancing/randomization plan, success criteria,
+  and ground-truth rubric.
+- [ ] Approved participant information/consent materials and recruitment plan.
+- [ ] Final questionnaire instruments and scoring procedures.
+- [ ] A secure, institution-approved location and retention/deletion policy for logs,
+  audio, transcripts, consent records, and pseudonym mapping.
+
+Not required for the Claude AgenticXR path:
+
+- OpenAI API key;
+- Azure Speech key;
+- MCP API key;
+- a legacy Python virtual environment.
+
+## 14. Related documentation
 
 - `docs/SETUP_INSTRUCTIONS.md`
 - `docs/continuous-human-centered-runtime.md`
