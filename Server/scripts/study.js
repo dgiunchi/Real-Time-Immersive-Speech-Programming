@@ -55,14 +55,41 @@ function log(msg) { console.log(`\x1b[1m\x1b[36m[study]\x1b[0m ${msg}`); }
 
 const MODE_FILE = path.join(os.tmpdir(), "dreamcodevr_mode");
 
+/**
+ * Blocking read of one line from the terminal.
+ *
+ * Reads /dev/tty rather than fd 0. On macOS, fd 0 is frequently left in
+ * non-blocking mode, and fs.readSync then throws EAGAIN instead of waiting -
+ * so the question appears, nothing waits for an answer, and the default is
+ * taken silently. A menu that prints and does not wait is worse than no menu,
+ * because it looks like it asked.
+ *
+ * Opening /dev/tty gives a fresh blocking descriptor regardless of what fd 0
+ * is doing. EAGAIN is still retried in case the terminal hands one back.
+ */
 function promptSync(question) {
     process.stdout.write(question);
+    let fd;
+    try { fd = fs.openSync("/dev/tty", "rs"); }
+    catch (_) { return ""; }              // no terminal: caller falls back
+
     const buf = Buffer.alloc(256);
+    const deadline = Date.now() + 120000; // don't hang a session forever
     try {
-        const n = fs.readSync(0, buf, 0, 256);
-        return buf.toString("utf8", 0, n).trim().toLowerCase();
-    } catch (_) {
+        while (Date.now() < deadline) {
+            try {
+                const n = fs.readSync(fd, buf, 0, 256);
+                if (n === 0) return "";    // EOF
+                return buf.toString("utf8", 0, n).trim().toLowerCase();
+            } catch (e) {
+                if (e.code === "EAGAIN") { try { execSync("sleep 0.05"); } catch (_) {} continue; }
+                if (e.code === "EOF") return "";
+                return "";
+            }
+        }
         return "";
+    } finally {
+        try { fs.closeSync(fd); } catch (_) {}
     }
 }
 
@@ -72,8 +99,12 @@ function resolveMode() {
     if (argv.includes("--study")) return "study";
 
     // Non-interactive (CI, piped, nohup): never silently pick the mode that
-    // leaves a headset unsafe for a participant.
-    if (!process.stdin.isTTY) {
+    // leaves a headset unsafe for a participant. Tested by whether a controlling
+    // terminal can actually be opened, not by stdin.isTTY, which says nothing
+    // about whether a read on it will block.
+    let hasTty = false;
+    try { const fd = fs.openSync("/dev/tty", "rs"); fs.closeSync(fd); hasTty = true; } catch (_) {}
+    if (!hasTty) {
         log("Not a terminal — defaulting to STUDY mode.");
         return "study";
     }
