@@ -21,11 +21,20 @@ This is not a VR problem. It is what happens when anyone repeats a command to a
 smart speaker, louder each time. People do not do that because they are careless.
 They do it because repeating is the only hypothesis a silent failure supports.
 
-## Research question
+## The claim
 
-> When an agent acts on your behalf and gets it wrong, does the **way it explains
-> the failure** change whether you correctly diagnose the cause — and does correct
-> diagnosis produce corrections that are actually usable as training signal?
+> **People misattribute system-caused failures as their own, and burn repair
+> attempts that cannot possibly succeed.**
+
+That is the headline, and it rests on the within-participant contrast: every
+participant meets both user-caused and system-caused failures, so each is their
+own control. It is the better-powered comparison and the more surprising one, and
+`wastedRepairs` makes it countable rather than merely reported.
+
+The secondary question is whether the **way a failure is explained** changes that.
+That sits on the between-subjects factor at n=10 per cell, so it is treated as an
+**exploratory moderator** and pre-registered as exploratory. Leading with it would
+have hung the paper on the one axis the design cannot power.
 
 ## Design
 
@@ -36,8 +45,14 @@ They do it because repeating is the only hypothesis a silent failure supports.
 | Feedback modality | **A** none · **B** text panel · **C** embodied agent | Between-subjects |
 | Fault type | User-correctable · System-caused | Within-subjects |
 
-- **n = 30**, 10 per modality. Each participant sees one modality across all four
-  tasks.
+- **n = 30**, 10 per modality. Each participant sees one modality across all six
+  measured tasks.
+- **Six tasks, three per fault type.** The model estimates a per-participant
+  random intercept; at four tasks that is two binary observations per cell, too
+  thin to identify the random effect and liable to converge badly. Six trials
+  roughly halves per-cell noise for about eight extra minutes per session, which
+  buys more than ten additional participants would. Trials per person, not
+  people, was the binding constraint.
 - B and C are **exclusive**: each carries the explanation exactly once, so the
   comparison isolates *modality*, not *amount* of information. The transcript
   strip stays visible in both, since it is not an explanation.
@@ -45,29 +60,46 @@ They do it because repeating is the only hypothesis a silent failure supports.
   LLM, so every participant meets an identical failure and we hold ground truth
   about what caused it — which no field data ever has.
 
-### The four tasks
+### The six tasks
 
-Task *is* scenario. Two of each fault type, so every participant experiences the
-contrast.
+Task *is* scenario. Three of each fault type, so every participant meets the
+contrast three times.
 
 | Task | Ask | What happens | At fault |
 |---|---|---|---|
-| 1 | Create an object in your hand | Nothing appears — no hand height given | **User** |
-| 2 | Move an object next to a target | Moves the wrong way — no direction given | **User** |
-| 3 | Create ~1000 objects | Only 8 appear — past the render limit | **System** |
+| 1 | Create an object in your hand | Nothing appears, no hand height given | **User** |
+| 2 | Move an object next to a target | Moves the wrong way, no direction given | **User** |
+| 5 | Create an object that stands out | Comes out default grey, no colour given | **User** |
+| 3 | Create ~1000 objects | Only 8 appear, past the render limit | **System** |
 | 4 | Create an object above the campfire | Created correctly, but behind you | **System** |
+| 6 | Make an object move on its own | Nothing happens, animation is unsupported | **System** |
 
-Tasks 1–2 are repairable by speaking differently. Tasks 3–4 are not, and telling
-someone to rephrase would be actively misleading — so the feedback for those owns
-the limit instead.
+The user-fault tasks are repairable by speaking differently, and each turns on a
+different kind of omission: a missing trigger condition, an ambiguous spatial
+reference, and a stated intention with no parameter to achieve it.
+
+The system-fault tasks are not repairable at all, and are deliberately three
+different flavours of that: a ceiling on something supported (3), a correct
+execution in an unexpected place (4), and a capability that does not exist (6).
+Task 6 is the purest test of the claim, since the only useful response is to stop
+asking and pivot, which a participant blaming their own phrasing never reaches.
+Telling any of these three to rephrase would be actively misleading, so their
+feedback owns the limit instead.
 
 A **practice trial** runs first and is excluded from analysis, so the first
 measured task is not doubling as push-to-talk training.
 
-**Order** follows a Williams balanced Latin square, which balances not just
-position but order-of-precedence. This matters because tasks 3–4 teach that the
-system has limits; without balancing, that lesson would leak into tasks 1–2
-asymmetrically.
+**Order** follows a 6×6 Williams balanced Latin square, which balances not just
+position but order-of-precedence. This matters because the system-fault tasks
+teach that the system has limits; without balancing, that lesson would leak into
+the user-fault tasks asymmetrically.
+
+The order index advances once per full A/B/C cycle rather than per participant.
+Indexing order and condition by the same counter would make order a deterministic
+function of condition (A would only ever see two of the six orders), which is a
+confound wearing a counterbalance's clothes. With n=30 across 3 conditions × 6
+orders, coverage within a condition is near-balanced rather than exact; perfect
+balance would need n=36.
 
 ## Measures
 
@@ -76,8 +108,15 @@ your own words, why do you think that happened?"* Coded self / system / unsure
 against ground truth.
 
 `correct ~ condition * scenarioType + (1|participant)`, mixed-effects logistic.
-**The interaction is the finding**: feedback may help on user-fault tasks while
-doing nothing, or actively harming, on system-fault ones.
+
+**The main effect of `scenarioType` is the headline**: accuracy should fall on
+system-caused failures, where people reach for a self-blaming explanation that
+the evidence does not support. That term is within-participant and carries three
+observations per cell.
+
+The `condition × scenarioType` interaction is the interesting-but-underpowered
+term: feedback may help on user-fault tasks while doing nothing, or actively
+harming, on system-fault ones. Reported as exploratory.
 
 **Co-primary — what the misattribution costs.** Attribution alone is a stated
 belief, and *who cares* is a fair question. The repair move is that belief with a
@@ -103,7 +142,7 @@ it," and in condition A it records whether they noticed the failure.
 ### Planned secondary analysis: are these corrections usable as training signal?
 
 Every participant utterance is logged verbatim with its trial context, which
-yields a corpus of roughly 120 real correction attempts, each labelled with the
+yields a corpus of at least 180 real correction attempts, each labelled with the
 ground-truth fault and with whether the speaker diagnosed it correctly.
 
 The analysis: present each correction, stripped of context, to an LLM and ask it
@@ -149,13 +188,26 @@ where that can be measured cleanly, not what the claim is about.
 | First task doubles as training | Practice trial, excluded |
 | Coder leniency on repairs | Word-boundary matching with fixed synonym sets, no substring matches |
 
-**Stated limitations.** The wizard cannot be blind to condition — they operate
-the feedback. Coding vague attribution answers is a judgement call, so a second
-coder rates ~20% for inter-rater reliability.
+**Stated limitations.** The wizard cannot be blind to condition, since they
+operate the feedback. Coding vague attribution answers is a judgement call, so a
+second coder rates ~20% for inter-rater reliability.
+
+Asking *"why do you think that happened?"* after every error may itself train
+participants to look for causes, and six trials makes that more acute than four.
+The balanced square handles task order but not probe repetition, which is a
+demand characteristic no ordering fixes. Reported as a limitation; trial number
+is in the data, so a practice effect across positions is at least visible.
+
+The scripted failure fires whatever the participant said, which is what keeps the
+stimulus identical. On user-fault tasks that means someone who happened to supply
+the missing detail is told they did not. Those trials are flagged
+(`preInjectHadSlot`) and excludable, since for them the feedback was false and
+"blamed the system" is the correct reading rather than a mis-attribution.
 
 **Power.** n=10 per cell detects only large between-group effects (d≈1.3 at 80%).
 The modality main effect is therefore **exploratory** and reported as such. The
-within-participant contrast — user-fault versus system-fault, where each person is
-their own control — is far better powered and is where the claim lives.
+within-participant contrast, user-fault versus system-fault, where each person is
+their own control and contributes three trials per cell, is far better powered and
+is where the claim lives.
 
 The analysis plan above is pre-registered before participant 1.

@@ -223,6 +223,87 @@ function buildTask4(v) {
     };
 }
 
+/**
+ * Task 5 - user error: the goal was described, but the setting that achieves it
+ * was never given.
+ *
+ * The omission has to be one people actually make, or the feedback is a lie and
+ * anyone who believes it gets scored wrong for doing so. This one qualifies:
+ * people state the intention ("so it stands out") rather than the parameter that
+ * produces it, and no system can infer a colour from a purpose.
+ */
+function buildTask5(v) {
+    const o = v.object;
+    return {
+        label: `Create a ${o} that stands out`,
+        scenario: "user_error",
+        prompt: `The ground around the campfire is dark and hard to read. Ask the ` +
+                `system to put a ${o} on the ground that clearly stands out ` +
+                `against it. Use your own words.`,
+        error: {
+            action: "spawn", shape: v.shape, pos: "floor", physics: true,
+            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: "#6b6b6b",
+            errorText: `The ${o} was created, but no colour was given, so it used ` +
+                       `the default grey and blends into the ground.`,
+            agentPost: `I made the ${o}, but you didn't say what colour, so it came ` +
+                       `out grey and it doesn't stand out.`,
+            missingSlot: "a colour",
+            // Colour words match unusually cleanly: concrete, not common filler,
+            // and no ambiguity about whether one was actually supplied.
+            slotTerms: ["red", "orange", "yellow", "green", "blue", "purple",
+                        "pink", "white", "bright", "brightly", "colour", "color",
+                        "coloured", "colored", "glowing"]
+        },
+        success: {
+            action: "spawn", shape: v.shape, pos: "floor", physics: true,
+            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color
+        }
+    };
+}
+
+/**
+ * Task 6 - system limitation: the request is clear, reasonable, and outside what
+ * the system can do at all.
+ *
+ * Distinct from task 3, which is a ceiling on something supported. This is a
+ * capability that does not exist, so no rewording anywhere reaches it. It is the
+ * purest test of the study's claim: the only useful response is to stop trying
+ * and ask for something else, and a participant who blames their own phrasing
+ * cannot get there.
+ */
+function buildTask6(v) {
+    const o = v.object;
+    return {
+        label: `Make the ${o} move on its own`,
+        scenario: "system_capability",
+        prompt: `Everything in this scene is still. Ask the system to make the ` +
+                `${o} keep moving on its own, without you asking each time. ` +
+                `Use your own words.`,
+        error: {
+            action: "noop",
+            errorText: `Nothing was changed. This system can create, move and ` +
+                       `recolour objects. It cannot animate them, so there is no ` +
+                       `wording that would achieve this.`,
+            agentPost: `Your request was clear, but I can only create, move and ` +
+                       `recolour things. Continuous movement isn't something I can ` +
+                       `do at all. Would one of those work instead?`,
+            missingSlot: "a supported operation",
+            // Credit only an explicit pivot to something the system can do.
+            // Bare agreement is excluded for the same reason as task 3.
+            //
+            // "move"/"moving" are deliberately NOT here even though moving is
+            // supported: the request itself is about movement, so the opening
+            // utterance contains them and would score as an adaptation before
+            // the participant had adapted to anything. A pivot to moving still
+            // registers via "instead".
+            slotTerms: ["colour", "color", "recolour", "recolor", "red", "orange",
+                        "yellow", "green", "blue", "purple", "white",
+                        "create", "spawn", "instead"]
+        },
+        success: { action: "recolor", target: v.target, color: v.color }
+    };
+}
+
 const TASKS = {
     // Practice. Not counterbalanced, not analysed, always run first. Without it
     // the first real task doubles as push-to-talk training, and whatever that
@@ -287,6 +368,24 @@ const TASKS = {
             v2: buildTask4({ object: "banner",  shape: "cube",    scale: 0.8, color: "#c0392b" }),
             v3: buildTask4({ object: "balloon", shape: "capsule", scale: 0.8, color: "#2ecc40" })
         }
+    },
+    task5: {
+        name: "Create an object that stands out",
+        scenario: "user_error",
+        variants: {
+            v1: buildTask5({ object: "marker", shape: "cube",    scale: 0.20, color: "#ff4d4d" }),
+            v2: buildTask5({ object: "stone",  shape: "sphere",  scale: 0.20, color: "#ffd166" }),
+            v3: buildTask5({ object: "post",   shape: "capsule", scale: 0.22, color: "#4dd2ff" })
+        }
+    },
+    task6: {
+        name: "Animate an object (not supported)",
+        scenario: "system_capability",
+        variants: {
+            v1: buildTask6({ object: "campfire", target: "campfire", color: "#ff8c42" }),
+            v2: buildTask6({ object: "sphere",   target: "sphere",   color: "#4d9fff" }),
+            v3: buildTask6({ object: "cube",     target: "cube",     color: "#5cd65c" })
+        }
     }
 };
 
@@ -296,45 +395,69 @@ const TASK_ATTRIBUTION = {
     practice: "",          // not scored
     task1: "self",
     task2: "self",
+    task5: "self",
     task3: "system",
-    task4: "system"
+    task4: "system",
+    task6: "system"
 };
 
 // ── Counterbalancing ─────────────────────────────────────────────────────────
 //
 // BETWEEN-SUBJECTS, 30 participants, 10 per feedback condition.
-// Each participant experiences ONE condition and does all four tasks.
+// Each participant experiences ONE condition and does all SIX measured tasks.
 //
-//   condition(p)   = CONDITIONS[(p-1) mod 3]   -> exactly 10 each over P1..P30
-//   task order(p)  = balanced Latin square row (p-1) mod 4
+//   condition(p)   = CONDITIONS[(p-1) mod 3]        -> exactly 10 each over P1..P30
+//   task order(p)  = Williams row floor((p-1)/3) mod 6
 //   variant(p,t)   = ((p-1) + t) mod 3
+//
+// SIX tasks, not four. The primary model estimates a per-participant random
+// intercept, and with four trials that is two binary observations per cell -
+// too thin to identify the random effect, and liable to converge badly. Three
+// tasks per fault type roughly halves the per-cell noise for about eight extra
+// minutes of session time, which buys more than ten additional participants
+// would. Trials per person, not people, was the binding constraint.
 //
 // Conditions are interleaved rather than blocked (A,B,C,A,B,C...) so that any
 // drift over the recruitment period - the wizard getting smoother, seasonal
 // participant differences - spreads across all three groups instead of loading
 // onto whichever was run first.
 //
-// Task order uses a balanced Latin square, not a plain rotation: with four
-// tasks it ensures each task appears in each position equally often AND each
-// task precedes every other equally often, which a naive rotation does not do.
-// That matters because tasks 3 and 4 teach participants the system has limits,
-// which could otherwise colour how they read tasks 1 and 2.
+// Task order uses a balanced (Williams) square: each task appears in each
+// position equally often AND precedes every other equally often, which a plain
+// rotation does not give. That matters because the system-fault tasks teach
+// participants the system has limits, which would otherwise colour how they read
+// the user-fault ones.
+//
+// NOTE the order index is floor((p-1)/3), not (p-1). With six orders and three
+// conditions, indexing both by (p-1) would make order a deterministic function
+// of condition - condition A would only ever see orders 0 and 3 - which is a
+// confound, not a counterbalance. Dividing by 3 first advances the order once
+// per full A/B/C cycle, so every condition meets every order.
+//
+// 30 does not divide evenly into 3 conditions x 6 orders = 18 cells, so order
+// coverage within a condition is near-balanced rather than exact (orders 0-3
+// appear twice per condition, 4-5 once). Perfect balance would need n=36.
 
 const STUDY_DESIGN = "between";   // confirmed with supervisor, July 2026
 
 const CONDITIONS = ["A", "B", "C"];
-const TASK_KEYS    = ["task1", "task2", "task3", "task4"];
+// Interleaved by fault type so that neither type is front-loaded if a session
+// has to be cut short.
+const TASK_KEYS    = ["task1", "task3", "task2", "task4", "task5", "task6"];
 const VARIANT_KEYS = ["v1", "v2", "v3"];
 
 const TARGET_N            = 30;
 const PARTICIPANTS_PER_CONDITION = 10;
 
-// Balanced (Williams) Latin square for 4 items.
+// Balanced (Williams) Latin square for 6 items: first row 0,1,n-1,2,n-2,3 with
+// each subsequent row incremented by one, mod 6.
 const TASK_ORDERS = [
-    [0, 1, 3, 2],
-    [1, 2, 0, 3],
-    [2, 3, 1, 0],
-    [3, 0, 2, 1]
+    [0, 1, 5, 2, 4, 3],
+    [1, 2, 0, 3, 5, 4],
+    [2, 3, 1, 4, 0, 5],
+    [3, 4, 2, 5, 1, 0],
+    [4, 5, 3, 0, 2, 1],
+    [5, 0, 4, 1, 3, 2]
 ];
 
 /** Participant number from an id (P01 -> 1, 7 -> 7). 1-based. */
@@ -353,7 +476,9 @@ function participantIndex(pid) {
 function planForParticipant(pid) {
     const p = participantIndex(pid);
     const condition = CONDITIONS[(p - 1) % CONDITIONS.length];
-    const order = TASK_ORDERS[(p - 1) % TASK_ORDERS.length];
+    // Divide by the number of conditions first, or order becomes a function of
+    // condition rather than a counterbalance across it. See the note above.
+    const order = TASK_ORDERS[Math.floor((p - 1) / CONDITIONS.length) % TASK_ORDERS.length];
 
     return order.map((taskIdx, position) => {
         const taskKey = TASK_KEYS[taskIdx];
@@ -483,6 +608,10 @@ class WizardOfOzApp extends ApplicationController {
             // move is the thing that wastes a turn or fixes the problem, and it
             // is the only part of this a real product could act on.
             repairStrategies:  [],     // filled by POST /repair-strategy
+            // True when the opening utterance already contained the slot the
+            // scripted error claims was missing. Those trials are excludable:
+            // the feedback contradicted the participant.
+            preInjectHadSlot:  false,
             repairContainsSlot: null,  // filled automatically on next transcript
             startedAt:         Date.now(),
             startedAtIso:      new Date().toISOString(),
@@ -602,7 +731,7 @@ class WizardOfOzApp extends ApplicationController {
             "startTime,endTime,durationMs,completionStatus,attempts,injects," +
             "attribution,correctAttribution,attributionCorrect,noticedFeedback," +
             "firstRepairStrategy,repairSequence,wastedRepairs," +
-            "repairContainsSlot,missingSlot", [
+            "repairContainsSlot,preInjectHadSlot,missingSlot", [
             this.session.participantId,
             order,
             trial.block,
@@ -631,6 +760,7 @@ class WizardOfOzApp extends ApplicationController {
             // misattribution, in the unit a product would actually count.
             (trial.repairStrategies || []).filter(s => s === "verbatim").length,
             trial.repairContainsSlot !== null ? trial.repairContainsSlot : "",
+            trial.preInjectHadSlot ? "yes" : "no",
             csvEscape(trial.missingSlot || "")
         ].join(","));
     }
@@ -746,6 +876,34 @@ class WizardOfOzApp extends ApplicationController {
                         `slot="${this.trial.missingSlot}" found=${matched}`, {
                         msSinceTrialStart: Date.now() - this.trial.startedAt
                     });
+                }
+            }
+
+            // Before any injection: did they already supply the thing the error
+            // is about to say they omitted?
+            //
+            // The scripted failure fires whatever they said, which is what makes
+            // the stimulus identical across participants. The cost is that on a
+            // user-fault task, someone who happened to give the missing detail
+            // is then told they did not. For them the feedback is false, and
+            // "blamed the system" becomes the correct reading of a trial we
+            // would otherwise score as a mis-attribution.
+            //
+            // Flagged here rather than prevented: suppressing the error would
+            // cost the trial and unbalance the design. The wizard sees the
+            // warning and the analysis can exclude these trials.
+            if (this.trial && !this.trial.endedAt && this.trial.injects === 0 &&
+                this.trial.preInjectHadSlot !== true) {
+                const already = slotMatched(text, this.trial.slotTerms);
+                if (already === true) {
+                    this.trial.preInjectHadSlot = true;
+                    this.logEvent("pre-inject-slot-present",
+                        `slot="${this.trial.missingSlot}" already said`, {
+                        msSinceTrialStart: Date.now() - this.trial.startedAt
+                    });
+                    console.log(`\x1b[33m[Warning]\x1b[0m participant already gave ` +
+                        `"${this.trial.missingSlot}" - the scripted error will ` +
+                        `contradict them. Trial flagged.`);
                 }
             }
 

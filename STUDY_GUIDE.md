@@ -27,11 +27,11 @@ begins, never with a real participant.
 Every failure has a **ground truth about whose fault it is**, and the feedback
 wording must agree with it.
 
-- On tasks 1 and 2 the cause really is something the participant left out or
+- On tasks 1, 2 and 5 the cause really is something the participant left out or
   phrased ambiguously. Feedback names the missing detail.
-- On tasks 3 and 4 the participant did nothing wrong. Feedback owns the limit
-  or explains where the object went. It must **never** suggest they rephrase,
-  because there is nothing to rephrase.
+- On tasks 3, 4 and 6 the participant did nothing wrong. Feedback owns the limit,
+  explains where the object went, or says the capability does not exist. It must
+  **never** suggest they rephrase, because there is nothing to rephrase.
 
 Getting this wrong invalidates the results. If feedback says "please speak more
 clearly" when the ground truth is a system fault, a participant who believes it
@@ -45,7 +45,7 @@ injected regardless of what they actually say.
 ### Structure
 
 **Between-subjects, 30 participants, 10 per condition.** Each participant
-experiences ONE feedback condition and completes all four tasks.
+experiences ONE feedback condition and completes all six measured tasks.
 
 Each task is a different failure scenario, and only half are the participant's
 doing:
@@ -54,13 +54,20 @@ doing:
 |---|---|---|---|
 | 1 | Create object in hand | **User** | A required detail (hand height) was never given |
 | 2 | Move object to target | **User** | Phrasing allowed more than one reading |
+| 5 | Create object that stands out | **User** | Intention stated, but no colour given |
 | 3 | Create 1000+ objects | **System** | Valid request, beyond what the system can render |
 | 4 | Create object above fire | **System** | Executed correctly, but lands out of view |
+| 6 | Make an object move itself | **System** | Animation is not a capability that exists |
 
-**That split is the study.** Tasks 3 and 4 are the important half: a memory
+Three of each fault type. Each user-fault task turns on a different omission (a
+trigger condition, a spatial reference, a parameter), and each system-fault task
+on a different kind of impossibility (a ceiling, a surprise, a missing
+capability).
+
+**That split is the study.** Tasks 3, 4 and 6 are the important half: a memory
 ceiling is nobody's fault and *cannot* be fixed by rephrasing. A participant who
 blames themselves there will burn attempts rewording a request that can never
-succeed. So the feedback on tasks 3 and 4 must never imply user fault, or it
+succeed. So the feedback on tasks 3, 4 and 6 must never imply user fault, or it
 manufactures the exact mis-attribution being measured.
 
 **A correct outcome is silent** in every condition. Only failures are ever
@@ -71,11 +78,16 @@ explained, so the feedback channel never doubles as a success signal.
 - **Condition** = `CONDITIONS[(p-1) mod 3]`, interleaved A,B,C,A,B,C... so that
   drift over the recruitment period spreads across all three groups rather than
   loading onto whichever ran first. Gives exactly 10 per condition over P01-P30.
-- **Task order** = balanced (Williams) Latin square, row `(p-1) mod 4`. Not a
-  plain rotation: it ensures each task appears in each position equally often
-  *and* each task precedes every other equally often. That matters because
-  tasks 3 and 4 teach participants the system has limits, which would otherwise
-  colour how they read tasks 1 and 2.
+- **Task order** = balanced (Williams) Latin square, row
+  `floor((p-1)/3) mod 6`. Not a plain rotation: it ensures each task appears in
+  each position equally often *and* each task precedes every other equally
+  often. That matters because the system-fault tasks teach participants the
+  system has limits, which would otherwise colour how they read the user-fault
+  ones.
+  The index divides by 3 first. Using `(p-1)` for both condition and order would
+  tie them together, so condition A would only ever see two of the six orders.
+  With n=30 over 3 conditions x 6 orders, coverage is near-balanced rather than
+  exact; n=36 would be exact.
 - **Variant** = `((p-1) + position) mod 3`, for content variety.
 
 ### Measures and analysis plan
@@ -86,8 +98,19 @@ the numbers is the single easiest way to lose a paper.
 **Primary — attribution accuracy.** Per trial, did the participant's stated
 cause match the ground truth (`attributionCorrect`)? Analysed as a mixed-effects
 logistic regression: `correct ~ condition * scenarioType + (1|participant)`.
-The interaction is the interesting term: feedback may help on user-fault tasks
-while doing nothing, or actively harming, on system-fault ones.
+
+The **main effect of `scenarioType` is the headline**: accuracy should fall on
+system-caused failures, where people reach for a self-blaming explanation the
+evidence does not support. That term is within-participant, three observations
+per cell, and is the claim the design can actually support.
+
+The `condition x scenarioType` interaction is the interesting-but-underpowered
+term: feedback may help on user-fault tasks while doing nothing, or actively
+harming, on system-fault ones. Pre-register it as **exploratory**.
+
+Six tasks rather than four exists for this model. At four, the random intercept
+is estimated from two binary observations per cell, which is too thin to
+identify and prone to convergence trouble.
 
 **Co-primary — what the misattribution costs** (`firstRepairStrategy`,
 `repairSequence`, `wastedRepairs`). Attribution on its own is a stated belief,
@@ -142,8 +165,17 @@ every later choice from a judgement call into a plan.
 | Success acting as a second feedback channel | Correct outcomes are silent in all conditions |
 | Feedback contradicting ground truth | Tasks 3-4 never imply user fault |
 | Repair measure inflated by loose matching | Word-boundary synonym sets; agreement tokens excluded |
+| Random intercept unidentifiable | Six measured trials, three per fault type |
+| Order confounded with condition | Order index advances per A/B/C cycle, not per participant |
+| Scripted error contradicting what they said | Flagged per trial as `preInjectHadSlot`, excludable |
 
-**Still open, disclose in the limitations:** the wizard is not blind to
+**Still open, disclose in the limitations:** asking "why do you think that
+happened?" after every error may itself train participants to look for causes,
+and six trials makes that more acute than four; no ordering fixes it, since it
+is probe repetition rather than task order. Trial number is in the data, so a
+practice effect across positions is at least visible.
+
+Also: the wizard is not blind to
 condition (unavoidable in WoZ, since they operate the feedback); coding of vague
 attribution answers is a judgement call, so record audio and have a second coder
 rate ~20% for inter-rater reliability; scripted failures are not naturalistic
@@ -151,7 +183,7 @@ errors.
 
 ### Trial protocol
 
-One trial per task, four tasks per participant.
+One trial per task, six measured tasks per participant.
 
 1. Confirm the **task** and **variant** on the panel (★ = assigned by the plan).
 2. Click **▶ Start trial** — clears the scene and starts the clock.
@@ -163,7 +195,7 @@ One trial per task, four tasks per participant.
 7. They try again:
    - adapted → **INJECT SUCCESS** (silent), then **✓ End trial**
    - same mistake → **INJECT ERROR again**; do not hand them the answer
-8. Click **⏭ Next task** and repeat. Four tasks, then the questionnaire.
+8. Click **⏭ Next task** and repeat. Six tasks, then the questionnaire.
 
 Every trial starts from an identical scene: trial objects removed, environment
 colours restored, sphere and cube rebuilt, agent returned to idle.
