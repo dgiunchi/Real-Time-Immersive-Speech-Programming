@@ -105,4 +105,8 @@ Unity/Recordings/
 
 # Study results (participant data - never commit)
 Logs/
+
+# Demo and session footage. Never commit: clips show a real person's face and
+# voice, which is personal data no consent form here covers for redistribution.
+Recordings/
 *.slnx

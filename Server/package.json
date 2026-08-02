@@ -5,6 +5,9 @@
   "scripts": {
     "doctor": "node scripts/check-local-setup.js",
     "study": "node scripts/study.js",
+    "demo:setup": "node scripts/demo.js setup",
+    "demo:pull": "node scripts/demo.js pull",
+    "demo:reset": "node scripts/demo.js reset",
     "start:wizard-of-oz": "node scripts/start-wizard-of-oz.js",
     "start:code-runtime-generator": "node scripts/start-code-runtime-generator.js",
     "test": "echo \"Error: no test specified\" && exit 1"
