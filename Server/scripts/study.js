@@ -344,25 +344,63 @@ function openBrowser(url) {
     try { spawn(cmd, [url], { shell: true, stdio: "ignore", detached: true }).unref(); }
     catch (_) {}
 }
-// The mode has to be unmissable. The dangerous mistake is filming settings
-// surviving into a participant session, and a line of grey text scrolled past
-// four seconds ago does not prevent it.
-function modeBanner(mode) {
-    const bar = "=".repeat(64);
+// Printed LAST, once the server has finished its own startup noise, so the
+// thing still on screen when you look up is what to do next rather than the
+// tail of a boot log. The mode colour is repeated here because the dangerous
+// mistake is filming settings surviving into a participant session.
+function printNextSteps(mode) {
+    const W = 68;
+    const bg = mode === "demo" ? "\x1b[43m\x1b[30m" : "\x1b[42m\x1b[30m";
+    const R  = "\x1b[0m", B = "\x1b[1m", D = "\x1b[2m";
+    const bar  = (t = "") => console.log(bg + " " + t.padEnd(W - 2) + " " + R);
+    const line = (t = "") => console.log("  " + t);
+
+    console.log("");
+    bar();
+    bar(mode === "demo"
+        ? "DEMO MODE - FILMING.  Do NOT run a participant in this mode."
+        : "STUDY MODE - guardian on.  Safe to run a participant.");
+    bar();
+    console.log("");
+
     if (mode === "demo") {
-        console.log(`\n\x1b[43m\x1b[30m${bar}\x1b[0m`);
-        console.log("\x1b[43m\x1b[30m   DEMO MODE - FILMING. Do not run a participant in this mode.   \x1b[0m");
-        console.log("\x1b[43m\x1b[30m   Rerun and choose 1 (study) before anyone wears the headset.   \x1b[0m");
-        console.log(`\x1b[43m\x1b[30m${bar}\x1b[0m\n`);
+        line(`${B}WHAT TO DO NOW${R}`);
+        line("");
+        line(`${B}1.${R} In the headset: turn microphone audio ${B}ON${R} in capture settings`);
+        line(`${B}2.${R} On the Mac: start a QuickTime screen recording of the panel`);
+        line(`${B}3.${R} Panel is open at ${B}${controlUrl}${R}`);
+        line(`   Participant ID picks the condition:`);
+        line(`   ${D}DEMO01 = A (no feedback)   DEMO02 = B (panel)   DEMO03 = C (agent)${R}`);
+        line(`${B}4.${R} Clap once on camera, then shoot ${B}clip 0${R} first:`);
+        line(`   ${D}DEMO01, task 3 - ask for a thousand stones, get 8, no explanation${R}`);
+        line(`${B}5.${R} Full shot list with the exact lines: ${B}DEMO_FILMING.md${R}`);
+        line("");
+        line(`${B}WHEN YOU FINISH FILMING${R}`);
+        line(`   ./study pull     ${D}copy the clips off the headset${R}`);
+        line(`   ./study study    ${D}back to participant-safe settings${R}`);
     } else {
-        console.log(`\n\x1b[42m\x1b[30m${bar}\x1b[0m`);
-        console.log("\x1b[42m\x1b[30m   STUDY MODE - guardian on, safe to run a participant.          \x1b[0m");
-        console.log(`\x1b[42m\x1b[30m${bar}\x1b[0m\n`);
+        line(`${B}WHAT TO DO NOW${R}`);
+        line("");
+        line(`${B}1.${R} Consent form signed, and audio recorder running`);
+        line(`   ${D}attribution answers are spoken to you, not into the headset${R}`);
+        line(`${B}2.${R} Headset on the participant  ${D}(guardian is on - this mode set it)${R}`);
+        line(`${B}3.${R} Panel at ${B}${controlUrl}${R} - enter the participant ID (P01, P02, ...)`);
+        line(`   ${D}the ID sets the condition and task order automatically${R}`);
+        line(`${B}4.${R} Run the ${B}practice${R} task first  ${D}(not analysed)${R}`);
+        line(`${B}5.${R} Then the ${B}6 tasks${R}, following the star on each screen`);
+        line(`   ${D}per task: brief - they speak - INJECT ERROR - probe - repair - end${R}`);
+        line(`${B}6.${R} Questionnaire: ${B}${controlUrl}/questionnaire${R}`);
+        line(`${B}7.${R} ${B}Debrief${R} - tell them the failures were scripted, not their fault`);
+        line(`   ${D}script is in STUDY_GUIDE.md${R}`);
     }
+    line("");
+    line(`${D}Data saves automatically to Logs/.  Ctrl+C to stop.${R}`);
+    console.log("");
 }
-modeBanner(MODE);
 
 setTimeout(() => { log(`Opening control panel: ${controlUrl}`); openBrowser(controlUrl); }, 4000);
+// After the server's own ready banner, so this is what remains on screen.
+setTimeout(() => printNextSteps(MODE), 7000);
 
 log("Starting Wizard-of-Oz study server…");
 const child = spawn("node", [path.join(__dirname, "start-wizard-of-oz.js")], {
