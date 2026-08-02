@@ -100,6 +100,22 @@ teaches the wrong lesson.
 it, "feedback made no difference" cannot be distinguished from "they never saw
 it," and in condition A it records whether they noticed the failure.
 
+### Planned secondary analysis: are these corrections usable as training signal?
+
+Every participant utterance is logged verbatim with its trial context, which
+yields a corpus of roughly 120 real correction attempts, each labelled with the
+ground-truth fault and with whether the speaker diagnosed it correctly.
+
+The analysis: present each correction, stripped of context, to an LLM and ask it
+to recover what actually went wrong. If corrections produced under a correct
+diagnosis are recoverable and those produced under a wrong one are not, then
+misdiagnosis does not merely cost the user turns; it destroys the informational
+value of their feedback to the system.
+
+This is entirely post-hoc. It needs no protocol change and no extra
+participants, and it converts "usable as training signal" from a claim in the
+introduction into a measured result. Pre-registered alongside the rest.
+
 ## Contribution
 
 Existing work measures blame as a **post-hoc attitude** — surveys after the fact,
@@ -111,6 +127,17 @@ The 2×2 of *fault type × feedback modality* is the core. The interesting
 possibility is not "feedback helps" but that the same feedback that helps when
 the user is at fault **backfires** when the system is, by inviting repair
 attempts that cannot succeed.
+
+### Why VR, when the problem is not about VR
+
+The substrate is a methodological choice, not the topic. Diagnosis can only be
+scored against a known cause, and the cause has to be unarguable. In a text
+agent, whether the output was even wrong is itself contestable, so any
+attribution measure inherits that ambiguity. Here the ball is in your hand or it
+is not, and we hold ground truth about both the outcome and the fault.
+
+The findings are about speech-driven agents whose failures are opaque. VR is
+where that can be measured cleanly, not what the claim is about.
 
 ## Rigour
 
