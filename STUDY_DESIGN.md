@@ -135,6 +135,19 @@ actually address the true cause? This is the training-signal measure. A
 correction produced under a wrong diagnosis does not merely fail to help; it
 teaches the wrong lesson.
 
+**Self-report, published instruments only.** SUS (Brooke, 1996), UES-SF
+(O'Brien, Cairns & Hall, 2018), trust in automation (Jian, Bisantz & Drury,
+2000), and the Explanation Satisfaction Scale (Hoffman, Mueller, Klein & Litman,
+2018). Each is administered in its published response format, including the
+trust scale's 1-7 where the rest of the battery is 1-5: rescaling an instrument
+to match its neighbours makes its scores incomparable to the literature while
+leaving the data looking fine.
+
+Explanation satisfaction is not administered in condition A, where nothing is
+explained and every item is unanswerable. Those cells are absent rather than
+missing, and are not imputed. Scoring, reverse-scored items and subscales are
+fixed in advance in [docs/questionnaire_scoring.md](docs/questionnaire_scoring.md).
+
 **Manipulation check** per trial: did they register the feedback at all? Without
 it, "feedback made no difference" cannot be distinguished from "they never saw
 it," and in condition A it records whether they noticed the failure.

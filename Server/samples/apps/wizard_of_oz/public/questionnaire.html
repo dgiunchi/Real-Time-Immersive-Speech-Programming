@@ -84,18 +84,21 @@
     <div id="ues"></div>
   </div>
 
-  <!-- Trust and perceived control -->
+  <!-- Trust in automation (Jian et al., 2000) -->
   <div class="card">
-    <h2>Trust &amp; Control</h2>
-    <p class="note">1 = Strongly disagree, 5 = Strongly agree.</p>
+    <h2>Trust</h2>
+    <p class="note">1 = Not at all, 7 = Extremely.</p>
     <div id="trust"></div>
   </div>
 
-  <!-- Perceived support -->
-  <div class="card">
-    <h2>System Feedback &amp; Support</h2>
-    <p class="note">These questions are about how the system communicated with you.</p>
-    <div id="support"></div>
+  <!-- Explanation satisfaction (Hoffman et al., 2018) — B and C only -->
+  <div class="card" id="essCard">
+    <h2>The System's Explanations</h2>
+    <p class="note">
+      About the messages the system gave you when something went wrong.
+      1 = Strongly disagree, 5 = Strongly agree.
+    </p>
+    <div id="explanation"></div>
   </div>
 
   <div class="submit">
@@ -147,29 +150,55 @@ const UES = [
   { id: "ues_rw3", sub: "RW", text: "I felt interested in this experience." }
 ];
 
-// Perceived support. The four statements operationalise the "how supportive was
-// the system" construct from the project brief; they are NOT from a published,
-// validated scale — flag to the supervisor if a validated instrument is required.
-// Trust and perceived control. Added because the behavioural measures record
-// what people did, and these record what they were left believing about the
-// system - which is the thing that carries into the next session and is not
-// recoverable from a log. Items 2 and 4 are reverse-scored.
+// Trust in automation. Jian, J.-Y., Bisantz, A. M., & Drury, C. G. (2000).
+// "Foundations for an empirically determined scale of trust in automated
+// systems." International Journal of Cognitive Ergonomics, 4(1), 53-71.
 //
-// Not a published scale. If a validated instrument is required, these map most
-// closely onto the trust and predictability facets of Jian et al. (2000).
+// The canonical 12-item checklist, used verbatim apart from substituting "the
+// system" for the generic referent, which is the intended use. Rated 1-7 as
+// published, NOT the 1-5 used elsewhere on this page: keeping the original
+// response format is what allows scores to be compared against the published
+// literature, and silently rescaling an instrument is the fastest way to make
+// a measure uncomparable while still looking fine.
+//
+// Items 1-5 load on distrust and are REVERSE-SCORED. Item 12 is familiarity,
+// conventionally reported separately rather than folded into a trust total.
 const TRUST = [
-  { id: "trust1", text: "I could predict what the system would do with what I said." },
-  { id: "trust2", text: "I was unsure whether the system had understood me.", reverse: true },
-  { id: "trust3", text: "I felt in control of what happened in the scene." },
-  { id: "trust4", text: "When something went wrong, I felt it was my fault.", reverse: true },
-  { id: "trust5", text: "I would trust this system to carry out a task for me." }
+  { id: "trust01", text: "The system is deceptive.", reverse: true, sub: "distrust" },
+  { id: "trust02", text: "The system behaves in an underhanded manner.", reverse: true, sub: "distrust" },
+  { id: "trust03", text: "I am suspicious of the system's intent, action, or outputs.", reverse: true, sub: "distrust" },
+  { id: "trust04", text: "I am wary of the system.", reverse: true, sub: "distrust" },
+  { id: "trust05", text: "The system's actions will have a harmful or injurious outcome.", reverse: true, sub: "distrust" },
+  { id: "trust06", text: "I am confident in the system.", sub: "trust" },
+  { id: "trust07", text: "The system provides security.", sub: "trust" },
+  { id: "trust08", text: "The system has integrity.", sub: "trust" },
+  { id: "trust09", text: "The system is dependable.", sub: "trust" },
+  { id: "trust10", text: "The system is reliable.", sub: "trust" },
+  { id: "trust11", text: "I can trust the system.", sub: "trust" },
+  { id: "trust12", text: "I am familiar with the system.", sub: "familiarity" }
 ];
 
-const SUPPORT = [
-  { id: "sup1", text: "When something unexpected happened, I understood what had happened." },
-  { id: "sup2", text: "The system helped me understand why the unexpected result occurred." },
-  { id: "sup3", text: "I felt supported in recovering from the unexpected result." },
-  { id: "sup4", text: "I knew what to try next after the unexpected result occurred." }
+// Explanation Satisfaction Scale. Hoffman, R. R., Mueller, S. T., Klein, G., &
+// Litman, J. (2018). "Metrics for Explainable AI: Challenges and Prospects."
+// arXiv:1812.04608; see also Frontiers in Computer Science 5 (2023).
+//
+// This replaces the home-made "perceived support" items. The construct those
+// were reaching for is explanation quality, which is exactly what conditions B
+// and C manipulate, and an instrument built for it already exists.
+//
+// NOT ADMINISTERED IN CONDITION A. There is no explanation in A, so every item
+// is unanswerable, and asking anyway would produce numbers that look like data
+// and are not. The comparison this scale supports is B versus C, which is the
+// underpowered between-participants contrast, so it is reported descriptively.
+const EXPLANATION = [
+  { id: "ess1", text: "From the explanation, I understand how the system works." },
+  { id: "ess2", text: "This explanation of how the system works is satisfying." },
+  { id: "ess3", text: "This explanation of how the system works has sufficient detail." },
+  { id: "ess4", text: "This explanation of how the system works seems complete." },
+  { id: "ess5", text: "This explanation of how the system works tells me how to use it." },
+  { id: "ess6", text: "This explanation of how the system works is useful to my goals." },
+  { id: "ess7", text: "This explanation of the system shows me how accurate the system is." },
+  { id: "ess8", text: "This explanation lets me judge when I should trust and not trust the system." }
 ];
 
 // Pre-session background questionnaire (once per participant, not per condition).
@@ -219,17 +248,32 @@ function render() {
     `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
   ).join("");
 
+  // 1-7 as published. Item order is NOT randomised: the scale is validated in
+  // its published order and reordering it is a change to the instrument.
   document.getElementById("trust").innerHTML =
-    shuffled(TRUST, pid + "t").map(c =>
+    TRUST.map(c =>
+      `<div class="q"><div class="text">${c.text}</div>${scale(c.id,7,"Not at all","Extremely")}</div>`
+    ).join("");
+
+  document.getElementById("explanation").innerHTML =
+    EXPLANATION.map(c =>
       `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
     ).join("");
 
-  document.getElementById("support").innerHTML =
-    SUPPORT.map(c =>
-      `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
-    ).join("") +
-    `<div class="q"><div class="text">Overall, how supportive was the system when things went wrong?</div>
-       ${scale("sup_overall",7,"Not at all supportive","Extremely supportive")}</div>`;
+  applyConditionVisibility();
+}
+
+/**
+ * Explanation satisfaction is unanswerable in condition A, where nothing was
+ * explained, so the whole card is hidden there.
+ *
+ * Visibility only. Re-rendering the items on every condition change would
+ * discard answers already entered, and the condition dropdown is easy to correct
+ * halfway through a form.
+ */
+function applyConditionVisibility() {
+  const cond = (document.getElementById("condition").value || "").toUpperCase();
+  document.getElementById("essCard").style.display = (cond === "A") ? "none" : "";
 }
 
 function collect() {
@@ -238,9 +282,11 @@ function collect() {
   const names = [];
   for (let i=1;i<=10;i++) names.push("sus"+i);
   UES.forEach(c => names.push(c.id));
-  SUPPORT.forEach(c => names.push(c.id));
   TRUST.forEach(c => names.push(c.id));
-  names.push("sup_overall");
+  // Only required where it was shown; in A these columns stay empty rather than
+  // being counted as missing answers.
+  const cond = (document.getElementById("condition").value || "").toUpperCase();
+  if (cond !== "A") EXPLANATION.forEach(c => names.push(c.id));
   names.forEach(n => {
     const sel = document.querySelector(`input[name="${n}"]:checked`);
     if (sel) answers[n] = sel.value; else { answers[n] = ""; missingNames.push(n); }
@@ -291,6 +337,8 @@ async function submitForm() {
     btn.disabled = false; btn.textContent = "Submit questionnaire";
   }
 }
+
+document.getElementById("condition").addEventListener("change", applyConditionVisibility);
 
 render();
 </script>
