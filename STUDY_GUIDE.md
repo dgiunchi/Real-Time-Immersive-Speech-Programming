@@ -202,6 +202,83 @@ colours restored, sphere and cube rebuilt, agent returned to idle.
 
 ---
 
+## Ethics, consent and debriefing
+
+This is a deception study. Participants are told they are speaking to a working
+AI system; every outcome is in fact triggered by a person in the room. That is
+authorised deception, which is routine for Wizard-of-Oz work but is only
+defensible with a consent process and a full debrief attached to it. Neither is
+optional, and a reviewer or an ethics panel will ask for both.
+
+### Before the session: consent
+
+Consent is written, and covers three things explicitly:
+
+1. **VR use**, with the right to stop at any point for any reason, including
+   simulator sickness, with no consequence.
+2. **Audio recording** of the whole session, what it will be used for, how long
+   it is kept, and that it is stored non-identifiably.
+3. **Data retention**, including the right to withdraw afterwards.
+
+The consent form says the study is about "how people interact with a
+speech-driven system and respond when it does not do what they expected". That
+is true and it is incomplete: naming the wizard would destroy the measure, since
+a participant who knows a person is choosing the failures has no reason to
+diagnose anything. Incompleteness is what the debrief exists to repair.
+
+### Record audio for the whole session
+
+Not optional, and easy to skip because the system already logs transcripts.
+
+The transcript log only captures what the participant says **to the system**
+through push-to-talk. The attribution answer is spoken **to the researcher**, off
+mic, and is therefore nowhere in the data. Without audio, the second coder has
+nothing to code and the inter-rater reliability plan is a sentence rather than a
+number.
+
+### After the questionnaire: debrief
+
+Read it out, do not hand it over and leave. Cover, in this order:
+
+1. **The reveal.** No AI decided anything. A researcher triggered every outcome,
+   including all the failures, from a script prepared in advance.
+2. **Why.** Every participant had to meet exactly the same failures for the
+   comparison to mean anything, and a real system cannot be made to fail on cue.
+3. **The reassurance, and say it plainly.** The failures were scripted and would
+   have happened whatever they said. Nothing that went wrong reflects on them.
+   People routinely leave a WoZ session believing they were bad at it, and on a
+   study whose whole subject is self-blame, sending someone away with that is not
+   an acceptable outcome.
+4. **Withdrawal.** They may have their data destroyed now that they know what it
+   was. Give a contact route and honour it without asking why.
+5. **Ask what they thought was happening.** Record the answer. Anyone who
+   suspected a wizard is excluded by the criterion below, and you can only apply
+   that criterion if you asked.
+
+### Exclusion criteria, fixed in advance
+
+Written down before participant 1, so that no exclusion decision is ever made
+with the results visible.
+
+**Exclude the participant** if any of:
+
+- fewer than 6 measured trials completed
+- a technical failure (STT down, headset disconnect, server drop) affecting more
+  than one trial
+- at debrief, they report having suspected the outcomes were human-controlled
+- they withdraw, for any reason including simulator sickness
+
+**Exclude the trial only** (keep the participant) if:
+
+- `preInjectHadSlot` is true, so the scripted error contradicted what they
+  actually said and the feedback was false for them
+- a technical failure affected that single trial
+
+Report every exclusion with its reason. A study that reports none is less
+believable than one that reports several.
+
+---
+
 ## The one command you run
 
 ```bash

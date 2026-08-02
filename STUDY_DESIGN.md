@@ -188,6 +188,32 @@ where that can be measured cleanly, not what the claim is about.
 | First task doubles as training | Practice trial, excluded |
 | Coder leniency on repairs | Word-boundary matching with fixed synonym sets, no substring matches |
 
+### Ethics
+
+Authorised deception with full debrief. Consent covers VR use, audio recording
+and retention, and describes the study truthfully but incompletely as being about
+how people respond when a speech-driven system does not do what they expected.
+Naming the wizard in advance would destroy the measure.
+
+The debrief reveals that every outcome was researcher-triggered, explains why
+identical failures were necessary, and states plainly that the failures were
+scripted and would have occurred whatever the participant said. On a study about
+self-blame, letting someone leave believing they performed badly is not an
+acceptable outcome. Participants may withdraw their data once they know what it
+was, and are asked what they believed was happening; anyone who suspected a
+wizard is excluded.
+
+**Exclusion criteria are fixed before participant 1**: fewer than six completed
+trials, technical failure affecting more than one trial, suspicion of the
+deception, or withdrawal. Individual trials are excluded where
+`preInjectHadSlot` is true, since the scripted feedback contradicted what the
+participant actually said. All exclusions are reported with reasons.
+
+**Audio is recorded for the whole session.** The transcript log captures only
+what is said to the system through push-to-talk; the attribution answer is spoken
+to the researcher and would otherwise exist nowhere, leaving the inter-rater
+reliability plan with nothing to operate on.
+
 **Stated limitations.** The wizard cannot be blind to condition, since they
 operate the feedback. Coding vague attribution answers is a judgement call, so a
 second coder rates ~20% for inter-rater reliability.
