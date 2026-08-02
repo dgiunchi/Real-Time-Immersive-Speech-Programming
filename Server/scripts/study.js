@@ -101,12 +101,14 @@ const CAPTURE_PROPS = {
     "debug.oculus.capture.bitrate": "15000000"
 };
 
+// Returns true only if the settings were actually written to a headset.
+// The caller must not claim the headset is safe on the strength of having tried.
 function applyHeadsetMode(mode) {
     const adb = findAdb();
-    if (!adb) { log("adb not found — headset settings unchanged."); return; }
+    if (!adb) { log("adb not found — headset settings unchanged."); return false; }
     let devices = "";
     try { devices = execSync(`"${adb}" devices`, { stdio: "pipe", shell: true }).toString(); }
-    catch (_) { return; }
+    catch (_) { return false; }
     const connected = devices.split("\n").slice(1)
         .filter(l => l.trim() && l.includes("\tdevice")).length;
     if (!connected) {
@@ -114,7 +116,7 @@ function applyHeadsetMode(mode) {
         if (mode === "study") {
             log("\x1b[33mPlug in and rerun if the headset was last used for filming.\x1b[0m");
         }
-        return;
+        return false;
     }
 
     const sh = c => { try { execSync(`"${adb}" ${c}`, { stdio: "pipe", shell: true }); } catch (_) {} };
@@ -123,6 +125,7 @@ function applyHeadsetMode(mode) {
         for (const [k, v] of Object.entries(CAPTURE_PROPS)) sh(`shell setprop ${k} ${v}`);
         sh("shell am broadcast -a com.oculus.vrpowermanager.prox_close");
         log("Demo mode: capture 1920x1080@60, headset will not sleep off-head.");
+        return true;
     } else {
         // Undo everything demo mode does, unconditionally, whether or not this
         // machine is the one that set it.
@@ -130,6 +133,7 @@ function applyHeadsetMode(mode) {
         sh("shell am broadcast -a com.oculus.vrpowermanager.automation_disable");
         sh("shell setprop debug.oculus.guardian_pause 0");
         log("Study mode: guardian on, normal sleep, capture back to stock.");
+        return true;
     }
 }
 
@@ -376,8 +380,8 @@ function printNextSteps(mode) {
         line(`${B}5.${R} Full shot list with the exact lines: ${B}DEMO_FILMING.md${R}`);
         line("");
         line(`${B}WHEN YOU FINISH FILMING${R}`);
-        line(`   ./study pull     ${D}copy the clips off the headset${R}`);
-        line(`   ./study study    ${D}back to participant-safe settings${R}`);
+        line(`   Press ${B}Ctrl+C${R}. The clips are copied off the headset and the`);
+        line(`   filming settings are undone automatically.`);
     } else {
         line(`${B}WHAT TO DO NOW${R}`);
         line("");
@@ -407,3 +411,41 @@ const child = spawn("node", [path.join(__dirname, "start-wizard-of-oz.js")], {
     cwd: serverRoot, stdio: "inherit"
 });
 child.on("exit", (code) => process.exit(code || 0));
+
+// ── Shutdown ──────────────────────────────────────────────────────────────────
+//
+// Demo mode tidies up after itself on Ctrl+C: clips come off the headset and
+// the filming settings are undone. Both used to be commands to remember, which
+// is the same as saying both were things to forget - and forgetting the second
+// leaves a headset that will not sleep, with a guardian someone may have
+// paused, waiting for the next person to put it on.
+//
+// Study mode has nothing to undo, so it just stops.
+
+let shuttingDown = false;
+
+process.on("SIGINT", () => {
+    if (shuttingDown) process.exit(0);   // second Ctrl+C: give up and go
+    shuttingDown = true;
+    console.log("");
+
+    if (MODE === "demo") {
+        log("Finishing up…");
+        try {
+            execSync(`node "${path.join(__dirname, "demo.js")}" pull`,
+                     { stdio: "inherit", shell: true });
+        } catch (_) {
+            log("\x1b[33mCould not copy clips - is the headset still plugged in?\x1b[0m");
+            log(`\x1b[33mThey are still on the headset; rerun to try again.\x1b[0m`);
+        }
+        if (applyHeadsetMode("study")) {
+            log("\x1b[32mHeadset back to participant-safe settings.\x1b[0m");
+        } else {
+            log("\x1b[33mHeadset NOT reset - it was not connected.\x1b[0m");
+            log("\x1b[33mPlug it in and run this again before any participant.\x1b[0m");
+        }
+    }
+
+    try { child.kill("SIGTERM"); } catch (_) {}
+    setTimeout(() => process.exit(0), 400);
+});

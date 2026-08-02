@@ -62,14 +62,12 @@ world changing for no visible reason.
 
 Record with the headset button or the in-VR Camera panel. Afterwards:
 
-```bash
-./study pull            # clips land in Recordings/ (git-ignored)
-```
+Press **Ctrl+C** when you are done. That copies the clips into `Recordings/`
+(git-ignored) and puts the headset back to participant-safe settings.
 
-To go back, run `./study study`. There is nothing else to
-undo and nothing to remember: study mode actively restores every demo setting
-and forces the guardian on, every time it starts. The banner is green in study
-mode and yellow in demo, so the state is never in doubt.
+There is nothing to remember and nothing else to run. If the headset was
+unplugged at the time, it says so plainly rather than claiming it reset
+something it could not reach.
 
 ### Choosing the condition you are filming
 
@@ -386,6 +384,5 @@ Before each take:
 
 After the shoot:
 
-- [ ] `./study pull`
-- [ ] `./study study` before any participant (green banner)
+- [ ] Ctrl+C (pulls clips and resets the headset in one step)
 - [ ] Delete the `DEMO01`/`DEMO02`/`DEMO03` rows from `Logs/` so they never reach analysis
