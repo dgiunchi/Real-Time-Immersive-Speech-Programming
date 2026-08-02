@@ -139,6 +139,31 @@ teaches the wrong lesson.
 it, "feedback made no difference" cannot be distinguished from "they never saw
 it," and in condition A it records whether they noticed the failure.
 
+### The obvious objection, and the answer
+
+In conditions B and C the feedback states the cause, so stated attribution should
+sit near ceiling. "Telling people what went wrong makes them know what went
+wrong" is not a finding, and a reviewer will say so.
+
+Two things make it non-trivial, and both are measured.
+
+**People may not believe the system about itself.** On the system-fault tasks the
+feedback amounts to an admission of limitation. There is no reason to assume that
+is accepted at face value: a plausible and more interesting outcome is that
+participants discount it and keep blaming their own phrasing, because "I said it
+badly" is a more available explanation than "this tool cannot do this". If that
+happens, B and C are *not* at ceiling on exactly the half of the design that
+matters, and the reason is psychological rather than informational.
+
+**Knowing is not doing.** `wastedRepairs` and `firstRepairStrategy` are recorded
+independently of what the participant says. Someone can state the correct cause
+and still repeat themselves, and that gap between stated diagnosis and enacted
+repair is not visible in any attribution-only design.
+
+Condition A carries most of the variance in the attribution measure and is the
+comparison the claim needs. B versus C is the genuinely exploratory part, and is
+labelled as such rather than presented as the study's point.
+
 ### Planned secondary analysis: are these corrections usable as training signal?
 
 Every participant utterance is logged verbatim with its trial context, which
