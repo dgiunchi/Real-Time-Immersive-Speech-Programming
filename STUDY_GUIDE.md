@@ -487,8 +487,15 @@ that part is on paper/audio, not in this system.
 
 `Logs/<participant>_events.csv`. One row per state change, written from the
 moment the session is created and before the participant has done anything.
-A worked example of a single task 4 trial is committed at
-[docs/example_events.csv](docs/example_events.csv).
+Two worked examples are committed:
+
+- [docs/example_events.csv](docs/example_events.csv) - condition C, task 4. Head
+  pose shows the participant turning round after the agent tells them where the
+  object went.
+- [docs/example_events_conditionA.csv](docs/example_events_conditionA.csv) -
+  condition A, task 3. The misdiagnosis cascade the study exists to measure,
+  visible as data: three near-identical retries, then giving up, then blaming
+  themselves for a ceiling that was never theirs.
 
 | Column | Notes |
 |---|---|
