@@ -13,13 +13,16 @@
 set -e
 cd "$(dirname "${BASH_SOURCE[0]}")/Server"
 
+# node directly rather than through npm: npm prints two lines of its own before
+# anything happens, and the first thing on screen should be the mode question.
 case "${1:-}" in
-  demo)   exec npm run study -- --demo  ;;
-  study)  exec npm run study -- --study ;;
-  pull)   exec npm run demo:pull        ;;
-  "")     exec npm run study            ;;
+  demo)   exec node scripts/study.js --demo  ;;
+  study)  exec node scripts/study.js --study ;;
+  "")     exec node scripts/study.js         ;;
   *)
-    echo "Usage: ./study [demo|study|pull]"
+    echo "Usage:  study            ask which mode"
+    echo "        study demo       go straight to filming"
+    echo "        study study      go straight to a participant session"
     exit 1
     ;;
 esac
