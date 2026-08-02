@@ -199,6 +199,33 @@
         <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordNoticed('no')">No</button>
       </div>
       <div id="noticedResult" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:6px;"></div>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:14px 0 10px;">
+      <!-- Coded live, once per repair attempt, because it is a behaviour and not
+           something the participant can be asked about afterwards without
+           inventing a rationale for it. -->
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
+        Repair move &mdash; click once <em>per attempt</em> they make
+        <span style="opacity:.7;">(what they did, not what they said)</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;" onclick="recordRepair('detail')">
+          Added detail<br><span style="font-size:10px;opacity:.65;">said the missing bit</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;border-color:#7a2b2b;" onclick="recordRepair('verbatim')">
+          Repeated it<br><span style="font-size:10px;opacity:.65;">same words, louder</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;" onclick="recordRepair('scope')">
+          Shrank the ask<br><span style="font-size:10px;opacity:.65;">fewer / simpler</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;" onclick="recordRepair('question')">
+          Asked it<br><span style="font-size:10px;opacity:.65;">&ldquo;what went wrong?&rdquo;</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;" onclick="recordRepair('gaveup')">
+          Gave up<br><span style="font-size:10px;opacity:.65;">stopped / asked you</span>
+        </button>
+      </div>
+      <div id="repairResult" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:6px;"></div>
     </div>
 
     <!-- ── Step 4: End trial / next ───────────────────────────────── -->
@@ -416,6 +443,29 @@ async function recordNoticed(value) {
   const el = document.getElementById("noticedResult");
   if (el) el.textContent = res.ok ? ("Recorded: " + value) : (res.error || "no active trial");
   addLog("t", "Manipulation check: noticed=" + value);
+}
+
+const REPAIR_LABELS = {
+  detail:   "added the missing detail",
+  verbatim: "repeated it verbatim",
+  scope:    "shrank the ask",
+  question: "asked the system",
+  gaveup:   "gave up"
+};
+
+async function recordRepair(value) {
+  const res = await post("/repair-strategy", { strategy: value });
+  const el = document.getElementById("repairResult");
+  if (el) {
+    if (!res.ok) { el.textContent = res.error || "no active trial"; return; }
+    const seq = res.sequence || [];
+    const wasted = seq.filter(s => s === "verbatim").length;
+    el.innerHTML = "Attempt " + seq.length + ": <b>" + value + "</b> &middot; sequence: " +
+      seq.join(" → ") +
+      (wasted ? ' &middot; <span style="color:#ff8a8a;">' + wasted + " wasted</span>" : "");
+  }
+  addLog("t", "Repair move " + ((res.sequence || []).length) + ": " +
+    (REPAIR_LABELS[value] || value));
 }
 
 async function recordAttribution(value) {

@@ -74,27 +74,72 @@ real session, the headset never sleeps on the desk between participants.
 
 ## Shot list
 
-Eight clips. The first three are the study's argument; skip any of the rest
-before you skip those.
+Ten clips. **Clip 0 is the most important one and it is not about VR at all.**
 
 | # | Clip | Condition | Task | Runtime |
 |---|---|---|---|---|
+| **0** | **The cascade — the problem itself** | **A** | **task3 v1** | **~60s** |
 | 1 | Practice — voice changes the world | any | practice | ~20s |
 | 2 | User error, no feedback | **A** | task1 v1 | ~45s |
 | 3 | User error, text panel | **B** | task1 v1 | ~40s |
 | 4 | User error, embodied agent | **C** | task1 v1 | ~40s |
 | 5 | System limit, text panel | **B** | task3 v1 | ~40s |
 | 6 | System behaviour, agent | **C** | task4 v1 | ~35s |
-| 7 | Wizard panel — the operator side | — | — | ~60s |
-| 8 | The data — trials.csv | — | — | ~15s |
+| 7 | The useless correction | **A** | task2 v1 | ~30s |
+| 8 | Wizard panel — the operator side | — | — | ~60s |
+| 9 | The data — trials.csv | — | — | ~15s |
 
 Clips 2–4 must use the **identical spoken line**. That is the entire point: same
 input, same failure, three different things the system tells you about it. Vary
 the wording and you have three anecdotes instead of one comparison.
 
+If you only have time to shoot two things, shoot **0 and 5**. Those two clips are
+the paper: here is the failure, here is what fixes it.
+
 ---
 
 ## What to say, exactly
+
+### Clip 0 — The cascade (~60s) — shoot this first
+
+Condition **A**, task 3. The participant asks for something the system cannot
+do, is told nothing, and concludes it must have been their fault. Every clip
+after this one exists to answer it.
+
+**Say:** "Fill the area around the campfire with about a thousand stones."
+
+Inject the error. **8 stones.** No panel, no voice, no explanation.
+
+Now perform the misdiagnosis — this is the whole clip, so do not rush it:
+
+> *(pause, looking at the 8 stones)* "…a thousand stones."
+>
+> *(slower, over-enunciating)* "Fill. The area. With a thousand stones."
+>
+> *(louder)* "Make a THOUSAND stones."
+
+Still 8, every time. On the panel, click **Repeated it** three times — the
+counter turns red and reads `3 wasted`.
+
+Then the giving-up beat: a shrug, a look around, and
+
+> "I guess it can't hear me properly."
+
+That last line is the payload. It is **wrong** — the system heard perfectly, it
+simply cannot render a thousand objects — and everything downstream of it is
+wasted. Three turns burned on a fix that could never work, and a stated
+conclusion that would be actively harmful if it were fed back as training data.
+
+Nothing in this clip is exotic. It is what happens with a smart speaker, a
+coding assistant, or any agent that fails without saying why. Point at that in
+the voiceover: **people do not repeat themselves because they are stupid. They
+repeat themselves because repeating is the only hypothesis a silent failure
+supports.**
+
+Cut straight from here to clip 5 — same task, same request, condition B — where
+one sentence of feedback replaces all three wasted turns with a working repair.
+
+---
 
 ### Clip 1 — Practice (~20s)
 
@@ -203,7 +248,41 @@ backwards.
 
 ---
 
-### Clip 7 — The wizard panel (~60s)
+### Clip 7 — The useless correction (~30s)
+
+Condition **A**, task 2. The training-signal claim in thirty seconds. Ground
+truth: **user fault** — they never said where.
+
+**Say:** "Move the sphere over there."
+
+The sphere moves the wrong way. No feedback. Now blame the system:
+
+> "No, that's wrong. Your movement is broken — do it properly this time."
+
+Panel: attribution **Blamed the system** (mismatch, since this one really was
+their phrasing), repair move **Repeated it**.
+
+Cut to the same moment in condition B, where the panel said *no direction or
+distance was specified*, and they say:
+
+> "Move the sphere next to the campfire."
+
+Put the two corrections on screen together:
+
+| What the system receives | Can you learn from it? |
+|---|---|
+| *"Your movement is broken, do it properly"* | No. Names no cause, no fix, and blames a component that worked. |
+| *"Move the sphere next to the campfire"* | Yes. Supplies exactly the slot that was missing. |
+
+Same person, same underlying error, same willingness to help. The only
+difference is whether they were told what went wrong. That is the argument for
+why any of this matters beyond VR: **a correction is only as useful as the
+diagnosis behind it**, and misdiagnosed corrections do not merely fail to help,
+they teach the wrong thing.
+
+---
+
+### Clip 8 — The wizard panel (~60s)
 
 Mac screen recording only, no headset. Walk through one trial:
 
@@ -214,17 +293,34 @@ Mac screen recording only, no headset. Walk through one trial:
    do you think that happened?"* Then the attribution buttons and the
    manipulation check
 4. **Step 3, after clicking** — ground truth is revealed *now*, and only now
+5. **The repair-move row** — click **Repeated it** twice and let the counter go
+   red on `2 wasted`
 
 Step 3 is the clip's reason to exist. Hiding the answer from the person asking
 the question is the difference between a measure and a leading question, and it
 is invisible unless someone points at it.
 
+The repair-move row is what to dwell on if a supervisor asks what any of this
+buys you. Stated blame is an opinion; the move is the cost, in turns. And unlike
+attribution, a shipping product can measure it without a wizard — repeated
+near-identical utterances are already in every voice assistant's logs.
+
 ---
 
-### Clip 8 — The data (~15s)
+### Clip 9 — The data (~15s)
 
-Screen recording of `Logs/trials.csv` gaining a row as you end a trial. Show the
-`attribution`, `correctAttribution` and `attributionCorrect` columns landing.
+Screen recording of `Logs/trials.csv` gaining a row as you end a trial. Show
+`attribution`, `correctAttribution`, `attributionCorrect` — and then scroll right
+to `repairSequence` and `wastedRepairs`, which is where clip 0 turns into a
+number:
+
+```
+attribution=self  correctAttribution=system  attributionCorrect=no
+repairSequence=verbatim|verbatim|verbatim    wastedRepairs=3
+```
+
+Read that row out loud over the clip. It says: they were wrong about the cause,
+and being wrong cost them three turns. That single line is the study.
 
 Use a throwaway participant ID (`DEMO01`, not `P01`) so filming does not write
 into the real data files.
@@ -233,19 +329,32 @@ into the real data files.
 
 ## The edit
 
-**Supervisor version (~3 min).** Clips in listed order. The A/B/C block is the
-spine — cut 2, 3, 4 back to back with the spoken line audible in each so the
-repetition lands. Then 5 and 6 to show the fault type flipping. Then 7 and 8 to
-show it is instrumented.
+Lead with the problem, not the apparatus. A video that opens on a VR scene and
+an architecture diagram has to earn attention it has not been given yet; one that
+opens on someone shouting at a machine that will never obey has it immediately,
+because everyone watching has done that.
 
-**CHI submission (~30s).** Only the three-up: clip 2, 3, 4, side by side, same
-audio track of the spoken line playing once over all three. One line of text on
-screen: *same command, same failure, three ways of being told about it.* End on
-the task 4 turn from clip 6 if you have the seconds.
+**Supervisor version (~3 min).**
+
+1. **Clip 0** cold, no titles. Let the three wasted attempts play in full.
+2. Hard cut to **clip 5** — same task, same request, one sentence of feedback,
+   fixed in one turn. The contrast does the arguing.
+3. **Clip 7** — and the correction that comes out of each.
+4. **Clips 2–4** — the controlled comparison, now that they know why it matters.
+5. **Clip 6** for the turn.
+6. **Clips 8–9** — it is instrumented, here is the row.
+
+Clip 1 is a spare; drop it first if you are over time.
+
+**CHI submission (~30s).** Clip 0 cut to 12 seconds, then the three-up of clips
+2–4 side by side with one audio track of the spoken line over all three. One line
+of text: *same command, same failure, three ways of being told about it.* End on
+the CSV row from clip 9.
 
 **Do not** cut the A condition's dead air short to make the video tighter. That
 silence is a finding, and a viewer who does not feel it will not understand what
-B and C are for.
+B and C are for. The temptation is strongest in clip 0, which is exactly where
+the silence is doing the most work.
 
 ---
 
@@ -258,6 +367,7 @@ Before each take:
 - [ ] QuickTime screen recording started on the Mac
 - [ ] Participant ID set to `DEMO01`, not a real one
 - [ ] Clap once on camera to sync the two streams
+- [ ] Know which repair-move button you are clicking before the take starts
 
 After the shoot:
 

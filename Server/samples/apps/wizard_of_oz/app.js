@@ -478,6 +478,11 @@ class WizardOfOzApp extends ApplicationController {
             // and in condition A it records whether they noticed the failure
             // at all with nothing to tell them.
             noticedFeedback:   null,   // filled by POST /noticed
+            // What they DID about it, which is where misattribution becomes a
+            // cost rather than an opinion. Stated blame is cheap; the repair
+            // move is the thing that wastes a turn or fixes the problem, and it
+            // is the only part of this a real product could act on.
+            repairStrategies:  [],     // filled by POST /repair-strategy
             repairContainsSlot: null,  // filled automatically on next transcript
             startedAt:         Date.now(),
             startedAtIso:      new Date().toISOString(),
@@ -596,6 +601,7 @@ class WizardOfOzApp extends ApplicationController {
             "participantId,taskOrder,block,condition,trial,task,variant,scenario," +
             "startTime,endTime,durationMs,completionStatus,attempts,injects," +
             "attribution,correctAttribution,attributionCorrect,noticedFeedback," +
+            "firstRepairStrategy,repairSequence,wastedRepairs," +
             "repairContainsSlot,missingSlot", [
             this.session.participantId,
             order,
@@ -617,6 +623,13 @@ class WizardOfOzApp extends ApplicationController {
                 ? (trial.attribution === trial.correctAttribution ? "yes" : "no")
                 : "",
             trial.noticedFeedback || "",
+            // First move is the clean primary: it is the one taken on the
+            // strength of the feedback alone, before trial and error muddies it.
+            (trial.repairStrategies && trial.repairStrategies[0]) || "",
+            (trial.repairStrategies || []).join("|"),
+            // Turns spent on a move that cannot work. The efficiency cost of
+            // misattribution, in the unit a product would actually count.
+            (trial.repairStrategies || []).filter(s => s === "verbatim").length,
             trial.repairContainsSlot !== null ? trial.repairContainsSlot : "",
             csvEscape(trial.missingSlot || "")
         ].join(","));
@@ -1014,6 +1027,44 @@ class WizardOfOzApp extends ApplicationController {
                             });
                         }
                         return send(200, { ok: true, noticed: val });
+                    }
+
+                    // What the participant actually DID after the error, coded
+                    // live, once per repair attempt.
+                    //
+                    // This is the measure that carries the practical claim.
+                    // Attribution alone is a stated belief; a reviewer can fairly
+                    // ask who cares. The repair move is what the belief costs:
+                    //
+                    //   detail   adds the missing information  (fixes a user fault)
+                    //   verbatim repeats it, louder or slower  (fixes nothing, ever)
+                    //   scope    reduces or changes the ask    (fixes a system limit)
+                    //   question asks the system what went wrong
+                    //   gaveup   stops trying, or turns to the experimenter
+                    //
+                    // "verbatim" is the one that matters most. It is pure waste --
+                    // the move people make when they think they were misheard --
+                    // and it is what misattributing a system limit to your own
+                    // phrasing looks like from outside. A product cannot see
+                    // attribution, but it can count repeated identical utterances.
+                    if (req.method === "POST" && url === "/repair-strategy") {
+                        const val = String(payload.strategy || "").toLowerCase();
+                        const allowed = ["detail", "verbatim", "scope", "question", "gaveup"];
+                        if (!allowed.includes(val)) {
+                            return send(400, { error: "strategy must be " + allowed.join("|") });
+                        }
+                        if (!this.trial) return send(400, { error: "No active trial" });
+
+                        this.trial.repairStrategies.push(val);
+                        const n = this.trial.repairStrategies.length;
+                        this.logEvent("repair-strategy", `${n}:${val}`, {
+                            msSinceTrialStart: Date.now() - this.trial.startedAt
+                        });
+                        return send(200, {
+                            ok: true,
+                            strategy: val,
+                            sequence: this.trial.repairStrategies
+                        });
                     }
 
                     // Attribution probe: wizard records what the participant said

@@ -88,8 +88,34 @@ logistic regression: `correct ~ condition * scenarioType + (1|participant)`.
 The interaction is the interesting term: feedback may help on user-fault tasks
 while doing nothing, or actively harming, on system-fault ones.
 
+**Co-primary — what the misattribution costs** (`firstRepairStrategy`,
+`repairSequence`, `wastedRepairs`). Attribution on its own is a stated belief,
+and a reviewer can fairly ask who cares. The repair move is the belief with a
+price on it, and it is the only part of this a shipping product could act on.
+
+Coded live, once per attempt: `detail` (added the missing information),
+`verbatim` (said it again, louder or slower), `scope` (asked for less),
+`question` (asked the system what went wrong), `gaveup`.
+
+`verbatim` is the measure that carries the practical claim. It cannot fix
+anything — not a user fault, because the missing information is still missing,
+and not a system limit, because the limit does not care how clearly you speak.
+It is what misattribution looks like from the outside, and unlike attribution it
+is observable without a wizard: any product can count repeated near-identical
+utterances. The prediction is that `wastedRepairs` is highest in condition A on
+system-fault tasks, where nothing tells the participant that rephrasing is
+futile.
+
+Model: `wastedRepairs ~ condition * scenarioType + (1|participant)`, Poisson.
+
 **Secondary — repair quality** (`repairContainsSlot`), **attempts to recovery**
 (`attempts`), **time to first repair**, **completion** (`completionStatus`).
+
+`repairContainsSlot` is the training-signal measure and deserves more weight
+than its name suggests. A correction produced under a wrong diagnosis does not
+address the real cause, so it is worthless as feedback to learn from — worse
+than worthless, since it teaches the wrong lesson. This column is where that
+claim becomes a number.
 
 **Manipulation check** (`noticedFeedback`). Report it. A null result means
 nothing if participants never registered the feedback.
