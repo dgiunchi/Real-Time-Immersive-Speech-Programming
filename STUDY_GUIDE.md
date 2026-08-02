@@ -15,6 +15,7 @@ explanation, and holding it constant keeps B and C differing in one thing only.
 A hidden researcher triggers pre-scripted *success* or *error* outcomes, so
 every participant gets the identical experience — no live LLM.
 
+Design summary for supervisors: [STUDY_DESIGN.md](STUDY_DESIGN.md).
 For the demo films — shot list, scripted lines, capture setup — see
 [DEMO_FILMING.md](DEMO_FILMING.md). Film with a stand-in before data collection
 begins, never with a real participant.
