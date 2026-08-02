@@ -483,6 +483,47 @@ that part is on paper/audio, not in this system.
 
 ---
 
+## The event log
+
+`Logs/<participant>_events.csv`. One row per state change, written from the
+moment the session is created and before the participant has done anything.
+A worked example of a single task 4 trial is committed at
+[docs/example_events.csv](docs/example_events.csv).
+
+| Column | Notes |
+|---|---|
+| `seq` | Monotonic counter. Two events share a millisecond often enough (an inject and the feedback it causes) that file order is otherwise the only evidence of sequence, and that does not survive a sort |
+| `timestampIso`, `epochMs` | Absolute, for lining the log up against video and audio |
+| `msSinceSessionStart` | Position in the session, for fatigue and drift |
+| `msSinceTrialStart` | Position in the trial, the analysis unit |
+| `participantId` … `attempt` | Full context repeated on every row, so any row reads on its own |
+| `source` | `wizard` / `participant` / `system`. Without it, the researcher pausing and the participant pausing are the same silence |
+| `category` | `session` `ui` `scene` `trial` `speech` `outcome` `feedback` `measure` `pose` `warning` |
+| `eventType`, `detail`, `value`, `target` | What happened |
+| `posX/Y/Z`, `yaw` | Head pose, 10Hz, movement-gated |
+
+Every row carries its full context even though that is redundant, because a
+reconstruction mistake found after the last participant has gone home cannot be
+fixed, and disk is free.
+
+**Head pose exists for task 4.** The object spawns behind the participant, so
+without pose "never noticed it" and "turned, saw it, said nothing" are the same
+absence of rows. With yaw the turn is an event with a latency:
+
+```
+16   6894  system       feedback  feedback-shown     <- "it is behind you"
+18  10230  participant  pose      head-pose    41.6
+19  10730  participant  pose      head-pose    98.2
+20  11230  participant  pose      head-pose   163.7
+21  11730  participant  pose      head-pose   179.2  <- turned
+22  13610  participant  speech    transcript         <- "Oh, I see it"
+```
+
+Sampling is movement-gated, so a participant standing still produces no rows.
+That keeps the file readable by eye and means a row is always a change.
+
+Pose needs `StudyTelemetry.cs`, which is in the pending rebuild.
+
 ## Where the data goes
 
 All files are written to a `Logs/` folder at the top of the project:

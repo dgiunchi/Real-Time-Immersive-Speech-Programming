@@ -38,6 +38,7 @@ const MIC_STATUS_PREFIX  = "__MIC_STATUS__:";
 const CODE_NETWORK_ID    = 94;  // CodeGenerationManager (runtime Roslyn — Editor only)
 const OUTCOME_NETWORK_ID = 99;  // StudyOutcomes (pre-compiled — works on the Quest)
 const STT_NETWORK_ID     = 98;
+const TELEMETRY_NETWORK_ID = 97;  // StudyTelemetry (head pose from the headset)
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 // Study results live in <project root>/Logs (git-ignored, human-findable).
@@ -650,7 +651,7 @@ class WizardOfOzApp extends ApplicationController {
         };
 
         this.logEvent("trial-start", `${task}/${variant}/${scenario}`,
-            { task, variant, scenario, attempt: 0 });
+            { task, variant, scenario, attempt: 0, source: "wizard", category: "trial" });
         console.log(`\x1b[35m[Trial ${this.trialCounter}]\x1b[0m start ` +
             `condition=${this.session.condition} task=${task} variant=${variant} scenario=${scenario}`);
         return { ok: true, trial: this.trial };
@@ -672,6 +673,7 @@ class WizardOfOzApp extends ApplicationController {
             task: this.trial.task,
             scenario: this.trial.scenario,
             attempt: this.trial.attempts,
+            source: "wizard", category: "trial", value: status,
             msSinceTrialStart: this.trial.endedAt - this.trial.startedAt
         });
         console.log(`\x1b[35m[Trial ${this.trial.number}]\x1b[0m ${status} ` +
@@ -705,7 +707,8 @@ class WizardOfOzApp extends ApplicationController {
         this.resetScene();
         this.logSessionStart();
         this.logEvent("block-advance", `block ${next} → ${planned.condition}/${planned.task}`,
-            { task: planned.task, attempt: 0 });
+            { task: planned.task, attempt: 0,
+              source: "wizard", category: "session", value: next });
         console.log(`\x1b[35m[Block ${next}]\x1b[0m condition=${planned.condition} task=${planned.task}`);
 
         return { ok: true, finished: false, session: this.session, planned };
@@ -714,8 +717,25 @@ class WizardOfOzApp extends ApplicationController {
     // ── Data logging ─────────────────────────────────────────────────────────
 
     /**
-     * One row per event, with the full trial context the analysis needs:
-     * participant, condition, block, task, scenario, trial, attempt.
+     * One row per event, and an event is anything that changes state.
+     *
+     * Deliberately wide and deliberately redundant. Every row carries its own
+     * full context (participant, condition, block, trial, task, variant,
+     * scenario, attempt) so that any single row is interpretable on its own and
+     * no analysis step depends on carrying state forward correctly from earlier
+     * rows. Disk is free; a reconstruction error found six months after the last
+     * participant has gone home is not.
+     *
+     * Three clocks, because each answers a different question and none of them
+     * substitutes for the others:
+     *   epochMs               absolute, for merging against video and audio
+     *   msSinceSessionStart   position within the session, for fatigue and drift
+     *   msSinceTrialStart     position within the trial, the analysis unit
+     *
+     * `seq` is a monotonic counter. Two events inside the same millisecond are
+     * common (an inject and the feedback it causes), and without a sequence
+     * number their order in the file is the only evidence of which came first,
+     * which is not something to rely on after a sort.
      */
     logEvent(type, detail = "", extra = {}) {
         // Before a session is started, events are warm-up/testing — keep them out
@@ -723,8 +743,18 @@ class WizardOfOzApp extends ApplicationController {
         const pid = this.session.participantId || "warmup";
         const file = path.join(LOG_DIR, `${pid}_events.csv`);
         const taskKey = extra.task || this.activeTask;
+        const now = Date.now();
+        const pos = extra.pos || {};
+
+        this.eventSeq = (this.eventSeq || 0) + 1;
+
         const row = [
-            new Date().toISOString(),
+            this.eventSeq,
+            new Date(now).toISOString(),
+            now,
+            this.sessionStartedAt ? now - this.sessionStartedAt : "",
+            extra.msSinceTrialStart !== undefined ? extra.msSinceTrialStart
+                : (this.trial && !this.trial.endedAt ? now - this.trial.startedAt : ""),
             pid,
             this.session.condition || "",
             this.session.block || "",
@@ -734,13 +764,24 @@ class WizardOfOzApp extends ApplicationController {
             extra.scenario !== undefined ? extra.scenario
                 : (this.trial ? this.trial.scenario : ""),
             extra.attempt !== undefined ? extra.attempt : this.attemptCount(),
+            // Who caused this row to exist. Without it, "the participant paused"
+            // and "the wizard paused" are the same silence in the data.
+            extra.source || "system",
+            extra.category || "other",
             type,
-            extra.msSinceTrialStart !== undefined ? extra.msSinceTrialStart : "",
-            csvEscape(detail)
+            csvEscape(detail),
+            extra.value !== undefined ? extra.value : "",
+            csvEscape(extra.target || ""),
+            pos.x !== undefined ? pos.x : "",
+            pos.y !== undefined ? pos.y : "",
+            pos.z !== undefined ? pos.z : "",
+            extra.yaw !== undefined ? extra.yaw : ""
         ].join(",");
+
         appendCsv(file,
-            "timestamp,participantId,condition,block,trial,task,variant,scenario,attempt," +
-            "eventType,msSinceTrialStart,detail", row);
+            "seq,timestampIso,epochMs,msSinceSessionStart,msSinceTrialStart," +
+            "participantId,condition,block,trial,task,variant,scenario,attempt," +
+            "source,category,eventType,detail,value,target,posX,posY,posZ,yaw", row);
     }
 
     /**
@@ -843,6 +884,22 @@ class WizardOfOzApp extends ApplicationController {
     }
 
     registerComponents() {
+        // Head pose from the headset. Movement-gated on the Unity side, so a row
+        // here means the participant actually moved.
+        this.components.telemetryReceiver = new MessageReader(this.scene, TELEMETRY_NETWORK_ID);
+        this.components.telemetryReceiver.on("data", (data) => {
+            let m;
+            try { m = JSON.parse(data.message.toString()); } catch (_) { return; }
+            if (!m || m.type !== "HeadPose") return;
+            // Only while a trial is live: pose between trials is the researcher
+            // carrying the headset around and is noise.
+            if (!this.trial || this.trial.endedAt) return;
+            this.logEvent("head-pose", "", {
+                source: "participant", category: "pose",
+                pos: { x: m.x, y: m.y, z: m.z }, yaw: m.yaw
+            });
+        });
+
         this.components.audioReceiver = new MessageReader(this.scene, STT_NETWORK_ID);
         this.components.transcriptionService = new SpeechToTextService(this.scene, nconf.get());
     }
@@ -908,6 +965,7 @@ class WizardOfOzApp extends ApplicationController {
                     this.trial.repairContainsSlot = matched;
                     this.logEvent("repair-slot-check",
                         `slot="${this.trial.missingSlot}" found=${matched}`, {
+                        source: "system", category: "measure", value: matched ? 1 : 0,
                         msSinceTrialStart: Date.now() - this.trial.startedAt
                     });
                 }
@@ -933,6 +991,7 @@ class WizardOfOzApp extends ApplicationController {
                     this.trial.preInjectHadSlot = true;
                     this.logEvent("pre-inject-slot-present",
                         `slot="${this.trial.missingSlot}" already said`, {
+                        source: "system", category: "warning",
                         msSinceTrialStart: Date.now() - this.trial.startedAt
                     });
                     console.log(`\x1b[33m[Warning]\x1b[0m participant already gave ` +
@@ -953,7 +1012,8 @@ class WizardOfOzApp extends ApplicationController {
                 if (this.trial.injects > 0 && this.trial.msToFirstRepair === null) {
                     this.trial.msToFirstRepair = since;
                     this.logEvent("first-repair-latency", String(since),
-                        { msSinceTrialStart: since });
+                        { msSinceTrialStart: since, source: "participant",
+                          category: "measure", value: since });
                 }
 
                 if (this.trial.lastUtterance) {
@@ -971,14 +1031,16 @@ class WizardOfOzApp extends ApplicationController {
                         this.logEvent("utterance-similarity",
                             `sim=${sim} prevWords=${wc(this.trial.lastUtterance)} ` +
                             `currWords=${wc(text)}`,
-                            { msSinceTrialStart: since });
+                            { msSinceTrialStart: since, source: "system",
+                              category: "measure", value: sim });
                     }
                 }
                 this.trial.lastUtterance = text;
             }
 
             this.logEvent("transcript", text, {
-                msSinceTrialStart: this.trial ? Date.now() - this.trial.startedAt : ""
+                msSinceTrialStart: this.trial ? Date.now() - this.trial.startedAt : "",
+                source: "participant", category: "speech"
             });
             console.log(`\x1b[36m[Transcript]\x1b[0m "${text}"  →  waiting for researcher to inject response`);
 
@@ -998,7 +1060,7 @@ class WizardOfOzApp extends ApplicationController {
      *  session starts from a clean scene. Runs as an injected one-shot script. */
     resetScene() {
         console.log(`\x1b[33m[WoZ Reset]\x1b[0m clearing created objects`);
-        this.logEvent("reset", "clear-scene");
+        this.logEvent("reset", "clear-scene", { source: "wizard", category: "scene" });
         // "clear" removes trial debris and rebuilds the sphere and cube, so the
         // participant always opens on the arrangement the briefing describes.
         this.sendControl("clear");
@@ -1044,7 +1106,12 @@ class WizardOfOzApp extends ApplicationController {
         this.logEvent("inject", outcome === "success" ? "success" : `error/${scenario}`, {
             task: taskKey, variant: vKey,
             scenario: outcome === "success" ? "" : scenario,
-            msSinceTrialStart
+            msSinceTrialStart, source: "wizard", category: "outcome",
+            target: spec.target || spec.shape || "",
+            // Where the outcome put things. For task 4 this is the whole point:
+            // "behind" is the difference between the object being invisible and
+            // being obvious, and the log should say which happened.
+            value: spec.pos || spec.action || ""
         });
         // A correct outcome is silent by design, so recording "nothing was shown"
         // matters as much as recording the error text — without this row the log
@@ -1052,7 +1119,9 @@ class WizardOfOzApp extends ApplicationController {
         this.logEvent("feedback-shown",
             outcome === "success" ? "(silent — correct outcome)" : (spec.errorText || ""), {
             task: taskKey, variant: vKey,
-            scenario: outcome === "success" ? "" : scenario
+            scenario: outcome === "success" ? "" : scenario,
+            source: "system", category: "feedback",
+            value: this.session.condition || ""
         });
 
         this.scene.send(new NetworkId(OUTCOME_NETWORK_ID), {
@@ -1179,6 +1248,26 @@ class WizardOfOzApp extends ApplicationController {
                                             }
 
                         this.logSessionStart();
+
+                        // The baseline. Everything that follows is measured
+                        // against this row, so it is written before the
+                        // participant has done anything at all - including the
+                        // full assigned plan, so the file records what they were
+                        // *supposed* to get as well as what happened.
+                        this.sessionStartedAt = Date.now();
+                        this.eventSeq = 0;
+                        this.logEvent("session-start", `condition=${this.session.condition}`, {
+                            source: "wizard", category: "session",
+                            msSinceTrialStart: ""
+                        });
+                        (this.session.plan || []).forEach(b => {
+                            this.logEvent("plan-assigned",
+                                `block=${b.block} task=${b.task} variant=${b.variant} ` +
+                                `scenario=${b.scenario}`,
+                                { source: "system", category: "session",
+                                  task: b.task, variant: b.variant, scenario: b.scenario,
+                                  value: b.block, msSinceTrialStart: "" });
+                        });
                         console.log(`\x1b[35m[Session]\x1b[0m participant=${pid} ` +
                             `block=${this.session.block} condition=${this.session.condition} ` +
                             `order=${this.session.plan.map(p => p.condition).join("-")}`);
@@ -1196,7 +1285,7 @@ class WizardOfOzApp extends ApplicationController {
                             ? String(payload.task) : `task${payload.task}`;
                         if (!TASKS[key]) return send(400, { error: "Unknown task: " + payload.task });
                         this.activeTask = key;
-                        this.logEvent("task-change", key, { task: key, attempt: 0 });
+                        this.logEvent("task-change", key, { task: key, attempt: 0, source: "wizard", category: "ui" });
                         return send(200, { activeTask: this.activeTask, plannedTask: this.plannedTask() });
                     }
 
@@ -1208,6 +1297,8 @@ class WizardOfOzApp extends ApplicationController {
                             return send(400, { error: "Unknown variant: " + v });
                         }
                         this.activeVariant = v;
+                        this.logEvent("variant-change", v,
+                            { source: "wizard", category: "ui", variant: v });
                         if (this.trial && !this.trial.endedAt) this.trial.variant = v;
                         return send(200, { ok: true, activeVariant: v });
                     }
@@ -1251,6 +1342,7 @@ class WizardOfOzApp extends ApplicationController {
                         if (this.trial) {
                             this.trial.noticedFeedback = val;
                             this.logEvent("manipulation-check", `noticed=${val}`, {
+                                source: "wizard", category: "measure", value: val,
                                 msSinceTrialStart: Date.now() - this.trial.startedAt
                             });
                         }
@@ -1286,6 +1378,7 @@ class WizardOfOzApp extends ApplicationController {
                         this.trial.repairStrategies.push(val);
                         const n = this.trial.repairStrategies.length;
                         this.logEvent("repair-strategy", `${n}:${val}`, {
+                            source: "wizard", category: "measure", value: n,
                             msSinceTrialStart: Date.now() - this.trial.startedAt
                         });
                         return send(200, {
@@ -1309,7 +1402,9 @@ class WizardOfOzApp extends ApplicationController {
                             const isCorrect = val === correct;
                             this.logEvent("attribution",
                                 `participant=${val} correct=${correct} match=${isCorrect}`, {
-                                msSinceTrialStart: Date.now() - this.trial.startedAt
+                                msSinceTrialStart: Date.now() - this.trial.startedAt,
+                                source: "wizard", category: "measure",
+                                value: isCorrect ? 1 : 0, target: correct
                             });
                         }
                         return send(200, { ok: true, attribution: val,

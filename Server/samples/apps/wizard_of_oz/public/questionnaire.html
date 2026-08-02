@@ -61,12 +61,13 @@
         <label class="lbl">Block</label>
         <select id="block">
           <option value="1">1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
         </select>
       </div>
     </div>
-    <p class="note">Each participant completes this once per condition (3 times).</p>
+    <p class="note">
+      Between-subjects: each participant has one condition, so this is completed
+      <strong>once</strong>, at the end of the session, after all six tasks.
+    </p>
   </div>
 
   <!-- SUS -->
@@ -81,6 +82,13 @@
     <h2>Your experience of this task</h2>
     <p class="note">1 = Strongly disagree, 5 = Strongly agree.</p>
     <div id="ues"></div>
+  </div>
+
+  <!-- Trust and perceived control -->
+  <div class="card">
+    <h2>Trust &amp; Control</h2>
+    <p class="note">1 = Strongly disagree, 5 = Strongly agree.</p>
+    <div id="trust"></div>
   </div>
 
   <!-- Perceived support -->
@@ -142,6 +150,21 @@ const UES = [
 // Perceived support. The four statements operationalise the "how supportive was
 // the system" construct from the project brief; they are NOT from a published,
 // validated scale — flag to the supervisor if a validated instrument is required.
+// Trust and perceived control. Added because the behavioural measures record
+// what people did, and these record what they were left believing about the
+// system - which is the thing that carries into the next session and is not
+// recoverable from a log. Items 2 and 4 are reverse-scored.
+//
+// Not a published scale. If a validated instrument is required, these map most
+// closely onto the trust and predictability facets of Jian et al. (2000).
+const TRUST = [
+  { id: "trust1", text: "I could predict what the system would do with what I said." },
+  { id: "trust2", text: "I was unsure whether the system had understood me.", reverse: true },
+  { id: "trust3", text: "I felt in control of what happened in the scene." },
+  { id: "trust4", text: "When something went wrong, I felt it was my fault.", reverse: true },
+  { id: "trust5", text: "I would trust this system to carry out a task for me." }
+];
+
 const SUPPORT = [
   { id: "sup1", text: "When something unexpected happened, I understood what had happened." },
   { id: "sup2", text: "The system helped me understand why the unexpected result occurred." },
@@ -196,6 +219,11 @@ function render() {
     `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
   ).join("");
 
+  document.getElementById("trust").innerHTML =
+    shuffled(TRUST, pid + "t").map(c =>
+      `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
+    ).join("");
+
   document.getElementById("support").innerHTML =
     SUPPORT.map(c =>
       `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
@@ -211,6 +239,7 @@ function collect() {
   for (let i=1;i<=10;i++) names.push("sus"+i);
   UES.forEach(c => names.push(c.id));
   SUPPORT.forEach(c => names.push(c.id));
+  TRUST.forEach(c => names.push(c.id));
   names.push("sup_overall");
   names.forEach(n => {
     const sel = document.querySelector(`input[name="${n}"]:checked`);
