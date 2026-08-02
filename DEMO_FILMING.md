@@ -70,6 +70,20 @@ adb shell setprop debug.oculus.guardian_pause 0
 headset does not sleep when you take it off to check a take. Left on during a
 real session, the headset never sleeps on the desk between participants.
 
+### Choosing the condition you are filming
+
+Condition is derived from the digits in the participant ID, so you select it by
+naming the session — there is no separate switch:
+
+| Participant ID | Condition | Use it for |
+|---|---|---|
+| `DEMO01` | **A** — no feedback | clips 0, 2, 7 |
+| `DEMO02` | **B** — text panel | clips 3, 5 |
+| `DEMO03` | **C** — embodied agent | clips 4, 6 |
+
+Shoot all of one condition before switching, so you set the session three times
+in the whole shoot rather than once per clip.
+
 ---
 
 ## Shot list
@@ -374,4 +388,4 @@ After the shoot:
 - [ ] `npm run demo:pull`
 - [ ] `npm run demo:reset`
 - [ ] `adb shell setprop debug.oculus.guardian_pause 0`
-- [ ] Delete the `DEMO01` rows from `Logs/` so they never reach analysis
+- [ ] Delete the `DEMO01`/`DEMO02`/`DEMO03` rows from `Logs/` so they never reach analysis
