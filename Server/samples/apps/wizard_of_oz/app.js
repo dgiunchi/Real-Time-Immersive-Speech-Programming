@@ -85,6 +85,29 @@ function slotMatched(text, terms) {
     });
 }
 
+/**
+ * Lexical overlap between two utterances, 0..1 (Jaccard over normalised tokens).
+ *
+ * This exists to put an independent check under `wastedRepairs`. That measure is
+ * co-primary and is coded live by the wizard, in the moment, while also running
+ * the session - a single rater with no second opinion on a headline number. If a
+ * reviewer asks how we know "repeated verbatim" means what we say it means, the
+ * answer cannot be "the researcher judged it".
+ *
+ * The raw score is logged rather than a yes/no. Where the cut sits between
+ * "repeated himself" and "rephrased" is an analysis decision, and baking a
+ * threshold in here would quietly make it an implementation one.
+ */
+function utteranceSimilarity(a, b) {
+    const tok = t => String(t || "").toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+    const A = new Set(tok(a)), B = new Set(tok(b));
+    if (!A.size || !B.size) return null;
+    let inter = 0;
+    for (const w of A) if (B.has(w)) inter++;
+    return +(inter / (A.size + B.size - inter)).toFixed(3);
+}
+
 // ── Study content: four scenario types ───────────────────────────────
 //
 // Each task IS an error scenario. The set is deliberately split so that only
@@ -612,6 +635,11 @@ class WizardOfOzApp extends ApplicationController {
             // scripted error claims was missing. Those trials are excludable:
             // the feedback contradicted the participant.
             preInjectHadSlot:  false,
+            // Independent, automatic evidence about repair behaviour, so the
+            // wizard's live coding is checkable rather than merely trusted.
+            lastUtterance:     null,
+            utteranceSimilarities: [],   // consecutive-pair overlap, in order
+            msToFirstRepair:   null,     // inject -> next utterance = noticing
             repairContainsSlot: null,  // filled automatically on next transcript
             startedAt:         Date.now(),
             startedAtIso:      new Date().toISOString(),
@@ -731,7 +759,9 @@ class WizardOfOzApp extends ApplicationController {
             "startTime,endTime,durationMs,completionStatus,attempts,injects," +
             "attribution,correctAttribution,attributionCorrect,noticedFeedback," +
             "firstRepairStrategy,repairSequence,wastedRepairs," +
-            "repairContainsSlot,preInjectHadSlot,missingSlot", [
+            "repairContainsSlot,preInjectHadSlot," +
+            "msToFirstRepair,maxUtteranceSimilarity,utteranceSimilarities," +
+            "missingSlot", [
             this.session.participantId,
             order,
             trial.block,
@@ -761,6 +791,10 @@ class WizardOfOzApp extends ApplicationController {
             (trial.repairStrategies || []).filter(s => s === "verbatim").length,
             trial.repairContainsSlot !== null ? trial.repairContainsSlot : "",
             trial.preInjectHadSlot ? "yes" : "no",
+            trial.msToFirstRepair !== null ? trial.msToFirstRepair : "",
+            (trial.utteranceSimilarities || []).length
+                ? Math.max(...trial.utteranceSimilarities) : "",
+            (trial.utteranceSimilarities || []).join("|"),
             csvEscape(trial.missingSlot || "")
         ].join(","));
     }
@@ -905,6 +939,42 @@ class WizardOfOzApp extends ApplicationController {
                         `"${this.trial.missingSlot}" - the scripted error will ` +
                         `contradict them. Trial flagged.`);
                 }
+            }
+
+            // Automatic repair evidence, computed before the transcript row is
+            // written so the two can be read together.
+            if (this.trial && !this.trial.endedAt) {
+                const since = Date.now() - this.trial.startedAt;
+
+                // How long after being shown the failure did they act? This is
+                // the noticing measure the yes/no manipulation check cannot give:
+                // a participant who says "yes I saw it" after twenty seconds of
+                // silence did not notice it the way one who reacted in two did.
+                if (this.trial.injects > 0 && this.trial.msToFirstRepair === null) {
+                    this.trial.msToFirstRepair = since;
+                    this.logEvent("first-repair-latency", String(since),
+                        { msSinceTrialStart: since });
+                }
+
+                if (this.trial.lastUtterance) {
+                    const sim = utteranceSimilarity(this.trial.lastUtterance, text);
+                    if (sim !== null) {
+                        this.trial.utteranceSimilarities.push(sim);
+                        // Word counts go alongside the score because overlap on
+                        // its own cannot separate repeating from elaborating:
+                        // "create a ball in my hand" inside "create a ball in my
+                        // hand when I raise it above my shoulder" scores high, and
+                        // that is a textbook good repair, not a repetition. High
+                        // overlap AND similar length is a repeat; high overlap
+                        // with growth is added detail.
+                        const wc = t => String(t || "").trim().split(/\s+/).filter(Boolean).length;
+                        this.logEvent("utterance-similarity",
+                            `sim=${sim} prevWords=${wc(this.trial.lastUtterance)} ` +
+                            `currWords=${wc(text)}`,
+                            { msSinceTrialStart: since });
+                    }
+                }
+                this.trial.lastUtterance = text;
             }
 
             this.logEvent("transcript", text, {

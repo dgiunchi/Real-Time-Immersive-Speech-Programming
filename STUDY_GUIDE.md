@@ -112,6 +112,23 @@ Six tasks rather than four exists for this model. At four, the random intercept
 is estimated from two binary observations per cell, which is too thin to
 identify and prone to convergence trouble.
 
+**Independent check on the repair coding.** `wastedRepairs` is co-primary and is
+coded live by the wizard while they are also running the session: one rater, in
+the moment, no second opinion. Every utterance pair in a trial is therefore also
+scored automatically for lexical overlap (`maxUtteranceSimilarity`,
+`utteranceSimilarities`, with word counts in the event log).
+
+Report the agreement between the two. Overlap alone cannot classify - "create a
+ball in my hand" sits inside "create a ball in my hand when I raise it above my
+shoulder", which is a good repair and not a repetition - so read it with the
+word counts: high overlap at similar length is a repeat, high overlap with
+growth is added detail. The raw scores are logged rather than a threshold, so
+where that cut sits stays an analysis decision.
+
+**`msToFirstRepair`** is the finer-grained noticing measure. The manipulation
+check is a yes/no, and someone who answers "yes I saw it" after twenty seconds
+of silence did not notice it the way someone who reacted in two did.
+
 **Co-primary — what the misattribution costs** (`firstRepairStrategy`,
 `repairSequence`, `wastedRepairs`). Attribution on its own is a stated belief,
 and a reviewer can fairly ask who cares. The repair move is the belief with a
