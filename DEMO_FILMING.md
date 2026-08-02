@@ -49,8 +49,8 @@ unlocked recordings by eye costs more time than the shoot.
 ## Setup
 
 ```bash
-cd Server
-npm run study
+cd ~/Desktop/Real-Time-Immersive-Speech-Programming-Visualisation-DreamCodeVR-feedback-loop
+./study
 ```
 
 It asks which mode. Choose **2 (demo)**: capture goes to 1920x1080@60 and the
@@ -63,10 +63,10 @@ world changing for no visible reason.
 Record with the headset button or the in-VR Camera panel. Afterwards:
 
 ```bash
-npm run demo:pull       # clips land in Recordings/ (git-ignored)
+./study pull            # clips land in Recordings/ (git-ignored)
 ```
 
-To go back, run `npm run study` and choose **1**. There is nothing else to
+To go back, run `./study study`. There is nothing else to
 undo and nothing to remember: study mode actively restores every demo setting
 and forces the guardian on, every time it starts. The banner is green in study
 mode and yellow in demo, so the state is never in doubt.
@@ -377,7 +377,7 @@ the silence is doing the most work.
 
 Before each take:
 
-- [ ] Launched with `npm run study` in mode 2, and the banner is yellow
+- [ ] Launched with `./study demo`, and the banner is yellow
 - [ ] Microphone audio ON in headset capture settings
 - [ ] QuickTime screen recording started on the Mac
 - [ ] Participant ID set to `DEMO01`, not a real one
@@ -386,6 +386,6 @@ Before each take:
 
 After the shoot:
 
-- [ ] `npm run demo:pull`
-- [ ] `npm run study` in mode 1 before any participant (green banner)
+- [ ] `./study pull`
+- [ ] `./study study` before any participant (green banner)
 - [ ] Delete the `DEMO01`/`DEMO02`/`DEMO03` rows from `Logs/` so they never reach analysis

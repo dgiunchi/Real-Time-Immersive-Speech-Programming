@@ -1,0 +1,25 @@
+#!/bin/bash
+# Launch the study from anywhere.
+#
+#   ./study            ask which mode
+#   ./study demo       film
+#   ./study study      run a participant
+#   ./study pull       copy demo clips off the headset
+#
+# Exists because the real command lived two directories down, which meant
+# remembering to cd first and getting an error if you were anywhere else.
+# Resolves its own location, so it does not care where you run it from.
+
+set -e
+cd "$(dirname "${BASH_SOURCE[0]}")/Server"
+
+case "${1:-}" in
+  demo)   exec npm run study -- --demo  ;;
+  study)  exec npm run study -- --study ;;
+  pull)   exec npm run demo:pull        ;;
+  "")     exec npm run study            ;;
+  *)
+    echo "Usage: ./study [demo|study|pull]"
+    exit 1
+    ;;
+esac
