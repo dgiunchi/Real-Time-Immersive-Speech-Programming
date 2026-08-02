@@ -33,6 +33,106 @@ const HANDOFF_FILE    = "study_server.txt";              // matches ServerAutoDi
 
 function log(msg) { console.log(`\x1b[1m\x1b[36m[study]\x1b[0m ${msg}`); }
 
+// ── 0. Mode ───────────────────────────────────────────────────────────────────
+//
+// One command, two modes. The server is identical in both; what differs is how
+// the HEADSET is configured, which is why this is a launcher concern and not a
+// setting inside the app.
+//
+//   study  the default. Guardian on, screen sleeps normally, capture at stock.
+//   demo   filming. Capture at 1080p60, proximity sensor held open so the
+//          headset does not sleep each time you take it off to check a take.
+//
+// Neither is irreversible, and study mode in particular is written to be
+// SELF-HEALING: it does not merely decline to apply the demo settings, it
+// actively puts every one of them back, every time it starts. That matters
+// because the failure people actually have is forgetting to undo something.
+// Nothing you can do in demo mode can survive into a participant session,
+// because starting a participant session is what undoes it.
+//
+// The mode lives here, on the researcher's machine, and is deliberately not
+// exposed over HTTP or to the headset. A participant has no route to it.
+
+const MODE_FILE = path.join(os.tmpdir(), "dreamcodevr_mode");
+
+function promptSync(question) {
+    process.stdout.write(question);
+    const buf = Buffer.alloc(256);
+    try {
+        const n = fs.readSync(0, buf, 0, 256);
+        return buf.toString("utf8", 0, n).trim().toLowerCase();
+    } catch (_) {
+        return "";
+    }
+}
+
+function resolveMode() {
+    const argv = process.argv.slice(2).map(a => a.toLowerCase());
+    if (argv.includes("--demo"))  return "demo";
+    if (argv.includes("--study")) return "study";
+
+    // Non-interactive (CI, piped, nohup): never silently pick the mode that
+    // leaves a headset unsafe for a participant.
+    if (!process.stdin.isTTY) {
+        log("Not a terminal — defaulting to STUDY mode.");
+        return "study";
+    }
+
+    let last = "";
+    try { last = fs.readFileSync(MODE_FILE, "utf8").trim(); } catch (_) {}
+
+    console.log("");
+    console.log("  \x1b[1mWhich mode?\x1b[0m" + (last ? `   \x1b[2m(last time: ${last})\x1b[0m` : ""));
+    console.log("    \x1b[1m1\x1b[0m  study   run a participant   \x1b[2m(guardian on, normal sleep)\x1b[0m");
+    console.log("    \x1b[1m2\x1b[0m  demo    film the clips     \x1b[2m(1080p60, stays awake off-head)\x1b[0m");
+    console.log("");
+    const answer = promptSync("  1 or 2 [1]: ");
+    return (answer === "2" || answer === "demo") ? "demo" : "study";
+}
+
+const MODE = resolveMode();
+try { fs.writeFileSync(MODE_FILE, MODE); } catch (_) {}
+
+// Capture properties, applied in demo and explicitly cleared in study.
+const CAPTURE_PROPS = {
+    "debug.oculus.capture.width":   "1920",
+    "debug.oculus.capture.height":  "1080",
+    "debug.oculus.capture.fps":     "60",
+    "debug.oculus.capture.bitrate": "15000000"
+};
+
+function applyHeadsetMode(mode) {
+    const adb = findAdb();
+    if (!adb) { log("adb not found — headset settings unchanged."); return; }
+    let devices = "";
+    try { devices = execSync(`"${adb}" devices`, { stdio: "pipe", shell: true }).toString(); }
+    catch (_) { return; }
+    const connected = devices.split("\n").slice(1)
+        .filter(l => l.trim() && l.includes("\tdevice")).length;
+    if (!connected) {
+        log(`No headset on USB — ${mode} settings not applied.`);
+        if (mode === "study") {
+            log("\x1b[33mPlug in and rerun if the headset was last used for filming.\x1b[0m");
+        }
+        return;
+    }
+
+    const sh = c => { try { execSync(`"${adb}" ${c}`, { stdio: "pipe", shell: true }); } catch (_) {} };
+
+    if (mode === "demo") {
+        for (const [k, v] of Object.entries(CAPTURE_PROPS)) sh(`shell setprop ${k} ${v}`);
+        sh("shell am broadcast -a com.oculus.vrpowermanager.prox_close");
+        log("Demo mode: capture 1920x1080@60, headset will not sleep off-head.");
+    } else {
+        // Undo everything demo mode does, unconditionally, whether or not this
+        // machine is the one that set it.
+        for (const k of Object.keys(CAPTURE_PROPS)) sh(`shell setprop ${k} ""`);
+        sh("shell am broadcast -a com.oculus.vrpowermanager.automation_disable");
+        sh("shell setprop debug.oculus.guardian_pause 0");
+        log("Study mode: guardian on, normal sleep, capture back to stock.");
+    }
+}
+
 // ── 1. Kill stale processes ───────────────────────────────────────────────────
 log("Clearing ports 8005 / 8010 / 8181…");
 for (const port of STUDY_PORTS) {
@@ -146,6 +246,7 @@ function setupUsbTunnel() {
     }
 }
 setupUsbTunnel();
+applyHeadsetMode(MODE);
 
 // ── 2b. Discovery beacon ──────────────────────────────────────────────────────
 // The Quest headset listens on UDP BEACON_PORT and connects to whatever server
@@ -243,6 +344,24 @@ function openBrowser(url) {
     try { spawn(cmd, [url], { shell: true, stdio: "ignore", detached: true }).unref(); }
     catch (_) {}
 }
+// The mode has to be unmissable. The dangerous mistake is filming settings
+// surviving into a participant session, and a line of grey text scrolled past
+// four seconds ago does not prevent it.
+function modeBanner(mode) {
+    const bar = "=".repeat(64);
+    if (mode === "demo") {
+        console.log(`\n\x1b[43m\x1b[30m${bar}\x1b[0m`);
+        console.log("\x1b[43m\x1b[30m   DEMO MODE - FILMING. Do not run a participant in this mode.   \x1b[0m");
+        console.log("\x1b[43m\x1b[30m   Rerun and choose 1 (study) before anyone wears the headset.   \x1b[0m");
+        console.log(`\x1b[43m\x1b[30m${bar}\x1b[0m\n`);
+    } else {
+        console.log(`\n\x1b[42m\x1b[30m${bar}\x1b[0m`);
+        console.log("\x1b[42m\x1b[30m   STUDY MODE - guardian on, safe to run a participant.          \x1b[0m");
+        console.log(`\x1b[42m\x1b[30m${bar}\x1b[0m\n`);
+    }
+}
+modeBanner(MODE);
+
 setTimeout(() => { log(`Opening control panel: ${controlUrl}`); openBrowser(controlUrl); }, 4000);
 
 log("Starting Wizard-of-Oz study server…");

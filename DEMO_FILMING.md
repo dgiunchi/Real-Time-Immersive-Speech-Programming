@@ -50,9 +50,11 @@ unlocked recordings by eye costs more time than the shoot.
 
 ```bash
 cd Server
-npm run demo:setup      # 1920x1080@60, 15 Mbps, headset stays awake off-head
-npm run study           # server + IP handoff, as normal
+npm run study
 ```
+
+It asks which mode. Choose **2 (demo)**: capture goes to 1920x1080@60 and the
+headset stops sleeping when you take it off between takes.
 
 Then in the headset, turn **microphone audio ON** in the capture settings. The
 participant's speech is the input to the whole system; a silent clip shows a
@@ -62,13 +64,12 @@ Record with the headset button or the in-VR Camera panel. Afterwards:
 
 ```bash
 npm run demo:pull       # clips land in Recordings/ (git-ignored)
-npm run demo:reset      # BEFORE any real participant
-adb shell setprop debug.oculus.guardian_pause 0
 ```
 
-`demo:reset` matters. The setup step holds the proximity sensor open so the
-headset does not sleep when you take it off to check a take. Left on during a
-real session, the headset never sleeps on the desk between participants.
+To go back, run `npm run study` and choose **1**. There is nothing else to
+undo and nothing to remember: study mode actively restores every demo setting
+and forces the guardian on, every time it starts. The banner is green in study
+mode and yellow in demo, so the state is never in doubt.
 
 ### Choosing the condition you are filming
 
@@ -376,7 +377,7 @@ the silence is doing the most work.
 
 Before each take:
 
-- [ ] `npm run demo:setup` has run since the last headset reboot
+- [ ] Launched with `npm run study` in mode 2, and the banner is yellow
 - [ ] Microphone audio ON in headset capture settings
 - [ ] QuickTime screen recording started on the Mac
 - [ ] Participant ID set to `DEMO01`, not a real one
@@ -386,6 +387,5 @@ Before each take:
 After the shoot:
 
 - [ ] `npm run demo:pull`
-- [ ] `npm run demo:reset`
-- [ ] `adb shell setprop debug.oculus.guardian_pause 0`
+- [ ] `npm run study` in mode 1 before any participant (green banner)
 - [ ] Delete the `DEMO01`/`DEMO02`/`DEMO03` rows from `Logs/` so they never reach analysis
