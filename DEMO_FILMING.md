@@ -320,23 +320,33 @@ near-identical utterances are already in every voice assistant's logs.
 
 ---
 
-### Clip 9 — The data (~15s)
+### Clip 9 — The data (~25s)
 
-Screen recording of `Logs/trials.csv` gaining a row as you end a trial. Show
-`attribution`, `correctAttribution`, `attributionCorrect` — and then scroll right
-to `repairSequence` and `wastedRepairs`, which is where clip 0 turns into a
-number:
+This is the payoff of the whole film, so do not shoot it as a spreadsheet.
+Scrolling sideways in Numbers to find a column is the weakest possible ending
+for the strongest thing you have.
+
+Open **`http://localhost:8181/replay`** and pick `DEMO01`. Screen-record it.
+
+The three headline figures are the shot. For the clip-0 participant they read:
 
 ```
-attribution=self  correctAttribution=system  attributionCorrect=no
-repairSequence=verbatim|verbatim|verbatim    wastedRepairs=3
+Misdiagnosed        1/1        they named the wrong cause
+Wasted turns         3         repeating a request the system understood
+Blamed themselves    1         a system fault they took responsibility for
 ```
 
-Read that row out loud over the clip. It says: they were wrong about the cause,
-and being wrong cost them three turns. That single line is the study.
+Then open the trial. The repair cascade is drawn as four boxes — three of them
+red, labelled *cannot work* — directly under the line saying they said `self`
+when the cause was `system`. That is clip 0, as a number, on one screen.
 
-Use a throwaway participant ID (`DEMO01`, not `P01`) so filming does not write
-into the real data files.
+Say over it: **they were wrong about the cause, and being wrong cost them three
+turns.** Then stop talking and let it sit.
+
+Two practical notes. Use a throwaway participant ID (`DEMO01`, not `P01`) so
+filming never writes into real data. And the replay reads the same CSV the
+analysis will, computing nothing of its own — so what the film claims and what
+the paper reports cannot drift apart.
 
 ---
 

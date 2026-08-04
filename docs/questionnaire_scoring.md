@@ -4,8 +4,24 @@ Every instrument below is administered in its published response format. Read
 this before computing anything: three of the four have reverse-scored items, and
 a reversal missed is a result inverted, silently and without any error to notice.
 
-Raw responses are stored exactly as the participant gave them. Nothing is
-reversed at collection time, so this file is the only place scoring is defined.
+Raw responses are stored exactly as the participant gave them, in the
+`questionnaire` row's `answers` column. That row is the archive copy and can
+always be rescored from scratch.
+
+The server *also* applies the scoring below at collection time, writing one
+`questionnaire-item` row per answer (with the reversal applied and flagged in
+`itemReversed`) and one `questionnaire-score` row per scale. That is a
+convenience, not a second definition: **this file is the specification, and
+`scoreQuestionnaire()` in `Server/samples/apps/wizard_of_oz/app.js` implements
+it.** If the two ever disagree, this file is right and the code is a bug — and
+because the raw answers are still in the file, nothing is lost by fixing it
+after the fact.
+
+One deliberate difference in representation. `itemScore` keeps each item on its
+published response range with the reversal applied (a reversed SUS item scores
+`6 - response`, so it stays 1–5), because that is what an item mean should be
+computed from. The SUS 0–100 transform below subtracts the extra point itself.
+The logged `sus_score_0_100` follows this file exactly.
 
 ---
 

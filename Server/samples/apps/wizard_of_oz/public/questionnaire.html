@@ -3,116 +3,162 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Post-Condition Questionnaire</title>
+<title>Post-Session Questionnaire</title>
 <style>
-  :root { --bg:#f4f6fb; --card:#fff; --line:#e2e6ee; --text:#1c2230; --muted:#6b7488; --accent:#4f8cff; }
+  :root { --bg:#f4f6fb; --card:#fff; --line:#e2e6ee; --text:#1c2230; --muted:#6b7488;
+          --accent:#4f8cff; --warn:#b45309; }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
-  .wrap { max-width: 780px; margin: 0 auto; padding: 28px 20px 80px; }
-  h1 { font-size: 24px; margin: 0 0 4px; }
-  .lead { color: var(--muted); margin: 0 0 22px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-bottom: 18px; }
-  .card h2 { font-size: 16px; margin: 0 0 4px; }
-  .card .note { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
-  .field { margin-bottom: 6px; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 90px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .lead { color: var(--muted); margin: 0 0 22px; font-size:15px; line-height:1.5; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 22px; margin-bottom: 18px; }
+  .card h2 { font-size: 17px; margin: 0 0 2px; }
+  /* The instrument is named on the card and stored with every answer, so the
+     provenance of a number survives into the data rather than living only in a
+     methods chapter someone has to trust. */
+  .cite { font-size:12px; color:var(--muted); margin:0 0 4px; font-style:italic; }
+  .card .note { color: var(--muted); font-size: 13.5px; margin: 8px 0 16px; line-height:1.5; }
   .setup { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  label.lbl { display:block; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:5px; }
-  input, select { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px; font-size:15px; background:#fff; color:var(--text); }
-  .q { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  label.lbl { display:block; font-size:12px; color:var(--muted); text-transform:uppercase;
+              letter-spacing:.5px; margin-bottom:5px; }
+  input, select, textarea { width:100%; padding:10px 12px; border:1px solid var(--line);
+    border-radius:9px; font-size:15px; background:#fff; color:var(--text); font-family:inherit; }
+  input[readonly] { background:#f0f2f7; cursor:default; }
+  textarea { min-height: 88px; resize: vertical; line-height:1.5; }
+  .q { padding: 15px 0; border-bottom: 1px solid var(--line); }
   .q:last-child { border-bottom: none; }
-  .q.missing { background: #3a1414; border-radius: 8px; padding: 14px 12px; }
-  .q.missing .text::after { content: " — required"; color: #ff8a8a; font-size: 12px; }
-  .q .text { font-size: 15px; margin-bottom: 10px; }
+  .q.missing { background:#fff2f2; border-radius:8px; padding:15px 12px; box-shadow:0 0 0 1px #ffb3b3; }
+  .q .text { font-size: 15.5px; margin-bottom: 11px; line-height:1.5; }
   .scale { display: flex; gap: 6px; flex-wrap: wrap; }
-  .scale label { flex: 1; min-width: 54px; text-align: center; cursor: pointer; }
+  .scale label { flex: 1; min-width: 42px; text-align: center; cursor: pointer; }
   .scale input { display: none; }
-  .scale span { display:block; padding:9px 4px; border:1px solid var(--line); border-radius:8px; font-size:14px; user-select:none; }
-  .scale input:checked + span { background: var(--accent); color:#fff; border-color: var(--accent); font-weight:700; }
-  .ends { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; margin-top:6px; }
-  .submit { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 40%); padding: 20px 0 0; }
-  button { width:100%; padding:15px; font-size:16px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:11px; cursor:pointer; }
+  .scale span { display:block; padding:9px 4px; border:1px solid var(--line);
+                border-radius:8px; font-size:14px; user-select:none; }
+  .scale input:checked + span { background: var(--accent); color:#fff;
+                border-color: var(--accent); font-weight:700; }
+  .ends { display:flex; justify-content:space-between; color:var(--muted);
+          font-size:12px; margin-top:7px; }
+  /* NASA-TLX is a 21-point scale, not a 7-point one. Rendered as its published
+     tick strip rather than collapsed to Likert buttons, because collapsing it
+     makes the scores incomparable with every TLX ever published. */
+  .tlx { display:flex; gap:2px; }
+  .tlx label { flex:1; cursor:pointer; }
+  .tlx input { display:none; }
+  .tlx span { display:block; height:34px; border:1px solid var(--line);
+              border-left:none; background:#fff; }
+  .tlx label:first-child span { border-left:1px solid var(--line); border-radius:6px 0 0 6px; }
+  .tlx label:last-child span { border-radius:0 6px 6px 0; }
+  .tlx label:nth-child(odd) span { border-top-width:3px; }
+  .tlx input:checked + span { background: var(--accent); border-color: var(--accent); }
+  .banner { background:#fff8e6; border:1px solid #f0d089; color:#6b4e00;
+            border-radius:10px; padding:12px 14px; font-size:13.5px; line-height:1.5; margin-bottom:18px; }
+  .submit { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 42%);
+            padding: 22px 0 0; }
+  button { width:100%; padding:15px; font-size:16px; font-weight:700; color:#fff;
+           background:var(--accent); border:none; border-radius:11px; cursor:pointer; }
   button:disabled { opacity:.5; }
   .ok { text-align:center; padding:60px 20px; }
   .ok .big { font-size:52px; }
-  .req { color:#d33; }
+  .prefilled { font-size:12px; color:var(--muted); margin-top:8px; }
 </style>
 </head>
 <body>
 <div class="wrap" id="form">
-  <h1>Post-Condition Questionnaire</h1>
-  <p class="lead">Please answer honestly based on the session you just completed. There are no right or wrong answers.</p>
+  <h1>Post-Session Questionnaire</h1>
+  <p class="lead">
+    Please answer honestly &mdash; there are no right or wrong answers, and your
+    answers do not affect anything. If any word is unclear, just ask the
+    researcher and they will explain it.
+  </p>
 
   <div class="card">
     <div class="setup">
-      <div class="field">
-        <label class="lbl">Participant ID <span class="req">*</span></label>
-        <input id="participantId" placeholder="e.g. P01">
+      <div>
+        <label class="lbl">Participant ID</label>
+        <input id="participantId" readonly placeholder="Loading&hellip;">
       </div>
-      <div class="field">
-        <label class="lbl">Condition <span class="req">*</span></label>
-        <select id="condition">
-          <option value="">—</option>
-          <option value="A">A — No feedback</option>
-          <option value="B">B — Text panel</option>
-          <option value="C">C — Embodied agent</option>
-        </select>
-      </div>
-      <div class="field">
-        <label class="lbl">Block</label>
-        <select id="block">
-          <option value="1">1</option>
-        </select>
+      <div>
+        <label class="lbl">Condition</label>
+        <input id="condition" readonly placeholder="Loading&hellip;">
       </div>
     </div>
-    <p class="note">
-      Between-subjects: each participant has one condition, so this is completed
-      <strong>once</strong>, at the end of the session, after all six tasks.
-    </p>
+    <p class="prefilled">Filled in automatically. Please do not change them.</p>
   </div>
 
-  <!-- SUS -->
+  <!-- NASA-TLX ─────────────────────────────────────────────────────────── -->
   <div class="card">
-    <h2>System Usability Scale (SUS)</h2>
+    <h2>Workload</h2>
+    <p class="cite">NASA Task Load Index &mdash; Hart &amp; Staveland (1988)</p>
+    <p class="note">
+      Click anywhere on each scale. Think about the session as a whole.
+    </p>
+    <div id="tlx"></div>
+  </div>
+
+  <!-- Explanation Satisfaction — B and C only ──────────────────────────── -->
+  <div class="card" id="essCard" style="display:none;">
+    <h2>The system's explanations</h2>
+    <p class="cite">Explanation Satisfaction Scale &mdash; Hoffman, Mueller, Klein &amp; Litman (2018)</p>
+    <p class="note">
+      These are about the messages the system gave you when something did not go
+      as expected. 1 = Strongly disagree, 5 = Strongly agree.
+    </p>
+    <div id="ess"></div>
+  </div>
+
+  <!-- SUS ──────────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Using the system</h2>
+    <p class="cite">System Usability Scale &mdash; Brooke (1996)</p>
     <p class="note">1 = Strongly disagree, 5 = Strongly agree.</p>
     <div id="sus"></div>
   </div>
 
-  <!-- User Engagement Scale – Short Form -->
+  <!-- Simulator sickness change ─────────────────────────────────────────── -->
   <div class="card">
-    <h2>Your experience of this task</h2>
-    <p class="note">1 = Strongly disagree, 5 = Strongly agree.</p>
-    <div id="ues"></div>
-  </div>
-
-  <!-- Trust in automation (Jian et al., 2000) -->
-  <div class="card">
-    <h2>Trust</h2>
-    <p class="note">1 = Not at all, 7 = Extremely.</p>
-    <div id="trust"></div>
-  </div>
-
-  <!-- Explanation satisfaction (Hoffman et al., 2018) — B and C only -->
-  <div class="card" id="essCard">
-    <h2>The System's Explanations</h2>
+    <h2>How you feel now</h2>
+    <p class="cite">Single-item discomfort, paired with the same question asked before the session</p>
     <p class="note">
-      About the messages the system gave you when something went wrong.
-      1 = Strongly disagree, 5 = Strongly agree.
+      There is no right answer here, and it does not affect anything &mdash; we
+      ask everyone.
     </p>
-    <div id="explanation"></div>
+    <div id="sickness"></div>
+  </div>
+
+  <!-- Interview ────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>A few last questions</h2>
+    <p class="cite">Semi-structured interview &mdash; also audio recorded</p>
+    <p class="note">
+      The researcher will talk these through with you. Either of you can type the
+      answers here &mdash; short notes are fine, the recording has the full
+      version.
+    </p>
+    <div id="interview"></div>
   </div>
 
   <div class="submit">
-    <button id="submitBtn" onclick="submitForm()">Submit questionnaire</button>
+    <button id="submitBtn" onclick="submitForm()">Submit answers</button>
   </div>
 </div>
 
 <div class="wrap ok" id="done" style="display:none;">
-  <div class="big">✅</div>
+  <div class="big">&#9989;</div>
   <h1>Thank you!</h1>
-  <p class="lead">Your responses have been saved.</p>
+  <p class="lead">Your answers have been saved.</p>
+  <p class="lead" id="doneNext"></p>
 </div>
 
 <script>
+// Instruments are used in their published wording. Nothing here is reworded for
+// readability: an edited item is no longer the validated item, its norms no
+// longer apply, and the change is invisible in the data afterwards. Where a
+// word is hard, the researcher explains it out loud — that is a protocol
+// decision, not an edit to the scale.
+
 const SUS = [
   "I think that I would like to use this system frequently.",
   "I found the system unnecessarily complex.",
@@ -126,221 +172,170 @@ const SUS = [
   "I needed to learn a lot of things before I could get going with this system."
 ];
 
-// User Engagement Scale – Short Form (O'Brien, Cairns & Hall, 2018, IJHCS 112,
-// 28–39). Wording adapted from "Application X" to "this task" / "this VR scene",
-// which the instrument's administration guidance explicitly permits.
-//
-// Item order is randomised at render time and subscale labels are NOT shown to
-// participants, per the instrument's guidance. Subscale membership is kept here
-// only so the analysis can group and reverse-score correctly:
-//   FA = focused attention, PU = perceived usability (REVERSE-SCORE),
-//   AE = aesthetic appeal, RW = reward.
-const UES = [
-  { id: "ues_fa1", sub: "FA", text: "I lost myself in this task." },
-  { id: "ues_fa2", sub: "FA", text: "The time I spent using this task just slipped away." },
-  { id: "ues_fa3", sub: "FA", text: "I was absorbed in this task." },
-  { id: "ues_pu1", sub: "PU", text: "I felt frustrated while doing this task.", reverse: true },
-  { id: "ues_pu2", sub: "PU", text: "I found this task confusing to do.", reverse: true },
-  { id: "ues_pu3", sub: "PU", text: "Using the system for this task was taxing.", reverse: true },
-  { id: "ues_ae1", sub: "AE", text: "This VR scene was attractive." },
-  { id: "ues_ae2", sub: "AE", text: "This VR scene was aesthetically appealing." },
-  { id: "ues_ae3", sub: "AE", text: "This VR scene appealed to my visual senses." },
-  { id: "ues_rw1", sub: "RW", text: "Doing this task was worthwhile." },
-  { id: "ues_rw2", sub: "RW", text: "My experience was rewarding." },
-  { id: "ues_rw3", sub: "RW", text: "I felt interested in this experience." }
+// The six TLX subscales, published wording. Performance keeps its own anchors —
+// "Perfect" to "Failure" — which run the opposite way round to the others and
+// are the single most commonly mis-set thing about this instrument.
+const TLX = [
+  { id:"tlx_mental",      name:"Mental Demand",   q:"How mentally demanding was the task?", lo:"Very Low", hi:"Very High" },
+  { id:"tlx_physical",    name:"Physical Demand", q:"How physically demanding was the task?", lo:"Very Low", hi:"Very High" },
+  { id:"tlx_temporal",    name:"Temporal Demand", q:"How hurried or rushed was the pace of the task?", lo:"Very Low", hi:"Very High" },
+  { id:"tlx_performance", name:"Performance",     q:"How successful were you in accomplishing what you were asked to do?", lo:"Perfect", hi:"Failure" },
+  { id:"tlx_effort",      name:"Effort",          q:"How hard did you have to work to accomplish your level of performance?", lo:"Very Low", hi:"Very High" },
+  { id:"tlx_frustration", name:"Frustration",     q:"How insecure, discouraged, irritated, stressed, and annoyed were you?", lo:"Very Low", hi:"Very High" }
 ];
 
-// Trust in automation. Jian, J.-Y., Bisantz, A. M., & Drury, C. G. (2000).
-// "Foundations for an empirically determined scale of trust in automated
-// systems." International Journal of Cognitive Ergonomics, 4(1), 53-71.
-//
-// The canonical 12-item checklist, used verbatim apart from substituting "the
-// system" for the generic referent, which is the intended use. Rated 1-7 as
-// published, NOT the 1-5 used elsewhere on this page: keeping the original
-// response format is what allows scores to be compared against the published
-// literature, and silently rescaling an instrument is the fastest way to make
-// a measure uncomparable while still looking fine.
-//
-// Items 1-5 load on distrust and are REVERSE-SCORED. Item 12 is familiarity,
-// conventionally reported separately rather than folded into a trust total.
-const TRUST = [
-  { id: "trust01", text: "The system is deceptive.", reverse: true, sub: "distrust" },
-  { id: "trust02", text: "The system behaves in an underhanded manner.", reverse: true, sub: "distrust" },
-  { id: "trust03", text: "I am suspicious of the system's intent, action, or outputs.", reverse: true, sub: "distrust" },
-  { id: "trust04", text: "I am wary of the system.", reverse: true, sub: "distrust" },
-  { id: "trust05", text: "The system's actions will have a harmful or injurious outcome.", reverse: true, sub: "distrust" },
-  { id: "trust06", text: "I am confident in the system.", sub: "trust" },
-  { id: "trust07", text: "The system provides security.", sub: "trust" },
-  { id: "trust08", text: "The system has integrity.", sub: "trust" },
-  { id: "trust09", text: "The system is dependable.", sub: "trust" },
-  { id: "trust10", text: "The system is reliable.", sub: "trust" },
-  { id: "trust11", text: "I can trust the system.", sub: "trust" },
-  { id: "trust12", text: "I am familiar with the system.", sub: "familiarity" }
+const ESS = [
+  "From the explanation, I understand how the system works.",
+  "This explanation of how the system works is satisfying.",
+  "This explanation of how the system works has sufficient detail.",
+  "This explanation of how the system works seems complete.",
+  "This explanation of how the system works tells me how to use it.",
+  "This explanation of how the system works is useful to my goals.",
+  "This explanation of the system shows me how accurate the system is.",
+  "This explanation lets me judge when I should trust and not trust the system."
 ];
 
-// Explanation Satisfaction Scale. Hoffman, R. R., Mueller, S. T., Klein, G., &
-// Litman, J. (2018). "Metrics for Explainable AI: Challenges and Prospects."
-// arXiv:1812.04608; see also Frontiers in Computer Science 5 (2023).
-//
-// This replaces the home-made "perceived support" items. The construct those
-// were reaching for is explanation quality, which is exactly what conditions B
-// and C manipulate, and an instrument built for it already exists.
-//
-// NOT ADMINISTERED IN CONDITION A. There is no explanation in A, so every item
-// is unanswerable, and asking anyway would produce numbers that look like data
-// and are not. The comparison this scale supports is B versus C, which is the
-// underpowered between-participants contrast, so it is reported descriptively.
-const EXPLANATION = [
-  { id: "ess1", text: "From the explanation, I understand how the system works." },
-  { id: "ess2", text: "This explanation of how the system works is satisfying." },
-  { id: "ess3", text: "This explanation of how the system works has sufficient detail." },
-  { id: "ess4", text: "This explanation of how the system works seems complete." },
-  { id: "ess5", text: "This explanation of how the system works tells me how to use it." },
-  { id: "ess6", text: "This explanation of how the system works is useful to my goals." },
-  { id: "ess7", text: "This explanation of the system shows me how accurate the system is." },
-  { id: "ess8", text: "This explanation lets me judge when I should trust and not trust the system." }
+const INTERVIEW = [
+  "Looking back, which of the failures felt most like your own mistake, and which felt more like the system's fault?",
+  "Was there a moment you tried the same thing again, hoping it would work? What were you thinking at that point?",
+  "What, if anything, helped you realise a request just wasn't possible, versus needing more detail?",
+  "Across the session, was there any part where you felt more confused, or more supported, than others?",
+  "How did you find interacting with the virtual agent or text panel, where present?",
+  "Any other comments about your experience today?"
 ];
 
-// Pre-session background questionnaire (once per participant, not per condition).
-const DEMOGRAPHICS = [
-  { id: "age", text: "Age range",
-    options: ["18–24", "25–34", "35–44", "45–54", "55+"] },
-  { id: "gender", text: "Gender (optional)", free: true },
-  { id: "vr_experience", text: "Prior experience with VR / head-mounted displays",
-    options: ["None", "A little (tried it a few times)", "Moderate (use occasionally)", "Extensive (use regularly)"] },
-  { id: "tech_background", text: "Programming / technical background",
-    options: ["None", "Some (e.g. one course)", "Moderate", "Extensive (e.g. degree/job in CS)"] },
-  { id: "assistant_use", text: "How often do you use voice assistants or AI chatbots?",
-    options: ["Never", "Rarely", "Sometimes", "Often", "Daily"] }
-];
-
-/** Deterministic shuffle so a participant's item order is stable on reload. */
-function shuffled(items, seedStr) {
-  let h = 0;
-  for (const ch of String(seedStr || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  const a = items.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    h = (h * 1103515245 + 12345) >>> 0;
-    const j = h % (i + 1);
-    [a[i], a[j]] = [a[j], a[i]];
+function likert(name, n, lo, hi) {
+  // discomfort is a 0-10 scale; everything else is 1-n. Storing the label the
+  // participant actually saw keeps the pre and post items directly comparable.
+  const zeroBased = name.startsWith("discomfort");
+  let o = "";
+  for (let i = 1; i <= n; i++) {
+    const v = zeroBased ? i - 1 : i;
+    o += `<label><input type="radio" name="${name}" value="${v}"><span>${v}</span></label>`;
   }
-  return a;
+  return `<div class="scale">${o}</div><div class="ends"><span>${lo}</span><span>${hi}</span></div>`;
 }
 
-function scale(name, n, lowLabel, highLabel) {
-  let opts = "";
-  for (let i = 1; i <= n; i++) {
-    opts += `<label><input type="radio" name="${name}" value="${i}"><span>${i}</span></label>`;
+// 21 points, 0-100 in steps of 5, exactly as published.
+function tlxScale(name, lo, hi) {
+  let o = "";
+  for (let v = 0; v <= 100; v += 5)
+    o += `<label title="${v}"><input type="radio" name="${name}" value="${v}"><span></span></label>`;
+  return `<div class="tlx">${o}</div><div class="ends"><span>${lo}</span><span>${hi}</span></div>`;
+}
+
+async function prefill() {
+  const p = new URLSearchParams(location.search);
+  let pid = p.get("pid") || "", cond = p.get("cond") || "";
+  if (!pid || !cond) {
+    try {
+      const s = await fetch("/status").then(r => r.json());
+      if (s && s.session) {
+        pid  = pid  || s.session.participantId || "";
+        cond = cond || s.session.condition     || "";
+      }
+    } catch (_) {}
   }
-  return `<div class="scale">${opts}</div>
-          <div class="ends"><span>${lowLabel}</span><span>${highLabel}</span></div>`;
+  document.getElementById("participantId").value = pid;
+  document.getElementById("condition").value = cond;
+  render();
+  // Condition A shows no explanation, so there is nothing to rate. Asking anyway
+  // would collect answers about a thing that never happened.
+  document.getElementById("essCard").style.display =
+    cond.toUpperCase() === "A" ? "none" : "block";
 }
 
 function render() {
-  const pid = new URLSearchParams(location.search).get("pid") || "";
-
-  document.getElementById("sus").innerHTML = SUS.map((q,i) =>
-    `<div class="q"><div class="text">${i+1}. ${q}</div>${scale("sus"+(i+1),5,"Strongly disagree","Strongly agree")}</div>`
+  document.getElementById("tlx").innerHTML = TLX.map(t =>
+    `<div class="q"><div class="text"><b>${t.name}</b> &mdash; ${t.q}</div>${tlxScale(t.id, t.lo, t.hi)}</div>`
   ).join("");
 
-  // Randomised order, no subscale headings shown (per UES-SF guidance).
-  document.getElementById("ues").innerHTML = shuffled(UES, pid).map(c =>
-    `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
+  document.getElementById("ess").innerHTML = ESS.map((q, i) =>
+    `<div class="q"><div class="text">${i+1}. ${q}</div>${likert("ess"+(i+1), 5, "Strongly disagree", "Strongly agree")}</div>`
   ).join("");
 
-  // 1-7 as published. Item order is NOT randomised: the scale is validated in
-  // its published order and reordering it is a change to the instrument.
-  document.getElementById("trust").innerHTML =
-    TRUST.map(c =>
-      `<div class="q"><div class="text">${c.text}</div>${scale(c.id,7,"Not at all","Extremely")}</div>`
-    ).join("");
+  document.getElementById("sus").innerHTML = SUS.map((q, i) =>
+    `<div class="q"><div class="text">${i+1}. ${q}</div>${likert("sus"+(i+1), 5, "Strongly disagree", "Strongly agree")}</div>`
+  ).join("");
 
-  document.getElementById("explanation").innerHTML =
-    EXPLANATION.map(c =>
-      `<div class="q"><div class="text">${c.text}</div>${scale(c.id,5,"Strongly disagree","Strongly agree")}</div>`
-    ).join("");
+  document.getElementById("sickness").innerHTML =
+    `<div class="q"><div class="text">Right now: do you feel any dizziness, nausea or eye strain?</div>
+      ${likert("discomfort_post", 11, "0 — none at all", "10 — severe")}</div>`;
 
-  applyConditionVisibility();
-}
-
-/**
- * Explanation satisfaction is unanswerable in condition A, where nothing was
- * explained, so the whole card is hidden there.
- *
- * Visibility only. Re-rendering the items on every condition change would
- * discard answers already entered, and the condition dropdown is easy to correct
- * halfway through a form.
- */
-function applyConditionVisibility() {
-  const cond = (document.getElementById("condition").value || "").toUpperCase();
-  document.getElementById("essCard").style.display = (cond === "A") ? "none" : "";
+  document.getElementById("interview").innerHTML = INTERVIEW.map((q, i) =>
+    `<div class="q"><div class="text">${i+1}. ${q}</div>
+      <textarea name="iv${i+1}" placeholder="Notes&hellip;"></textarea></div>`
+  ).join("");
 }
 
 function collect() {
-  const answers = {};
-  const missingNames = [];
-  const names = [];
-  for (let i=1;i<=10;i++) names.push("sus"+i);
-  UES.forEach(c => names.push(c.id));
-  TRUST.forEach(c => names.push(c.id));
-  // Only required where it was shown; in A these columns stay empty rather than
-  // being counted as missing answers.
+  const answers = {}, missing = [];
   const cond = (document.getElementById("condition").value || "").toUpperCase();
-  if (cond !== "A") EXPLANATION.forEach(c => names.push(c.id));
-  names.forEach(n => {
+  const scored = [
+    ...TLX.map(t => t.id),
+    ...(cond === "A" ? [] : ESS.map((_, i) => "ess" + (i + 1))),
+    ...SUS.map((_, i) => "sus" + (i + 1)),
+    "discomfort_post"
+  ];
+  scored.forEach(n => {
     const sel = document.querySelector(`input[name="${n}"]:checked`);
-    if (sel) answers[n] = sel.value; else { answers[n] = ""; missingNames.push(n); }
+    answers[n] = sel ? sel.value : "";
+    if (!sel) missing.push(n);
   });
-  return { answers, missing: missingNames.length, missingNames };
+  // Interview answers are free text and deliberately not required — a
+  // participant with nothing to add should not be blocked from finishing.
+  INTERVIEW.forEach((_, i) => {
+    const el = document.querySelector(`textarea[name="iv${i+1}"]`);
+    answers["iv" + (i + 1)] = el ? el.value.trim() : "";
+  });
+  return { answers, missing };
 }
 
-function highlightMissing(missingNames) {
+function highlightMissing(names) {
   document.querySelectorAll(".q.missing").forEach(el => el.classList.remove("missing"));
   let first = null;
-  missingNames.forEach(n => {
-    const input = document.querySelector(`input[name="${n}"]`);
-    const q = input && input.closest(".q");
+  names.forEach(n => {
+    const inp = document.querySelector(`input[name="${n}"]`);
+    const q = inp && inp.closest(".q");
     if (q) { q.classList.add("missing"); if (!first) first = q; }
   });
   if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-// Prefill from URL (?pid=P01&cond=B) so the researcher can hand over a ready link.
-const params = new URLSearchParams(location.search);
-if (params.get("pid"))  document.getElementById("participantId").value = params.get("pid");
-if (params.get("cond")) document.getElementById("condition").value = params.get("cond").toUpperCase();
-
 async function submitForm() {
   const participantId = document.getElementById("participantId").value.trim();
-  const condition = document.getElementById("condition").value;
-  if (!participantId || !condition) { alert("Please fill in Participant ID and Condition."); return; }
-  const { answers, missing, missingNames } = collect();
-  if (missing > 0) {
-    highlightMissing(missingNames);
-    alert(missing + " question(s) still need an answer — they are highlighted. Please complete them before submitting.");
+  const condition     = document.getElementById("condition").value.trim();
+  if (!participantId) { alert("Participant ID is missing. Go back to the study panel."); return; }
+  if (!condition)     { alert("Condition is missing. Go back to the study panel."); return; }
+
+  const { answers, missing } = collect();
+  if (missing.length) {
+    highlightMissing(missing);
+    alert(missing.length + " question(s) still need an answer — they are highlighted.");
     return;
   }
 
   const btn = document.getElementById("submitBtn");
   btn.disabled = true; btn.textContent = "Saving…";
   try {
-    const block = document.getElementById("block").value;
     await fetch("/questionnaire", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ participantId, condition, block, questionnaire: "post-condition", answers })
-    });
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, condition,
+                             questionnaire: "post-session", answers })
+    }).then(r => r.json());
+    document.getElementById("doneNext").textContent =
+      "That is everything. Please let the researcher know you have finished — " +
+      "they have a short debrief for you.";
     document.getElementById("form").style.display = "none";
     document.getElementById("done").style.display = "block";
-    window.scrollTo(0,0);
+    window.scrollTo(0, 0);
   } catch (e) {
-    alert("Save failed: " + e.message + "\nIs the study server running?");
-    btn.disabled = false; btn.textContent = "Submit questionnaire";
+    alert("Could not save: " + e.message + "\nMake sure the study server is running.");
+    btn.disabled = false; btn.textContent = "Submit answers";
   }
 }
 
-document.getElementById("condition").addEventListener("change", applyConditionVisibility);
-
-render();
+prefill();
 </script>
 </body>
 </html>

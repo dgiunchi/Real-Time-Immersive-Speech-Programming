@@ -92,6 +92,14 @@ public class StudyTelemetry : MonoBehaviour
         });
     }
 
+    /// <summary>
+    /// Required by Ubiq for any registered component, including send-only ones.
+    /// Without it NetworkScene.Register throws at Start() and no pose is ever
+    /// sent — the component looks attached and does nothing. Telemetry is
+    /// one-way, so there is genuinely nothing to handle here.
+    /// </summary>
+    public void ProcessMessage(ReferenceCountedSceneGraphMessage data) { }
+
     [System.Serializable]
     private struct PoseMessage
     {

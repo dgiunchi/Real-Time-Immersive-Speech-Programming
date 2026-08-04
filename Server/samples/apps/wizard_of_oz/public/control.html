@@ -58,17 +58,78 @@
   .pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
   .pill.A { background: #555; } .pill.B { background: #2a6cc9; } .pill.C { background: #7a4fd0; }
   .hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+
+  /* ── Step guide ───────────────────────────────────────────────────────────
+     Answers one question at a glance: which of these four cards do I act on
+     right now? Running a session means reading a script, watching a
+     participant and driving a panel at the same time, and the panel is the
+     part that can simply say so instead of being re-derived under load.
+
+     It works by subtraction — the current step keeps its normal appearance and
+     everything else recedes. Highlighting the active card instead would leave
+     four lit cards competing, which is the state we are trying to fix.
+     Off by default until the toggle is ticked, and the toggle is live so it
+     can be dropped mid-session once the flow is familiar. */
+  body.guide .card[data-step] { opacity: .38; filter: saturate(.5); transition: opacity .18s, filter .18s; }
+  body.guide .card[data-step].step-now {
+    opacity: 1; filter: none;
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 1px var(--accent), 0 0 22px rgba(79,140,255,.28);
+  }
+  /* Steps already completed in this trial stay legible — you often need to
+     re-read what you just did — but must not compete with the live one. */
+  body.guide .card[data-step].step-done { opacity: .62; filter: none; }
+  .step-badge { display: none; }
+  body.guide .card.step-now .step-badge {
+    display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 20px;
+    background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 800;
+    letter-spacing: .6px; vertical-align: middle; animation: nudge 1.6s ease-in-out infinite;
+  }
+  @keyframes nudge { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+  /* Sidebar needs the same treatment: before a session exists, the thing to do
+     is over there, and a dimmed step column with no lit card is a dead end. */
+  body.guide .side { opacity: .5; transition: opacity .18s; }
+  body.guide.guide-setup .side { opacity: 1; box-shadow: inset -2px 0 0 var(--accent); }
+  body.guide.guide-setup .card[data-step] { opacity: .3; }
+  #guideNow { display: none; }
+  body.guide #guideNow {
+    display: block; margin-bottom: 16px; padding: 11px 15px; border-radius: 10px;
+    background: linear-gradient(90deg, rgba(79,140,255,.19), rgba(79,140,255,.04));
+    border: 1px solid var(--accent); font-size: 14px;
+  }
+  .switch { display: flex; align-items: center; gap: 7px; font-size: 13px;
+    cursor: pointer; user-select: none; color: var(--muted); }
+  .switch input { width: auto; margin: 0; cursor: pointer; accent-color: var(--accent); }
+
+  /* Practice mode is impossible to miss on purpose. Rehearsing into the
+     participant set, or running a real participant thinking it is a rehearsal,
+     are both unrecoverable after the fact. */
+  body.practice { box-shadow: inset 0 0 0 4px var(--warn); }
+  body.practice header { background: #3a2f16; }
+  #practiceBar { display: none; }
+  body.practice #practiceBar {
+    display: block; background: var(--warn); color: #2a2100;
+    text-align: center; font-weight: 800; font-size: 13px;
+    padding: 6px; letter-spacing: .04em;
+  }
 </style>
 </head>
 <body>
+<div id="practiceBar">PRACTICE RUN — saved to Logs/practice/, no allocation used, not participant data</div>
 <header>
   <span class="dot" id="liveDot"></span>
   <h1>Wizard-of-Oz Control Panel</h1>
   <span id="sessionBadge" class="hint">⚠ warm-up — no session started (data saved as “warmup”, not participant data)</span>
-  <span style="margin-left:auto; font-size:13px;">
+  <label class="switch" style="margin-left:auto;" title="Dim every step except the one to act on now. Safe to toggle mid-session.">
+    <input type="checkbox" id="guideToggle" onchange="setGuide(this.checked)">
+    Guide me through the steps
+  </label>
+  <span style="font-size:13px;">
+    <a href="/mirror" target="_blank" style="color:var(--accent);font-weight:700;">Participant view ↗</a>
+    &nbsp;·&nbsp;
     <a href="/background" target="_blank" style="color:var(--accent);">Background form ↗</a>
     &nbsp;·&nbsp;
-    <a href="/questionnaire" target="_blank" style="color:var(--accent);">Post-condition ↗</a>
+    <a href="/questionnaire" target="_blank" style="color:var(--accent);">Post-session ↗</a>
   </span>
 </header>
 
@@ -81,13 +142,23 @@
     <label>Participant ID</label>
     <input id="participantId" placeholder="e.g. P01" onchange="loadPlan()" onblur="loadPlan()">
 
-    <label>Condition</label>
-    <select id="condition">
-      <option value="">Follow counterbalanced plan (recommended)</option>
+    <!-- The researcher picks the condition, because sessions get scheduled
+         around rooms and who turns up, not around a modulo. Everything that has
+         to stay balanced — task order, variants — is assigned by the server
+         from what it has already handed out, so choosing freely here cannot
+         unbalance the design. -->
+    <label class="switch" style="margin-top:12px;color:var(--warn);">
+      <input type="checkbox" id="practiceMode" onchange="setPractice(this.checked)">
+      Practice run &mdash; not a participant
+    </label>
+
+    <label>Condition to run</label>
+    <select id="condition" onchange="loadPlan()">
       <option value="A">A — No feedback</option>
       <option value="B">B — Text panel</option>
       <option value="C">C — Embodied agent</option>
     </select>
+    <div id="allocBox" style="margin-top:10px;"></div>
 
     <button class="btn-accent" style="width:100%;margin-top:16px;" onclick="startSession()">Start / Update Session</button>
 
@@ -112,25 +183,39 @@
         <button class="btn-ghost" style="width:100%;margin-top:8px;font-size:12px;padding:6px;background:#1a2a40;"
                 onmousedown="remoteRecord(true)" onmouseup="remoteRecord(false)"
                 onmouseleave="remoteRecord(false)" ontouchstart="remoteRecord(true)" ontouchend="remoteRecord(false)">
-          Hold to record (fallback)
+          Hold to record (headset fallback)
+        </button>
+        <button id="browserMicBtn" class="btn-ghost" style="width:100%;margin-top:6px;font-size:12px;padding:6px;background:#1a3a1a;"
+                onmousedown="browserMicStart()" onmouseup="browserMicStop()"
+                onmouseleave="browserMicStop()" ontouchstart="browserMicStart()" ontouchend="browserMicStop()">
+          Hold to record (this Mac)
         </button>
       </div>
       <div class="card" style="margin:0;padding:14px;">
         <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">What the system heard</div>
         <div id="transcript" class="transcript empty" style="min-height:52px;font-size:17px;">Waiting for speech…</div>
+        <!-- Why nothing arrived, when nothing arrives. Silence discarded, a
+             clip too short, and a transcription server that is refusing
+             connections are three different problems that all look like an
+             unchanging transcript. -->
+        <div id="sttStatus" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:16px;"></div>
       </div>
     </div>
 
     <!-- ── Trial status strip ──────────────────────────────────────── -->
+    <!-- Says in words what the highlight says in colour. Colour alone fails the
+         case this exists for: glancing up mid-sentence while reading a script. -->
+    <div id="guideNow"></div>
+
     <div id="trialStatus" style="padding:10px 14px;background:#161b24;border-radius:10px;font-size:13px;line-height:1.8;margin-bottom:16px;border:1px solid var(--line);">
       No trial running — start a session on the left, then follow the steps below.
     </div>
 
     <!-- ── Step 1: Briefing ───────────────────────────────────────── -->
-    <div class="card" id="step1">
+    <div class="card" id="step1" data-step="1">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div>
-          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 1</span>
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 1</span><span class="step-badge">DO THIS NOW</span>
           <h2 style="margin:2px 0 0;">Read briefing to participant</h2>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -144,13 +229,17 @@
       <div style="margin-top:10px;font-size:12px;color:var(--muted);">
         Do <b>not</b> tell them what to say. They must phrase it themselves.
       </div>
+      <button class="btn-accent" style="width:100%;margin-top:12px;font-size:15px;padding:13px;"
+              onclick="startTrial()">
+        &#9654; I&rsquo;ve read it &mdash; start trial
+      </button>
     </div>
 
     <!-- ── Step 2: Error type selection + inject ─────────────────── -->
-    <div class="card" id="step2">
+    <div class="card" id="step2" data-step="2">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
         <div style="flex:1;min-width:220px;">
-          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 2</span>
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 2</span><span class="step-badge">DO THIS NOW</span>
           <h2 style="margin:2px 0 8px;">They speak → inject error</h2>
           <p class="sub" style="margin:0 0 10px;">One scripted failure per task. Inject regardless of what they say.</p>
         </div>
@@ -165,15 +254,19 @@
          it cannot colour how the question is asked or how a vague reply is
          coded. Read the prompt verbatim; improvising it varies the stimulus
          across participants, which is the measure itself. -->
-    <div class="card" id="step3" style="border-color:#3a3020;">
-      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 3 &mdash; immediately after the error</span>
+    <div class="card" id="step3" data-step="3" style="border-color:#3a3020;">
+      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 3 &mdash; immediately after the error</span><span class="step-badge">DO THIS NOW</span>
       <h2 style="margin:2px 0 4px;">Read this out, word for word</h2>
       <div style="padding:12px;background:#0d1117;border-radius:8px;border-left:3px solid #c9a96e;font-size:15px;margin-bottom:6px;">
         &ldquo;In your own words, why do you think that happened?&rdquo;
       </div>
       <p class="sub" style="margin:0 0 10px;">
-        Do not paraphrase, prompt, or react to the answer. If they are vague, say
-        &ldquo;whatever you think&rdquo; once, then code the closest option.
+        Do not paraphrase, prompt, or react. If they are vague, say
+        &ldquo;whatever you think&rdquo; <b>once</b> &mdash; then code what you
+        heard. If it still has no clear cause in it, that is
+        <b>Genuinely unsure</b>, which is a real answer and not a failure to ask
+        properly. Do not press for a cleaner one: a coaxed attribution is the
+        experimenter&rsquo;s, not theirs.
       </p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <button class="btn-ghost" style="flex:1;font-size:13px;" onclick="recordAttribution('self')">
@@ -200,12 +293,19 @@
       </div>
       <div id="noticedResult" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:6px;"></div>
 
-      <hr style="border:none;border-top:1px solid var(--line);margin:14px 0 10px;">
-      <!-- Coded live, once per repair attempt, because it is a behaviour and not
-           something the participant can be asked about afterwards without
-           inventing a rationale for it. -->
+    </div>
+
+    <!-- ── Step 4: repair moves, then resolve ─────────────────────────── -->
+    <div class="card" id="step4" data-step="4">
+      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 4</span><span class="step-badge">DO THIS NOW</span>
+      <h2 style="margin:2px 0 4px;">Watch what they do &mdash; code every attempt</h2>
+      <p class="sub" style="margin:0 0 10px;">
+        One click <em>per attempt</em>, as it happens. This is a behaviour, not
+        something they can be asked about afterwards without inventing a reason
+        for it. When they have adapted (or given up), inject the success.
+      </p>
       <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
-        Repair move &mdash; click once <em>per attempt</em> they make
+        Repair move
         <span style="opacity:.7;">(what they did, not what they said)</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -226,19 +326,56 @@
         </button>
       </div>
       <div id="repairResult" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:6px;"></div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:14px 0 10px;">
+      <div id="successBox"></div>
     </div>
 
-    <!-- ── Step 4: End trial / next ───────────────────────────────── -->
-    <div class="card" id="step4">
-      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 4</span>
-      <h2 style="margin:2px 0 10px;">They repair → end trial</h2>
+    <!-- ── Step 5: one button to close the trial ──────────────────────── -->
+    <div class="card" id="step5" data-step="5">
+      <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 5</span><span class="step-badge">DO THIS NOW</span>
+      <h2 style="margin:2px 0 10px;">Trial done</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-accent" style="flex:2;min-width:160px;font-size:15px;padding:13px;" onclick="startTrial()">▶ Start trial</button>
-        <button class="btn-ghost"  style="flex:2;min-width:160px;font-size:15px;padding:13px;" onclick="completeTrial('completed')">✓ End trial</button>
-        <button class="btn-ghost"  style="flex:1;min-width:110px;background:#7a2b2b;color:#fff;" onclick="resetScene()">↺ Reset scene</button>
-        <button class="btn-accent" style="flex:1;min-width:110px;background:#2b5c3a;" onclick="nextBlock()">⏭ Next task</button>
+        <!-- One button, two states. It is never hidden: a trial sometimes has to
+             be abandoned mid-way — a withdrawal, a headset drop — and hiding the
+             only exit would leave the panel stuck on a trial that cannot finish.
+             Instead it stops looking like the thing to press, renames itself,
+             and asks before ending a trial early. -->
+        <button id="advanceBtn" class="btn-accent"
+                style="flex:3;min-width:230px;font-size:15px;padding:14px;"
+                onclick="advanceTrial()">✓ Next trial &amp; reset scene</button>
+        <button class="btn-ghost" style="flex:1;min-width:120px;background:#7a2b2b;color:#fff;"
+                onclick="resetScene()" title="Clear the scene without ending the trial">
+          ↺ Reset only
+        </button>
       </div>
-      <p class="sub" style="margin-top:8px;">One trial per task: inject error, they adapt, inject success, end trial, next task. Four tasks total.</p>
+      <p class="sub" id="advanceHint" style="margin-top:8px;">
+        Ends this trial, writes its summary row, clears the scene and loads the
+        next task. Six tasks, then the questionnaire.
+      </p>
+    </div>
+
+    <!-- ── Post-condition questionnaire gate ──────────────────────────────
+         Appears only once every task is done. The session is not over until
+         this is submitted, and the panel should say so rather than going
+         quiet. -->
+    <div class="card" id="finishCard" style="display:none;border-color:var(--ok);">
+      <h2 style="margin:2px 0 6px;" id="finishTitle">All tasks done — questionnaire</h2>
+      <p class="sub" id="finishText" style="margin:0 0 12px;"></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a href="/questionnaire" data-q-link target="_blank" id="qLinkWrap" style="flex:2;min-width:200px;text-decoration:none;">
+          <button class="btn-accent" style="width:100%;font-size:15px;padding:13px;">
+            Open post-condition questionnaire ↗
+          </button>
+        </a>
+        <!-- Only ever the last press of a session: it merges the three
+             per-condition files into the participant's single CSV and deletes
+             the parts, so it stays hidden until every condition is done. -->
+        <button id="endStudyBtn" style="display:none;flex:2;min-width:200px;font-size:15px;padding:13px;background:var(--ok);"
+                onclick="endStudy()">
+          ■ End session (after debrief)
+        </button>
+      </div>
+      <div id="mergeResult" style="font-size:12.5px;color:var(--muted);margin-top:10px;min-height:16px;"></div>
     </div>
 
     <!-- ── Event log (collapsed by default) ──────────────────────── -->
@@ -274,6 +411,13 @@ function addLog(kind, text) {
   const el = document.getElementById("log");
   el.innerHTML = logLines.join("");
   el.scrollTop = el.scrollHeight;
+}
+
+// Read from the plan the server actually built rather than a hardcoded count.
+// This said "of 3" for the whole six-task redesign, which is the one number a
+// wizard uses to know whether the session is nearly over.
+function planLength(s) {
+  return (s && s.plan && s.plan.length) || 6;
 }
 
 function currentVariantObj() {
@@ -365,8 +509,21 @@ function renderResponses() {
 
   mk("error", "INJECT ERROR",
      "Send the scripted failure. Use again if they repeat the same mistake.", "error");
-  mk("success", "INJECT SUCCESS",
-     "Once they have adapted. Deliberately silent \u2014 no panel, no agent.", "success");
+
+  // Success lives in step 4, not here. Having both buttons side by side made it
+  // possible to resolve the trial before asking why it failed, which loses the
+  // attribution for that trial with nothing in the data to show it happened.
+  const sBox = document.getElementById("successBox");
+  if (sBox) {
+    sBox.innerHTML = "";
+    const div = document.createElement("div");
+    div.className = "resp success";
+    div.onclick = () => inject("success");
+    div.innerHTML = '<div class="rbtn">INJECT SUCCESS</div>' +
+      '<div class="desc">Once they have adapted, or given up. Deliberately ' +
+      'silent \u2014 no panel, no agent.</div>';
+    sBox.appendChild(div);
+  }
 }
 
 function renderTrial(trial) {
@@ -380,17 +537,24 @@ function renderTrial(trial) {
     `<div>${running ? '<span style="color:#8aff9e">● running</span>' : '<span class="sub">● ended — ' + trial.status + '</span>'}
        &nbsp; Trial <b>${trial.number}</b> &nbsp;
        <span class="pill ${trial.condition}">Condition ${trial.condition}</span></div>` +
-    `<div class="sub">${trial.task}/${trial.variant} · ${trial.errorCategory} · attempts <b>${trial.attempts}</b> · injects ${trial.injects} · ${secs}s</div>`;
+    `<div class="sub">${trial.task}/${trial.variant} · ${trial.scenario} · attempts <b>${trial.attempts}</b> · injects ${trial.injects} · ${secs}s</div>`;
 }
 
-function renderPlan(plan, pid) {
+function renderPlan(res) {
   const el = document.getElementById("planBox");
   if (!el) return;
+  const plan = res && res.plan;
   if (!plan || !plan.length) { el.innerHTML = ""; return; }
   el.innerHTML =
-    '<div class="sub" style="margin-bottom:6px;">Plan for <b>' + pid +
-      '</b> \u2014 condition <span class="pill ' + plan[0].condition + '">' +
-      plan[0].condition + '</span>, run in this order:</div>' +
+    '<div class="sub" style="margin-bottom:6px;">Session for <b>' + res.participantId +
+      '</b> \u2014 ' + order.length + ' conditions in order ' +
+      order.map(function (c, i) {
+        return '<span class="pill ' + c + '" style="' +
+          (i === ci ? '' : 'opacity:.4;') + '">' + c + '</span>';
+      }).join(' \u2192 ') +
+    '</div>' +
+    '<div class="sub" style="margin-bottom:6px;">Now running condition <b>' +
+      (order[ci] || plan[0].condition) + '</b>, tasks in this order:</div>' +
     plan.map(function (p) {
       return '<div style="font-size:13px;padding:6px 0;border-top:1px solid var(--line);">' +
         '<b>' + p.block + '. ' + p.taskName + '</b> \u00b7 ' + p.variant.toUpperCase() +
@@ -399,11 +563,39 @@ function renderPlan(plan, pid) {
     }).join("");
 }
 
+async function renderAllocation() {
+  const box = document.getElementById("allocBox");
+  if (!box) return;
+  const a = await get("/allocation");
+  box.innerHTML = a.conditions.map(c => {
+    const full = c.n >= c.target;
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0;">
+      <span class="pill ${c.condition}" style="min-width:26px;text-align:center;">${c.condition}</span>
+      <span style="flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden;">
+        <span style="display:block;height:100%;width:${Math.min(100, c.n / c.target * 100)}%;
+                     background:${full ? "var(--ok)" : "var(--accent)"};"></span>
+      </span>
+      <span style="color:var(--muted);min-width:44px;text-align:right;">${c.n}/${c.target}</span>
+    </div>`;
+  }).join("");
+}
+
 async function loadPlan() {
+  renderAllocation();
   const pid = document.getElementById("participantId").value.trim();
   if (!pid) return;
-  const res = await get("/plan?pid=" + encodeURIComponent(pid));
-  renderPlan(res.plan, res.participantId);
+  const cond = document.getElementById("condition").value;
+  const res = await get("/plan?pid=" + encodeURIComponent(pid) +
+                        "&cond=" + encodeURIComponent(cond));
+  renderPlan(res);
+  // A participant who already has an allocation keeps it — say so, loudly,
+  // because it means the dropdown above is being ignored on purpose.
+  const sel = document.getElementById("condition");
+  if (res.allocation && res.allocation.existing && sel) {
+    sel.value = res.allocation.condition;
+    addLog("t", `${pid} already assigned condition ${res.allocation.condition} ` +
+      `(order ${res.allocation.orderIndex + 1}) — keeping it.`);
+  }
 }
 
 async function selectTask(key) {
@@ -428,7 +620,7 @@ async function inject(outcome) {
     { task: activeTask, outcome, variant: activeVariant });
   if (res.ok) {
     addLog("inject", `${res.task} ${outcome.toUpperCase()}` +
-      (res.errorCategory ? ` / ${res.errorCategory}` : "") +
+      (res.scenario ? ` / ${res.scenario}` : "") +
       ` (attempts ${res.attempts}, injects ${res.injects})`);
     // Clear the attribution result display on each new inject.
     const attrRes = document.getElementById("attrResult");
@@ -485,26 +677,38 @@ async function startTrial() {
     { task: activeTask, variant: activeVariant });
   if (res.ok) {
     renderTrial(res.trial);
-    addLog("task", `Trial ${res.trial.number} started — ${res.trial.task}/${res.trial.variant} / ${res.trial.errorCategory}`);
+    addLog("task", `Trial ${res.trial.number} started — ${res.trial.task}/${res.trial.variant} / ${res.trial.scenario}`);
   } else {
     addLog("t", "Start failed: " + (res.error || "?"));
   }
 }
 
+// Ending a trial also loads the next task, so this handles both halves of the
+// response: the trial that just finished, and wherever the plan moved to.
 async function completeTrial(status) {
   const res = await post("/trial/complete", { status });
-  if (res.ok && res.trial) {
-    renderTrial(res.trial);
+  if (!res.ok) { addLog("t", res.error || "No active trial"); return; }
+  if (res.trial) {
     addLog("task", `Trial ${res.trial.number} ${status} — ${res.trial.attempts} attempts`);
-  } else {
-    addLog("t", res.error || "No active trial");
   }
+  applyAdvance(res);
 }
 
+// Manual override for going off-plan — skipping a task, or recovering after a
+// trial was ended without advancing. Not on the panel; the normal path is
+// End trial.
 async function nextBlock() {
-  const res = await post("/next-block", {});
-  if (res.finished) { addLog("task", "All blocks done for this participant."); return; }
+  applyAdvance(await post("/next-block", {}));
+}
+
+function applyAdvance(res) {
   const s = res.session || {};
+  if (res.finished) {
+    renderTrial(null);
+    updateSessionBadge(s, true);
+    addLog("task", "All tasks done — post-condition questionnaire due.");
+    return;
+  }
   if (res.planned) {
     plannedTask    = res.planned.task;
     plannedVariant = res.planned.variant;
@@ -512,14 +716,23 @@ async function nextBlock() {
     activeVariant  = plannedVariant;
   }
   currentBlock = s.block || currentBlock;
-  document.getElementById("sessionBadge").innerHTML =
-    `<b>${s.participantId}</b> &nbsp; Task ${s.block} of 3 &nbsp;` +
-    `<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
+  updateSessionBadge(s, false);
   renderTaskChips();
   renderErrorChips();
   renderResponses();
   renderTrial(null);
-  addLog("task", `→ Task ${s.block}/3: Condition ${s.condition}, ${plannedTask}/${plannedVariant}. Scene cleared.`);
+  if (s.block) {
+    addLog("task", `→ Task ${s.block}/${planLength(s)}: Condition ${s.condition}, ` +
+      `${plannedTask}/${plannedVariant}. Scene cleared.`);
+  }
+}
+
+function updateSessionBadge(s, done) {
+  const el = document.getElementById("sessionBadge");
+  if (!el || !s.participantId) return;
+  el.innerHTML = `<b>${s.participantId}</b> &nbsp; ` +
+    (done ? "all tasks done" : `Task ${s.block} of ${planLength(s)}`) +
+    ` &nbsp;<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
 }
 
 async function resetScene() {
@@ -531,8 +744,87 @@ let recordHeld = false;
 async function remoteRecord(on) {
   if (on === recordHeld) return;      // ignore repeat events from touch/mouse
   recordHeld = on;
-  await post("/record", { recording: on });
+  const res = await post("/record", { recording: on });
+  if (on && !res.headsetConnected) {
+    // Saying "STARTED" when nothing is listening is how this button looked
+    // broken: it always claimed to work.
+    addLog("t", "Hold-to-record sent, but NO HEADSET is reporting — " +
+      "nothing is recording. Check the app is open and connected.");
+    return;
+  }
   addLog("task", on ? "Remote recording STARTED" : "Remote recording stopped");
+}
+
+// The end of a session is a state, not just the absence of a trial: the tasks
+// are done but the questionnaire is still outstanding. Shown as its own card so
+// the panel never goes quiet with something still to do.
+function renderFinish(session) {
+  const card   = document.getElementById("finishCard");
+  const text   = document.getElementById("finishText");
+  const title  = document.getElementById("finishTitle");
+  const qLink  = document.getElementById("qLinkWrap");
+  const endBtn = document.getElementById("endStudyBtn");
+  if (!card || !session) return;
+
+  if (session.finishedAt) {
+    card.style.display = "block";
+    title.textContent = "Participant finished";
+    qLink.style.display = "none";
+    endBtn.style.display = "none";
+    text.innerHTML = `<b>${session.participantId}</b> is done — condition ` +
+      `${session.condition}, all six tasks and the questionnaire. Everything is in ` +
+      `<code>Logs/${session.participantId}.csv</code>. Enter the next participant ` +
+      `ID on the left to start the next session.`;
+    return;
+  }
+
+  if (session.awaitingQuestionnaire) {
+    card.style.display = "block";
+    qLink.style.display = "block";
+    // Shown alongside the questionnaire link rather than after it, because the
+    // debrief happens between the two and the researcher needs to see that
+    // there is still a step left.
+    endBtn.style.display = "block";
+    title.textContent = "All six tasks done";
+    text.innerHTML = `<b>${session.participantId}</b> has completed all six tasks in ` +
+      `condition <b>${session.condition}</b>. Hand over the questionnaire, then ` +
+      `<b>debrief them</b> — they must leave knowing the failures were scripted and ` +
+      `not their fault — and only then end the session.`;
+    // Pre-fill the participant's data so the researcher doesn't have to type it
+    // in — a wrong ID puts the answers in the wrong file.
+    const qUrl = `/questionnaire?pid=${encodeURIComponent(session.participantId)}&cond=${encodeURIComponent(session.condition)}`;
+    document.querySelectorAll("a[data-q-link]").forEach(a => a.href = qUrl);
+    return;
+  }
+  card.style.display = "none";
+}
+
+async function endStudy() {
+  if (!confirm("End this participant's session?\n\nOnly do this after the debrief.")) return;
+  const res = await post("/end-study", {});
+  const el = document.getElementById("mergeResult");
+  if (!res.ok) { if (el) el.textContent = res.error || "Failed."; return; }
+  if (el) el.innerHTML = `Saved <b>Logs/${res.file}</b> — ${res.rows} rows.`;
+  addLog("task", `Session ended — ${res.rows} rows in Logs/${res.file}`);
+}
+
+function renderStt(stt) {
+  const el = document.getElementById("sttStatus");
+  if (!el) return;
+  if (!stt || stt.stale) { el.textContent = ""; return; }
+  const secs = Math.round(stt.durationMs / 100) / 10;
+  if (stt.kind === "silent") {
+    el.innerHTML = '<span style="color:#ffb648;">● Heard ' + secs + 's of audio but no speech</span>' +
+      ' — the mic is capturing, so this is level, not connection. Speak closer or louder.';
+  } else if (stt.kind === "short") {
+    el.innerHTML = '<span style="color:#ffb648;">● Clip too short (' + secs + 's)</span>' +
+      ' — hold the trigger through the whole sentence.';
+  } else if (stt.kind === "error") {
+    el.innerHTML = '<span style="color:#ff5c5c;">● Transcription server unreachable</span>' +
+      ' — <span style="opacity:.8;">' + (stt.detail || "") + "</span>";
+  } else if (stt.kind === "sending") {
+    el.innerHTML = '<span style="color:#8aff9e;">● Transcribing ' + secs + "s…</span>";
+  }
 }
 
 function renderMic(mic) {
@@ -554,15 +846,31 @@ function renderMic(mic) {
     `<span class="sub">${bar > 3 ? "hearing sound" : "silent — speak while holding the trigger"}</span>`;
 }
 
+function setPractice(on) {
+  document.body.classList.toggle("practice", !!on);
+  const id = document.getElementById("participantId");
+  if (on && id && !/^practice/i.test(id.value)) {
+    id.value = "practice-" + new Date().toISOString().slice(11, 16).replace(":", "");
+  }
+  loadPlan();
+}
+
 async function startSession() {
   const participantId = document.getElementById("participantId").value.trim();
   const condition = document.getElementById("condition").value;
+  const practice = document.getElementById("practiceMode").checked;
+  // The one confirmation worth having: a real participant run as practice is
+  // data you cannot get back, because they only come once.
+  if (!practice && /^practice/i.test(participantId) &&
+      !confirm(`"${participantId}" looks like a practice ID but practice mode is OFF.\n\n` +
+               "This will be recorded as a real participant and will use an " +
+               "allocation slot. Continue?")) return;
   const block = currentBlock;
   if (!participantId) { alert("Enter a participant ID first."); return; }
 
   // Blank condition = follow the counterbalanced plan for this block.
   const res = await post("/session", {
-    participantId, block, condition: condition || undefined
+    participantId, block, condition: condition || undefined, practice
   });
   const s = res.session || {};
   // Follow the master table for this block so the Wizard doesn't look it up by hand.
@@ -573,11 +881,10 @@ async function startSession() {
   }
 
   currentBlock = s.block || 1;
-  document.getElementById("sessionBadge").innerHTML =
-    `<b>${participantId}</b> &nbsp; Task ${s.block} of 3 &nbsp;` +
-    `<span class="pill ${s.condition}">Condition ${s.condition}</span>`;
-  addLog("task", `Session: ${participantId} task ${s.block}/3 / Condition ${s.condition} / ${plannedTask}/${plannedVariant}`);
-  renderPlan(s.plan, participantId);
+  updateSessionBadge(s, false);
+  addLog("task", `Session: ${participantId} — condition ${s.condition}, ` +
+    `task ${s.block}/${planLength(s)} (${plannedTask}/${plannedVariant})`);
+  loadPlan();
   renderTaskChips();
   renderErrorChips();
   renderResponses();
@@ -592,15 +899,137 @@ async function logNote() {
   el.value = "";
 }
 
+/* ── Step guide ───────────────────────────────────────────────────────────
+   Derives the current step from trial state rather than tracking it locally,
+   so it stays correct after a refresh, after a mistake, or when two windows
+   are open. It has no state of its own to fall out of sync.
+
+   Deliberately does not disable the dimmed cards. Going back to re-read Step 1
+   mid-trial, or re-injecting from Step 2 after a second attempt, are normal
+   things to do; the guide answers "where am I" without taking the panel away. */
+const STEP_SCRIPT = {
+  setup: { n: 0, say: 'Enter the participant ID on the left, then <b>Start / Update Session</b>.' },
+  1: { n: 1, say: 'Read the briefing aloud, then press <b>▶ I\u2019ve read it — start trial</b>.' },
+  2: { n: 2, say: 'Let them speak. When they finish, press <b>INJECT ERROR</b>.' },
+  3: { n: 3, say: 'Now, before they try anything: ask <b>"why do you think that happened?"</b> word for word. Record the answer. Do not react, do not explain.' },
+  4: { n: 4, say: 'Click one button per repair attempt as it happens. When they have adapted or given up, press <b>INJECT SUCCESS</b>.' },
+  5: { n: 5, say: 'Press <b>✓ Next trial &amp; reset scene</b>. The next task loads itself.' },
+  done: { n: 0, say: 'All six tasks done. Hand over the <b>questionnaire</b>, then debrief, then <b>End session</b>.' },
+  finished: { n: 0, say: 'Participant finished. Everything is saved in their file.' }
+};
+
+function currentStep(status) {
+  const s = status && status.session;
+  if (!s || !s.participantId) return "setup";
+  if (s.finishedAt) return "finished";
+  if (s.awaitingQuestionnaire) return "done";
+  const t = status && status.trial;
+  // No trial, or the last one is finished: the next action is briefing the
+  // task and starting the trial.
+  if (!t || t.endedAt) return 1;
+  if (!t.injects) return 2;
+  // Resolved: nothing left but to move on. Checked before the attribution gate
+  // so a trial where the wizard went off-script still ends cleanly.
+  if (t.successInjected) return 5;
+  // Attribution is the gate between "ask why" and "watch what they do". It is
+  // the one irreversible step in a trial, so the guide holds here until it is
+  // recorded rather than advancing on the first repair.
+  if (t.attribution === null || t.attribution === undefined) return 3;
+  if (!t.noticedFeedback) return 3;
+  return 4;
+}
+
+let guideOn = false;
+function setGuide(on) {
+  guideOn = !!on;
+  document.body.classList.toggle("guide", guideOn);
+  try { localStorage.setItem("wozGuide", guideOn ? "1" : "0"); } catch (e) {}
+  const box = document.getElementById("guideToggle");
+  if (box) box.checked = guideOn;
+  applyStepGuide(lastStatus);
+}
+
+// The advance button reflects where the trial actually is, whether or not the
+// step guide is switched on — the guide is optional, this is not.
+function renderAdvance(status) {
+  const btn  = document.getElementById("advanceBtn");
+  const hint = document.getElementById("advanceHint");
+  if (!btn) return;
+  const t = status && status.trial;
+  const live = t && !t.endedAt;
+  const done = live && t.successInjected;
+
+  if (!live) {
+    btn.textContent = "✓ Next trial & reset scene";
+    btn.className = "btn-ghost";
+    btn.disabled = true;
+    if (hint) hint.textContent = "No trial running — start one in Step 1.";
+    return;
+  }
+  btn.disabled = false;
+  if (done) {
+    btn.textContent = "✓ Next trial & reset scene";
+    btn.className = "btn-accent";
+    if (hint) hint.textContent = "Ends this trial, writes its summary row, " +
+      "clears the scene and loads the next task.";
+  } else {
+    // Still mid-trial. Reachable, but it should not look like the next move.
+    btn.textContent = "End trial early";
+    btn.className = "btn-ghost";
+    if (hint) hint.textContent = "This trial is not resolved yet. Use this only " +
+      "if the trial has to be abandoned — you will be asked to confirm.";
+  }
+}
+
+// Wraps completeTrial so ending a trial before it resolves is a decision rather
+// than a slip. A trial ended early still writes its summary; it is not lost.
+async function advanceTrial() {
+  const t = lastStatus && lastStatus.trial;
+  if (t && !t.endedAt && !t.successInjected) {
+    if (!confirm("This trial has not been resolved — no success was injected.\n\n" +
+                 "End it anyway? The summary row is still written, and you can " +
+                 "exclude the trial later.")) return;
+    return completeTrial("abandoned");
+  }
+  return completeTrial("completed");
+}
+
+function applyStepGuide(status) {
+  const step = currentStep(status);
+  renderAdvance(status);
+  const isSetup = step === "setup";
+  document.body.classList.toggle("guide-setup", guideOn && isSetup);
+
+  const activeN = STEP_SCRIPT[step].n;
+  document.querySelectorAll(".card[data-step]").forEach(function (card) {
+    const n = parseInt(card.getAttribute("data-step"), 10);
+    card.classList.toggle("step-now", n === activeN);
+    card.classList.toggle("step-done", activeN > 0 && n < activeN);
+  });
+
+  const now = document.getElementById("guideNow");
+  if (now) {
+    now.innerHTML =
+      '<span style="color:var(--accent);font-weight:700;">' +
+      (isSetup ? "START HERE" : "STEP " + activeN) + "</span> &nbsp;" + STEP_SCRIPT[step].say;
+  }
+}
+
+let lastStatus = null;
 let lastTranscript = "";
 async function poll() {
   try {
     const s = await get("/status");
+    lastStatus = s;
     document.getElementById("liveDot").classList.add("live");
+    applyStepGuide(s);
+    renderFinish(s.session);
     renderMic(s.mic);
+    renderStt(s.stt);
     // Attempts tick up as the participant speaks, so the trial card is polled
     // rather than only refreshed on button presses.
     renderTrial(s.trial);
+
     if (s.plannedTask && s.plannedTask !== plannedTask) {
       plannedTask = s.plannedTask;
       renderTaskChips();
@@ -619,9 +1048,90 @@ async function poll() {
   }
 }
 
+// Restore the toggle before the first paint so the panel does not flash
+// un-guided on every refresh mid-session.
+try { setGuide(localStorage.getItem("wozGuide") === "1"); } catch (e) { setGuide(false); }
+
 loadTasks();
 poll();
 setInterval(poll, 1000);
+
+// ── Browser mic (Mac-side audio → STT, bypasses Quest) ───────────────────
+// Used for desk testing when the headset is off. Captures from the browser's
+// mic, resamples to 16 kHz PCM16-LE in an AudioWorklet, and streams binary
+// frames to the server over a WebSocket. The server feeds them directly into
+// the same STT pipeline the Quest uses.
+//
+// Worklet code is inlined as a Blob URL so there is no separate file to serve.
+const BROWSER_MIC_WORKLET_SRC = `
+class Pcm16Processor extends AudioWorkletProcessor {
+  constructor() { super(); this._buf = []; }
+  process(inputs) {
+    const inp = inputs[0] && inputs[0][0];
+    if (!inp) return true;
+    for (let i = 0; i < inp.length; i++) {
+      const s = Math.max(-1, Math.min(1, inp[i]));
+      this._buf.push(s < 0 ? s * 0x8000 : s * 0x7FFF);
+    }
+    if (this._buf.length >= 3200) {          // 100ms chunks at 16kHz
+      const out = new Int16Array(this._buf.splice(0, 3200));
+      this.port.postMessage(out.buffer, [out.buffer]);
+    }
+    return true;
+  }
+}
+registerProcessor('pcm16-processor', Pcm16Processor);
+`;
+
+let browserMicWs = null;
+let browserMicCtx = null;
+let browserMicStream = null;
+
+async function browserMicStart() {
+  if (browserMicWs) return;
+  const btn = document.getElementById('browserMicBtn');
+  try {
+    browserMicStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 }, video: false });
+  } catch (e) {
+    addLog('t', 'Browser mic permission denied: ' + e.message);
+    return;
+  }
+  const blob = new Blob([BROWSER_MIC_WORKLET_SRC], { type: 'application/javascript' });
+  const workletUrl = URL.createObjectURL(blob);
+  browserMicCtx = new AudioContext({ sampleRate: 16000 });
+  await browserMicCtx.audioWorklet.addModule(workletUrl);
+  URL.revokeObjectURL(workletUrl);
+
+  const src = browserMicCtx.createMediaStreamSource(browserMicStream);
+  const node = new AudioWorkletNode(browserMicCtx, 'pcm16-processor');
+  src.connect(node);
+
+  browserMicWs = new WebSocket(`ws://${location.hostname}:${location.port}/browser-mic`);
+  browserMicWs.binaryType = 'arraybuffer';
+  browserMicWs.onopen = () => {
+    btn.textContent = '● Recording (this Mac)';
+    btn.style.background = '#2a5a1a';
+    const tEl = document.getElementById('transcript');
+    if (tEl) { tEl.textContent = '● Recording… speak now'; tEl.classList.remove('empty'); tEl.style.color = '#8aff9e'; }
+    node.port.onmessage = (e) => {
+      if (browserMicWs && browserMicWs.readyState === WebSocket.OPEN)
+        browserMicWs.send(e.data);
+    };
+  };
+  browserMicWs.onclose = browserMicWs.onerror = () => browserMicStop();
+}
+
+function browserMicStop() {
+  if (browserMicWs) { try { browserMicWs.close(); } catch(_){} browserMicWs = null; }
+  if (browserMicCtx) { try { browserMicCtx.close(); } catch(_){} browserMicCtx = null; }
+  if (browserMicStream) { browserMicStream.getTracks().forEach(t => t.stop()); browserMicStream = null; }
+  const btn = document.getElementById('browserMicBtn');
+  if (btn) { btn.textContent = 'Hold to record (this Mac)'; btn.style.background = '#1a3a1a'; }
+  const tEl = document.getElementById('transcript');
+  if (tEl && tEl.style.color === 'rgb(138, 255, 158)') {
+    tEl.textContent = 'Processing…'; tEl.style.color = '';
+  }
+}
 </script>
 </body>
 </html>

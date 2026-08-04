@@ -6,6 +6,7 @@ TagManager:
   tags:
   - Teleport
   - game
+  - Interactable
   layers:
   - Default
   - TransparentFX

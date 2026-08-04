@@ -5,9 +5,35 @@ const DEFAULT_HTTP_URL = "http://130.136.2.161:50101/stt/transcribe";
 const DEFAULT_SAMPLE_RATE = 16000;
 const DEFAULT_CHANNELS = 1;
 const DEFAULT_BITS_PER_SAMPLE = 16;
-const DEFAULT_FINALIZE_AFTER_MS = 1200;
+const DEFAULT_FINALIZE_AFTER_MS = 800;
 const DEFAULT_MIN_AUDIO_MS = 300;
 const DEFAULT_MAX_AUDIO_MS = 20000;
+
+// RMS below this counts as silence. 16-bit PCM normalised to 0..1, so 0.012 is
+// roughly a quiet room with headset fan noise. Tunable via STT_SILENCE_RMS.
+const DEFAULT_SILENCE_RMS = 0.012;
+
+/**
+ * Mean amplitude of a PCM16 chunk, normalised to 0..1.
+ *
+ * This is what makes the finalize timer mean what its name says. The timer used
+ * to be reset by every arriving chunk, but chunks arrive continuously for as
+ * long as the mic is armed — silence is still audio data. So "silence timeout"
+ * only ever detected the absence of *packets*, which happens when the network
+ * stalls, not when the participant stops talking. Push-to-talk hid the bug
+ * because releasing the trigger finalizes explicitly; any mode that holds the
+ * mic open (the panel's record fallback, practice) waited the full maxAudioMs.
+ */
+function chunkRms(buffer, bitsPerSample) {
+    if (bitsPerSample !== 16 || buffer.length < 2) return 0;
+    const samples = Math.floor(buffer.length / 2);
+    let sumSquares = 0;
+    for (let i = 0; i < samples; i++) {
+        const s = buffer.readInt16LE(i * 2) / 32768;
+        sumSquares += s * s;
+    }
+    return Math.sqrt(sumSquares / samples);
+}
 
 function getNumber(name, fallback) {
     const value = Number(process.env[name]);
@@ -93,6 +119,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
         this.finalizeAfterMs = getNumber("STT_FINALIZE_AFTER_MS", DEFAULT_FINALIZE_AFTER_MS);
         this.minAudioMs = getNumber("STT_MIN_AUDIO_MS", DEFAULT_MIN_AUDIO_MS);
         this.maxAudioMs = getNumber("STT_MAX_AUDIO_MS", DEFAULT_MAX_AUDIO_MS);
+        this.silenceRms = getNumber("STT_SILENCE_RMS", DEFAULT_SILENCE_RMS);
         this.requireExplicitRecording = getBoolean("STT_REQUIRE_RECORDING", true);
 
         this.sessions = new Map();
@@ -105,7 +132,8 @@ class FasterWhisperHttpSttService extends EventEmitter {
             `[FasterWhisperHttpSttService] ready url=${this.url} ` +
             `format=${this.sampleRate}Hz/${this.channels}ch/${this.bitsPerSample}bit ` +
             `finalizeAfterMs=${this.finalizeAfterMs} minAudioMs=${this.minAudioMs} ` +
-            `maxAudioMs=${this.maxAudioMs} requireExplicitRecording=${this.requireExplicitRecording}`
+            `maxAudioMs=${this.maxAudioMs} silenceRms=${this.silenceRms} ` +
+            `requireExplicitRecording=${this.requireExplicitRecording}`
         );
     }
 
@@ -128,6 +156,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
                 timer: null,
                 transcribing: false,
                 recording: false,
+                heardVoice: false,   // guards against transcribing pure silence
             };
             this.sessions.set(peerUUID, session);
             this.childProcesses[peerUUID] = session;
@@ -158,7 +187,14 @@ class FasterWhisperHttpSttService extends EventEmitter {
 
         const durationMs = durationMsForBytes(session.bytes, this.sampleRate, this.channels, this.bitsPerSample);
 
-        this.resetFinalizeTimer(peerUUID, session);
+        // Arm the end-of-utterance timer on speech only. A chunk of silence must
+        // NOT push the deadline back, or the utterance never ends while the mic
+        // is held open. Silence arriving after speech is exactly what should let
+        // the timer run down and fire.
+        if (chunkRms(chunk, this.bitsPerSample) >= this.silenceRms) {
+            session.heardVoice = true;
+            this.resetFinalizeTimer(peerUUID, session);
+        }
 
         if (durationMs >= this.maxAudioMs) {
             this.finalizePeer(peerUUID, "max duration");
@@ -181,6 +217,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
         this.clearSession(peerUUID, "recording start");
         const session = this.getSession(peerUUID);
         session.recording = true;
+        session.heardVoice = false;
         console.log(`[FasterWhisperHttpSttService] recording start peerUUID=${peerUUID}`);
     }
 
@@ -207,17 +244,43 @@ class FasterWhisperHttpSttService extends EventEmitter {
 
         const chunks = session.chunks;
         const bytes = session.bytes;
+        const heardVoice = session.heardVoice;
         const durationMs = durationMsForBytes(bytes, this.sampleRate, this.channels, this.bitsPerSample);
 
         session.chunks = [];
         session.bytes = 0;
+        session.heardVoice = false;
         session.transcribing = true;
+
+        // Never send pure silence. Whisper does not return empty for silent
+        // audio — it hallucinates a plausible sentence ("Thank you.", "you"),
+        // which would land in the transcript as if the participant had spoken
+        // and would be counted as a repair attempt.
+        if (!heardVoice) {
+            console.log(
+                `[FasterWhisperHttpSttService] discard silent utterance peerUUID=${peerUUID} ` +
+                `durationMs=${durationMs.toFixed(0)} reason=${reason}`
+            );
+            // Also announced, not just logged. An utterance dropped here looks
+            // identical from the control panel to one that was never spoken:
+            // the transcript simply never changes. Saying which happened is the
+            // difference between "the mic is dead" and "it heard only silence".
+            this.emit("diagnostic", {
+                kind: "silent", peerUUID, durationMs: Math.round(durationMs), reason
+            });
+            session.transcribing = false;
+            this.deleteIdleSession(peerUUID, session);
+            return false;
+        }
 
         if (durationMs < this.minAudioMs) {
             console.log(
                 `[FasterWhisperHttpSttService] discard short utterance peerUUID=${peerUUID} ` +
                 `durationMs=${durationMs.toFixed(0)} bytes=${bytes}`
             );
+            this.emit("diagnostic", {
+                kind: "short", peerUUID, durationMs: Math.round(durationMs), reason
+            });
             session.transcribing = false;
             this.deleteIdleSession(peerUUID, session);
             return false;
@@ -231,12 +294,21 @@ class FasterWhisperHttpSttService extends EventEmitter {
             `audioMs=${durationMs.toFixed(0)} pcmBytes=${bytes} wavBytes=${wavBuffer.length}`
         );
 
+        this.emit("diagnostic", {
+            kind: "sending", peerUUID, durationMs: Math.round(durationMs), reason
+        });
+
         try {
             const responseText = await postWav(this.url, wavBuffer);
             console.log(`[FasterWhisperHttpSttService] response peerUUID=${peerUUID}: ${responseText}`);
             this.emit("response", Buffer.from(responseText), peerUUID);
         } catch (error) {
             console.error(`[FasterWhisperHttpSttService] request error peerUUID=${peerUUID}: ${error.message}`);
+            // A transcription server that is down or unreachable produced no
+            // visible symptom at all beyond an empty transcript.
+            this.emit("diagnostic", {
+                kind: "error", peerUUID, detail: error.message, url: this.url
+            });
         } finally {
             session.transcribing = false;
             if (session.bytes > 0) {

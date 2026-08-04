@@ -110,3 +110,14 @@ Logs/
 # voice, which is personal data no consent form here covers for redistribution.
 Recordings/
 *.slnx
+
+# Generated poster artefacts — rebuild with Server/scripts/build-poster.sh
+study-poster.pdf
+study-qr.svg
+study-qr.png
+study-site/poster-print.html
+study-site/poster-built.html
+Unity/OldAgentVoice_unused/
+
+# Participant landing page — separate repo, pushed to abyyworld/vr-voice-study
+study-site/

@@ -70,16 +70,51 @@
 <script>
 // Pre-session background questionnaire. Topics come from the project brief;
 // wording drafted for this study (not a published instrument).
+// Covariates, not hypothesis tests. Each one earns its place by being something
+// a reviewer could otherwise offer as an alternative explanation for the result,
+// and all of it is asked BEFORE the headset goes on, where extra items cost
+// nothing in fatigue.
 const DEMOGRAPHICS = [
   { id: "age", text: "Age range",
     options: ["18–24", "25–34", "35–44", "45–54", "55+"] },
   { id: "gender", text: "Gender (optional)", free: true, optional: true },
+
+  // The dependent variable is how someone phrases a spoken request and how they
+  // rephrase it after a failure. A non-native speaker does both differently, so
+  // without this the single most obvious confound in a speech study is
+  // unmeasured — and "were your participants native speakers?" is the first
+  // question a reviewer asks.
+  { id: "native_language", text: "What is your first language?", free: true },
+  { id: "english_proficiency",
+    text: "How would you rate your spoken English?",
+    options: ["Native speaker", "Fluent / near-native", "Advanced",
+              "Intermediate", "Basic"] },
+
   { id: "vr_experience", text: "How would you rate your prior experience with VR / head-mounted displays?",
     options: ["None", "A little (tried it a few times)", "Moderate (use occasionally)", "Extensive (use regularly)"] },
   { id: "tech_background", text: "Do you have a programming / technical background?",
     options: ["None", "Some (e.g. one course)", "Moderate", "Extensive (e.g. degree/job in CS)"] },
   { id: "assistant_use", text: "How often do you use voice assistants or AI chatbots (e.g. Siri, Alexa, ChatGPT)?",
-    options: ["Never", "Rarely", "Sometimes", "Often", "Daily"] }
+    options: ["Never", "Rarely", "Sometimes", "Often", "Daily"] },
+
+  // Someone who already expects voice systems to fail attributes differently
+  // from someone who expects them to work. Directly relevant to a study about
+  // where people place blame.
+  { id: "assistant_reliability",
+    text: "When you ask a voice assistant or chatbot for something, how often does it do what you meant?",
+    options: ["Almost never", "Sometimes", "About half the time", "Usually", "Almost always",
+              "I don't use them"] },
+
+  { id: "handedness", text: "Are you left- or right-handed?",
+    options: ["Right-handed", "Left-handed", "Both / ambidextrous"] },
+
+  // Baseline for the post-session item. A single pre/post pair gives a change
+  // score, which is what the withdrawal criterion and the VR-reporting
+  // convention both need — and costs one question rather than sixteen.
+  { id: "discomfort_pre",
+    text: "Right now, before we start: do you feel any dizziness, nausea or eye strain?",
+    options: ["0 — none at all", "1", "2", "3", "4", "5",
+              "6", "7", "8", "9", "10 — severe"] }
 ];
 
 function render() {

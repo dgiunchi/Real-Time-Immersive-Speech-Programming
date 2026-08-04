@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using Ubiq.Messaging;
 using UnityEngine;
+using UnityEngine.Networking;
 
 /// <summary>
 /// Executes study outcomes described by the server.
@@ -76,6 +78,20 @@ public class StudyOutcomes : MonoBehaviour
         public string agentPre = "";   // condition C: spoken before the result
         public string agentPost = "";  // condition C: spoken after the result
 
+        // Used to look up pre-recorded voice clips from Resources/AgentVoice/:
+        //   {taskKey}_{variantKey}_pre.wav   — played during the thinking delay
+        //   {taskKey}_{variantKey}_post.wav  — played with the explanation
+        //
+        // Keyed on variant as well as task because the agent's lines name the
+        // object ("I made the lantern, but you didn't say what colour…") and
+        // each variant uses a different one. A clip keyed on task alone would
+        // speak the wrong noun for two thirds of participants — audible, and
+        // exactly the kind of thing that makes a participant suspect a wizard.
+        //
+        // Clips are optional; the agent falls back to subtitles when absent.
+        public string taskKey = "";
+        public string variantKey = "";
+
         public string value = "";      // payload for condition/mic actions
     }
 
@@ -85,6 +101,92 @@ public class StudyOutcomes : MonoBehaviour
     void Start()
     {
         context = NetworkScene.Register(this, networkId);
+        SnapshotAuthoredScene();
+    }
+
+    // ── Authored scene protection ─────────────────────────────────────────────
+    //
+    // Everything present before the study spawns anything belongs to the scene,
+    // not to a trial, and must survive every reset. Recorded once at startup by
+    // instance id, because names are not unique and tags are shared with the
+    // objects trials create.
+
+    private static readonly HashSet<int> authored = new HashSet<int>();
+    private static bool authoredTaken;
+
+    private static void SnapshotAuthoredScene()
+    {
+        if (authoredTaken) return;
+        authoredTaken = true;
+        foreach (var go in FindObjectsOfType<GameObject>(true))
+            if (go) authored.Add(go.GetInstanceID());
+    }
+
+    private static bool IsAuthored(GameObject go)
+    {
+        return go && authored.Contains(go.GetInstanceID());
+    }
+
+    // Sends the actual world-space position of a spawned/moved object back to
+    // the server control panel, so the CSV has ground-truth coordinates rather
+    // than the approximate labels ("floor", "hand") that the server knew in advance.
+    private IEnumerator ReportSceneEvent(string type, string name, string shape, Vector3 pos)
+    {
+        var body = $"{{\"type\":\"{type}\",\"name\":\"{name}\",\"shape\":\"{shape}\"," +
+                   $"\"x\":{pos.x:F3},\"y\":{pos.y:F3},\"z\":{pos.z:F3}}}";
+        // The study machine's real address when discovery has found it, and
+        // 127.0.0.1 otherwise — which reaches the Mac only over the USB tunnel.
+        // On an untethered headset localhost is the headset, so without this the
+        // POST would quietly go nowhere and the confirmed-coordinate rows would
+        // just never appear.
+        var host = ServerAutoDiscovery.ResolvedHost ?? "127.0.0.1";
+        using var req = new UnityWebRequest($"http://{host}:8181/scene-event", "POST");
+        req.uploadHandler   = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
+        req.downloadHandler = new DownloadHandlerBuffer();
+        req.SetRequestHeader("Content-Type", "application/json");
+        yield return req.SendWebRequest();
+        // Fire-and-forget: a failed POST is not a study error, just a missing log row.
+    }
+
+    /// <summary>
+    /// FindGameObjectsWithTag throws outright when the tag is not declared in
+    /// the project's TagManager, and an uncaught throw here takes the rest of
+    /// the reset with it. Returning nothing keeps a missing tag survivable.
+    /// </summary>
+    private static GameObject[] TaggedObjects(string tag)
+    {
+        try { return GameObject.FindGameObjectsWithTag(tag); }
+        catch (UnityException)
+        {
+            Debug.LogWarning($"[StudyOutcomes] tag '{tag}' is not defined in " +
+                             "ProjectSettings/TagManager — add it or objects will leak.");
+            return Array.Empty<GameObject>();
+        }
+    }
+
+    /// <summary>
+    /// Assigning an undeclared tag throws, and these assignments sit in the
+    /// middle of outcome execution: one throw skipped the rest of the spawn AND
+    /// the feedback that explains it, so the participant saw a failure with no
+    /// explanation and the condition looked broken. Tagging is a convenience for
+    /// finding objects later — never a reason to lose an outcome.
+    /// </summary>
+    private static void SafeTag(GameObject go, string tag)
+    {
+        if (!go) return;
+        try { go.tag = tag; }
+        catch (UnityException)
+        {
+            Debug.LogWarning($"[StudyOutcomes] tag '{tag}' is not defined in " +
+                             "ProjectSettings/TagManager — continuing untagged.");
+        }
+    }
+
+    private static bool HasTag(GameObject go, string tag)
+    {
+        if (!go) return false;
+        try { return go.CompareTag(tag); }
+        catch (UnityException) { return false; }
     }
 
     // ── Origin helpers ────────────────────────────────────────────────────────
@@ -156,8 +258,10 @@ public class StudyOutcomes : MonoBehaviour
             var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
             if (agent)
             {
-                agent.SpeakCustom(spec.agentPre);
-                wait = Mathf.Max(wait, EstimateSpeech(spec.agentPre) + 0.3f);
+                var clip = LoadAgentClip(spec.taskKey, spec.variantKey, "pre");
+                agent.SpeakCustom(spec.agentPre, clip);
+                float dur = clip ? clip.length : EstimateSpeech(spec.agentPre);
+                wait = Mathf.Max(wait, dur + 0.3f);
             }
         }
 
@@ -169,6 +273,30 @@ public class StudyOutcomes : MonoBehaviour
 
     private static float EstimateSpeech(string text) =>
         string.IsNullOrEmpty(text) ? 0f : Mathf.Max(2f, text.Length * 0.055f);
+
+    /// <summary>
+    /// Looks for Resources/AgentVoice/{taskKey}_{variantKey}_{stage}.wav, or
+    /// null when absent. Naming: task1_v1_pre, task1_v1_post, task1_v2_pre …
+    ///
+    /// Falls back to the variant-less name so a single clip per task still
+    /// works for any task whose wording does not vary — and so an older clip
+    /// set keeps playing rather than silently going quiet.
+    ///
+    /// Dropping new WAV files into Assets/Resources/AgentVoice/ and rebuilding
+    /// is all that is needed to add or replace voice — no code or Inspector
+    /// changes. The agent falls back to subtitles when the clip is missing, so
+    /// adding voice is incremental and never breaks condition C.
+    /// </summary>
+    private static AudioClip LoadAgentClip(string taskKey, string variantKey, string stage)
+    {
+        if (string.IsNullOrEmpty(taskKey)) return null;
+        if (!string.IsNullOrEmpty(variantKey))
+        {
+            var byVariant = Resources.Load<AudioClip>($"AgentVoice/{taskKey}_{variantKey}_{stage}");
+            if (byVariant) return byVariant;
+        }
+        return Resources.Load<AudioClip>($"AgentVoice/{taskKey}_{stage}");
+    }
 
     // ── Outcome execution ─────────────────────────────────────────────────────
     public void Apply(OutcomeSpec spec)
@@ -200,7 +328,7 @@ public class StudyOutcomes : MonoBehaviour
 
             var go = Primitive(ParseShape(spec.shape), p,
                 new Vector3(spec.scaleX, spec.scaleY, spec.scaleZ), ParseColor(spec.color));
-            go.tag = "Interactable";
+            SafeTag(go, "Interactable");
 
             if (!spec.useCollider)
             {
@@ -214,6 +342,7 @@ public class StudyOutcomes : MonoBehaviour
                 rb.useGravity = false;
                 rb.AddForce(Vector3.forward * 2f, ForceMode.VelocityChange);
             }
+            StartCoroutine(ReportSceneEvent("object-spawned", go.name, spec.shape, p));
         }
     }
 
@@ -224,10 +353,11 @@ public class StudyOutcomes : MonoBehaviour
     // name. Errors address these by name, which is what lets the server express
     // "move the cube instead of the sphere" without knowing the scene layout.
 
-    private const string SphereName = "StudySphere";
-    private const string CubeName   = "StudyCube";
+    private const string SphereName   = "StudySphere";
+    private const string CubeName     = "StudyCube";
+    private const string CampfireName = "StudyCampfire";
 
-    /// Creates the sphere and cube if they are missing. Idempotent.
+    /// Creates the sphere, cube and campfire if they are missing. Idempotent.
     private void EnsureSceneObjects()
     {
         Vector3 basePos = OriginPos + OriginFwd * 1.6f;
@@ -238,15 +368,93 @@ public class StudyOutcomes : MonoBehaviour
             var go = Primitive(PrimitiveType.Sphere, basePos - right * 0.5f + Vector3.up * 0.1f,
                 Vector3.one * 0.22f, null);
             go.name = SphereName;
-            go.tag = "Interactable";
+            SafeTag(go, "Interactable");
         }
         if (!FindNamed(CubeName))
         {
             var go = Primitive(PrimitiveType.Cube, basePos + right * 0.5f + Vector3.up * 0.1f,
                 Vector3.one * 0.22f, null);
             go.name = CubeName;
-            go.tag = "Interactable";
+            SafeTag(go, "Interactable");
         }
+        EnsureCampfire();
+    }
+
+    /// <summary>
+    /// The briefing says "above the campfire", so a campfire has to be visible.
+    /// The build scene contains none, and the previous fallback was an empty
+    /// GameObject — a position with nothing to look at. Every task that refers
+    /// to the campfire then pointed at thin air, and an object placed correctly
+    /// "above" it looked like it had been dropped in an empty field.
+    ///
+    /// Built rather than authored so the scene needs no new assets: a dark cone
+    /// of logs, an emissive flame and a point light read as a campfire from any
+    /// angle. Only created when the scene genuinely has none, so a real
+    /// authored campfire always wins.
+    /// </summary>
+    private void EnsureCampfire()
+    {
+        // Cheap check first: scanning every Transform in the scene is not
+        // something to do on each outcome just to learn what we already built.
+        if (FindNamed(CampfireName)) return;
+        if (FindAuthoredCampfire()) return;
+
+        Vector3 at = OriginPos + OriginFwd * 3.2f;
+        at.y = 0.05f;
+
+        var root = new GameObject(CampfireName);
+        root.transform.SetParent(CreatedRoot, false);
+        root.transform.position = at;
+
+        var logs = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        logs.name = "Logs";
+        logs.transform.SetParent(root.transform, false);
+        logs.transform.localScale = new Vector3(0.55f, 0.06f, 0.55f);
+        var logRenderer = logs.GetComponent<Renderer>();
+        if (logRenderer) logRenderer.material.color = new Color(0.22f, 0.14f, 0.09f);
+
+        var flame = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        flame.name = "Flame";
+        flame.transform.SetParent(root.transform, false);
+        flame.transform.localPosition = new Vector3(0f, 0.28f, 0f);
+        flame.transform.localScale = new Vector3(0.3f, 0.3f, 0.3f);
+        var flameCollider = flame.GetComponent<Collider>();
+        if (flameCollider) flameCollider.enabled = false;
+        var flameRenderer = flame.GetComponent<Renderer>();
+        if (flameRenderer)
+        {
+            var material = flameRenderer.material;
+            material.color = new Color(1f, 0.55f, 0.12f);
+            material.EnableKeyword("_EMISSION");
+            material.SetColor("_EmissionColor", new Color(1f, 0.45f, 0.05f) * 2f);
+        }
+
+        var light = new GameObject("Firelight");
+        light.transform.SetParent(root.transform, false);
+        light.transform.localPosition = new Vector3(0f, 0.45f, 0f);
+        var point = light.AddComponent<Light>();
+        point.type = LightType.Point;
+        point.color = new Color(1f, 0.6f, 0.25f);
+        point.range = 6f;
+        point.intensity = 2.2f;
+    }
+
+    /// A campfire that belongs to the authored scene, if there is one.
+    private Transform FindAuthoredCampfire()
+    {
+        foreach (var t in FindObjectsOfType<Transform>())
+        {
+            if (!t || IsStudyCreated(t)) continue;
+            string n = t.name.ToLowerInvariant();
+            if (n.Contains("campfire") || n.Contains("bonfire") || n.Contains("fireplace"))
+                return t;
+        }
+        return null;
+    }
+
+    private static bool IsStudyCreated(Transform t)
+    {
+        return createdRoot && t.IsChildOf(createdRoot);
     }
 
     private GameObject FindNamed(string n)
@@ -285,20 +493,14 @@ public class StudyOutcomes : MonoBehaviour
     /// participant stands in so the task still reads correctly.
     private Transform FindCampfire()
     {
-        foreach (var t in FindObjectsOfType<Transform>())
-        {
-            string n = t.name.ToLowerInvariant();
-            if (n.Contains("campfire") || n.Contains("bonfire") || n.Contains("fireplace"))
-                return t;
-        }
-        var anchor = FindNamed("StudyCampfireAnchor");
-        if (!anchor)
-        {
-            anchor = new GameObject("StudyCampfireAnchor");
-            anchor.transform.SetParent(CreatedRoot, false);
-            anchor.transform.position = OriginPos + OriginFwd * 3.2f;
-        }
-        return anchor.transform;
+        var authored = FindAuthoredCampfire();
+        if (authored) return authored;
+
+        // Otherwise the study builds one, so the word always has something
+        // visible behind it rather than an invisible anchor point.
+        EnsureCampfire();
+        var built = FindNamed(CampfireName);
+        return built ? built.transform : null;
     }
 
     // ── Move ──────────────────────────────────────────────────────────────────
@@ -316,6 +518,7 @@ public class StudyOutcomes : MonoBehaviour
         // Growing mid-flight is the "plus extra" error; 1 leaves the size alone.
         glide.scaleMultiplier = spec.scaleMultiplier;
         glide.spinAfterArrival = spec.spin;
+        StartCoroutine(ReportSceneEvent("object-moved", mover.name, spec.target, to));
     }
 
     /// Where a move should end up, including the two error geometries:
@@ -396,7 +599,7 @@ public class StudyOutcomes : MonoBehaviour
         var ball = FindInteractable();
         GameObject go = ball ? ball.gameObject
             : Primitive(PrimitiveType.Sphere, ResolvePosition("hand"), Vector3.one * 0.15f, null);
-        go.tag = "Interactable";
+        SafeTag(go, "Interactable");
 
         foreach (var old in go.GetComponents<StudyOrbit>()) Destroy(old);   // don't stack orbits
 
@@ -441,7 +644,7 @@ public class StudyOutcomes : MonoBehaviour
             if (!string.IsNullOrWhiteSpace(spec.agentPost))
             {
                 var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
-                if (agent) agent.SpeakCustom(spec.agentPost);
+                if (agent) agent.SpeakCustom(spec.agentPost, LoadAgentClip(spec.taskKey, spec.variantKey, "post"));
             }
         }
         else
@@ -461,11 +664,25 @@ public class StudyOutcomes : MonoBehaviour
 
         RestoreColours();
 
+        // Destroy() only takes effect at the end of the frame, but the rebuild
+        // below runs immediately and looks the objects up by name. Detaching
+        // first is what makes the container actually empty *now*; without it
+        // EnsureSceneObjects finds the doomed sphere and cube, concludes they
+        // already exist, and creates nothing — leaving an empty scene after
+        // every reset, which is to say at the start of every trial.
         for (int i = CreatedRoot.childCount - 1; i >= 0; i--)
-            Destroy(CreatedRoot.GetChild(i).gameObject);
+        {
+            var child = CreatedRoot.GetChild(i);
+            child.SetParent(null, false);
+            Destroy(child.gameObject);
+        }
 
-        foreach (var go in GameObject.FindGameObjectsWithTag("Interactable")) Destroy(go);
-        foreach (var go in GameObject.FindGameObjectsWithTag("game")) Destroy(go);
+        // Only what this study spawned. The sweep used to take everything
+        // carrying these tags, which in this scene means SphereTraining, Cube
+        // and CubeTraining — authored objects that nothing ever puts back. One
+        // reset permanently stripped the scene the briefing describes.
+        foreach (var go in TaggedObjects("Interactable")) if (!IsAuthored(go)) Destroy(go);
+        foreach (var go in TaggedObjects("game"))         if (!IsAuthored(go)) Destroy(go);
 
         var panel = FindObjectOfType<FeedbackPanelController>(true);
         if (panel) panel.Clear();
@@ -552,7 +769,7 @@ public class StudyOutcomes : MonoBehaviour
     private Renderer FindInteractable()
     {
         foreach (var r in FindObjectsOfType<Renderer>())
-            if (r.gameObject.CompareTag("Interactable")) return r;
+            if (HasTag(r.gameObject, "Interactable")) return r;
         return null;
     }
 

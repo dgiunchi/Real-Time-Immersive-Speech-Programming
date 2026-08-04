@@ -210,12 +210,15 @@ One trial per task, six measured tasks per participant.
 6. Ask **"Why do you think that happened?"** and click their answer in Step 3.
    Ask it the same way every time and do not react to whether they are right.
 7. They try again:
-   - adapted → **INJECT SUCCESS** (silent), then **✓ End trial**
+   - adapted → **INJECT SUCCESS** (silent), then **✓ End trial & load next**
    - same mistake → **INJECT ERROR again**; do not hand them the answer
-8. Click **⏭ Next task** and repeat. Six tasks, then the questionnaire.
+8. Repeat. Ending a trial loads the next task by itself — there is no separate
+   "next task" step. After the sixth, the panel asks for the post-condition
+   questionnaire, and submitting it ends the session.
 
 Every trial starts from an identical scene: trial objects removed, environment
-colours restored, sphere and cube rebuilt, agent returned to idle.
+colours restored, sphere, cube and campfire rebuilt, agent returned to idle.
+Objects that belong to the scene rather than to a trial are never destroyed.
 
 ---
 
@@ -485,9 +488,9 @@ that part is on paper/audio, not in this system.
 
 ## The event log
 
-`Logs/<participant>_events.csv`. One row per state change, written from the
-moment the session is created and before the participant has done anything.
-Two worked examples are committed:
+The `recordType=event` rows of `Logs/<participant>.csv`. One row per state
+change, written from the moment the session is created and before the
+participant has done anything. Two worked examples are committed:
 
 - [docs/example_events.csv](docs/example_events.csv) - condition C, task 4. Head
   pose shows the participant turning round after the agent tells them where the
@@ -537,22 +540,35 @@ All files are written to a `Logs/` folder at the top of the project:
 ```
 Real-Time-Immersive-Speech-Programming-…/Logs/
 ```
-- **`trials.csv` — the primary analysis file.** One row per trial:
-  `participantId, conditionOrder, block, condition, trial, task, variant,
-  errorType, startTime, endTime, durationMs, completionStatus, attempts, injects`.
-  This is everything the design calls for in one place — no joining needed for
-  per-condition comparisons.
-- `sessions.csv` — one row per block start, with the participant's condition and
-  full assigned plan (task, variant and error pair)
-- `<PID>_events.csv` — the fine-grained trace. One row per event with
-  `timestamp, participantId, condition, block, trial, task, variant, errorType,
-  attempt, eventType, msSinceTrialStart, detail`. Event types include
-  `transcript` (what they said), `inject` (what you triggered),
-  `feedback-shown` (what they were actually told), `trial-start`, `trial-end`,
-  `block-advance`, `note`.
-- `<PID>_background.csv` — pre-session demographics (one row)
-- `<PID>_condition.csv` — post-condition questionnaires (three rows, one per
-  condition)
+**One file per participant.** `Logs/P01.csv` is everything P01 did, in the order
+they did it. Nothing about a participant lives anywhere else.
+
+The `recordType` column says what each row is:
+
+- `session-start` — the assigned plan: condition, task order, variant per task.
+- `event` — the fine-grained trace, one row per state change. `eventType`
+  distinguishes them: `transcript` (what they said), `inject` (what you
+  triggered), `feedback-shown` (what they were actually told), `trial-start`,
+  `trial-end`, `attribution`, `repair-strategy`, `head-pose`, `note`, and the
+  `stt-silent` / `stt-error` warnings.
+- `trial-summary` — **the primary analysis rows.** One per completed trial,
+  carrying `taskOrder, condition, task, variant, scenario, durationMs,
+  completionStatus, attempts, injects, attribution, correctAttribution,
+  attributionCorrect, noticedFeedback, firstRepairStrategy, repairSequence,
+  wastedRepairs, msToFirstRepair, maxUtteranceSimilarity`. Filter to these and
+  you have the analysis table — no joining.
+- `questionnaire` — one row per submitted form. Items are held as JSON in the
+  `answers` column, so background and post-condition forms share the schema
+  regardless of which items each asks.
+
+Every row carries its own full context (participant, condition, block, trial,
+task, variant, attempt, three clocks), so no analysis step depends on carrying
+state forward from earlier rows. The schema is wide and most columns are blank
+in most rows; that is the price of one file per participant, and it is worth it.
+
+Superseded files — anything written before a column change, and the older
+multi-file layout — are moved to `Logs/archive/` rather than left beside the
+live ones.
 
 These CSVs are git-ignored so participant data never gets committed.
 

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Session Replay</title>
+<style>
+  :root {
+    --bg:#0d1015; --panel:#161b24; --panel2:#1e2531; --line:#2c3542;
+    --text:#e8ecf3; --muted:#8d97a8; --accent:#4f8cff;
+    --ok:#2ecc71; --err:#ff5c5c; --warn:#ffb648; --wasted:#ff3b3b;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif; font-size:15px; }
+  header { padding:16px 26px; background:var(--panel); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:18px; flex-wrap:wrap; position:sticky; top:0; z-index:10; }
+  h1 { font-size:17px; margin:0; font-weight:600; }
+  select { padding:8px 11px; background:var(--panel2); border:1px solid var(--line);
+    color:var(--text); border-radius:7px; font-size:14px; }
+  .wrap { padding:26px; max-width:1080px; margin:0 auto; }
+
+  /* ── Headline numbers ─────────────────────────────────────────────────
+     The three figures the study exists to produce, at the size they deserve.
+     A spreadsheet makes these equal in weight to a timestamp; they are not. */
+  .heads { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+    gap:14px; margin-bottom:26px; }
+  .head { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; }
+  .head .n { font-size:40px; font-weight:800; line-height:1.05; letter-spacing:-1px; }
+  .head .lbl { font-size:12px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.6px; margin-top:6px; }
+  .head .sub { font-size:12.5px; color:var(--muted); margin-top:8px; line-height:1.45; }
+  .head.bad  .n { color:var(--wasted); }
+  .head.good .n { color:var(--ok); }
+
+  .trial { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    margin-bottom:16px; overflow:hidden; }
+  .trial > summary { padding:14px 18px; cursor:pointer; display:flex; align-items:center;
+    gap:12px; flex-wrap:wrap; list-style:none; }
+  .trial > summary::-webkit-details-marker { display:none; }
+  .trial[open] > summary { border-bottom:1px solid var(--line); }
+  .tnum { font-weight:800; font-size:15px; min-width:58px; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11.5px; font-weight:700; }
+  .pill.A{background:#555} .pill.B{background:#2a6cc9} .pill.C{background:#7a4fd0}
+  .pill.user{background:#3d5a2a} .pill.system{background:#5a3a2a}
+  .pill.hit{background:var(--ok);color:#04210f} .pill.miss{background:var(--err)}
+  .spacer { margin-left:auto; color:var(--muted); font-size:12.5px; }
+
+  .body { padding:6px 18px 18px; }
+  .ev { display:grid; grid-template-columns:78px 128px 1fr; gap:12px; padding:7px 0;
+    border-bottom:1px solid rgba(255,255,255,.05); font-size:13.5px; align-items:baseline; }
+  .ev:last-child { border-bottom:none; }
+  .ev .t { color:var(--muted); font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+  .ev .k { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); }
+  .ev.speech .k    { color:var(--accent); }
+  .ev.speech .d    { font-size:15px; }
+  .ev.inject .k    { color:var(--warn); }
+  .ev.feedback .d  { color:#ffd9a8; font-style:italic; }
+  .ev.attr .k      { color:#c9a96e; }
+  .ev.repair .k    { color:#9fd8b4; }
+  .ev.scene .k     { color:#7f8ea3; }
+  .ev.scene .d     { color:var(--muted); font-size:12.5px; }
+  .ev.wasted { background:rgba(255,59,59,.10); border-radius:7px; padding-left:8px; margin-left:-8px; }
+  .ev.wasted .k, .ev.wasted .d { color:#ff9b9b; font-weight:600; }
+
+  /* The cascade: repeated identical attempts, drawn so the waste is countable
+     at a glance rather than reconstructed from a pipe-delimited string. */
+  .cascade { display:flex; gap:7px; flex-wrap:wrap; margin:12px 0 4px; }
+  .step { padding:6px 12px; border-radius:8px; font-size:12.5px; font-weight:600;
+    background:var(--panel2); border:1px solid var(--line); }
+  .step.verbatim { background:rgba(255,59,59,.18); border-color:#7a2b2b; color:#ff9b9b; }
+  .note { color:var(--muted); font-size:12.5px; margin:10px 0 0; line-height:1.5; }
+  .empty { color:var(--muted); padding:50px 0; text-align:center; }
+  code { background:var(--panel2); padding:2px 6px; border-radius:5px; font-size:12.5px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Session Replay</h1>
+  <select id="pick" onchange="load(this.value)"></select>
+  <span class="spacer" id="meta"></span>
+</header>
+
+<div class="wrap">
+  <div class="heads" id="heads"></div>
+  <div id="trials"></div>
+</div>
+
+<script>
+// Reads a finished participant file and lays it out as what actually happened,
+// in order. Everything here is derived from the CSV — nothing is recomputed
+// differently from the way the analysis would compute it, so what this shows
+// and what gets reported cannot drift apart.
+
+const $ = id => document.getElementById(id);
+let rows = [];
+
+async function boot() {
+  const r = await fetch("/participants").then(r => r.json());
+  const sel = $("pick");
+  sel.innerHTML = r.participants.map(p => `<option>${p}</option>`).join("")
+    || `<option value="">no logs yet</option>`;
+  const pick = r.live && r.participants.includes(r.live) ? r.live : r.participants[0];
+  if (pick) { sel.value = pick; load(pick); }
+}
+
+async function load(pid) {
+  if (!pid) return;
+  const res = await fetch("/replay-data?pid=" + encodeURIComponent(pid)).then(r => r.json());
+  if (res.error) { $("trials").innerHTML = `<div class="empty">${res.error}</div>`; return; }
+  rows = res.rows;
+  render();
+}
+
+const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
+const clock = ms => {
+  const n = Number(ms);
+  if (!Number.isFinite(n)) return "";
+  const s = Math.floor(n / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2,"0")}:${String(s % 60).padStart(2,"0")}`;
+};
+
+function render() {
+  const summaries = rows.filter(r => r.recordType === "trial-summary");
+  const cond = (rows.find(r => r.condition) || {}).condition || "?";
+
+  // Headline figures. Misattribution is the claim; wasted turns are its cost.
+  const scored  = summaries.filter(r => r.attributionCorrect === "yes" || r.attributionCorrect === "no");
+  const wrong   = scored.filter(r => r.attributionCorrect === "no");
+  const wasted  = summaries.reduce((a, r) => a + (Number(r.wastedRepairs) || 0), 0);
+  const sysWrong = scored.filter(r => r.attributionCorrect === "no" && r.correctAttribution === "system");
+
+  $("meta").textContent =
+    `${summaries.length} trials · condition ${cond} · ${rows.length} logged rows`;
+
+  $("heads").innerHTML = `
+    <div class="head ${wrong.length ? "bad" : "good"}">
+      <div class="n">${wrong.length}/${scored.length || "–"}</div>
+      <div class="lbl">Misdiagnosed</div>
+      <div class="sub">Trials where the participant named the wrong cause.</div>
+    </div>
+    <div class="head ${wasted ? "bad" : "good"}">
+      <div class="n">${wasted}</div>
+      <div class="lbl">Wasted turns</div>
+      <div class="sub">Repeating the same request. It never works — this is what
+        believing the wrong thing cost them.</div>
+    </div>
+    <div class="head">
+      <div class="n">${sysWrong.length}</div>
+      <div class="lbl">Blamed themselves</div>
+      <div class="sub">System-caused failures the participant took responsibility
+        for. The asymmetry the study is about.</div>
+    </div>`;
+
+  $("trials").innerHTML = summaries.length
+    ? summaries.map(renderTrial).join("")
+    : `<div class="empty">No completed trials in this file.</div>`;
+}
+
+function renderTrial(s) {
+  const n = s.trial;
+  const evs = rows.filter(r => r.recordType === "event" && r.trial === n);
+  const seq = (s.repairSequence || "").split("|").filter(Boolean);
+  const waste = Number(s.wastedRepairs) || 0;
+  const fault = String(s.scenario || "").startsWith("user") ? "user" : "system";
+  const graded = s.attributionCorrect === "yes" || s.attributionCorrect === "no";
+  const right = s.attributionCorrect === "yes";
+
+  const cascade = seq.length ? `
+    <div class="cascade">${seq.map((m, i) =>
+      `<span class="step ${m === "verbatim" ? "verbatim" : ""}">${i + 1}. ${esc(m)}</span>`
+    ).join("")}</div>
+    ${waste ? `<p class="note"><b style="color:#ff9b9b">${waste} of these could never have worked.</b>
+      Repeating a request the system understood perfectly does not change the
+      answer — but a silent failure supports no other hypothesis.</p>` : ""}` : "";
+
+  return `
+  <details class="trial" ${waste ? "open" : ""}>
+    <summary>
+      <span class="tnum">Trial ${esc(n)}</span>
+      <span class="pill ${esc(s.condition)}">${esc(s.condition)}</span>
+      <span class="pill ${fault}">${fault === "user" ? "their fault" : "system fault"}</span>
+      ${graded ? `<span class="pill ${right ? "hit" : "miss"}">
+        ${right ? "diagnosed correctly" : "misdiagnosed"}</span>` : ""}
+      ${waste ? `<span class="pill" style="background:var(--wasted)">${waste} wasted</span>` : ""}
+      <span class="spacer">${esc(s.task)}/${esc(s.variant)} · ${clock(s.durationMs)}</span>
+    </summary>
+    <div class="body">
+      ${cascade}
+      ${graded ? `<p class="note">Said <b>${esc(s.attribution)}</b>;
+        the cause was <b>${esc(s.correctAttribution)}</b>.
+        Missing detail: <code>${esc(s.missingSlot || "—")}</code></p>` : ""}
+      ${evs.map(renderEvent).filter(Boolean).join("")}
+    </div>
+  </details>`;
+}
+
+// Only the events a person would want to watch. Head pose is ~80% of the file
+// by volume and none of it is legible one row at a time — it belongs in the
+// analysis, not in a replay.
+function renderEvent(e) {
+  const t = clock(e.msSinceTrialStart);
+  const row = (cls, kind, detail) =>
+    `<div class="ev ${cls}"><span class="t">${t}</span><span class="k">${kind}</span><span class="d">${detail}</span></div>`;
+
+  switch (e.eventType) {
+    case "transcript":
+      return row("speech", "said", `&ldquo;${esc(e.detail)}&rdquo;`);
+    case "inject":
+      return row("inject", "system did", esc(e.detail).replace("error/", "scripted failure — "));
+    case "feedback-shown":
+      return row("feedback", "shown", esc(e.detail));
+    case "attribution":
+      return row("attr", "asked why", esc(e.detail));
+    case "manipulation-check":
+      return row("attr", "noticed?", esc(e.value));
+    case "repair-strategy": {
+      const verbatim = /verbatim/.test(e.detail);
+      return row("repair" + (verbatim ? " wasted" : ""), "they then",
+        esc(e.detail) + (verbatim ? " — cannot work" : ""));
+    }
+    case "object-spawned":
+      return row("scene", "appeared",
+        `${esc(e.objectShape)} at (${e.posX}, ${e.posY}, ${e.posZ})` +
+        (e.color ? ` · ${esc(e.color)}` : ""));
+    case "object-moved":
+      return row("scene", "moved", esc(e.detail));
+    case "object-recoloured":
+      return row("scene", "recoloured", esc(e.detail));
+    default:
+      return "";
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

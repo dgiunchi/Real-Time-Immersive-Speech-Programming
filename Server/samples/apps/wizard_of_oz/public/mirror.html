@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Participant View</title>
+<style>
+  :root { --bg:#0d1015; --panel:#161b24; --panel2:#1e2531; --line:#2c3542;
+          --text:#e8ecf3; --muted:#8d97a8; --accent:#4f8cff;
+          --ok:#2ecc71; --err:#ff5c5c; --warn:#ffb648; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,Segoe UI,Roboto,sans-serif; font-size:15px; }
+  header { padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line);
+           display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0; font-weight:600; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:20px;
+          font-size:11.5px; font-weight:700; }
+  .pill.A{background:#555} .pill.B{background:#2a6cc9} .pill.C{background:#7a4fd0}
+  .wrap { display:grid; grid-template-columns: 1fr 340px; gap:16px; padding:16px; }
+  @media (max-width: 900px) { .wrap { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line);
+          border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:11px; text-transform:uppercase; letter-spacing:.6px;
+             color:var(--muted); margin:0 0 10px; font-weight:700; }
+
+  /* What the participant is actually reading or hearing, at the size they see
+     it. This is the whole point of the page: the wizard presses a button and
+     has no other way to know the message landed. */
+  .seeing { min-height:96px; display:flex; flex-direction:column; justify-content:center; gap:8px; }
+  .fb-panel { background:#2a1d12; border:1px solid #7a4a1e; border-left:4px solid var(--warn);
+              border-radius:8px; padding:14px 16px; font-size:17px; line-height:1.45; color:#ffd9a8; }
+  .fb-agent { background:#1d1630; border:1px solid #4a3a7a; border-left:4px solid #9b7ce0;
+              border-radius:8px; padding:14px 16px; font-size:17px; line-height:1.45; color:#dcccff; }
+  .fb-agent .who { font-size:11px; text-transform:uppercase; letter-spacing:.6px;
+                   color:#9b7ce0; margin-bottom:5px; font-weight:700; }
+  .fb-none { color:var(--muted); font-style:italic; font-size:15px; }
+  .fb-silent { color:var(--ok); font-size:15px; }
+  .stamp { font-size:11.5px; color:var(--muted); }
+
+  canvas { width:100%; height:auto; display:block; background:#0a0d12;
+           border-radius:8px; border:1px solid var(--line); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px;
+            font-size:12px; color:var(--muted); }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:50%;
+              margin-right:5px; vertical-align:-1px; }
+
+  .row { display:flex; justify-content:space-between; gap:10px;
+         padding:6px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:13px; }
+  .row:last-child { border-bottom:none; }
+  .row .k { color:var(--muted); }
+  .mono { font-family:ui-monospace,Menlo,monospace; font-size:12.5px; }
+  .said { background:#000; border:1px solid var(--line); border-radius:8px;
+          padding:12px 14px; font-size:16px; line-height:1.4; min-height:52px; }
+  .said.empty { color:var(--muted); font-style:italic; font-size:14px; }
+  .warnbox { background:#3a2416; border:1px solid #7a4a1e; color:#ffd9a8;
+             border-radius:8px; padding:10px 12px; font-size:13px; margin-top:10px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--err); display:inline-block; }
+  .dot.live { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="live"></span>
+  <h1>Participant View</h1>
+  <span id="cond"></span>
+  <span class="stamp" id="task"></span>
+  <span class="stamp" style="margin-left:auto;">Mirrors what is in front of the participant right now</span>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>What they are being shown</h2>
+      <div class="seeing" id="seeing"></div>
+    </div>
+
+    <div class="card">
+      <h2>The scene, from above</h2>
+      <!-- Top-down rather than a camera feed: it answers the question that
+           actually matters mid-trial — is the thing behind them? — which a
+           first-person view cannot, because if it is behind them it is off
+           screen there too. -->
+      <canvas id="map" width="720" height="480"></canvas>
+      <div class="legend">
+        <span><i style="background:#4f8cff"></i>participant</span>
+        <span><i style="background:#8d97a8"></i>scene objects</span>
+        <span><i style="background:#2ecc71"></i>created this trial</span>
+        <span>the wedge is where they are facing</span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Last thing they said</h2>
+      <div class="said empty" id="said">nothing yet</div>
+    </div>
+
+    <div class="card">
+      <h2>Briefing they were read</h2>
+      <div id="prompt" style="font-size:13.5px;line-height:1.5;color:var(--muted);"></div>
+    </div>
+
+    <div class="card">
+      <h2>Objects in the scene</h2>
+      <div id="objects"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// A reconstruction, not a video feed. It is built from the same state the CSV is
+// written from, so if this page says the panel is showing an explanation, that
+// is also what the log will say — a camera feed can disagree with the data and
+// leave you unsure which to believe.
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
+
+async function poll() {
+  let s;
+  try { s = await fetch("/scene-state").then(r => r.json()); $("live").classList.add("live"); }
+  catch (_) { $("live").classList.remove("live"); return; }
+
+  $("cond").innerHTML = s.condition
+    ? `<span class="pill ${s.condition}">Condition ${s.condition}</span>` : "";
+  $("task").textContent = s.label || "";
+  $("prompt").innerHTML = esc(s.prompt) || "<i>no task selected</i>";
+
+  renderSeeing(s);
+  renderObjects(s.objects || []);
+  drawMap(s);
+
+  const said = $("said");
+  if (s.transcript) { said.textContent = "“" + s.transcript + "”"; said.classList.remove("empty"); }
+}
+
+// Condition decides what a participant can possibly be perceiving, so this
+// renders per condition rather than dumping every field. In A the correct
+// answer is "nothing", and showing that clearly is what stops the wizard
+// waiting for a panel that is never coming.
+function renderSeeing(s) {
+  const el = $("seeing"), f = s.feedback;
+  if (!f) {
+    el.innerHTML = `<div class="fb-none">Nothing on screen &mdash; no outcome injected yet this trial.</div>`;
+    return;
+  }
+  const ago = Math.round((Date.now() - f.at) / 1000);
+  const when = `<div class="stamp">shown ${ago}s ago &middot; ${esc(f.task)}/${esc(f.variant)}</div>`;
+
+  if (f.silent) {
+    el.innerHTML = `<div class="fb-silent">&#10003; Correct outcome &mdash; deliberately silent.
+      No panel, no agent, in every condition.</div>${when}`;
+    return;
+  }
+  if (s.condition === "A") {
+    el.innerHTML = `<div class="fb-none">Condition A &mdash; the failure happened with
+      <b>no explanation at all</b>. They can see the wrong result and nothing else.</div>${when}`;
+    return;
+  }
+  if (s.condition === "B") {
+    el.innerHTML = `<div class="fb-panel">${esc(f.errorText)}</div>${when}`;
+    return;
+  }
+  if (s.condition === "C") {
+    el.innerHTML =
+      (f.agentPre ? `<div class="fb-agent"><div class="who">Agent said, before</div>${esc(f.agentPre)}</div>` : "") +
+      `<div class="fb-agent"><div class="who">Agent is saying</div>${esc(f.agentPost)}</div>` +
+      when;
+    return;
+  }
+  el.innerHTML = `<div class="fb-none">No condition set.</div>`;
+}
+
+function renderObjects(objs) {
+  if (!objs.length) { $("objects").innerHTML = `<div class="stamp">Scene is empty.</div>`; return; }
+  $("objects").innerHTML = objs.map(o => `
+    <div class="row">
+      <span class="k">
+        ${o.color ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;
+           background:${esc(o.color)};margin-right:6px;"></i>` : ""}
+        ${esc(o.shape)}${o.baseline ? "" : " <b style='color:#2ecc71'>new</b>"}
+      </span>
+      <span class="mono">${fmt(o.x)}, ${fmt(o.y)}, ${fmt(o.z)}</span>
+    </div>`).join("");
+}
+const fmt = v => (typeof v === "number" ? v.toFixed(2) : "—");
+
+// Top-down map. Metres to pixels, participant drawn with a facing wedge so
+// "it spawned behind them" is visible at a glance — which is the whole of task 4.
+function drawMap(s) {
+  const c = $("map"), g = c.getContext("2d");
+  const W = c.width, H = c.height, PX = 78;               // px per metre
+  const cx = W / 2, cz = H * 0.62;                        // origin, biased down
+  const X = x => cx + (Number(x) || 0) * PX;
+  const Z = z => cz - (Number(z) || 0) * PX;
+
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = "#1b232e"; g.lineWidth = 1;
+  for (let m = -4; m <= 4; m++) {
+    g.beginPath(); g.moveTo(X(m), 0); g.lineTo(X(m), H); g.stroke();
+    g.beginPath(); g.moveTo(0, Z(m)); g.lineTo(W, Z(m)); g.stroke();
+  }
+
+  for (const o of (s.objects || [])) {
+    if (typeof o.x !== "number") continue;
+    g.beginPath();
+    g.arc(X(o.x), Z(o.z), o.baseline ? 9 : 12, 0, Math.PI * 2);
+    g.fillStyle = o.color || (o.baseline ? "#8d97a8" : "#2ecc71");
+    g.fill();
+    g.strokeStyle = o.baseline ? "#5c6675" : "#2ecc71";
+    g.lineWidth = o.baseline ? 1.5 : 2.5; g.stroke();
+    g.fillStyle = "#c7d0dc"; g.font = "11px -apple-system,sans-serif";
+    g.textAlign = "center";
+    g.fillText(o.shape, X(o.x), Z(o.z) - 17);
+  }
+
+  const p = s.pose;
+  if (!p) {
+    g.fillStyle = "#8d97a8"; g.font = "13px -apple-system,sans-serif"; g.textAlign = "center";
+    g.fillText("No head pose — is the headset connected?", cx, cz);
+    return;
+  }
+  const px = X(p.x), pz = Z(p.z);
+  // Unity yaw is clockwise from +Z; canvas angles run clockwise from +X.
+  const a = (Number(p.yaw) || 0) * Math.PI / 180;
+  g.globalAlpha = p.stale ? .35 : 1;
+  g.beginPath();
+  g.moveTo(px, pz);
+  g.arc(px, pz, 62, -Math.PI / 2 + a - 0.5, -Math.PI / 2 + a + 0.5);
+  g.closePath();
+  g.fillStyle = "rgba(79,140,255,.22)"; g.fill();
+  g.beginPath(); g.arc(px, pz, 11, 0, Math.PI * 2);
+  g.fillStyle = "#4f8cff"; g.fill();
+  g.globalAlpha = 1;
+  if (p.stale) {
+    g.fillStyle = "#ffb648"; g.font = "12px -apple-system,sans-serif"; g.textAlign = "center";
+    g.fillText("pose is stale — headset may have disconnected", cx, H - 14);
+  }
+}
+
+poll();
+setInterval(poll, 500);
+</script>
+</body>
+</html>

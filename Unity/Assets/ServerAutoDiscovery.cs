@@ -69,6 +69,18 @@ public class ServerAutoDiscovery : MonoBehaviour
     // Read by the query and handoff threads to know when to stop polling.
     private volatile string appliedIp;
 
+    /// <summary>
+    /// The study machine's address, once discovered — for anything that needs to
+    /// reach the server over plain HTTP rather than through Ubiq.
+    ///
+    /// Null until discovery succeeds. Callers fall back to 127.0.0.1, which
+    /// reaches the Mac only while the USB cable is in (study.js runs
+    /// `adb reverse` for port 8181). Without this, anything posting to
+    /// 127.0.0.1 from an untethered headset is talking to the headset itself
+    /// and fails silently.
+    /// </summary>
+    public static string ResolvedHost { get; private set; }
+
     private AndroidJavaObject multicastLock;
 
     private void Start()
@@ -142,6 +154,7 @@ public class ServerAutoDiscovery : MonoBehaviour
         var port = pendingPort;
         if (ip == null || ip == appliedIp) return;
         appliedIp = ip;
+        ResolvedHost = ip;
         ApplyServer(ip, port);
     }
 
