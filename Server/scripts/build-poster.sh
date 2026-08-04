@@ -62,9 +62,11 @@ html = re.sub(r'<div class="qr">.*?</div>',
 
 # A long URL is unreadable and untypeable in 10pt. The QR carries it; the
 # printed line just needs to give someone without a camera a way through.
+short = re.sub(r'^https?://', '', url).rstrip('/')
 html = re.sub(r'<div class="url">.*?</div>',
-              '<div class="url" style="font-size:9.4pt;">No camera? Email '
-              '<b>axj509@student.bham.ac.uk</b><br>and we&rsquo;ll send you the link.</div>',
+              f'<div class="url" style="font-size:10.4pt;">{short}</div>'
+              '<div class="hint" style="margin-top:1.6mm;">Or email '
+              '<b>axj509@student.bham.ac.uk</b> and we&rsquo;ll send the link.</div>',
               html, flags=re.S)
 
 html = html.replace('<title>Participants Wanted — VR Voice Study</title>\n', '')
