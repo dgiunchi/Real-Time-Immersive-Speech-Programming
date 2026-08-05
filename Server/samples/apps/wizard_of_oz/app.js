@@ -72,7 +72,9 @@ const LOG_COLUMNS = [
     // Trial summary.
     "taskOrder", "startTime", "endTime", "durationMs", "completionStatus",
     "attempts", "injects", "attribution", "correctAttribution",
-    "attributionCorrect", "noticedFeedback", "firstRepairStrategy",
+    "attributionCorrect",
+    "perceivedReparability", "reparabilityCorrect",
+    "noticedFeedback", "firstRepairStrategy",
     "repairSequence", "wastedRepairs", "repairContainsSlot", "preInjectHadSlot",
     "msToFirstRepair", "maxUtteranceSimilarity", "utteranceSimilarities",
     "missingSlot",
@@ -174,15 +176,37 @@ function utteranceSimilarity(a, b) {
 /** Negatively worded items, scored (max + 1) - raw. */
 const QUESTIONNAIRE_REVERSED = new Set([
     // SUS: the even-numbered items.
-    "sus2", "sus4", "sus6", "sus8", "sus10"
+    "sus2", "sus4", "sus6", "sus8", "sus10",
+    // UES-SF: the Perceived Usability subscale is worded as complaints, so all
+    // three reverse. This is the most commonly botched part of this scale.
+    "ues_pu1", "ues_pu2", "ues_pu3",
+    // Trust (Jian et al.): items 01-05 are the distrust half.
+    "trust01", "trust02", "trust03", "trust04", "trust05",
+    // IPQ: "I did not feel present in the virtual space."
+    "pres2"
     // NASA-TLX has no reversed items. Performance runs Perfect -> Failure, so a
     // high score already means high workload, same direction as the other five.
     // Reversing it is the classic TLX mistake and would invert the subscale.
     // ESS has no reversed items either.
+    // Godspeed differentials already run negative -> positive, so a high score
+    // is a high rating on the named dimension; nothing to reverse.
+    // SSQ items are all symptoms — higher is worse throughout.
+    // The retrospective attribution items are not a scale and are never summed,
+    // so reversing attr2 against attr1 would be wrong: they measure two
+    // different things that can both be high.
 ]);
 
-/** Scale maximum per item, for reversal. Everything not listed is 1-5. */
-const QUESTIONNAIRE_MAX = {};
+/**
+ * Scale maximum per item, for reversal. Everything not listed is 1-5.
+ *
+ * Only matters for reversed items, but getting it wrong is silent: reversing a
+ * 1-7 item against a maximum of 5 produces negative scores that still average
+ * to a plausible-looking number.
+ */
+const QUESTIONNAIRE_MAX = {
+    trust01: 7, trust02: 7, trust03: 7, trust04: 7, trust05: 7,
+    pres2: 7
+};
 
 /**
  * Which published instrument an item belongs to, stored with every answer.
@@ -202,18 +226,78 @@ const SCALE_ITEMS = {
     // alternative and is what gets reported.
     nasa_tlx: ["tlx_mental", "tlx_physical", "tlx_temporal",
                "tlx_performance", "tlx_effort", "tlx_frustration"],
-    ess: Array.from({ length: 8 }, (_, i) => `ess${i + 1}`)
+    ess: Array.from({ length: 8 }, (_, i) => `ess${i + 1}`),
+
+    // Items 1-4 only. Item 5 is a 1-7 overall rating and is reported on its own
+    // below: averaging it in with four 1-5 items gives a mean that belongs to
+    // neither scale, which is the kind of number that survives into a results
+    // table because it still looks plausible.
+    perceived_support: Array.from({ length: 4 }, (_, i) => `psup${i + 1}`),
+    // Eleven items, not twelve. trust12 measures familiarity rather than trust
+    // and is reported on its own below — folding it in is the documented usual
+    // mistake with this scale.
+    trust_automation:  Array.from({ length: 11 }, (_, i) => `trust${String(i + 1).padStart(2, "0")}`),
+    presence:          Array.from({ length: 4 }, (_, i) => `pres${i + 1}`),
+    self_efficacy_post: Array.from({ length: 3 }, (_, i) => `se_post${i + 1}`),
+
+    // UES-SF is reported as an overall mean and as its four subscales; the
+    // subscales are what the scale is actually for. Item ids carry their
+    // subscale because the presentation order is randomised per participant,
+    // so position no longer identifies the item.
+    ues_focused_attention:   ["ues_fa1", "ues_fa2", "ues_fa3"],
+    ues_perceived_usability: ["ues_pu1", "ues_pu2", "ues_pu3"],
+    ues_aesthetic_appeal:    ["ues_ae1", "ues_ae2", "ues_ae3"],
+    ues_reward:              ["ues_rw1", "ues_rw2", "ues_rw3"],
+    ues_sf: ["fa", "pu", "ae", "rw"].flatMap(s => [1, 2, 3].map(i => `ues_${s}${i}`)),
+
+    godspeed_anthropomorphism: Array.from({ length: 5 }, (_, i) => `gs_anthro${i + 1}`),
+    godspeed_intelligence:     Array.from({ length: 5 }, (_, i) => `gs_intel${i + 1}`)
+
+    // SSQ is deliberately absent here: it is not a mean, it has its own
+    // weighted subscale formula and is computed separately below.
+    // The retrospective attribution items are likewise not a scale.
 };
 
 registerInstrument(SCALE_ITEMS.sus,      "SUS (Brooke 1996)");
 registerInstrument(SCALE_ITEMS.nasa_tlx, "NASA-TLX (Hart & Staveland 1988)");
 registerInstrument(SCALE_ITEMS.ess,      "ESS (Hoffman et al. 2018)");
+// psup5 is listed explicitly: it is part of the instrument but not of the
+// scale mean, so registering SCALE_ITEMS.perceived_support alone would leave it
+// as the one item in the form with no provenance.
+registerInstrument([...SCALE_ITEMS.perceived_support, "psup5"],
+                   "Perceived Support (custom, H3)");
+registerInstrument(SCALE_ITEMS.self_efficacy_post,
+                   "Speech-system self-efficacy (custom, post)");
+registerInstrument(["blame_split", "attr_confidence"],
+                   "Graded attribution (custom, H1)");
+registerInstrument([...SCALE_ITEMS.trust_automation, "trust12"],
+                   "Trust in Automation (Jian, Bisantz & Drury 2000)");
+registerInstrument(SCALE_ITEMS.presence,
+                   "IPQ presence, 4 items (Schubert et al. 2001)");
+registerInstrument(SCALE_ITEMS.ues_sf,
+                   "UES-SF (O'Brien, Cairns & Hall 2018)");
+registerInstrument([...SCALE_ITEMS.godspeed_anthropomorphism,
+                    ...SCALE_ITEMS.godspeed_intelligence],
+                   "Godspeed I & III (Bartneck et al. 2009)");
+registerInstrument(Array.from({ length: 16 }, (_, i) => `ssq${i + 1}`),
+                   "SSQ (Kennedy et al. 1993)");
+registerInstrument(Array.from({ length: 5 }, (_, i) => `attr${i + 1}`),
+                   "Retrospective attribution (custom, H1)");
+registerInstrument(Array.from({ length: 3 }, (_, i) => `se_pre${i + 1}`),
+                   "Speech-system self-efficacy (custom, pre)");
+registerInstrument(["fatigue_mental", "fatigue_energy"],
+                   "Fatigue and focus (custom, post-session)");
+registerInstrument(["c_read", "c_questions", "c_voluntary", "c_deception",
+                    "c_publication", "c_logging", "c_audio", "c_age",
+                    "c_takepart", "consent_date", "consent_version", "researcher"],
+                   "Informed consent record");
 registerInstrument(Array.from({ length: 6 }, (_, i) => `iv${i + 1}`),
                    "Semi-structured interview");
 // Covariates, not scales — tagged so nobody later mistakes them for one.
 registerInstrument(["age", "gender", "native_language", "english_proficiency",
-                    "vr_experience", "tech_background", "assistant_use",
-                    "assistant_reliability", "handedness"],
+                    "vr_experience", "gaming_frequency", "tech_background",
+                    "assistant_use", "assistant_reliability", "handedness",
+                    "hearing", "speech_condition"],
                    "Background (custom covariates)");
 registerInstrument(["discomfort_pre", "discomfort_post"],
                    "Single-item discomfort (0-10, paired pre/post)");
@@ -254,6 +338,71 @@ function scoreQuestionnaire(answers = {}) {
         out.sus_score_0_100 = +(susVals.reduce((a, b) => a + (b - 1), 0) * 2.5).toFixed(2);
     }
 
+    // Kept out of the scale mean above because it is a 1-7 item among 1-5 ones.
+    const overall = Number(answers.psup5);
+    if (Number.isFinite(overall)) out.perceived_support_overall_1_7 = overall;
+
+    // Familiarity, reported beside the trust total rather than inside it.
+    // Everyone meets this system for the first time, so it doubles as a check
+    // that nobody arrived already knowing it.
+    const fam = Number(answers.trust12);
+    if (Number.isFinite(fam)) out.trust_familiarity = fam;
+
+    Object.assign(out, scoreSSQ(answers));
+    return out;
+}
+
+/**
+ * SSQ subscales, Kennedy et al. (1993).
+ *
+ * Not a mean of anything. Each subscale sums a specific, overlapping subset of
+ * the sixteen symptoms and multiplies by a published constant — several
+ * symptoms count towards two subscales, which is why this cannot be expressed
+ * as a SCALE_ITEMS entry. Item numbers are 1-16 in the standard printed order.
+ */
+const SSQ_SUBSCALES = {
+    ssq_nausea:         { items: [1, 6, 7, 8, 9, 15, 16], weight: 9.54 },
+    ssq_oculomotor:     { items: [1, 2, 3, 4, 5, 9, 11],   weight: 7.58 },
+    ssq_disorientation: { items: [5, 8, 10, 11, 12, 13, 14], weight: 13.92 }
+};
+
+/**
+ * Which instrument a computed score belongs to.
+ *
+ * Most scores map straight back through SCALE_ITEMS, but the derived ones —
+ * SSQ's weighted subscales, the SUS 0-100 transform, the single overall support
+ * item — have no item list of their own and would otherwise be written with a
+ * blank provenance column, which is exactly the gap the column exists to close.
+ */
+function instrumentForScale(scaleName) {
+    const first = (SCALE_ITEMS[scaleName] || [])[0];
+    if (first && ITEM_INSTRUMENT[first]) return ITEM_INSTRUMENT[first];
+
+    if (scaleName.startsWith("ssq_")) return ITEM_INSTRUMENT.ssq1 || "";
+    if (scaleName.startsWith("perceived_support")) return ITEM_INSTRUMENT.psup1 || "";
+    // Familiarity is trust12, deliberately kept out of the trust total, so it
+    // has no SCALE_ITEMS entry to look through.
+    if (scaleName === "trust_familiarity") return ITEM_INSTRUMENT.trust12 || "";
+
+    const base = scaleName.replace(/_score_0_100$/, "");
+    return ITEM_INSTRUMENT[(SCALE_ITEMS[base] || [])[0]] || "";
+}
+
+function scoreSSQ(answers = {}) {
+    const out = {};
+    let rawTotal = 0, complete = true;
+
+    for (const [name, { items, weight }] of Object.entries(SSQ_SUBSCALES)) {
+        const vals = items.map(i => Number(answers[`ssq${i}`]));
+        if (vals.some(v => !Number.isFinite(v))) { complete = false; continue; }
+        const sum = vals.reduce((a, b) => a + b, 0);
+        rawTotal += sum;
+        out[name] = +(sum * weight).toFixed(2);
+    }
+
+    // The total is not the sum of the three weighted subscales — it is the sum
+    // of the raw subscale totals, weighted once by 3.74.
+    if (complete) out.ssq_total = +(rawTotal * 3.74).toFixed(2);
     return out;
 }
 
@@ -955,6 +1104,16 @@ class WizardOfOzApp extends ApplicationController {
             // across tasks and variants and remains comparable between people.
             correctAttribution: TASK_ATTRIBUTION[task] || "",
             attribution:       null,   // filled by POST /attribution
+            // From POST /attribution-detail. Null rather than "" so an unasked
+            // probe cannot be read as an answer.
+            //
+            // The graded 0-10 blame split and the confidence rating used to sit
+            // beside this one, asked after every failure. They now live in the
+            // post-session questionnaire instead. This item stays per-trial
+            // because it cannot survive the move: asked at the end it is a
+            // memory of what they believed; asked here, before they try again,
+            // it is the belief the next attempt acts on.
+            perceivedReparability: null,
             // Manipulation check. Without it, "feedback made no difference"
             // cannot be told apart from "they never registered the feedback",
             // and in condition A it records whether they noticed the failure
@@ -1438,6 +1597,13 @@ class WizardOfOzApp extends ApplicationController {
             attributionCorrect: trial.attribution !== null
                 ? (trial.attribution === trial.correctAttribution ? "yes" : "no")
                 : "",
+            perceivedReparability: trial.perceivedReparability || "",
+            // Whether that belief matched the scenario. Blank rather than "no"
+            // when unasked, so an unrecorded probe cannot be read as a wrong one.
+            reparabilityCorrect: trial.perceivedReparability
+                ? (trial.perceivedReparability ===
+                   (trial.correctAttribution === "system" ? "no" : "yes") ? "yes" : "no")
+                : "",
             noticedFeedback: trial.noticedFeedback || "",
             // First move is the clean primary: it is the one taken on the
             // strength of the feedback alone, before trial and error muddies it.
@@ -1530,9 +1696,7 @@ class WizardOfOzApp extends ApplicationController {
         for (const [scaleName, score] of Object.entries(scoreQuestionnaire(answers))) {
             this.logRow("questionnaire-score", {
                 ...common, scaleName, scaleScore: score,
-                instrument: ITEM_INSTRUMENT[(SCALE_ITEMS[scaleName] || [])[0]]
-                    || ITEM_INSTRUMENT[(SCALE_ITEMS[scaleName.replace(/_score_0_100$/, "")] || [])[0]]
-                    || ""
+                instrument: instrumentForScale(scaleName)
             });
         }
 
@@ -1888,6 +2052,13 @@ class WizardOfOzApp extends ApplicationController {
             }
             if (req.method === "GET" && url === "/questionnaire") {
                 return serveFile(res, path.join(PUBLIC_DIR, "questionnaire.html"), "text/html");
+            }
+            // Information sheet and consent. First thing in the session, before
+            // the background form: consent recorded after the data it authorises
+            // is not consent. Also printable, so the same wording the
+            // participant ticks is the wording on the paper form.
+            if (req.method === "GET" && url === "/consent") {
+                return serveFile(res, path.join(PUBLIC_DIR, "consent.html"), "text/html");
             }
             // Pre-session background questionnaire (once per participant).
             if (req.method === "GET" && url === "/background") {
@@ -2252,6 +2423,45 @@ class WizardOfOzApp extends ApplicationController {
                             correct: this.trial ? this.trial.correctAttribution : "" });
                     }
 
+                    // Follow-up to the attribution probe.
+                    //
+                    // The graded 0-10 blame split and the confidence rating were
+                    // asked here too, once per failure. They moved to the
+                    // post-session questionnaire: six repetitions of two extra
+                    // spoken scales was more than the moment after a failure can
+                    // carry, and a rushed scale is worse than a retrospective
+                    // one. The endpoint keeps its name and its shape so nothing
+                    // else has to change.
+                    if (req.method === "POST" && url === "/attribution-detail") {
+                        if (!this.trial) return send(200, { ok: true, ignored: "no active trial" });
+                        const out = {};
+
+                        // The belief that drives H2. Someone who thinks a
+                        // different wording would have worked has a reason to
+                        // repeat themselves; on a system-limitation trial that
+                        // belief is false, and the wasted repair follows from it.
+                        // Measuring the belief separately from the behaviour is
+                        // what lets the two be related rather than assumed.
+                        if (payload.reparability !== undefined) {
+                            const r = String(payload.reparability).toLowerCase();
+                            if (!["yes", "no", "unsure"].includes(r)) {
+                                return send(400, { error: "reparability must be yes|no|unsure" });
+                            }
+                            this.trial.perceivedReparability = r;
+                            out.reparability = r;
+                            const truth = this.trial.correctAttribution === "system" ? "no" : "yes";
+                            this.logEvent("perceived-reparability",
+                                `believes rewording would have worked=${r} ` +
+                                `(actually ${truth} for this scenario)`, {
+                                msSinceTrialStart: Date.now() - this.trial.startedAt,
+                                source: "participant", category: "measure",
+                                value: r === truth ? 1 : 0, target: truth
+                            });
+                        }
+
+                        return send(200, { ok: true, ...out });
+                    }
+
                     if (req.method === "POST" && url === "/reset") {
                         return send(200, this.resetScene());
                     }
@@ -2338,17 +2548,19 @@ class WizardOfOzApp extends ApplicationController {
 
                     if (req.method === "POST" && url === "/questionnaire") {
                         const file = this.saveQuestionnaire(payload);
-                        // The post-condition form is the last thing a session is
-                        // waiting on, so submitting it is what ends the session.
-                        // The background form is taken before any of that.
-                        const isBackground = payload.questionnaire === "background";
+                        // Only the post-session form closes anything. Tested
+                        // positively rather than as "not background": the
+                        // mid-session fatigue check is also not background, and
+                        // treating it as the closing form would announce the
+                        // session was over halfway through it.
+                        const isClosingForm = payload.questionnaire === "post-session";
                         console.log(`\x1b[35m[Questionnaire]\x1b[0m saved → ${file}`);
 
                         // The post-condition form is the participant's last
                         // task. It does not close the session on its own —
                         // the debrief still has to happen, and the researcher
                         // presses End session after it.
-                        if (!isBackground && this.session.awaitingQuestionnaire) {
+                        if (isClosingForm && this.session.awaitingQuestionnaire) {
                             this.logEvent("questionnaire-complete",
                                 `condition ${this.session.condition} questionnaire submitted — ` +
                                 `debrief, then end the session`, {

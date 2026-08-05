@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Information Sheet &amp; Consent</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --line:#e2e6ee; --text:#1c2230; --muted:#6b7488;
+          --accent:#4f8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 22px; line-height:1.5; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 22px; margin-bottom: 18px; }
+  .card h2 { font-size: 16px; margin: 0 0 4px; }
+  .card .note { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+  .sheet h3 { font-size: 15px; margin: 20px 0 5px; }
+  .sheet h3:first-of-type { margin-top: 0; }
+  .sheet p, .sheet li { font-size: 14.5px; line-height: 1.6; margin: 0 0 9px; }
+  .sheet ul { margin: 0 0 9px; padding-left: 22px; }
+  .setup { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  label.lbl { display:block; font-size:12px; color:var(--muted); text-transform:uppercase;
+              letter-spacing:.5px; margin-bottom:5px; }
+  input[type=text], input[type=date] { width:100%; padding:10px 12px;
+          border:1px solid var(--line); border-radius:9px; font-size:15px;
+          background:#fff; color:var(--text); }
+  .tick { display:flex; gap:12px; align-items:flex-start; padding:13px 12px;
+          border-bottom:1px solid var(--line); cursor:pointer; }
+  .tick:last-child { border-bottom:none; }
+  .tick input { width:20px; height:20px; margin:1px 0 0; flex:none; cursor:pointer; }
+  .tick span { font-size:14.5px; line-height:1.5; }
+  .tick.missing { background:#fff2f2; border-radius:8px;
+                  box-shadow:0 0 0 1px #ffb3b3; }
+  .optional { color:var(--muted); font-size:12px; }
+  .submit { position: sticky; bottom: 0;
+            background: linear-gradient(transparent, var(--bg) 40%); padding: 20px 0 0; }
+  button { width:100%; padding:15px; font-size:16px; font-weight:700; color:#fff;
+           background:var(--accent); border:none; border-radius:11px; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  .ok { text-align:center; padding:60px 20px; }
+  .ok .big { font-size:52px; }
+  .req { color:#d33; }
+  .paper { background:#fffbe9; border:1px solid #e8dcae; border-radius:10px;
+           padding:13px 15px; font-size:13.5px; line-height:1.55; margin:0 0 18px; }
+  @media print {
+    .submit, .paper { display:none; }
+    body { background:#fff; }
+    .card { border:none; padding:0; margin-bottom:14px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="form">
+  <h1>Information Sheet &amp; Consent</h1>
+  <p class="lead">
+    Please read this before deciding whether to take part. Ask the researcher
+    about anything that is not clear &mdash; there is no rush.
+  </p>
+
+  <p class="paper">
+    <b>Researcher note.</b> This page records which boxes were ticked, against a
+    participant ID. It does <b>not</b> replace the signed paper form &mdash; take
+    that as well, since the name and signature live there and only there.
+  </p>
+
+  <div class="card sheet">
+    <h2>Participant Information Sheet</h2>
+
+    <h3>Study title</h3>
+    <p>Understanding User Attribution and Recovery from Interaction Failures in
+       LLM-Based VR Authoring Systems.</p>
+
+    <h3>Researchers</h3>
+    <p>Amal (axa2610@student.bham.ac.uk) &nbsp;|&nbsp;
+       Akbar Juraev (axj509@student.bham.ac.uk)</p>
+
+    <h3>What is this study about?</h3>
+    <p>This study looks at how people work with a system that builds things in
+       virtual reality (VR) from spoken instructions. You will describe what you
+       want using your voice and watch it appear in the scene. We are studying
+       the system&rsquo;s behaviour, not your ability &mdash; there is no skill
+       being tested.</p>
+
+    <h3>What will I be asked to do?</h3>
+    <p>You will complete a short background questionnaire, then 6 short
+       voice-controlled tasks in a VR scene, each followed by a couple of quick
+       questions. Afterwards you will complete some short questionnaires and take
+       part in a short interview (5&ndash;10 minutes). The whole visit takes about
+       45 minutes, in one session &mdash; no follow-up required.</p>
+
+    <h3>Do I have to take part?</h3>
+    <p>No &mdash; participation is voluntary. You may withdraw at any point during
+       the session, without giving a reason and without any penalty.</p>
+
+    <h3>Will I be compensated?</h3>
+    <p>Yes &mdash; you will receive a &pound;5 Amazon voucher or a bank transfer as
+       a thank-you for your time, regardless of how the session goes.</p>
+
+    <h3>Who can take part?</h3>
+    <ul>
+      <li>18 years or older</li>
+      <li>Comfortable speaking English out loud</li>
+      <li>Normal or corrected-to-normal vision</li>
+      <li>Do not usually experience significant motion sickness</li>
+    </ul>
+
+    <h3>Will my data be kept confidential?</h3>
+    <p>Yes. All data will be anonymised using a participant ID instead of your
+       name. Data will be stored securely on University-approved storage and only
+       the research team will have access.</p>
+
+    <h3>Are there any risks?</h3>
+    <p>No significant risks are anticipated. As with any VR use, if you feel any
+       discomfort you may stop at any time. Note: some parts of the tasks are
+       designed to produce an unexpected or &lsquo;wrong&rsquo; outcome on
+       purpose, as part of the research design &mdash; this is expected and is not
+       a sign that you have done anything wrong. You will be told more about this
+       at the end of the session (see Debrief, below).</p>
+
+    <h3>What happens at the end?</h3>
+    <p>After the interview you will be fully debriefed: we will explain exactly
+       how the study worked, including that the unexpected outcomes were
+       pre-planned by the research team and were never caused by anything you
+       did. You are welcome to ask questions at this point.</p>
+
+    <h3>Who can I contact with questions?</h3>
+    <p>Amal (axa2610@student.bham.ac.uk) or the project supervisor.</p>
+  </div>
+
+  <div class="card">
+    <h2>Consent</h2>
+    <p class="note">Please tick each box to confirm.</p>
+    <div id="ticks"></div>
+  </div>
+
+  <div class="card">
+    <h2>Your details</h2>
+    <p class="note">
+      No name is entered here. Your name and signature go on the paper form only;
+      this record carries the participant ID, which is what the information sheet
+      above promises.
+    </p>
+    <div class="setup">
+      <div>
+        <label class="lbl">Participant ID <span class="req">*</span></label>
+        <input type="text" id="participantId" placeholder="e.g. P01">
+      </div>
+      <div>
+        <label class="lbl">Date <span class="req">*</span></label>
+        <input type="date" id="consentDate">
+      </div>
+      <div>
+        <label class="lbl">Researcher present</label>
+        <input type="text" id="researcher" placeholder="Name or initials">
+      </div>
+    </div>
+  </div>
+
+  <div class="submit">
+    <button id="submitBtn" onclick="submitForm()">I agree &mdash; record my consent</button>
+  </div>
+</div>
+
+<div class="wrap ok" id="done" style="display:none;">
+  <div class="big">&#9989;</div>
+  <h1>Consent recorded</h1>
+  <p class="lead">Please hand the device back to the researcher.</p>
+</div>
+
+<script>
+// Consent is recorded BEFORE the session, not with the post-session battery.
+// That ordering is the whole point of consent, and a consent record written
+// after the data it authorises is not a consent record.
+//
+// Ticks are stored individually rather than as a single "agreed" flag. Two of
+// them are separable permissions — audio recording, and reuse in a publication
+// — and a participant who declines one of those has still consented to the
+// study. Collapsing them would make that participant indistinguishable from one
+// who refused outright.
+const TICKS = [
+  { id: "c_read",       required: true,
+    text: "I have read and understood the Participant Information Sheet." },
+  { id: "c_questions",  required: true,
+    text: "I have had the opportunity to ask questions about the study." },
+  { id: "c_voluntary",  required: true,
+    text: "I understand that my participation is voluntary and I am free to withdraw at any time, without giving a reason." },
+  { id: "c_deception",  required: true,
+    text: "I understand that some parts of the VR task are designed to produce an unexpected outcome on purpose, as part of the research design, and that this will be explained to me fully at the end of the session." },
+  { id: "c_publication", required: true,
+    text: "I understand my anonymised data may be used in the researcher's thesis and potentially in an academic publication." },
+  { id: "c_logging",    required: true,
+    text: "I agree to the session being logged (interaction logs and researcher notes) for research purposes." },
+  { id: "c_audio",      required: false,
+    text: "I agree to the interview being audio-recorded." },
+  { id: "c_age",        required: true,
+    text: "I confirm I am 18 years of age or older." },
+  { id: "c_takepart",   required: true,
+    text: "I agree to take part in this study." }
+];
+
+function render() {
+  document.getElementById("ticks").innerHTML = TICKS.map(t =>
+    `<label class="tick" id="tick_${t.id}">
+       <input type="checkbox" id="${t.id}">
+       <span>${t.text}${t.required ? "" :
+         ` <span class="optional">&mdash; optional; the session can go ahead without this</span>`}</span>
+     </label>`
+  ).join("");
+  // Today, in the participant's local timezone. toISOString() would be UTC and
+  // would show yesterday's date to anyone west of Greenwich in the evening.
+  const d = new Date();
+  document.getElementById("consentDate").value =
+    `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+async function prefill() {
+  render();
+  const p = new URLSearchParams(location.search);
+  let pid = p.get("pid") || "";
+  if (!pid) {
+    try {
+      const s = await fetch("/status").then(r => r.json());
+      if (s && s.session) pid = s.session.participantId || "";
+    } catch (_) {}
+  }
+  if (pid) document.getElementById("participantId").value = pid;
+}
+
+async function submitForm() {
+  const participantId = document.getElementById("participantId").value.trim();
+  const consentDate   = document.getElementById("consentDate").value;
+
+  if (!participantId) { alert("Participant ID is required."); return; }
+  if (!consentDate)   { alert("Date is required."); return; }
+
+  const answers = {}, missing = [];
+  TICKS.forEach(t => {
+    const on = document.getElementById(t.id).checked;
+    answers[t.id] = on ? "yes" : "no";
+    if (t.required && !on) missing.push(t.id);
+  });
+
+  document.querySelectorAll(".tick.missing").forEach(el => el.classList.remove("missing"));
+  if (missing.length) {
+    let first = null;
+    missing.forEach(id => {
+      const el = document.getElementById("tick_" + id);
+      el.classList.add("missing"); if (!first) first = el;
+    });
+    first.scrollIntoView({ behavior: "smooth", block: "center" });
+    alert("Every box except the audio-recording one must be ticked to take part.\n\n" +
+          "If the participant does not want to tick one of them, stop here and " +
+          "talk to them — do not tick it for them.");
+    return;
+  }
+
+  // No name field: the participant's name belongs on the paper form and nowhere
+  // in the research data. A single free-text name column would de-anonymise the
+  // whole file and contradict the information sheet the participant just read.
+  answers.consent_date    = consentDate;
+  answers.researcher      = document.getElementById("researcher").value.trim();
+  answers.consent_version = "2026-08";
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    await fetch("/questionnaire", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, questionnaire: "consent", answers })
+    }).then(r => r.json());
+    document.getElementById("form").style.display = "none";
+    document.getElementById("done").style.display = "block";
+    window.scrollTo(0, 0);
+  } catch (e) {
+    alert("Could not save: " + e.message + "\nMake sure the study server is running.");
+    btn.disabled = false;
+    btn.innerHTML = "I agree &mdash; record my consent";
+  }
+}
+
+prefill();
+</script>
+</body>
+</html>

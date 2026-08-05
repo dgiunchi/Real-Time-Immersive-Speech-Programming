@@ -127,6 +127,8 @@
   <span style="font-size:13px;">
     <a href="/mirror" target="_blank" style="color:var(--accent);font-weight:700;">Participant view ↗</a>
     &nbsp;·&nbsp;
+    <a href="/consent" target="_blank" style="color:var(--accent);">Consent ↗</a>
+    &nbsp;·&nbsp;
     <a href="/background" target="_blank" style="color:var(--accent);">Background form ↗</a>
     &nbsp;·&nbsp;
     <a href="/questionnaire" target="_blank" style="color:var(--accent);">Post-session ↗</a>
@@ -280,6 +282,28 @@
         </button>
       </div>
       <div id="attrResult" style="font-size:12px;color:var(--muted);min-height:18px;"></div>
+
+      <!-- The graded blame split and the confidence rating used to sit here,
+           one per failure. They now live in the post-session questionnaire:
+           six repetitions of two extra spoken scales was more than the moment
+           after a failure can carry, and a rushed scale is worse than a
+           retrospective one.
+
+           This item stays per-trial because it cannot survive the move. Asked
+           at the end it becomes a memory of what they believed; asked here,
+           before they try again, it is the belief the next attempt acts on. -->
+      <hr style="border:none;border-top:1px solid var(--line);margin:14px 0 10px;">
+      <div style="font-size:12px;color:var(--muted);margin:0 0 6px;">
+        &ldquo;<b>Do you think there is something you could say differently that
+        would make that work?</b>&rdquo;
+        <span style="opacity:.7;">&mdash; ask before they try again</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordReparability('yes')">Yes</button>
+        <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordReparability('no')">No</button>
+        <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordReparability('unsure')">Unsure</button>
+      </div>
+      <div id="reparResult" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:5px;"></div>
 
       <hr style="border:none;border-top:1px solid var(--line);margin:14px 0 10px;">
       <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
@@ -622,9 +646,11 @@ async function inject(outcome) {
     addLog("inject", `${res.task} ${outcome.toUpperCase()}` +
       (res.scenario ? ` / ${res.scenario}` : "") +
       ` (attempts ${res.attempts}, injects ${res.injects})`);
-    // Clear the attribution result display on each new inject.
-    const attrRes = document.getElementById("attrResult");
-    if (attrRes) attrRes.textContent = "";
+    // Clear every probe display on each new inject. A stale answer left over
+    // from the previous failure is worse than a blank one — it reads as an
+    // answer already given for a question not yet asked.
+    ["attrResult", "reparResult", "noticedResult"]
+      .forEach(id => { const e = document.getElementById(id); if (e) e.textContent = ""; });
   } else {
     addLog("t", "Inject failed: " + (res.error || "?"));
   }
@@ -670,6 +696,18 @@ async function recordAttribution(value) {
       `<span style="color:${match?'#8aff9e':'#ff8a8a'}">${match ? "✓ matches" : "✗ mismatch"}</span>`;
   }
   addLog("t", `Attribution: participant said "${value}", correct="${res.correct}"`);
+}
+
+async function recordReparability(value) {
+  const res = await post("/attribution-detail", { reparability: value });
+  const el = document.getElementById("reparResult");
+  if (res.ok && el) {
+    el.innerHTML = `Recorded: <b>${value}</b>` +
+      (value === "yes"
+        ? ' <span style="opacity:.7;">— on a system-limitation task this is the false belief H2 predicts from</span>'
+        : "");
+  }
+  addLog("t", `Perceived reparability: ${value}`);
 }
 
 async function startTrial() {
@@ -908,7 +946,7 @@ async function logNote() {
    mid-trial, or re-injecting from Step 2 after a second attempt, are normal
    things to do; the guide answers "where am I" without taking the panel away. */
 const STEP_SCRIPT = {
-  setup: { n: 0, say: 'Enter the participant ID on the left, then <b>Start / Update Session</b>.' },
+  setup: { n: 0, say: 'Hand over <b>Consent ↗</b>, then the <b>Background form ↗</b>. Then enter the participant ID on the left and press <b>Start / Update Session</b>.' },
   1: { n: 1, say: 'Read the briefing aloud, then press <b>▶ I\u2019ve read it — start trial</b>.' },
   2: { n: 2, say: 'Let them speak. When they finish, press <b>INJECT ERROR</b>.' },
   3: { n: 3, say: 'Now, before they try anything: ask <b>"why do you think that happened?"</b> word for word. Record the answer. Do not react, do not explain.' },

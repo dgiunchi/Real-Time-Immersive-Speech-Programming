@@ -109,6 +109,37 @@
     <div id="ess"></div>
   </div>
 
+  <!-- Perceived Support ─────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>When things went wrong</h2>
+    <p class="cite">Perceived Support &mdash; written for this study</p>
+    <p class="note">
+      These are about the moments where the system did something you did not
+      expect. 1 = Strongly disagree, 5 = Strongly agree.
+    </p>
+    <div id="psup"></div>
+  </div>
+
+  <!-- Retrospective attribution ─────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Looking back at the failures</h2>
+    <p class="cite">Retrospective attribution &mdash; written for this study (H1)</p>
+    <p class="note">The first five are 1 = Never, 7 = Always. The last two have their own scales.</p>
+    <div id="attribSummary"></div>
+    <div id="blameSplit"></div>
+  </div>
+
+  <!-- Trust ─────────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Trusting the system</h2>
+    <p class="cite">Trust between People and Automation &mdash; Jian, Bisantz &amp; Drury (2000)</p>
+    <p class="note">
+      1 = Not at all, 7 = Extremely. Some of these are worded strongly &mdash;
+      that is deliberate, just answer how it seemed to you.
+    </p>
+    <div id="trust"></div>
+  </div>
+
   <!-- SUS ──────────────────────────────────────────────────────────────── -->
   <div class="card">
     <h2>Using the system</h2>
@@ -117,15 +148,60 @@
     <div id="sus"></div>
   </div>
 
-  <!-- Simulator sickness change ─────────────────────────────────────────── -->
+  <!-- Agent perception — condition C only ───────────────────────────────── -->
+  <div class="card" id="agentCard" style="display:none;">
+    <h2>The virtual assistant</h2>
+    <p class="cite">Godspeed I &amp; III &mdash; Bartneck, Kuli&#263;, Croft &amp; Zoltowski (2009)</p>
+    <p class="note">
+      Each row has two opposite words. Pick the point between them that best
+      matches your impression of the assistant.
+    </p>
+    <div id="godspeed"></div>
+  </div>
+
+  <!-- Presence ──────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Being in the virtual space</h2>
+    <p class="cite">Igroup Presence Questionnaire &mdash; Schubert, Friedmann &amp; Regenbrecht (2001)</p>
+    <p class="note">1 = Strongly disagree, 7 = Strongly agree.</p>
+    <div id="presence"></div>
+  </div>
+
+  <!-- Self-efficacy ─────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>How you feel about systems like this now</h2>
+    <p class="cite">Speech-system self-efficacy &mdash; paired with the same items asked before the session</p>
+    <p class="note">1 = Strongly disagree, 7 = Strongly agree.</p>
+    <div id="selfEff"></div>
+  </div>
+
+  <!-- Engagement ────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Your experience of the task</h2>
+    <p class="cite">User Engagement Scale, Short Form &mdash; O&rsquo;Brien, Cairns &amp; Hall (2018)</p>
+    <p class="note">1 = Strongly disagree, 5 = Strongly agree.</p>
+    <div id="ues"></div>
+  </div>
+
+  <!-- Simulator sickness ────────────────────────────────────────────────── -->
   <div class="card">
     <h2>How you feel now</h2>
-    <p class="cite">Single-item discomfort, paired with the same question asked before the session</p>
+    <p class="cite">Simulator Sickness Questionnaire &mdash; Kennedy, Lane, Berbaum &amp; Lilienthal (1993)</p>
     <p class="note">
-      There is no right answer here, and it does not affect anything &mdash; we
-      ask everyone.
+      How much are you experiencing each of these <b>right now</b>? Most people
+      answer &ldquo;None&rdquo; to most of them &mdash; that is normal. There is
+      no right answer and it does not affect anything.
     </p>
+    <div id="ssq"></div>
     <div id="sickness"></div>
+  </div>
+
+  <!-- Fatigue ──────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Tiredness and focus</h2>
+    <p class="cite">Written for this study</p>
+    <p class="note">1 = Very low, 7 = Very high.</p>
+    <div id="fatigue"></div>
   </div>
 
   <!-- Interview ────────────────────────────────────────────────────────── -->
@@ -195,6 +271,137 @@ const ESS = [
   "This explanation lets me judge when I should trust and not trust the system."
 ];
 
+// Written for this study rather than taken from a published scale — the
+// published alternatives ask about explanation quality in the abstract, and
+// H3 is specifically about whether feedback helped someone *recover*.
+// Item 5 runs 1-7 while 1-4 run 1-5, exactly as specified in the measures doc.
+const PERCEIVED_SUPPORT = [
+  "When something unexpected happened, I understood what had happened.",
+  "The system helped me understand why the unexpected result occurred.",
+  "I felt supported in recovering from the unexpected result.",
+  "I knew what to try next after the unexpected result occurred."
+];
+
+// User Engagement Scale, short form — O'Brien, Cairns & Hall (2018).
+// Descriptive only: not tied to a hypothesis. Items 4-6 are the Perceived
+// Usability subscale and are reverse-scored, which is the mistake this scale
+// invites most often.
+// Subscale is carried in the id, not the position: the instrument's guidance is
+// to present the twelve items in a random order with the subscale headings
+// hidden, so that someone cannot answer three "aesthetics" items consistently
+// just because they can see they are a group.
+const UES = [
+  { id: "ues_fa1", text: "I lost myself in this task." },
+  { id: "ues_fa2", text: "The time I spent using this task just slipped away." },
+  { id: "ues_fa3", text: "I was absorbed in this task." },
+  { id: "ues_pu1", text: "I felt frustrated while doing this task." },
+  { id: "ues_pu2", text: "I found this task confusing to do." },
+  { id: "ues_pu3", text: "Using the system for this task was taxing." },
+  { id: "ues_ae1", text: "This VR scene was attractive." },
+  { id: "ues_ae2", text: "This VR scene was aesthetically appealing." },
+  { id: "ues_ae3", text: "This VR scene appealed to my visual senses." },
+  { id: "ues_rw1", text: "Doing this task was worthwhile." },
+  { id: "ues_rw2", text: "My experience was rewarding." },
+  { id: "ues_rw3", text: "I felt interested in this experience." }
+];
+
+// Fisher-Yates. Shuffled once per page load and reused by collect(), so the
+// order a participant saw is the order their answers were read back from.
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+const UES_ORDER = shuffled(UES);
+
+// Trust between people and automation — Jian, Bisantz & Drury (2000).
+// The single most standard measure in this literature, and the one a reviewer
+// of a feedback-modality paper will look for first. Items 1-5 are the distrust
+// half and reverse-score.
+const TRUST = [
+  "The system is deceptive.",
+  "The system behaves in an underhanded manner.",
+  "I am suspicious of the system's intent, action, or outputs.",
+  "I am wary of the system.",
+  "The system's actions will have a harmful or injurious outcome.",
+  "I am confident in the system.",
+  "The system provides security.",
+  "The system has integrity.",
+  "The system is dependable.",
+  "The system is reliable.",
+  "I can trust the system.",
+  "I am familiar with the system."
+];
+
+// Retrospective counterpart to the per-trial attribution probe. The per-trial
+// measure is the primary H1 test; this is the participant's own summary of the
+// same thing, and disagreement between the two is itself informative.
+const ATTRIB_SUMMARY = [
+  "When something went wrong today, how often was it because of something <b>you</b> said?",
+  "When something went wrong today, how often was it because of something the <b>system</b> could not do?",
+  "How often could you tell which of those two it was?",
+  "When a request failed, how often did saying it again the same way fix it?",
+  "How often did you feel something was your fault, and only later thought it might not have been?"
+];
+
+// Confidence with speech systems, asked before and after so the pair gives a
+// change score. A session of scripted failures should move this, and whether it
+// moves differently by condition is the practical stake of the whole study.
+const SELF_EFFICACY = [
+  "I am confident I could get a system like this to do what I want.",
+  "If a request failed, I would know how to change it to make it work.",
+  "I could tell the difference between a request the system misheard and one it simply cannot do."
+];
+
+// IPQ presence — Schubert, Friedmann & Regenbrecht (2001). Four items, not the
+// full fourteen: this is a VR paper and presence has to be reported, but it is
+// not what the study is about. Item 2 is reverse-scored.
+const PRESENCE = [
+  "In the computer generated world I had a sense of &ldquo;being there&rdquo;.",
+  "I did not feel present in the virtual space.",
+  "Somehow I felt that the virtual world surrounded me.",
+  "I felt present in the virtual space."
+];
+
+// Godspeed — Bartneck, Kuli&#263;, Croft & Zoltowski (2009). Condition C only:
+// it is the only condition with an agent to rate. Semantic differentials, so
+// each item is a pair of opposed words rather than an agree/disagree statement.
+const GODSPEED_ANTHRO = [
+  ["Fake", "Natural"], ["Machinelike", "Humanlike"], ["Unconscious", "Conscious"],
+  ["Artificial", "Lifelike"], ["Moving rigidly", "Moving elegantly"]
+];
+const GODSPEED_INTEL = [
+  ["Incompetent", "Competent"], ["Ignorant", "Knowledgeable"],
+  ["Irresponsible", "Responsible"], ["Unintelligent", "Intelligent"],
+  ["Foolish", "Sensible"]
+];
+
+// Simulator Sickness Questionnaire — Kennedy, Lane, Berbaum & Lilienthal (1993).
+// The single discomfort item stays as the pre/post pair; this is the full
+// instrument, which is what the VR reporting convention actually expects and
+// what yields the three published subscales.
+const SSQ = [
+  "General discomfort", "Fatigue", "Headache", "Eye strain",
+  "Difficulty focusing", "Increased salivation", "Sweating", "Nausea",
+  "Difficulty concentrating", "Fullness of head", "Blurred vision",
+  "Dizziness (eyes open)", "Dizziness (eyes closed)", "Vertigo",
+  "Stomach awareness", "Burping"
+];
+
+// Tiredness and remaining capacity. These were a separate mid-session page,
+// handed over between task blocks. They are asked here instead: a form handed
+// over in the middle of a session becomes the rest break whose effect it is
+// measuring, and the session is short enough that the end is close to the
+// tiring point anyway. The cost is that they no longer separate "tired by
+// halfway" from "tired by the end" — read them as an end state, not a curve.
+const FATIGUE = [
+  { id: "fatigue_mental", text: "How mentally tiring did the tasks feel?" },
+  { id: "fatigue_energy", text: "How would you rate your energy and focus right now?" }
+];
+
 const INTERVIEW = [
   "Looking back, which of the failures felt most like your own mistake, and which felt more like the system's fault?",
   "Was there a moment you tried the same thing again, hoping it would work? What were you thinking at that point?",
@@ -205,15 +412,29 @@ const INTERVIEW = [
 ];
 
 function likert(name, n, lo, hi) {
-  // discomfort is a 0-10 scale; everything else is 1-n. Storing the label the
-  // participant actually saw keeps the pre and post items directly comparable.
-  const zeroBased = name.startsWith("discomfort");
+  // discomfort and the blame split are 0-10 scales; everything else is 1-n.
+  // Storing the label the participant actually saw keeps the pre and post items
+  // directly comparable, and on the blame split 0 is a real answer meaning
+  // "entirely me" — rendering it as 1 would silently shift every response.
+  const zeroBased = name.startsWith("discomfort") || name === "blame_split";
   let o = "";
   for (let i = 1; i <= n; i++) {
     const v = zeroBased ? i - 1 : i;
     o += `<label><input type="radio" name="${name}" value="${v}"><span>${v}</span></label>`;
   }
   return `<div class="scale">${o}</div><div class="ends"><span>${lo}</span><span>${hi}</span></div>`;
+}
+
+// Godspeed is a semantic differential, not an agree/disagree scale: the two
+// anchor words carry the meaning and the numbers are just positions between
+// them. Rendering it as a Likert with a question stem would change what is
+// being asked.
+function semantic(name, lo, hi) {
+  let o = "";
+  for (let i = 1; i <= 5; i++)
+    o += `<label><input type="radio" name="${name}" value="${i}"><span>${i}</span></label>`;
+  return `<div class="q"><div class="scale">${o}</div>
+            <div class="ends"><span>${lo}</span><span>${hi}</span></div></div>`;
 }
 
 // 21 points, 0-100 in steps of 5, exactly as published.
@@ -243,6 +464,10 @@ async function prefill() {
   // would collect answers about a thing that never happened.
   document.getElementById("essCard").style.display =
     cond.toUpperCase() === "A" ? "none" : "block";
+  // Only condition C has an agent to rate. B's text panel is not an entity and
+  // rating it for "conscious" or "lifelike" would be meaningless.
+  document.getElementById("agentCard").style.display =
+    cond.toUpperCase() === "C" ? "block" : "none";
 }
 
 function render() {
@@ -258,9 +483,70 @@ function render() {
     `<div class="q"><div class="text">${i+1}. ${q}</div>${likert("sus"+(i+1), 5, "Strongly disagree", "Strongly agree")}</div>`
   ).join("");
 
+  // Items 1-4 are 1-5; item 5 is a 1-7 overall rating, per the measures doc.
+  document.getElementById("psup").innerHTML =
+    PERCEIVED_SUPPORT.map((q, i) =>
+      `<div class="q"><div class="text">${i+1}. ${q}</div>${likert("psup"+(i+1), 5, "Strongly disagree", "Strongly agree")}</div>`
+    ).join("") +
+    `<div class="q"><div class="text">5. Overall, how supportive was the system when things went wrong?</div>
+      ${likert("psup5", 7, "Not at all supportive", "Extremely supportive")}</div>`;
+
+  document.getElementById("attribSummary").innerHTML = ATTRIB_SUMMARY.map((q, i) =>
+    `<div class="q"><div class="text">${i+1}. ${q}</div>${likert("attr"+(i+1), 7, "Never", "Always")}</div>`
+  ).join("");
+
+  // The graded blame split and the confidence rating. Both were originally
+  // asked by the wizard after every failure; they are asked once here instead.
+  // The scales are unchanged (0-10 and 1-5) so the numbers still mean what they
+  // meant, but the referent is now the session rather than a single trial —
+  // which is why the stems say "over the whole session".
+  document.getElementById("blameSplit").innerHTML =
+    `<div class="q"><div class="text">6. Over the whole session, out of ten, how much of what went
+        wrong was you and how much was the system?</div>
+      ${likert("blame_split", 11, "0 &mdash; entirely me", "10 &mdash; entirely the system")}</div>
+     <div class="q"><div class="text">7. How sure are you about that?</div>
+      ${likert("attr_confidence", 5, "Not at all sure", "Completely sure")}</div>`;
+
+  // Published order, not randomised — the order is part of the validated
+  // instrument. Ids are zero-padded so trust10 sorts after trust09 in any
+  // spreadsheet the data is later opened in.
+  document.getElementById("trust").innerHTML = TRUST.map((q, i) => {
+    const id = "trust" + String(i + 1).padStart(2, "0");
+    return `<div class="q"><div class="text">${i+1}. ${q}</div>${likert(id, 7, "Not at all", "Extremely")}</div>`;
+  }).join("");
+
+  document.getElementById("presence").innerHTML = PRESENCE.map((q, i) =>
+    `<div class="q"><div class="text">${i+1}. ${q}</div>${likert("pres"+(i+1), 7, "Strongly disagree", "Strongly agree")}</div>`
+  ).join("");
+
+  document.getElementById("selfEff").innerHTML = SELF_EFFICACY.map((q, i) =>
+    `<div class="q"><div class="text">${i+1}. ${q}</div>${likert("se_post"+(i+1), 7, "Strongly disagree", "Strongly agree")}</div>`
+  ).join("");
+
+  document.getElementById("ues").innerHTML = UES_ORDER.map((it, i) =>
+    `<div class="q"><div class="text">${i+1}. ${it.text}</div>${likert(it.id, 5, "Strongly disagree", "Strongly agree")}</div>`
+  ).join("");
+
+  document.getElementById("godspeed").innerHTML =
+    GODSPEED_ANTHRO.map((p, i) => semantic("gs_anthro"+(i+1), p[0], p[1])).join("") +
+    GODSPEED_INTEL.map((p, i)  => semantic("gs_intel"+(i+1),  p[0], p[1])).join("");
+
+  // 0-3 None/Slight/Moderate/Severe, the published response set. Word labels
+  // rather than bare numbers because "2" means nothing to a participant here.
+  document.getElementById("ssq").innerHTML = SSQ.map((s, i) => {
+    const opts = ["None", "Slight", "Moderate", "Severe"].map((lab, v) =>
+      `<label><input type="radio" name="ssq${i+1}" value="${v}"><span>${lab}</span></label>`).join("");
+    return `<div class="q"><div class="text">${i+1}. ${s}</div><div class="scale">${opts}</div></div>`;
+  }).join("");
+
   document.getElementById("sickness").innerHTML =
-    `<div class="q"><div class="text">Right now: do you feel any dizziness, nausea or eye strain?</div>
+    `<div class="q"><div class="text">And overall, right now: do you feel any dizziness, nausea or eye strain?</div>
       ${likert("discomfort_post", 11, "0 — none at all", "10 — severe")}</div>`;
+
+  document.getElementById("fatigue").innerHTML = FATIGUE.map((it, i) =>
+    `<div class="q"><div class="text">${i+1}. ${it.text}</div>
+      ${likert(it.id, 7, "Very low", "Very high")}</div>`
+  ).join("");
 
   document.getElementById("interview").innerHTML = INTERVIEW.map((q, i) =>
     `<div class="q"><div class="text">${i+1}. ${q}</div>
@@ -271,10 +557,24 @@ function render() {
 function collect() {
   const answers = {}, missing = [];
   const cond = (document.getElementById("condition").value || "").toUpperCase();
+  const n = (p, k) => Array.from({ length: k }, (_, i) => p + (i + 1));
   const scored = [
     ...TLX.map(t => t.id),
-    ...(cond === "A" ? [] : ESS.map((_, i) => "ess" + (i + 1))),
-    ...SUS.map((_, i) => "sus" + (i + 1)),
+    // Condition A never saw an explanation or an agent, so those blocks are
+    // absent rather than unanswered — requiring them would block submission on
+    // questions that were never on screen.
+    ...(cond === "A" ? [] : n("ess", 8)),
+    ...(cond === "C" ? [...n("gs_anthro", 5), ...n("gs_intel", 5)] : []),
+    ...n("psup", 5),
+    ...n("attr", 5),
+    "blame_split", "attr_confidence",
+    ...FATIGUE.map(it => it.id),
+    ...Array.from({ length: 12 }, (_, i) => "trust" + String(i + 1).padStart(2, "0")),
+    ...n("sus", 10),
+    ...n("pres", 4),
+    ...n("se_post", 3),
+    ...UES.map(it => it.id),
+    ...n("ssq", 16),
     "discomfort_post"
   ];
   scored.forEach(n => {

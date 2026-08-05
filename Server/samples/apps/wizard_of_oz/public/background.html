@@ -92,6 +92,14 @@ const DEMOGRAPHICS = [
 
   { id: "vr_experience", text: "How would you rate your prior experience with VR / head-mounted displays?",
     options: ["None", "A little (tried it a few times)", "Moderate (use occasionally)", "Extensive (use regularly)"] },
+
+  // Gamers are habituated to "system behaved unexpectedly" framing — they debug
+  // rather than self-blame. Directly confounds H1 (misattribution to self).
+  // Standard covariate in interactive-system research; reviewers expect it.
+  { id: "gaming_frequency", text: "How often do you play video games (on any device)?",
+    options: ["Never", "Rarely (a few times a year)", "Sometimes (monthly)",
+              "Often (weekly)", "Daily or near-daily"] },
+
   { id: "tech_background", text: "Do you have a programming / technical background?",
     options: ["None", "Some (e.g. one course)", "Moderate", "Extensive (e.g. degree/job in CS)"] },
   { id: "assistant_use", text: "How often do you use voice assistants or AI chatbots (e.g. Siri, Alexa, ChatGPT)?",
@@ -107,6 +115,26 @@ const DEMOGRAPHICS = [
 
   { id: "handedness", text: "Are you left- or right-handed?",
     options: ["Right-handed", "Left-handed", "Both / ambidextrous"] },
+
+  // A speech study that does not ask about hearing has an unmeasured reason for
+  // every "the system misheard me" attribution in the data.
+  { id: "hearing", text: "Do you have any hearing difficulty, or use a hearing aid?",
+    options: ["No", "Yes, mild", "Yes, moderate or greater", "Prefer not to say"] },
+  { id: "speech_condition",
+    text: "Do you have any speech condition (e.g. a stammer) that you feel affects how systems understand you?",
+    options: ["No", "Yes", "Prefer not to say"] },
+
+  // The three self-efficacy items are repeated verbatim after the session. A
+  // single pre/post pair turns a static rating into a change score, which is
+  // what shows whether a session of scripted failures actually dented anyone's
+  // confidence — and whether feedback condition changed that.
+  { id: "se_pre1", text: "I am confident I could get a voice system to do what I want.",
+    options: ["1 — Strongly disagree", "2", "3", "4", "5", "6", "7 — Strongly agree"] },
+  { id: "se_pre2", text: "If a request failed, I would know how to change it to make it work.",
+    options: ["1 — Strongly disagree", "2", "3", "4", "5", "6", "7 — Strongly agree"] },
+  { id: "se_pre3",
+    text: "I could tell the difference between a request a system misheard and one it simply cannot do.",
+    options: ["1 — Strongly disagree", "2", "3", "4", "5", "6", "7 — Strongly agree"] },
 
   // Baseline for the post-session item. A single pre/post pair gives a change
   // score, which is what the withdrawal criterion and the VR-reporting
