@@ -117,6 +117,9 @@ study-qr.svg
 study-qr.png
 study-site/poster-print.html
 study-site/poster-built.html
+# Same three artefacts for the other two studies, whose sources live in
+# study-site/omni-connect/ and study-site/indoor-room/. Covered already by the
+# study-site/ rule below, listed here so the pattern is not a surprise.
 Unity/OldAgentVoice_unused/
 
 # Participant landing page — separate repo, pushed to abyyworld/vr-voice-study

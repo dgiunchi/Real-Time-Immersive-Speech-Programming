@@ -54,7 +54,7 @@ box  = re.search(r'viewBox="([^"]+)"', open(qr).read()).group(1)
 
 inline = (f'<svg viewBox="{box}" width="100%" height="100%" '
           f'shape-rendering="crispEdges" role="img" '
-          f'aria-label="QR code linking to the study sign-up page">{body}</svg>')
+          f'aria-label="QR code linking to the study information page">{body}</svg>')
 
 html = re.sub(r'<div class="qr">.*?</div>',
               f'<div class="qr" style="padding:1.5mm;width:40mm;height:40mm;">{inline}</div>',

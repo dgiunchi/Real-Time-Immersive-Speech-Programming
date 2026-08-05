@@ -840,47 +840,12 @@ const ALLOCATION_FILE = path.join(LOG_DIR, "allocation.json");
 // to say.
 const PRACTICE_DIR = path.join(LOG_DIR, "practice");
 
-// Sign-ups live apart from the study data on purpose: this file is the only one
-// holding names and email addresses, so the participant files stay
-// non-identifiable and this one can be deleted at the end of the study without
-// touching anything that gets analysed.
-const SIGNUP_FILE = path.join(LOG_DIR, "signups.csv");
-const SLOTS_FILE  = path.join(LOG_DIR, "slots.json");
-
-// Edited by the researcher, read fresh on every request so slots can be added
-// mid-study without a restart. Seeded with two, for the pilot.
-const DEFAULT_SLOTS = {
-    config: {
-        infoSheetUrl: "REPLACE-WITH-YOUR-INFORMATION-SHEET-URL",
-        contactEmail: "REPLACE-WITH-YOUR-EMAIL"
-    },
-    slots: [
-        { id: "s1", when: "Monday 11 August, 10:00", capacity: 1 },
-        { id: "s2", when: "Monday 11 August, 14:00", capacity: 1 }
-    ]
-};
-
-function readSlots() {
-    try { return JSON.parse(fs.readFileSync(SLOTS_FILE, "utf8")); }
-    catch (_) {
-        fs.mkdirSync(LOG_DIR, { recursive: true });
-        fs.writeFileSync(SLOTS_FILE, JSON.stringify(DEFAULT_SLOTS, null, 2));
-        return DEFAULT_SLOTS;
-    }
-}
-
-/** How many people have already booked each slot. */
-function signupCounts() {
-    const counts = {};
-    try {
-        const lines = fs.readFileSync(SIGNUP_FILE, "utf8").trim().split("\n").slice(1);
-        for (const line of lines) {
-            const id = (line.split(",")[1] || "").replace(/^"|"$/g, "");
-            if (id) counts[id] = (counts[id] || 0) + 1;
-        }
-    } catch (_) {}
-    return counts;
-}
+// Booking is not handled here. Participants reach a landing page from the
+// poster QR, read the information sheet, and pick a slot on cal.com. The server
+// used to serve its own /signup page against a slots.json, which meant this
+// process held the only file with names and email addresses in it; it no longer
+// does, and that is the better arrangement — nothing the server writes is
+// identifying.
 
 function readAllocations() {
     try { return JSON.parse(fs.readFileSync(ALLOCATION_FILE, "utf8")); }
@@ -2072,21 +2037,6 @@ class WizardOfOzApp extends ApplicationController {
                 return serveFile(res, path.join(PUBLIC_DIR, "replay.html"), "text/html");
             }
 
-            if (req.method === "GET" && url === "/signup") {
-                return serveFile(res, path.join(PUBLIC_DIR, "signup.html"), "text/html");
-            }
-
-            if (req.method === "GET" && url === "/signup-data") {
-                const cfg = readSlots();
-                const counts = signupCounts();
-                return send(200, {
-                    config: cfg.config || {},
-                    slots: (cfg.slots || []).map(s => ({
-                        ...s, taken: counts[s.id] || 0
-                    }))
-                });
-            }
-
             if (req.method === "GET" && url === "/scene-state") {
                 const variant = this.trial ? this.trial.variant : this.activeVariant;
                 const task = TASKS[this.activeTask];
@@ -2522,28 +2472,6 @@ class WizardOfOzApp extends ApplicationController {
                     if (req.method === "POST" && url === "/event") {
                         this.logEvent(payload.type || "note", payload.detail || "");
                         return send(200, { ok: true });
-                    }
-
-                    if (req.method === "POST" && url === "/signup") {
-                        const cfg = readSlots();
-                        const slot = (cfg.slots || []).find(s => s.id === payload.slotId);
-                        if (!slot) return send(400, { ok: false, error: "That slot no longer exists." });
-
-                        // Re-checked here rather than trusting the page, because
-                        // two people can be looking at the same last place.
-                        const taken = signupCounts()[slot.id] || 0;
-                        if (taken >= slot.capacity) {
-                            return send(409, { ok: false,
-                                error: "Sorry — that slot was just taken. Please pick another." });
-                        }
-
-                        appendCsv(SIGNUP_FILE,
-                            "bookedAtIso,slotId,slotWhen,name,email",
-                            [new Date().toISOString(), slot.id, slot.when,
-                             String(payload.name || ""), String(payload.email || "")]
-                                .map(csvEscape).join(","));
-                        console.log(`\x1b[36m[Signup]\x1b[0m ${payload.name} → ${slot.when}`);
-                        return send(200, { ok: true, when: slot.when });
                     }
 
                     if (req.method === "POST" && url === "/questionnaire") {
