@@ -5,13 +5,33 @@ const DEFAULT_HTTP_URL = "http://130.136.2.161:50101/stt/transcribe";
 const DEFAULT_SAMPLE_RATE = 16000;
 const DEFAULT_CHANNELS = 1;
 const DEFAULT_BITS_PER_SAMPLE = 16;
-const DEFAULT_FINALIZE_AFTER_MS = 800;
+// End-of-utterance pause. 800ms was cutting people off mid-sentence: a task
+// instruction like "put a red ball ... on the table" has a natural pause in it
+// that is longer than that, so the first half was transcribed and sent while
+// the participant was still talking. 1500ms is past the length of an ordinary
+// planning pause and still short enough not to feel laggy.
+const DEFAULT_FINALIZE_AFTER_MS = 1500;
 const DEFAULT_MIN_AUDIO_MS = 300;
 const DEFAULT_MAX_AUDIO_MS = 20000;
 
-// RMS below this counts as silence. 16-bit PCM normalised to 0..1, so 0.012 is
-// roughly a quiet room with headset fan noise. Tunable via STT_SILENCE_RMS.
-const DEFAULT_SILENCE_RMS = 0.012;
+// RMS below this counts as silence. 16-bit PCM normalised to 0..1.
+//
+// This was 0.012, and that number is why the system "could not hear" people:
+// with a quieter mic gain, ordinary speech never crossed it, every chunk was
+// classified as silence, and whole utterances were discarded — the logs show
+// 20 seconds of audio finalised as "no speech detected". 0.005 is comfortably
+// above digital silence and dither but low enough for a quiet headset mic.
+//
+// Lowering a silence gate normally risks the opposite failure — room noise
+// counted as speech, sent to Whisper, and hallucinated into a sentence — so it
+// is paired with MIN_SPEECH_CHUNKS below. Tunable via STT_SILENCE_RMS.
+const DEFAULT_SILENCE_RMS = 0.005;
+
+// How many chunks must cross the threshold before the audio counts as speech.
+// A single blip — a door, a cough, the headset being adjusted — clears an
+// amplitude gate easily; a sentence clears it many times over. This is what
+// keeps the lower threshold safe.
+const DEFAULT_MIN_SPEECH_CHUNKS = 3;
 
 /**
  * Mean amplitude of a PCM16 chunk, normalised to 0..1.
@@ -120,6 +140,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
         this.minAudioMs = getNumber("STT_MIN_AUDIO_MS", DEFAULT_MIN_AUDIO_MS);
         this.maxAudioMs = getNumber("STT_MAX_AUDIO_MS", DEFAULT_MAX_AUDIO_MS);
         this.silenceRms = getNumber("STT_SILENCE_RMS", DEFAULT_SILENCE_RMS);
+        this.minSpeechChunks = getNumber("STT_MIN_SPEECH_CHUNKS", DEFAULT_MIN_SPEECH_CHUNKS);
         this.requireExplicitRecording = getBoolean("STT_REQUIRE_RECORDING", true);
 
         this.sessions = new Map();
@@ -133,6 +154,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
             `format=${this.sampleRate}Hz/${this.channels}ch/${this.bitsPerSample}bit ` +
             `finalizeAfterMs=${this.finalizeAfterMs} minAudioMs=${this.minAudioMs} ` +
             `maxAudioMs=${this.maxAudioMs} silenceRms=${this.silenceRms} ` +
+            `minSpeechChunks=${this.minSpeechChunks} ` +
             `requireExplicitRecording=${this.requireExplicitRecording}`
         );
     }
@@ -157,6 +179,13 @@ class FasterWhisperHttpSttService extends EventEmitter {
                 transcribing: false,
                 recording: false,
                 heardVoice: false,   // guards against transcribing pure silence
+                // Measured, not assumed. When an utterance is thrown away as
+                // silent, the only question worth answering is "how loud was it
+                // actually?" — without that number, tuning the threshold is
+                // guesswork and "it cannot hear me" has no evidence attached.
+                peakRms: 0,
+                speechChunks: 0,
+                totalChunks: 0,
             };
             this.sessions.set(peerUUID, session);
             this.childProcesses[peerUUID] = session;
@@ -191,8 +220,15 @@ class FasterWhisperHttpSttService extends EventEmitter {
         // NOT push the deadline back, or the utterance never ends while the mic
         // is held open. Silence arriving after speech is exactly what should let
         // the timer run down and fire.
-        if (chunkRms(chunk, this.bitsPerSample) >= this.silenceRms) {
-            session.heardVoice = true;
+        const rms = chunkRms(chunk, this.bitsPerSample);
+        session.totalChunks += 1;
+        if (rms > session.peakRms) session.peakRms = rms;
+        if (rms >= this.silenceRms) {
+            session.speechChunks += 1;
+            // One loud chunk is a noise; several is a sentence. Holding
+            // heardVoice back until the count is met is what lets the threshold
+            // sit low enough for a quiet mic without feeding Whisper a room.
+            if (session.speechChunks >= this.minSpeechChunks) session.heardVoice = true;
             this.resetFinalizeTimer(peerUUID, session);
         }
 
@@ -245,11 +281,17 @@ class FasterWhisperHttpSttService extends EventEmitter {
         const chunks = session.chunks;
         const bytes = session.bytes;
         const heardVoice = session.heardVoice;
+        const peakRms = session.peakRms;
+        const speechChunks = session.speechChunks;
+        const totalChunks = session.totalChunks;
         const durationMs = durationMsForBytes(bytes, this.sampleRate, this.channels, this.bitsPerSample);
 
         session.chunks = [];
         session.bytes = 0;
         session.heardVoice = false;
+        session.peakRms = 0;
+        session.speechChunks = 0;
+        session.totalChunks = 0;
         session.transcribing = true;
 
         // Never send pure silence. Whisper does not return empty for silent
@@ -257,16 +299,28 @@ class FasterWhisperHttpSttService extends EventEmitter {
         // which would land in the transcript as if the participant had spoken
         // and would be counted as a repair attempt.
         if (!heardVoice) {
+            // The peak is the actionable half of this message. "No speech
+            // detected" alone cannot distinguish a dead microphone from a live
+            // one whose level sits under the threshold, and those need opposite
+            // fixes. peak=0.000 means no signal; peak=0.004 against a 0.005
+            // threshold means the gate is set wrong, and by how much.
+            const detail =
+                `${durationMs.toFixed(0)}ms of audio, no speech detected ` +
+                `(peak level ${peakRms.toFixed(4)}, threshold ${this.silenceRms}, ` +
+                `${speechChunks}/${totalChunks} chunks over)`;
             console.log(
-                `[FasterWhisperHttpSttService] discard silent utterance peerUUID=${peerUUID} ` +
-                `durationMs=${durationMs.toFixed(0)} reason=${reason}`
+                `[FasterWhisperHttpSttService] discard silent utterance ` +
+                `peerUUID=${peerUUID} ${detail} reason=${reason}`
             );
             // Also announced, not just logged. An utterance dropped here looks
             // identical from the control panel to one that was never spoken:
             // the transcript simply never changes. Saying which happened is the
             // difference between "the mic is dead" and "it heard only silence".
             this.emit("diagnostic", {
-                kind: "silent", peerUUID, durationMs: Math.round(durationMs), reason
+                kind: "silent", peerUUID, durationMs: Math.round(durationMs),
+                reason, detail,
+                peakRms: +peakRms.toFixed(4), speechChunks, totalChunks,
+                threshold: this.silenceRms
             });
             session.transcribing = false;
             this.deleteIdleSession(peerUUID, session);
@@ -279,7 +333,10 @@ class FasterWhisperHttpSttService extends EventEmitter {
                 `durationMs=${durationMs.toFixed(0)} bytes=${bytes}`
             );
             this.emit("diagnostic", {
-                kind: "short", peerUUID, durationMs: Math.round(durationMs), reason
+                kind: "short", peerUUID, durationMs: Math.round(durationMs), reason,
+                detail: `${durationMs.toFixed(0)}ms of audio, too short to transcribe ` +
+                        `(minimum ${this.minAudioMs}ms, peak level ${peakRms.toFixed(4)})`,
+                peakRms: +peakRms.toFixed(4)
             });
             session.transcribing = false;
             this.deleteIdleSession(peerUUID, session);
