@@ -123,7 +123,7 @@ The `Server/samples` folder contains a number of samples that demonstrate how to
 The `Genie/samples` folder contains a number of samples that demonstrate how to use Ubiq-Genie. For more information on how to use these samples, please refer to the README files in the corresponding folders. Currently, the following collaborative samples are available:
 
 - [**Texture Generation**](Server/samples/apps/texture_generation/README.md): generates a texture based on voice-based input and an optional ray to select target objects
-- [**Multi-user Conversational Agent**](Server/samples/apps/virtual_assistant/README.md): a conversational agent that can be interacted with by multiple users
+- [**Multi-user Conversational Agent**](Server/samples/apps/conversational_agent/README.md): a conversational agent that can be interacted with by multiple users
 - [**Transcription**](Server/samples/apps/transcription/README.md): transcribes audio streams of users in a room
 
 For a demo video of the samples, please refer to the [Ubiq-Genie demo video](https://youtu.be/cGz0z9BIgQk).
