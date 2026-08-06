@@ -2073,10 +2073,16 @@ class WizardOfOzApp extends ApplicationController {
             }
 
             if (req.method === "GET" && url === "/participants") {
+                // Not every .csv in Logs/ is a participant. `warmup.csv` collects
+                // everything done before a session is started, and demo runs are
+                // filmed rather than analysed. Listing them made the panel claim
+                // three participants on a study that had run one, which is the
+                // kind of miscount that ends up in a progress report.
                 const files = fs.existsSync(LOG_DIR)
                     ? fs.readdirSync(LOG_DIR)
                         .filter(f => f.endsWith(".csv"))
                         .map(f => f.replace(/\.csv$/, ""))
+                        .filter(id => id !== "warmup" && !/^DEMO/i.test(id))
                         .sort()
                     : [];
                 return send(200, { participants: files, live: this.session.participantId || null });

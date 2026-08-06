@@ -41,6 +41,21 @@
                 border-color: var(--accent); font-weight:700; }
   .ends { display:flex; justify-content:space-between; color:var(--muted);
           font-size:12px; margin-top:7px; }
+  .ends b { color:var(--text); font-weight:700; }
+
+  /* Performance is the one TLX subscale whose anchors run the opposite way to
+     the other five: "How successful were you?" reads as if right means better,
+     but the published scale puts Perfect on the LEFT. The anchors are correct
+     and must not be swapped — swapping them, or reverse-scoring on top of them,
+     silently inverts the subscale and is the classic TLX mistake. What was
+     wrong was the presentation: 21 unlabelled boxes give a participant nothing
+     to go on but two words of small grey text, so someone who did well slides
+     right and records total failure. Flagged loudly instead. */
+  .flip { border:1.5px solid var(--warn); border-radius:8px;
+          padding:11px 13px 13px; background:rgba(255,190,80,.09); }
+  .flip-note { display:flex; gap:7px; align-items:baseline; font-size:12.5px;
+               color:var(--warn); font-weight:650; margin-bottom:9px; }
+  .flip .ends b { color:var(--warn); }
   /* NASA-TLX is a 21-point scale, not a 7-point one. Rendered as its published
      tick strip rather than collapsed to Likert buttons, because collapsing it
      makes the scores incomparable with every TLX ever published. */
@@ -438,11 +453,20 @@ function semantic(name, lo, hi) {
 }
 
 // 21 points, 0-100 in steps of 5, exactly as published.
+//
+// The end labels carry their numeric value as well as the anchor word. On a
+// strip of identical unlabelled boxes the words alone are weak: they sit in
+// small grey text at the extremes and a participant scanning the row has
+// nothing telling them which direction the numbers run. That is survivable on
+// the five subscales that run Low to High, and a trap on Performance, which
+// runs the other way.
 function tlxScale(name, lo, hi) {
   let o = "";
   for (let v = 0; v <= 100; v += 5)
     o += `<label title="${v}"><input type="radio" name="${name}" value="${v}"><span></span></label>`;
-  return `<div class="tlx">${o}</div><div class="ends"><span>${lo}</span><span>${hi}</span></div>`;
+  return `<div class="tlx">${o}</div>` +
+         `<div class="ends"><span><b>${lo}</b> &middot; 0</span>` +
+         `<span>100 &middot; <b>${hi}</b></span></div>`;
 }
 
 async function prefill() {
@@ -471,9 +495,19 @@ async function prefill() {
 }
 
 function render() {
-  document.getElementById("tlx").innerHTML = TLX.map(t =>
-    `<div class="q"><div class="text"><b>${t.name}</b> &mdash; ${t.q}</div>${tlxScale(t.id, t.lo, t.hi)}</div>`
-  ).join("");
+  // Performance gets a warning frame and an explicit "this one runs the other
+  // way" line. Its anchors are the published ones and stay as they are; what
+  // changes is only how hard they are to miss.
+  document.getElementById("tlx").innerHTML = TLX.map(t => {
+    const flipped = t.id === "tlx_performance";
+    return `<div class="q${flipped ? " flip" : ""}">` +
+      (flipped
+        ? `<div class="flip-note"><span>&#9888;</span><span>Careful: this scale runs the
+             opposite way to the others. <b>Left is best</b> (Perfect), right is worst
+             (Failure).</span></div>`
+        : "") +
+      `<div class="text"><b>${t.name}</b> &mdash; ${t.q}</div>${tlxScale(t.id, t.lo, t.hi)}</div>`;
+  }).join("");
 
   document.getElementById("ess").innerHTML = ESS.map((q, i) =>
     `<div class="q"><div class="text">${i+1}. ${q}</div>${likert("ess"+(i+1), 5, "Strongly disagree", "Strongly agree")}</div>`
