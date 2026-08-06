@@ -394,7 +394,12 @@ function computeBroadcastAddrs() {
     const ifaces = os.networkInterfaces();
     for (const name of Object.keys(ifaces)) {
         for (const net of ifaces[name] || []) {
-            if (net.family !== "IPv4" || net.internal) continue;
+            // Some Node builds report family as the number 4 rather than the
+            // string "IPv4". A strict string test silently matches nothing on
+            // those, and the beacon then broadcasts to an empty target list
+            // while still logging that it started.
+            const isV4 = typeof net.family === "number" ? net.family === 4 : net.family === "IPv4";
+            if (!isV4 || net.internal) continue;
             const ip = net.address.split(".").map(Number);
             const mask = net.netmask.split(".").map(Number);
             const bcast = ip.map((o, i) => (o & mask[i]) | (~mask[i] & 0xff));
