@@ -313,6 +313,56 @@ That single command:
 
 Leave that terminal running for the whole session. Press `Ctrl+C` to stop.
 
+On Windows the same command works from **cmd** or PowerShell:
+
+```
+cd path\to\Real-Time-Immersive-Speech-Programming-Visualisation-DreamCodeVR-feedback-loop\Server
+npm run study
+```
+
+(`./study` is a bash script and will not run in cmd. Use `npm run study`, or
+Git Bash if you want the shorthand.)
+
+---
+
+## Setting up a second researcher's machine
+
+**Unity is not needed.** The headset finds the server at run time, not at build
+time: `study.js` writes the laptop's current IP to
+`/sdcard/Android/data/<package>/files/study_server.txt` on every run. One APK
+therefore works on any machine and any network, and only ever has to be built
+once, by whoever has Unity.
+
+What the second machine needs:
+
+| | |
+|---|---|
+| **Node.js** | LTS from [nodejs.org](https://nodejs.org). `npm run study` needs it. |
+| **This repository** | Clone it. Only the `Server/` half is used. |
+| **adb** | Only for the first sideload and the USB fallback. `study.js` finds it on `PATH`, in the Android SDK, or inside an installed Unity. |
+| **The APK** | Built once on the machine that has Unity, then sent over. |
+
+Install the APK on their headset once:
+
+```
+adb install -r "dreamcodevr w Amai.apk"
+```
+
+After that they run `npm run study` like anyone else. If the headset and the
+laptop are on the same Wi-Fi it connects over the network; if the network blocks
+it (campus Wi-Fi often does), leaving the USB cable in gives a tunnel that works
+regardless.
+
+**One thing to check on a new network:** the launcher prints which address it
+picked. If the machine has several adapters (VPN, WSL, VirtualBox, phone
+tethering) it says so, and the one it chose may not be the one the headset can
+see. Override it with:
+
+```
+STUDY_LAN_IP=192.168.1.42 npm run study        # macOS / Linux
+set STUDY_LAN_IP=192.168.1.42 && npm run study # Windows cmd
+```
+
 ---
 
 ## Running a session

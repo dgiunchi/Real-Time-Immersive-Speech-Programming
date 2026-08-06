@@ -20,6 +20,11 @@ const os    = require("os");
 const fs    = require("fs");
 const path  = require("path");
 
+// Declared with the imports rather than beside its first use: the mode prompt
+// reads it, and that runs before anything further down the file would have
+// initialised it.
+const IS_WINDOWS = process.platform === "win32";
+
 const serverRoot  = path.resolve(__dirname, "..");
 const wozDir      = path.join(serverRoot, "samples", "apps", "wizard_of_oz");
 const certSrcDir  = path.join(serverRoot, "samples", "apps", "code_runtime_generator");
@@ -55,6 +60,22 @@ function log(msg) { console.log(`\x1b[1m\x1b[36m[study]\x1b[0m ${msg}`); }
 
 const MODE_FILE = path.join(os.tmpdir(), "dreamcodevr_mode");
 
+/** Blocking sleep, no shell and no platform assumptions. */
+function sleepSync(ms) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** The console device to read a keypress from, per platform. */
+const TTY_DEVICES = IS_WINDOWS ? ["CONIN$", 0] : ["/dev/tty", 0];
+
+/** Open the terminal for reading, or null when there isn't one. */
+function openTty() {
+    for (const dev of TTY_DEVICES) {
+        try { return fs.openSync(dev, "rs"); } catch (_) {}
+    }
+    return null;
+}
+
 /**
  * Blocking read of one line from the terminal.
  *
@@ -69,9 +90,8 @@ const MODE_FILE = path.join(os.tmpdir(), "dreamcodevr_mode");
  */
 function promptSync(question) {
     process.stdout.write(question);
-    let fd;
-    try { fd = fs.openSync("/dev/tty", "rs"); }
-    catch (_) { return ""; }              // no terminal: caller falls back
+    const fd = openTty();
+    if (fd === null) return "";            // no terminal: caller falls back
 
     const buf = Buffer.alloc(256);
     const deadline = Date.now() + 120000; // don't hang a session forever
@@ -82,7 +102,11 @@ function promptSync(question) {
                 if (n === 0) return "";    // EOF
                 return buf.toString("utf8", 0, n).trim().toLowerCase();
             } catch (e) {
-                if (e.code === "EAGAIN") { try { execSync("sleep 0.05"); } catch (_) {} continue; }
+                // Blocking sleep with no shell involved. This used to run
+                // `sleep 0.05`, which does not exist on Windows, so the catch
+                // swallowed the failure and the loop span the CPU flat out
+                // until the deadline.
+                if (e.code === "EAGAIN") { sleepSync(50); continue; }
                 if (e.code === "EOF") return "";
                 return "";
             }
@@ -103,7 +127,8 @@ function resolveMode() {
     // terminal can actually be opened, not by stdin.isTTY, which says nothing
     // about whether a read on it will block.
     let hasTty = false;
-    try { const fd = fs.openSync("/dev/tty", "rs"); fs.closeSync(fd); hasTty = true; } catch (_) {}
+    const probe = openTty();
+    if (probe !== null) { try { fs.closeSync(probe); } catch (_) {} hasTty = true; }
     if (!hasTty) {
         log("Not a terminal — defaulting to STUDY mode.");
         return "study";
@@ -172,19 +197,54 @@ function applyHeadsetMode(mode) {
 log("Clearing ports 8005 / 8010 / 8181…");
 for (const port of STUDY_PORTS) {
     try {
-        execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null; true`, { shell: true, stdio: "pipe" });
+        if (IS_WINDOWS) {
+            // netstat lists the owning PID in the last column; taskkill /F ends it.
+            // Wrapped in a for-loop rather than piped, because Windows has no xargs.
+            execSync(
+                `for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port} ^| findstr LISTENING') ` +
+                `do @taskkill /F /PID %a`,
+                { shell: "cmd.exe", stdio: "pipe" });
+        } else {
+            execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null; true`, { shell: true, stdio: "pipe" });
+        }
     } catch (_) {}
 }
 
 // ── 2. Auto-detect LAN IP and patch Server.asset ──────────────────────────────
+//
+// Reads the interface table directly instead of shelling out. The old version
+// ran `ipconfig getifaddr en0`, which is macOS-only twice over: Windows has an
+// `ipconfig` that takes no such argument and prints an unrelated table, and the
+// en0/en1 names do not exist there at all. On Windows it fell through to
+// 127.0.0.1, which is then what gets written onto the headset as the address to
+// connect back to — so the headset would look for the server on itself and the
+// session would never start.
 function getLanIp() {
-    for (const iface of ["en0", "en1", "en2", "utun0"]) {
-        try {
-            const ip = execSync(`ipconfig getifaddr ${iface} 2>/dev/null`, { shell: true }).toString().trim();
-            if (ip && !ip.startsWith("169.")) return ip;  // skip link-local
-        } catch (_) {}
+    const ifaces = os.networkInterfaces();
+    // Wi-Fi first: the headset is on Wi-Fi, so an address on the same adapter is
+    // the one most likely to be reachable from it. Virtual adapters (VirtualBox,
+    // WSL, Docker, VPNs) hand out addresses that look perfectly valid and route
+    // nowhere the headset can follow, so they are skipped explicitly.
+    const skip = /^(vEthernet|VirtualBox|VMware|Docker|Loopback|utun|awdl|llw|bridge|Hyper-V)/i;
+    const preferred = /^(en0|en1|Wi-?Fi|Wireless|Ethernet)/i;
+
+    const found = [];
+    for (const [name, addrs] of Object.entries(ifaces)) {
+        if (skip.test(name)) continue;
+        for (const a of addrs || []) {
+            const family = typeof a.family === "number" ? a.family === 4 : a.family === "IPv4";
+            if (!family || a.internal) continue;
+            if (a.address.startsWith("169.")) continue;      // link-local, not routable
+            found.push({ name, ip: a.address });
+        }
     }
-    return "127.0.0.1";
+    if (!found.length) return "127.0.0.1";
+    const best = found.find(f => preferred.test(f.name)) || found[0];
+    if (found.length > 1) {
+        log(`Multiple addresses found (${found.map(f => `${f.name}=${f.ip}`).join(", ")}); ` +
+            `using ${best.ip}. Override with STUDY_LAN_IP if the headset cannot reach it.`);
+    }
+    return process.env.STUDY_LAN_IP || best.ip;
 }
 
 function patchServerAsset(ip) {
@@ -223,11 +283,52 @@ patchServerAsset(lanIp);
 // working path — no rebuild, no IP config, and immune to subnet layout, client
 // isolation and the missing multicast permission. Wi-Fi still works when the two
 // do share a network; this simply means a session is never lost to the network.
+/**
+ * Every adb that ships inside an installed Unity editor, newest first.
+ *
+ * Worth searching because it is the one adb a Unity user is guaranteed to
+ * already have: installing the Android build support module brings it along,
+ * so a colleague who has never heard of the platform-tools download still has
+ * a working adb sitting on disk.
+ */
+function unityBundledAdbPaths(exe) {
+    const roots = IS_WINDOWS
+        ? ["C:\\Program Files\\Unity\\Hub\\Editor"]
+        : ["/Applications/Unity/Hub/Editor"];
+    // The two installs put PlaybackEngines in different places: on Windows it is
+    // under Editor/Data, on macOS it sits beside Unity.app rather than inside it.
+    const tail = IS_WINDOWS
+        ? ["Editor", "Data", "PlaybackEngines", "AndroidPlayer", "SDK", "platform-tools", exe]
+        : ["PlaybackEngines", "AndroidPlayer", "SDK", "platform-tools", exe];
+    const out = [];
+    for (const root of roots) {
+        let versions = [];
+        try { versions = fs.readdirSync(root).sort().reverse(); } catch (_) { continue; }
+        for (const v of versions) out.push(path.join(root, v, ...tail));
+    }
+    return out;
+}
+
 function findAdb() {
-    const candidates = [
-        "adb",
-        `${process.env.HOME}/Library/Android/sdk/platform-tools/adb`,
-        `${process.env.HOME}/Library/Android/Sdk/platform-tools/adb`,
+    // HOME is not set on Windows (it is USERPROFILE), so the macOS entries below
+    // used to expand to the literal string "undefined/Library/..." there. Both
+    // are read here so a missing one cannot silently produce a bogus path, and
+    // the platform's own SDK locations are searched as well.
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const localAppData = process.env.LOCALAPPDATA || `${home}\\AppData\\Local`;
+    const exe = IS_WINDOWS ? "adb.exe" : "adb";
+    const candidates = IS_WINDOWS ? [
+        exe,                                                    // on PATH
+        `${localAppData}\\Android\\Sdk\\platform-tools\\${exe}`, // Android Studio default
+        `${home}\\Android\\Sdk\\platform-tools\\${exe}`,
+        `C:\\Android\\platform-tools\\${exe}`,
+        // Unity ships its own adb. Resolved by listing the Hub's editor folder
+        // rather than globbing, because execSync does not expand wildcards.
+        ...unityBundledAdbPaths(exe)
+    ] : [
+        exe,
+        `${home}/Library/Android/sdk/platform-tools/adb`,
+        `${home}/Library/Android/Sdk/platform-tools/adb`,
         "/opt/homebrew/bin/adb",
         "/usr/local/bin/adb"
     ];
