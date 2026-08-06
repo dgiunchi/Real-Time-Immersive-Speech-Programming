@@ -2,8 +2,8 @@
   "dependencies": {
     "com.meta.xr.sdk.core": "203.0.0",
     "com.ucl.ubiq": "https://github.com/UCL-VR/ubiq.git#upm-unity-v1.0.0-pre.16",
-    "com.unity.ai.navigation": "2.0.12",
-    "com.unity.collab-proxy": "2.11.4",
+    "com.unity.ai.navigation": "2.0.13",
+    "com.unity.collab-proxy": "2.12.4",
     "com.unity.ide.rider": "3.0.40",
     "com.unity.ide.visualstudio": "2.0.27",
     "com.unity.mobile.android-logcat": "1.4.7",
