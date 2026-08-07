@@ -15,6 +15,10 @@ explanation, and holding it constant keeps B and C differing in one thing only.
 A hidden researcher triggers pre-scripted *success* or *error* outcomes, so
 every participant gets the identical experience — no live LLM.
 
+Setting up a second researcher's Windows machine, from a blank laptop to a
+running session: [WINDOWS_SETUP.md](WINDOWS_SETUP.md)
+(printable: [docs/WINDOWS_SETUP.pdf](docs/WINDOWS_SETUP.pdf)).
+
 Design summary for supervisors: [STUDY_DESIGN.md](STUDY_DESIGN.md).
 For the demo films — shot list, scripted lines, capture setup — see
 [DEMO_FILMING.md](DEMO_FILMING.md). Film with a stand-in before data collection

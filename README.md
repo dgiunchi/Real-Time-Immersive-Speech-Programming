@@ -10,9 +10,16 @@ Dreamcode VR is based on Ubiq and Ubiq Genie. Ubiq is a framework developed by U
 
 Use this section for the current DreamCodeVR fork.
 
+> **Setting up a second machine to run the study?**
+> [WINDOWS_SETUP.md](WINDOWS_SETUP.md) is the step-by-step version for Windows,
+> from a blank laptop to a session running. A printable copy is at
+> [docs/WINDOWS_SETUP.pdf](docs/WINDOWS_SETUP.pdf).
+
 ### Required tools
 
-- Unity `6000.3.9f1`
+- Unity `6000.3.19f1` — the version in `Unity/ProjectSettings/ProjectVersion.txt`,
+  and it has to match: opening in another version re-imports and upgrades the
+  project, so two researchers stop running the same build
 - Node.js with npm
 - Python `3.12` recommended for `Server/samples/venv`
 - OpenAI API key for code generation
