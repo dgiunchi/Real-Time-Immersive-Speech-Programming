@@ -3,7 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wizard-of-Oz Control Panel</title>
+<!-- The tab title and the heading are the two strings a participant is most
+     likely to read over the researcher's shoulder, and "Wizard-of-Oz" tells
+     anyone who knows the term — or who looks it up — that the failures are
+     staged. One participant read it and worked the study out before filling in
+     the post-session questionnaire, which is the one moment their answers have
+     to be uncontaminated.
+
+     The deception is disclosed in the debrief, deliberately and in full. It
+     must not be disclosed by a browser tab beforehand. Nothing else is renamed:
+     the folder, the endpoints and the internal names stay as they are, because
+     they are not on screen. -->
+<title>Session Control</title>
 <style>
   :root {
     --bg: #0f1115; --panel: #1a1e26; --panel2: #232935; --line: #333b49;
@@ -118,7 +129,7 @@
 <div id="practiceBar">PRACTICE RUN — saved to Logs/practice/, no allocation used, not participant data</div>
 <header>
   <span class="dot" id="liveDot"></span>
-  <h1>Wizard-of-Oz Control Panel</h1>
+  <h1>Session Control</h1>
   <span id="sessionBadge" class="hint">⚠ warm-up — no session started (data saved as “warmup”, not participant data)</span>
   <label class="switch" style="margin-left:auto;" title="Dim every step except the one to act on now. Safe to toggle mid-session.">
     <input type="checkbox" id="guideToggle" onchange="setGuide(this.checked)">

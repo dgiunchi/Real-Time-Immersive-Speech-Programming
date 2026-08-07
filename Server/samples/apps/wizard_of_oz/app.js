@@ -532,8 +532,8 @@ function buildTask1(v) {
         label: `Create a ${o} in your hand`,
         scenario: "user_error",
         prompt: `In this scene you can see a sphere, a cube and a campfire. Ask the ` +
-                `system to create a ${o} that appears in your hand when you raise it. ` +
-                `Use your own words, as if talking to someone.`,
+                `system to create a ${o} that appears in your hand when you lift ` +
+                `your hand up.`,
         error: {
             action: "noop",
             errorText: `The ${o} was not created. No hand height was given, so there ` +
@@ -558,8 +558,7 @@ function buildTask2(v) {
     return {
         label: `Move the ${m} to the ${t}`,
         scenario: "user_error",
-        prompt: `Ask the system to move the ${m} so that it ends up next to the ${t}. ` +
-                `Use your own words.`,
+        prompt: `Ask the system to move the ${m} so that it ends up next to the ${t}.`,
         error: {
             action: "move", target: m, moveTo: t, away: true,
             errorText: `The ${m} moved, but no direction or distance was specified, ` +
@@ -583,7 +582,7 @@ function buildTask3(v) {
         label: `Create ${n} ${o}s`,
         scenario: "system_limit",
         prompt: `Ask the system to fill the area around the campfire with about ` +
-                `${n} ${o}s. Use your own words.`,
+                `${n} ${o}s.`,
         // Nothing is wrong with what they said. The feedback owns the limit and
         // offers a workable number; it must never suggest they rephrase, because
         // there is nothing to rephrase.
@@ -620,8 +619,7 @@ function buildTask4(v) {
     return {
         label: `Create a ${o} above the campfire`,
         scenario: "system_behaviour",
-        prompt: `Ask the system to create a large ${o} somewhere above the campfire. ` +
-                `Use your own words.`,
+        prompt: `Ask the system to create a large ${o} high above the campfire.`,
         // The command succeeded. The only problem is where it landed, which the
         // participant could not have predicted. Feedback locates it; it does not
         // ask them to rephrase.
@@ -656,11 +654,10 @@ function buildTask4(v) {
 function buildTask5(v) {
     const o = v.object;
     return {
-        label: `Create a ${o} that stands out`,
+        label: `Create a ${o} that is easy to see`,
         scenario: "user_error",
-        prompt: `The ground around the campfire is dark and hard to read. Ask the ` +
-                `system to put a ${o} on the ground that clearly stands out ` +
-                `against it. Use your own words.`,
+        prompt: `The ground around the campfire is very dark. Ask the system to ` +
+                `put a ${o} on the ground that is easy to see against it.`,
         error: {
             action: "spawn", shape: v.shape, pos: "floor", physics: true,
             scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: "#6b6b6b",
@@ -699,8 +696,7 @@ function buildTask6(v) {
         label: `Make the ${o} move on its own`,
         scenario: "system_capability",
         prompt: `Everything in this scene is still. Ask the system to make the ` +
-                `${o} keep moving on its own, without you asking each time. ` +
-                `Use your own words.`,
+                `${o} start moving by itself and keep moving.`,
         error: {
             action: "noop",
             errorText: `Nothing was changed. This system can create, move and ` +
@@ -741,10 +737,17 @@ const TASKS = {
             v1: {
                 label: "Practice: change the cube's colour",
                 scenario: "practice",
+                // "Nothing here is being recorded" used to end this briefing and
+                // is no longer true: the practice round is recorded on purpose,
+                // because it is the only speech a participant produces before any
+                // failure and so is the baseline every acoustic measure is read
+                // against. Telling someone they are not being recorded while
+                // recording them is not a wording slip, it is the consent form
+                // being contradicted out loud by the researcher.
                 prompt: `Before we start, a practice round so you can get used to ` +
                         `talking to the system. Hold the trigger, ask it to change ` +
-                        `the cube to any colour you like, then let go. Nothing here ` +
-                        `is being recorded as part of the study.`,
+                        `the cube to any colour you like, then let go. This one is ` +
+                        `practice, so it does not count towards the results.`,
                 error: {
                     action: "noop",
                     errorText: "",
@@ -762,7 +765,7 @@ const TASKS = {
         variants: {
             v1: buildTask1({ object: "ball",    shape: "sphere",  scale: 0.15, color: "" }),
             v2: buildTask1({ object: "cube",    shape: "cube",    scale: 0.15, color: "" }),
-            v3: buildTask1({ object: "lantern", shape: "capsule", scale: 0.16, color: "#ffd66b" })
+            v3: buildTask1({ object: "bottle",  shape: "capsule", scale: 0.16, color: "#ffd66b" })
         }
     },
     task2: {
@@ -787,18 +790,18 @@ const TASKS = {
         name: "Create an object (lands out of view)",
         scenario: "system_behaviour",
         variants: {
-            v1: buildTask4({ object: "moon",    shape: "sphere",  scale: 0.9, color: "#dfe6f2" }),
-            v2: buildTask4({ object: "banner",  shape: "cube",    scale: 0.8, color: "#c0392b" }),
-            v3: buildTask4({ object: "balloon", shape: "capsule", scale: 0.8, color: "#2ecc40" })
+            v1: buildTask4({ object: "moon",  shape: "sphere",  scale: 0.9, color: "#dfe6f2" }),
+            v2: buildTask4({ object: "box",   shape: "cube",    scale: 0.8, color: "#c0392b" }),
+            v3: buildTask4({ object: "light", shape: "capsule", scale: 0.8, color: "#2ecc40" })
         }
     },
     task5: {
         name: "Create an object that stands out",
         scenario: "user_error",
         variants: {
-            v1: buildTask5({ object: "marker", shape: "cube",    scale: 0.20, color: "#ff4d4d" }),
-            v2: buildTask5({ object: "stone",  shape: "sphere",  scale: 0.20, color: "#ffd166" }),
-            v3: buildTask5({ object: "post",   shape: "capsule", scale: 0.22, color: "#4dd2ff" })
+            v1: buildTask5({ object: "sign",  shape: "cube",    scale: 0.20, color: "#ff4d4d" }),
+            v2: buildTask5({ object: "stone", shape: "sphere",  scale: 0.20, color: "#ffd166" }),
+            v3: buildTask5({ object: "stick", shape: "capsule", scale: 0.22, color: "#4dd2ff" })
         }
     },
     task6: {
@@ -2489,6 +2492,7 @@ class WizardOfOzApp extends ApplicationController {
                         id: o.id, shape: o.shape, color: o.color,
                         x: o.x, y: o.y, z: o.z,
                         baseline: !!o.baseline,
+                        confirmed: !!o.confirmed,
                         ageMs: Date.now() - o.spawnedAt
                     })),
                     pose: this.lastPose
@@ -2966,6 +2970,12 @@ class WizardOfOzApp extends ApplicationController {
                         if (rec && x !== "") {
                             rec.x = x; rec.y = y; rec.z = z;
                             rec.unityName = payload.name || rec.unityName || "";
+                            // From here this object's coordinates are measured
+                            // rather than assumed. The map draws the two
+                            // differently, because a nominal position is a
+                            // guess about where the headset will put something
+                            // and is wrong the moment the participant moves.
+                            rec.confirmed = true;
                         }
 
                         this.logEvent(evType + "-confirmed",
@@ -3119,7 +3129,9 @@ class WizardOfOzApp extends ApplicationController {
         server.listen(this.controlPort, () => {
             console.log("");
             console.log(`\x1b[1m\x1b[32m╔══════════════════════════════════════════════════════════════╗\x1b[0m`);
-            console.log(`\x1b[1m\x1b[32m║  WIZARD-OF-OZ STUDY SERVER READY                               ║\x1b[0m`);
+            // Same reason as the browser tab: the terminal is often on the
+            // same screen the participant can see.
+            console.log(`\x1b[1m\x1b[32m║  STUDY SESSION SERVER READY                                    ║\x1b[0m`);
             console.log(`\x1b[1m\x1b[32m╚══════════════════════════════════════════════════════════════╝\x1b[0m`);
             console.log(`\x1b[1m  Researcher panel:  \x1b[4mhttp://localhost:${this.controlPort}\x1b[0m`);
             console.log(`\x1b[1m  Questionnaire:     \x1b[4mhttp://localhost:${this.controlPort}/questionnaire\x1b[0m`);

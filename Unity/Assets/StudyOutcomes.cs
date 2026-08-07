@@ -476,28 +476,81 @@ public class StudyOutcomes : MonoBehaviour
         root.transform.SetParent(CreatedRoot, false);
         root.transform.position = at;
 
-        var logs = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        logs.name = "Logs";
-        logs.transform.SetParent(root.transform, false);
-        logs.transform.localScale = new Vector3(0.55f, 0.06f, 0.55f);
-        var logRenderer = logs.GetComponent<Renderer>();
-        if (logRenderer) logRenderer.material.color = new Color(0.22f, 0.14f, 0.09f);
-
-        var flame = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        flame.name = "Flame";
-        flame.transform.SetParent(root.transform, false);
-        flame.transform.localPosition = new Vector3(0f, 0.28f, 0f);
-        flame.transform.localScale = new Vector3(0.3f, 0.3f, 0.3f);
-        var flameCollider = flame.GetComponent<Collider>();
-        if (flameCollider) flameCollider.enabled = false;
-        var flameRenderer = flame.GetComponent<Renderer>();
-        if (flameRenderer)
+        // A ring of stones. Squashed spheres at slightly different sizes and
+        // heights — a ring of identical ones reads as a manufactured object,
+        // and the irregularity is most of what makes it look like stone.
+        for (int i = 0; i < 9; i++)
         {
-            var material = flameRenderer.material;
-            material.color = new Color(1f, 0.55f, 0.12f);
-            material.EnableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor", new Color(1f, 0.45f, 0.05f) * 2f);
+            float t = (i / 9f) * Mathf.PI * 2f;
+            float wobble = 0.85f + 0.3f * Mathf.Abs(Mathf.Sin(i * 2.4f));
+            var stone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            stone.name = "Stone" + i;
+            stone.transform.SetParent(root.transform, false);
+            stone.transform.localPosition =
+                new Vector3(Mathf.Sin(t) * 0.52f, 0.045f, Mathf.Cos(t) * 0.52f);
+            stone.transform.localScale =
+                new Vector3(0.19f, 0.13f, 0.17f) * wobble;
+            stone.transform.localRotation = Quaternion.Euler(0f, i * 37f, i * 11f);
+            var sr = stone.GetComponent<Renderer>();
+            if (sr) sr.material.color =
+                Color.Lerp(new Color(0.34f, 0.33f, 0.31f),
+                           new Color(0.19f, 0.18f, 0.17f), (i % 3) / 2f);
         }
+
+        // Ash bed, so the logs sit in something rather than on the floor.
+        var ash = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        ash.name = "AshBed";
+        ash.transform.SetParent(root.transform, false);
+        ash.transform.localScale = new Vector3(0.48f, 0.02f, 0.48f);
+        var ashCol = ash.GetComponent<Collider>();
+        if (ashCol) ashCol.enabled = false;
+        var ashR = ash.GetComponent<Renderer>();
+        if (ashR) ashR.material.color = new Color(0.13f, 0.11f, 0.10f);
+
+        // Logs leaning inward as a teepee. This is the shape people actually
+        // recognise as a campfire; a flat disc with a capsule above it, which is
+        // what used to be here, reads as a lamp.
+        for (int i = 0; i < 6; i++)
+        {
+            float t = (i / 6f) * Mathf.PI * 2f;
+            var log = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            log.name = "Log" + i;
+            log.transform.SetParent(root.transform, false);
+            log.transform.localPosition =
+                new Vector3(Mathf.Sin(t) * 0.19f, 0.20f, Mathf.Cos(t) * 0.19f);
+            log.transform.localScale = new Vector3(0.055f, 0.27f, 0.055f);
+            // Tilt each log outward at its base so the tops converge.
+            log.transform.localRotation =
+                Quaternion.Euler(Mathf.Cos(t) * 26f, 0f, -Mathf.Sin(t) * 26f);
+            var lr = log.GetComponent<Renderer>();
+            if (lr) lr.material.color =
+                Color.Lerp(new Color(0.26f, 0.17f, 0.10f),
+                           new Color(0.15f, 0.09f, 0.05f), (i % 2));
+        }
+
+        // Embers under the flame: dull red, always lit, so the fire still reads
+        // as a fire in the frames where the flame is at its smallest.
+        var embers = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        embers.name = "Embers";
+        embers.transform.SetParent(root.transform, false);
+        embers.transform.localPosition = new Vector3(0f, 0.07f, 0f);
+        embers.transform.localScale = new Vector3(0.34f, 0.10f, 0.34f);
+        StripCollider(embers);
+        Emissive(embers, new Color(1f, 0.32f, 0.06f), new Color(1f, 0.22f, 0.03f), 2.4f);
+
+        // Three nested flame cones, smallest and brightest innermost. One solid
+        // capsule cannot look like flame at any colour; the layering is what
+        // gives it a hot core and a soft edge.
+        var flame = new GameObject("Flame");
+        flame.transform.SetParent(root.transform, false);
+        flame.transform.localPosition = new Vector3(0f, 0.30f, 0f);
+
+        AddFlameLayer(flame.transform, 0.30f, 0.46f, 0.00f,
+                      new Color(1f, 0.34f, 0.05f), 1.9f);   // outer, deep orange
+        AddFlameLayer(flame.transform, 0.20f, 0.34f, 0.03f,
+                      new Color(1f, 0.62f, 0.10f), 2.8f);   // mid, orange-yellow
+        AddFlameLayer(flame.transform, 0.11f, 0.22f, 0.06f,
+                      new Color(1f, 0.88f, 0.45f), 3.6f);   // core, near-white
 
         var light = new GameObject("Firelight");
         light.transform.SetParent(root.transform, false);
@@ -507,6 +560,51 @@ public class StudyOutcomes : MonoBehaviour
         point.color = new Color(1f, 0.6f, 0.25f);
         point.range = 6f;
         point.intensity = 2.2f;
+
+        // Movement is what separates fire from an orange ornament, and it costs
+        // one component driving a scale and an intensity. It also gives the
+        // scene its only motion between trials, which quietly signals the app is
+        // alive rather than frozen — worth having in a study where a frozen
+        // headset and a waiting one otherwise look the same.
+        var flicker = root.AddComponent<CampfireFlicker>();
+        flicker.flame = flame.transform;
+        flicker.firelight = point;
+        flicker.baseIntensity = point.intensity;
+    }
+
+    /// One cone of the flame. Cones, not capsules: a flame tapers upward.
+    private static void AddFlameLayer(Transform parent, float width, float height,
+                                      float lift, Color colour, float glow)
+    {
+        // Unity has no cone primitive, so a cylinder scaled to a point would be
+        // needed — a capsule scaled tall and narrow reads closer to a flame
+        // tongue and needs no mesh building.
+        var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        go.name = "FlameLayer";
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = new Vector3(0f, lift, 0f);
+        go.transform.localScale = new Vector3(width, height, width);
+        StripCollider(go);
+        Emissive(go, colour, colour, glow);
+    }
+
+    /// Flame and embers must never be selectable or collide with anything the
+    /// participant creates — an object spawned "above the campfire" that bounces
+    /// off the fire is a failure the study did not script.
+    private static void StripCollider(GameObject go)
+    {
+        var c = go.GetComponent<Collider>();
+        if (c) c.enabled = false;
+    }
+
+    private static void Emissive(GameObject go, Color albedo, Color emission, float strength)
+    {
+        var r = go.GetComponent<Renderer>();
+        if (!r) return;
+        var m = r.material;
+        m.color = albedo;
+        m.EnableKeyword("_EMISSION");
+        m.SetColor("_EmissionColor", emission * strength);
     }
 
     /// A campfire that belongs to the authored scene, if there is one.
@@ -950,5 +1048,49 @@ public class StudyOrbit : MonoBehaviour
     void OnCollisionEnter(Collision _)
     {
         if (stopOnCollision) speed = 0f;
+    }
+}
+
+/// <summary>
+/// Makes the built campfire move. Added at runtime by StudyOutcomes, never in
+/// the Inspector, so it does not need its own file to be assignable.
+///
+/// Two incommensurable sine waves rather than one, and rather than random: a
+/// single sine is visibly periodic within a couple of seconds and starts to look
+/// like a pulsing light, while per-frame randomness strobes. Two waves whose
+/// periods do not divide each other never visibly repeat.
+/// </summary>
+public class CampfireFlicker : MonoBehaviour
+{
+    public Transform flame;
+    public Light firelight;
+    public float baseIntensity = 2.2f;
+
+    private float seed;
+
+    private void Start()
+    {
+        // Offset per instance so two fires in one scene never pulse together.
+        seed = UnityEngine.Random.value * 10f;
+    }
+
+    private void Update()
+    {
+        float t = Time.time + seed;
+        float wave = Mathf.Sin(t * 6.1f) * 0.5f + Mathf.Sin(t * 9.7f) * 0.5f;
+
+        if (flame)
+        {
+            // Taller and thinner together, so it licks upward rather than
+            // inflating like a balloon.
+            float stretch = 1f + wave * 0.11f;
+            flame.localScale = new Vector3(1f - wave * 0.05f, stretch, 1f - wave * 0.05f);
+            flame.localRotation = Quaternion.Euler(wave * 3.5f, t * 22f, wave * 2.5f);
+        }
+
+        if (firelight)
+        {
+            firelight.intensity = baseIntensity * (1f + wave * 0.16f);
+        }
     }
 }

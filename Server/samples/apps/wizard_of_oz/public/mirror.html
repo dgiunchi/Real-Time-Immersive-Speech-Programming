@@ -187,48 +187,100 @@ function renderObjects(objs) {
 }
 const fmt = v => (typeof v === "number" ? v.toFixed(2) : "—");
 
-// Top-down map. Metres to pixels, participant drawn with a facing wedge so
-// "it spawned behind them" is visible at a glance — which is the whole of task 4.
+// Top-down map, auto-fitted to whatever is on it.
+//
+// The scale used to be fixed at 78 px/metre with the origin 62% down the
+// canvas, which put the visible world at roughly z = -2.3m to +3.8m. Task 4
+// spawns its object at z = -2.5m, behind the participant — so the one trial
+// this map exists for was the one trial whose object fell off the bottom edge.
+// Everything now fits to the actual contents each frame, so nothing can be
+// off-screen regardless of where a participant wanders.
+//
+// Positions come from two places and are drawn differently. A filled dot is a
+// coordinate the headset measured and reported. A dashed, hollow dot is the
+// server's nominal position for a spawn label — where "behind" is *supposed* to
+// be, assuming the participant is standing at the origin facing forward. Once
+// they turn or step sideways those two stop agreeing, and a map that drew them
+// identically would quietly show a confident wrong answer.
 function drawMap(s) {
   const c = $("map"), g = c.getContext("2d");
-  const W = c.width, H = c.height, PX = 78;               // px per metre
-  const cx = W / 2, cz = H * 0.62;                        // origin, biased down
-  const X = x => cx + (Number(x) || 0) * PX;
-  const Z = z => cz - (Number(z) || 0) * PX;
+  const W = c.width, H = c.height;
+  const objs = (s.objects || []).filter(o => typeof o.x === "number");
+  const p = s.pose;
+
+  // Fit: every object, the participant, and a metre of margin so the facing
+  // wedge is never clipped against an edge.
+  const xs = objs.map(o => o.x), zs = objs.map(o => o.z);
+  if (p) { xs.push(Number(p.x) || 0); zs.push(Number(p.z) || 0); }
+  if (!xs.length) { xs.push(-1, 1); zs.push(-1, 1); }
+  const pad = 1.1;
+  let minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
+  let minZ = Math.min(...zs) - pad, maxZ = Math.max(...zs) + pad;
+
+  // Square the aspect so a metre across is a metre up. Without this the scene
+  // shears whenever it is wider than it is deep, and "next to" stops looking
+  // like "next to".
+  const PX = Math.min(W / (maxX - minX), H / (maxZ - minZ));
+  const midX = (minX + maxX) / 2, midZ = (minZ + maxZ) / 2;
+  const X = x => W / 2 + ((Number(x) || 0) - midX) * PX;
+  const Z = z => H / 2 - ((Number(z) || 0) - midZ) * PX;
 
   g.clearRect(0, 0, W, H);
+
+  // One-metre grid, drawn across the fitted range rather than a fixed -4..4.
   g.strokeStyle = "#1b232e"; g.lineWidth = 1;
-  for (let m = -4; m <= 4; m++) {
+  for (let m = Math.ceil(minX); m <= Math.floor(maxX); m++) {
     g.beginPath(); g.moveTo(X(m), 0); g.lineTo(X(m), H); g.stroke();
+  }
+  for (let m = Math.ceil(minZ); m <= Math.floor(maxZ); m++) {
     g.beginPath(); g.moveTo(0, Z(m)); g.lineTo(W, Z(m)); g.stroke();
   }
+  // Scale readout, because the zoom now changes under you.
+  g.fillStyle = "#5c6675"; g.font = "10px -apple-system,sans-serif";
+  g.textAlign = "left";
+  g.fillText("grid = 1 m", 8, H - 8);
 
-  for (const o of (s.objects || [])) {
-    if (typeof o.x !== "number") continue;
+  for (const o of objs) {
+    const r = o.baseline ? 9 : 12;
     g.beginPath();
-    g.arc(X(o.x), Z(o.z), o.baseline ? 9 : 12, 0, Math.PI * 2);
-    g.fillStyle = o.color || (o.baseline ? "#8d97a8" : "#2ecc71");
-    g.fill();
-    g.strokeStyle = o.baseline ? "#5c6675" : "#2ecc71";
-    g.lineWidth = o.baseline ? 1.5 : 2.5; g.stroke();
+    g.arc(X(o.x), Z(o.z), r, 0, Math.PI * 2);
+    if (o.confirmed) {
+      g.fillStyle = o.color || (o.baseline ? "#8d97a8" : "#2ecc71");
+      g.fill();
+      g.setLineDash([]);
+      g.strokeStyle = o.baseline ? "#5c6675" : "#2ecc71";
+      g.lineWidth = o.baseline ? 1.5 : 2.5;
+    } else {
+      // Nominal: outline only, dashed. Reads as "expected here", which is what
+      // it is until the headset says otherwise.
+      g.setLineDash([4, 3]);
+      g.strokeStyle = o.baseline ? "#5c6675" : "#b9862f";
+      g.lineWidth = 2;
+    }
+    g.stroke();
+    g.setLineDash([]);
     g.fillStyle = "#c7d0dc"; g.font = "11px -apple-system,sans-serif";
     g.textAlign = "center";
-    g.fillText(o.shape, X(o.x), Z(o.z) - 17);
+    g.fillText(o.shape, X(o.x), Z(o.z) - r - 6);
   }
 
-  const p = s.pose;
   if (!p) {
     g.fillStyle = "#8d97a8"; g.font = "13px -apple-system,sans-serif"; g.textAlign = "center";
-    g.fillText("No head pose — is the headset connected?", cx, cz);
+    g.fillText("No head pose — is the headset connected?", W / 2, H / 2);
     return;
   }
+
   const px = X(p.x), pz = Z(p.z);
-  // Unity yaw is clockwise from +Z; canvas angles run clockwise from +X.
+  // Unity yaw is clockwise from +Z seen from above; canvas angles run clockwise
+  // from +X. Facing +Z must point up the screen, so the offset is -90 degrees.
   const a = (Number(p.yaw) || 0) * Math.PI / 180;
   g.globalAlpha = p.stale ? .35 : 1;
+  // Wedge length scales with the zoom, so it stays a fixed distance in metres
+  // rather than growing into the whole map when the scene is small.
+  const reach = Math.max(28, 1.4 * PX);
   g.beginPath();
   g.moveTo(px, pz);
-  g.arc(px, pz, 62, -Math.PI / 2 + a - 0.5, -Math.PI / 2 + a + 0.5);
+  g.arc(px, pz, reach, -Math.PI / 2 + a - 0.5, -Math.PI / 2 + a + 0.5);
   g.closePath();
   g.fillStyle = "rgba(79,140,255,.22)"; g.fill();
   g.beginPath(); g.arc(px, pz, 11, 0, Math.PI * 2);
@@ -236,7 +288,7 @@ function drawMap(s) {
   g.globalAlpha = 1;
   if (p.stale) {
     g.fillStyle = "#ffb648"; g.font = "12px -apple-system,sans-serif"; g.textAlign = "center";
-    g.fillText("pose is stale — headset may have disconnected", cx, H - 14);
+    g.fillText("pose is stale — headset may have disconnected", W / 2, H - 14);
   }
 }
 
