@@ -73,9 +73,15 @@ crashlytics-build.properties
 # VSCode folder
 .vscode/
 
-# Ignore auto-generated XR because these are per-end user settings
-/Assets/XR/
-/Assets/XR.meta
+# Assets/XR is deliberately NOT ignored.
+#
+# The usual advice treats it as per-user, and for a project where XR is
+# incidental that is right. Here it is the build: these assets are what enable
+# the Oculus loader for Android, and a clone without them builds a flat,
+# non-VR app that installs and launches and does nothing useful in a headset.
+# A second researcher cloning this repo has to get a working build from
+# "Build And Run" without being told to reconfigure XR by hand, so the loader
+# config travels with the project.
 
 Recordings/
 

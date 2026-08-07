@@ -18,11 +18,13 @@ cd "$(dirname "${BASH_SOURCE[0]}")/Server"
 case "${1:-}" in
   demo)   exec node scripts/study.js --demo  ;;
   study)  exec node scripts/study.js --study ;;
+  pull)   exec node scripts/demo.js pull     ;;
   "")     exec node scripts/study.js         ;;
   *)
     echo "Usage:  study            ask which mode"
     echo "        study demo       go straight to filming"
     echo "        study study      go straight to a participant session"
+    echo "        study pull       copy demo clips off the headset"
     exit 1
     ;;
 esac
