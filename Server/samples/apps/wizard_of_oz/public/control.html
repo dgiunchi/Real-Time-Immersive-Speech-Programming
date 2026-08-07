@@ -218,7 +218,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div>
           <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 1</span><span class="step-badge">DO THIS NOW</span>
-          <h2 style="margin:2px 0 0;">Read briefing to participant</h2>
+          <h2 style="margin:2px 0 0;">Set up the scene, then read the briefing</h2>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <div id="taskChips" class="tasks" style="margin:0;"></div>
@@ -231,9 +231,19 @@
       <div style="margin-top:10px;font-size:12px;color:var(--muted);">
         Do <b>not</b> tell them what to say. They must phrase it themselves.
       </div>
-      <button class="btn-accent" style="width:100%;margin-top:12px;font-size:15px;padding:13px;"
+      <button class="btn-ghost" id="prepareBtn" style="width:100%;margin-top:12px;font-size:14px;padding:11px;"
+              onclick="prepareScene()">
+        1 &middot; Set up the scene
+        <span style="font-size:11px;opacity:.65;display:block;margin-top:2px;">
+          clears the last trial and rebuilds the sphere, cube and campfire &mdash; do this before you read
+        </span>
+      </button>
+      <button class="btn-accent" id="startTrialBtn" style="width:100%;margin-top:8px;font-size:15px;padding:13px;"
               onclick="startTrial()">
-        &#9654; I&rsquo;ve read it &mdash; start trial
+        2 &middot; &#9654; I&rsquo;ve read it &mdash; start trial
+        <span style="font-size:11px;opacity:.75;display:block;margin-top:2px;font-weight:400;">
+          starts the clock &mdash; press as you finish reading
+        </span>
       </button>
     </div>
 
@@ -336,9 +346,6 @@
         <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;" onclick="recordRepair('detail')">
           Added detail<br><span style="font-size:10px;opacity:.65;">said the missing bit</span>
         </button>
-        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;border-color:#7a2b2b;" onclick="recordRepair('verbatim')">
-          Repeated it<br><span style="font-size:10px;opacity:.65;">same words, louder</span>
-        </button>
         <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;" onclick="recordRepair('scope')">
           Shrank the ask<br><span style="font-size:10px;opacity:.65;">fewer / simpler</span>
         </button>
@@ -347,6 +354,24 @@
         </button>
         <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;" onclick="recordRepair('gaveup')">
           Gave up<br><span style="font-size:10px;opacity:.65;">stopped / asked you</span>
+        </button>
+      </div>
+      <div style="font-size:12px;color:#ff8a8a;margin:8px 0 6px;">
+        &hellip; or said the same thing again
+        <span style="opacity:.7;">(adds nothing &mdash; all four count as wasted)</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;border-color:#7a2b2b;" onclick="recordRepair('verbatim')">
+          Same again<br><span style="font-size:10px;opacity:.65;">same words, same way</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;border-color:#7a2b2b;" onclick="recordRepair('slower')">
+          Slower / louder<br><span style="font-size:10px;opacity:.65;">same words, over-enunciated</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;border-color:#7a2b2b;" onclick="recordRepair('wordbyword')">
+          Word by word<br><span style="font-size:10px;opacity:.65;">one. word. at. a. time.</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;border-color:#7a2b2b;" onclick="recordRepair('paraphrase')">
+          Reworded it<br><span style="font-size:10px;opacity:.65;">different words, nothing added</span>
         </button>
       </div>
       <div id="repairResult" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:6px;"></div>
@@ -664,12 +689,22 @@ async function recordNoticed(value) {
 }
 
 const REPAIR_LABELS = {
-  detail:   "added the missing detail",
-  verbatim: "repeated it verbatim",
-  scope:    "shrank the ask",
-  question: "asked the system",
-  gaveup:   "gave up"
+  detail:     "added the missing detail",
+  scope:      "shrank the ask",
+  question:   "asked the system",
+  gaveup:     "gave up",
+  verbatim:   "said the same thing again",
+  slower:     "said it slower / louder",
+  wordbyword: "said it word by word",
+  paraphrase: "reworded it, nothing added"
 };
+
+// The re-say family. Saying the same request more slowly, one word at a time,
+// or in different words adds no information the system did not already have,
+// so none of them can fix a limitation. Must match RESAY_STRATEGIES in app.js —
+// this copy only drives the live counter shown to the wizard; the number that
+// reaches the data is computed server-side.
+const RESAY = ["verbatim", "slower", "wordbyword", "paraphrase"];
 
 async function recordRepair(value) {
   const res = await post("/repair-strategy", { strategy: value });
@@ -677,7 +712,7 @@ async function recordRepair(value) {
   if (el) {
     if (!res.ok) { el.textContent = res.error || "no active trial"; return; }
     const seq = res.sequence || [];
-    const wasted = seq.filter(s => s === "verbatim").length;
+    const wasted = seq.filter(s => RESAY.includes(s)).length;
     el.innerHTML = "Attempt " + seq.length + ": <b>" + value + "</b> &middot; sequence: " +
       seq.join(" → ") +
       (wasted ? ' &middot; <span style="color:#ff8a8a;">' + wasted + " wasted</span>" : "");
@@ -710,11 +745,46 @@ async function recordReparability(value) {
   addLog("t", `Perceived reparability: ${value}`);
 }
 
+// Stand the scene up before reading the briefing.
+//
+// The briefing opens "in this scene you can see a sphere, a cube and a
+// campfire". If the scene is only rebuilt when the trial starts, that sentence
+// is read to someone still looking at the last trial's leftovers, and the scene
+// being described appears after the description ends. So: set up, read, start.
+//
+// The clock deliberately does not start here. Reading takes as long as it
+// takes, and starting the trial at this point would put the briefing inside
+// every trial duration in the study.
+async function prepareScene() {
+  const res = await post("/trial/prepare",
+    { task: activeTask, variant: activeVariant });
+  const btn = document.getElementById("prepareBtn");
+  if (res.ok) {
+    if (btn) {
+      btn.innerHTML = '&#10003; Scene ready &mdash; read the briefing now' +
+        '<span style="font-size:11px;opacity:.65;display:block;margin-top:2px;">' +
+        'the participant is looking at the sphere, cube and campfire</span>';
+      btn.style.borderColor = "#2f7a4a";
+    }
+    addLog("task", `Scene prepared — ${res.task}/${res.variant}`);
+  } else {
+    addLog("t", "Scene setup failed: " + (res.error || "?"));
+  }
+}
+
 async function startTrial() {
   const res = await post("/trial/start",
     { task: activeTask, variant: activeVariant });
   if (res.ok) {
     renderTrial(res.trial);
+    const btn = document.getElementById("prepareBtn");
+    if (btn) {
+      btn.innerHTML = '1 &middot; Set up the scene' +
+        '<span style="font-size:11px;opacity:.65;display:block;margin-top:2px;">' +
+        'clears the last trial and rebuilds the sphere, cube and campfire &mdash; ' +
+        'do this before you read</span>';
+      btn.style.borderColor = "";
+    }
     addLog("task", `Trial ${res.trial.number} started — ${res.trial.task}/${res.trial.variant} / ${res.trial.scenario}`);
   } else {
     addLog("t", "Start failed: " + (res.error || "?"));
@@ -947,7 +1017,7 @@ async function logNote() {
    things to do; the guide answers "where am I" without taking the panel away. */
 const STEP_SCRIPT = {
   setup: { n: 0, say: 'Hand over <b>Consent ↗</b>, then the <b>Background form ↗</b>. Then enter the participant ID on the left and press <b>Start / Update Session</b>.' },
-  1: { n: 1, say: 'Read the briefing aloud, then press <b>▶ I\u2019ve read it — start trial</b>.' },
+  1: { n: 1, say: 'Press <b>Set up the scene</b> first, then read the briefing aloud, then press <b>▶ I\u2019ve read it — start trial</b>.' },
   2: { n: 2, say: 'Let them speak. When they finish, press <b>INJECT ERROR</b>.' },
   3: { n: 3, say: 'Now, before they try anything: ask <b>"why do you think that happened?"</b> word for word. Record the answer. Do not react, do not explain.' },
   4: { n: 4, say: 'Click one button per repair attempt as it happens. When they have adapted or given up, press <b>INJECT SUCCESS</b>.' },

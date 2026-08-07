@@ -219,6 +219,15 @@ function utteranceSimilarity(a, b) {
 }
 
 /**
+ * Repair moves that re-say the request without adding information.
+ *
+ * They cannot fix a system limitation, by definition — there was nothing wrong
+ * with the wording — so a turn spent on one is the measurable cost of believing
+ * the failure was yours. This is the set `wastedRepairs` counts.
+ */
+const RESAY_STRATEGIES = new Set(["verbatim", "slower", "wordbyword", "paraphrase"]);
+
+/**
  * Recogniser confidence, when the transcription server offers one.
  *
  * faster-whisper's HTTP wrapper returns plain text in the deployment this study
@@ -358,7 +367,17 @@ registerInstrument([...SCALE_ITEMS.godspeed_anthropomorphism,
                    "Godspeed I & III (Bartneck et al. 2009)");
 registerInstrument(Array.from({ length: 16 }, (_, i) => `ssq${i + 1}`),
                    "SSQ (Kennedy et al. 1993)");
-registerInstrument(Array.from({ length: 5 }, (_, i) => `attr${i + 1}`),
+// attr1-4 are no longer asked — the post-session form was cut from 76 rated
+// items to 23, and three of the five retrospective items were the confusing
+// "was it you / was it the system / could you tell which" run. They stay
+// registered because the pilot participants answered them and their rows still
+// need provenance; a file is not re-readable if the meaning of a column depends
+// on which version of the form was live when it was written.
+//
+// attr_discriminate replaces the reworded third item under a NEW id, so the old
+// and new wordings never merge into one column.
+registerInstrument([...Array.from({ length: 5 }, (_, i) => `attr${i + 1}`),
+                    "attr_discriminate"],
                    "Retrospective attribution (custom, H1)");
 registerInstrument(Array.from({ length: 3 }, (_, i) => `se_pre${i + 1}`),
                    "Speech-system self-efficacy (custom, pre)");
@@ -1157,7 +1176,23 @@ class WizardOfOzApp extends ApplicationController {
         this.activeVariant = variant;
         this.trialCounter += 1;
 
-        this.resetScene();
+        // The scene is normally already standing, because the briefing is read
+        // to a participant who is looking at it.
+        //
+        // This used to reset here and only here, which put the reset AFTER the
+        // briefing: the wizard read "in this scene you can see a sphere, a cube
+        // and a campfire" while the participant was still looking at whatever
+        // the last trial left behind, and the scene they were being told about
+        // appeared once the reading finished. So the panel prepares the scene
+        // first and starts the clock second — and the clock is what must not
+        // start early, since the briefing takes as long as it takes and would
+        // otherwise land inside every trial duration in the study.
+        const prepared = this.scenePreparedFor;
+        if (prepared && prepared.task === task && prepared.variant === variant) {
+            this.scenePreparedFor = null;   // consumed
+        } else {
+            this.resetScene();
+        }
 
         // Look up the missingSlot and correct attribution for this error type
         // so the trial record can later flag whether the repair supplied the slot.
@@ -1810,7 +1845,15 @@ class WizardOfOzApp extends ApplicationController {
             repairSequence: (trial.repairStrategies || []).join("|"),
             // Turns spent on a move that cannot work. The efficiency cost of
             // misattribution, in the unit a product would actually count.
-            wastedRepairs: (trial.repairStrategies || []).filter(s => s === "verbatim").length,
+            //
+            // Counts the whole re-say family, not just "verbatim": saying the
+            // same request more slowly, or one word at a time, or in different
+            // words, adds no information the system did not already have. The
+            // pilot data only ever contains "verbatim", which this still counts,
+            // so the measure stays comparable across the whole study while the
+            // sequence column keeps the finer breakdown.
+            wastedRepairs: (trial.repairStrategies || [])
+                .filter(s => RESAY_STRATEGIES.has(s)).length,
             repairContainsSlot: trial.repairContainsSlot !== null ? trial.repairContainsSlot : "",
             preInjectHadSlot: trial.preInjectHadSlot ? "yes" : "no",
             msToFirstRepair: trial.msToFirstRepair !== null ? trial.msToFirstRepair : "",
@@ -2691,8 +2734,46 @@ class WizardOfOzApp extends ApplicationController {
                         return send(200, { ok: true, activeVariant: v });
                     }
 
-                    // Start trial: resets the scene, starts the clock, fixes the
-                    // (task, variant, error type) triple for this trial.
+                    // Stands the scene up before the briefing is read, without
+                    // starting anything that is being timed.
+                    //
+                    // Two presses rather than one, because the two things the
+                    // old single press did belong at opposite ends of the
+                    // briefing: the participant has to be looking at the scene
+                    // the briefing describes while it is read, and the trial
+                    // clock has to start when they are free to speak. Calling
+                    // this is optional — /trial/start still resets the scene
+                    // itself if nothing prepared it.
+                    if (req.method === "POST" && url === "/trial/prepare") {
+                        const task = normaliseTaskKey(payload.task) || this.plannedTask();
+                        if (!TASKS[task]) return send(400, { error: "Unknown task: " + task });
+                        const variant = payload.variant || this.plannedVariant(task);
+                        if (!TASKS[task].variants[variant]) {
+                            return send(400, { error: `Unknown variant: ${variant} for ${task}` });
+                        }
+
+                        // An unfinished trial has to be closed here rather than
+                        // at start, or its summary row would be written after
+                        // the next trial's scene had already replaced its objects.
+                        if (this.trial && !this.trial.endedAt) this.completeTrial("abandoned");
+
+                        this.activeTask    = task;
+                        this.activeVariant = variant;
+                        this.resetScene();
+                        this.scenePreparedFor = { task, variant, at: Date.now() };
+                        this.logEvent("scene-prepared", `${task}/${variant} — briefing next`, {
+                            task, variant, source: "wizard", category: "trial", attempt: 0
+                        });
+                        return send(200, {
+                            ok: true, task, variant,
+                            prompt: TASKS[task].variants[variant].prompt,
+                            label:  TASKS[task].variants[variant].label
+                        });
+                    }
+
+                    // Start trial: starts the clock and fixes the (task,
+                    // variant, error type) triple. Resets the scene only if
+                    // /trial/prepare has not already done it.
                     if (req.method === "POST" && url === "/trial/start") {
                         return send(200, this.startTrial(normaliseTaskKey(payload.task), payload.variant));
                     }
@@ -2750,20 +2831,38 @@ class WizardOfOzApp extends ApplicationController {
                     // Attribution alone is a stated belief; a reviewer can fairly
                     // ask who cares. The repair move is what the belief costs:
                     //
-                    //   detail   adds the missing information  (fixes a user fault)
-                    //   verbatim repeats it, louder or slower  (fixes nothing, ever)
-                    //   scope    reduces or changes the ask    (fixes a system limit)
-                    //   question asks the system what went wrong
-                    //   gaveup   stops trying, or turns to the experimenter
+                    //   detail     adds the missing information  (fixes a user fault)
+                    //   scope      reduces or changes the ask    (fixes a system limit)
+                    //   question   asks the system what went wrong
+                    //   gaveup     stops trying, or turns to the experimenter
                     //
-                    // "verbatim" is the one that matters most. It is pure waste --
-                    // the move people make when they think they were misheard --
-                    // and it is what misattributing a system limit to your own
-                    // phrasing looks like from outside. A product cannot see
-                    // attribution, but it can count repeated identical utterances.
+                    // and the RE-SAY family, which adds no information and so
+                    // cannot fix anything the participant was not already going
+                    // to fix. These are the moves people make when they believe
+                    // they were misheard:
+                    //
+                    //   verbatim   same words, same delivery
+                    //   slower     same words, slower or louder
+                    //   wordbyword same words, one. word. at. a. time.
+                    //   paraphrase same request, different words, nothing added
+                    //
+                    // These four used to be one button called "verbatim", which
+                    // threw away the distinction the study is best placed to
+                    // make. They are the observable face of hyperarticulation,
+                    // and the acoustic measures now recorded per utterance —
+                    // speech rate, peak and mean level against that person's own
+                    // practice baseline — say independently which of them
+                    // happened. A wizard coding live and a waveform agreeing is
+                    // a far stronger claim than either alone, and they can only
+                    // be compared if the live code is this specific.
+                    //
+                    // Paraphrase sits with them deliberately. It feels like
+                    // effort and looks like adaptation, but a reworded request
+                    // for something the system cannot do still cannot be done.
                     if (req.method === "POST" && url === "/repair-strategy") {
                         const val = String(payload.strategy || "").toLowerCase();
-                        const allowed = ["detail", "verbatim", "scope", "question", "gaveup"];
+                        const allowed = ["detail", "scope", "question", "gaveup",
+                                         "verbatim", "slower", "wordbyword", "paraphrase"];
                         if (!allowed.includes(val)) {
                             return send(400, { error: "strategy must be " + allowed.join("|") });
                         }

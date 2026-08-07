@@ -278,18 +278,30 @@ public class StudyUIBootstrapper : MonoBehaviour
             conditionManager.embodiedAgentBody = agentBody;
         }
 
-        // Hook TranscriptionCollector → transcript display + feedback panel
+        // Hook TranscriptionCollector → transcript display
         // (the DynamicCompiler scene doesn't include one, so add it if missing)
+        //
+        // ONE PANEL SHOWS WHAT THE PARTICIPANT SAID, and it is the transcript
+        // panel. The feedback panel used to be sent the transcript as well, which
+        // was wrong twice over.
+        //
+        // In condition B it put the participant's own words on screen twice, a
+        // few centimetres apart, so the panel carrying the explanation opened
+        // with a line that was already visible above it. The explanation is the
+        // manipulation; anything sharing its panel competes with it for the one
+        // thing this study measures people reading.
+        //
+        // In condition C it was worse than redundant. The feedback panel is
+        // condition B's channel and ApplyCondition deliberately switches it off
+        // for C — but ShowTranscript called RevealPanel, which switched it back
+        // on. So condition C ran with three panels up: the transcript, the
+        // agent's subtitles, and a text panel that was supposed to be the thing
+        // condition C does not have. That is the difference between the two
+        // conditions, quietly undone at runtime.
         var collector = FindOrAdd<TranscriptionCollector>();
         if (collector)
         {
             collector.transcriptDisplay = transcriptDisplay;
-            // Route transcript into the feedback panel too (condition B/C)
-            collector.onTranscriptReceived.AddListener((t) =>
-            {
-                if (feedbackPanel && conditionManager && !conditionManager.IsConditionA())
-                    feedbackPanel.ShowTranscript(t);
-            });
         }
 
         // Hook CodeGenerationManager → feedback panel + code display
