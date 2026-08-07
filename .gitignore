@@ -104,6 +104,11 @@ Server/samples/apps/code_runtime_generator/data/response.txt
 Unity/Recordings/
 
 # Study results (participant data - never commit)
+#
+# This now covers Logs/audio/, which holds one WAV per utterance: a participant's
+# recorded voice, which is personal data and identifying in a way the CSVs are
+# not. The rule already matched it, but it is worth saying out loud — a stray
+# `git add -f Logs` would publish recordings of named people to a public fork.
 Logs/
 
 # Demo and session footage. Never commit: clips show a real person's face and

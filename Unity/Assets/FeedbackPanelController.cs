@@ -85,6 +85,18 @@ public class FeedbackPanelController : MonoBehaviour
 
     public void Clear()
     {
+        // The moment the explanation stopped being available to read.
+        //
+        // Reported before the panel is hidden, and only when it was actually up,
+        // so the log distinguishes an explanation that timed out from one that
+        // was never shown. Dwell on the panel is only interpretable against this
+        // — four seconds of gaze means something different when the panel was up
+        // for five than when it was up for twelve.
+        if (panelRoot && panelRoot.activeInHierarchy)
+        {
+            StudyOutcomes.ReportHeadsetEvent(this, "feedback-offset", "panel");
+        }
+
         if (transcriptLine)       transcriptLine.text = "";
         if (actionLine)           actionLine.text = "";
         if (statusLine)           statusLine.text = "";

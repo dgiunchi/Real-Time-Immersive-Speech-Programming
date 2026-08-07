@@ -47,6 +47,19 @@ const LOG_DIR    = path.resolve(__dirname, "..", "..", "..", "..", "Logs");
 // Logs/ only ever shows one file per participant.
 const ARCHIVE_DIR = path.join(LOG_DIR, "archive");
 
+// One WAV per utterance, under Logs/audio/<participant>/.
+//
+// The session recording is not a substitute for this. Acoustic measures are
+// per-attempt — loudness and rate on attempt 2 against the same person's
+// baseline — and getting there from one long file means hand-segmenting every
+// participant against the event log before any analysis can start. The
+// push-to-talk boundary is already known here, exactly, so the segmentation is
+// free at capture time and unrecoverable later.
+//
+// Inside Logs/, which is git-ignored: this is participant speech and it is
+// never committed. See the note in the repository .gitignore.
+const AUDIO_DIRNAME = "audio";
+
 // The participant file's columns, in order. APPEND ONLY — never reorder or
 // remove, or previously written files stop lining up with new ones.
 //
@@ -94,7 +107,50 @@ const LOG_COLUMNS = [
     "itemId", "itemRaw", "itemScore", "itemReversed", "scaleName", "scaleScore",
     // Which published instrument the item or scale came from, carried on the row
     // itself so provenance survives without a methods chapter beside it.
-    "instrument"
+    "instrument",
+    // ── Utterance-level measures ─────────────────────────────────────────
+    //
+    // The unit of analysis is the attempt, not the trial. Thirty participants
+    // × six tasks is 180 trials, but those same people make three or so
+    // attempts per task, and every one of them is an observation with a
+    // continuous outcome attached. These columns are what turn a press of the
+    // trigger into that observation.
+    //
+    // `utteranceId` is the join key: it appears on the ptt row, the audio row,
+    // the transcript row and the inject that answered it, so the whole exchange
+    // reassembles by sorting on one column.
+    "utteranceId", "audioFile",
+    // Push-to-talk. `pttHoldMs` is how long the trigger was down;
+    // `speechOnsetMs` is how much of that passed before they actually spoke.
+    // The second is the planning measure — a short onset is a reflexive repeat,
+    // a long one is someone thinking about what to say differently.
+    "pttHoldMs", "speechOnsetMs", "utteranceMs",
+    // Loudness, for hyperarticulation. Read as a delta against the same
+    // participant's practice-trial baseline, never as raw dB: between-person
+    // variation in voice and headset fit is far larger than the effect.
+    "peakRms", "meanRms",
+    // Words and speech rate, the other half of hyperarticulation — people slow
+    // down as well as get louder when they think they were misheard.
+    "wordCount", "speechRateWps",
+    // Latencies, all against the same clock. `asrLatencyMs` and
+    // `wizardLatencyMs` are confound controls: if the wizard is slower on some
+    // trials than others, that lands on every response-time measure in the
+    // file unless it can be subtracted.
+    "asrLatencyMs", "wizardLatencyMs", "msSinceUtteranceEnd",
+    "asrConfidence", "transcribed",
+    // ── Gaze ─────────────────────────────────────────────────────────────
+    //
+    // Turns the manipulation check from "did you notice the feedback" into
+    // dwell time on the thing they were meant to notice. `pitch` completes the
+    // head orientation that `yaw` starts; `gazeTarget` is what the headset
+    // believes they were looking at.
+    "pitch", "gazeTarget", "dwellMs",
+    // ── Standing context, denormalised onto every row ────────────────────
+    //
+    // Redundant on purpose. A row that carries its own context is analysable
+    // on its own; reconstructing it by carrying state forward from earlier
+    // rows is where a six-month-old dataset goes wrong silently.
+    "orderIndex", "variantOffset", "wizardScriptId", "rowPreInjectHadSlot"
 ];
 
 // ── Study content: 3 tasks × 3 variants × 4 error types ──────────────────────
@@ -160,6 +216,27 @@ function utteranceSimilarity(a, b) {
     let inter = 0;
     for (const w of A) if (B.has(w)) inter++;
     return +(inter / (A.size + B.size - inter)).toFixed(3);
+}
+
+/**
+ * Recogniser confidence, when the transcription server offers one.
+ *
+ * faster-whisper's HTTP wrapper returns plain text in the deployment this study
+ * uses, so this is usually blank — and blank is the honest answer. It is
+ * extracted rather than assumed because a low-confidence transcript is the
+ * difference between "the participant said something odd" and "the recogniser
+ * guessed", and those two lead to opposite readings of a repair attempt. If the
+ * endpoint is ever swapped for one that returns JSON, the column fills in
+ * without anything else changing.
+ */
+function asrConfidence(rawBody) {
+    try {
+        const j = JSON.parse(rawBody);
+        for (const k of ["confidence", "avg_logprob", "avgLogprob", "probability"]) {
+            if (j && Number.isFinite(Number(j[k]))) return Number(j[k]);
+        }
+    } catch (_) { /* plain text — no confidence on offer */ }
+    return "";
 }
 
 // ── Questionnaire scoring ────────────────────────────────────────────────────
@@ -975,7 +1052,12 @@ class WizardOfOzApp extends ApplicationController {
             awaitingQuestionnaire: false,
             finishedAt:    null,
             // Practice runs are quarantined: no allocation, separate folder.
-            practice:      false
+            practice:      false,
+            // Set from the consent form's audio item. Null until consent is
+            // recorded — which is the first thing in a session, before anyone
+            // speaks — and deliberately not defaulted to true, so a missing
+            // consent record never reads as permission.
+            audioConsent:  null
         };
 
         // Every object the study has created and not yet destroyed.
@@ -994,6 +1076,33 @@ class WizardOfOzApp extends ApplicationController {
         // runs exactly one task per condition, so only one trial is ever live.
         this.trial = null;
         this.trialCounter = 0;   // 1..N within the current participant
+
+        // ── Attempt-level state ──────────────────────────────────────────────
+        // Push-to-talk and utterance clocks. Null rather than 0 throughout, so
+        // "no utterance yet" cannot be mistaken for "answered instantly" — a
+        // wizard latency of zero is a real and different claim from an absent
+        // one, and only one of them belongs in a results table.
+        this.pttDownAt           = null;
+        this.lastUtteranceEndedAt = null;
+        this.lastUtteranceId     = null;
+        this.lastUtteranceOnsetMs = null;
+
+        // Gaze dwell, carried between pose samples.
+        this.gazeTarget  = "";
+        this.gazeSince   = 0;
+        this.gazeDwellMs = 0;
+
+        // Audio consent, remembered per participant rather than only on the
+        // live session.
+        //
+        // The two forms can legitimately arrive in either order: normally the
+        // researcher starts the session and then hands over the consent page,
+        // but the page also accepts a typed participant id, so consent can land
+        // first. Held only on the session, a later POST /session for that same
+        // participant would look like a new person and clear it — and clearing
+        // a decline means recording someone who said no. Keyed by participant,
+        // the order stops mattering.
+        this.audioConsentByParticipant = new Map();
 
         fs.mkdirSync(LOG_DIR, { recursive: true });
     }
@@ -1256,6 +1365,13 @@ class WizardOfOzApp extends ApplicationController {
         const now = Date.now();
         this.eventSeq = (this.eventSeq || 0) + 1;
 
+        // Assignment context. Order index and variant offset are properties of
+        // the participant, not of the row, but a file whose rows each state
+        // which counterbalance cell they came from can be checked for balance
+        // without joining anything against allocation.json — and allocation.json
+        // is the one file in the study that is not written per participant.
+        const alloc = this.session.allocation || {};
+
         const row = {
             seq: this.eventSeq,
             timestampIso: new Date(now).toISOString(),
@@ -1264,6 +1380,15 @@ class WizardOfOzApp extends ApplicationController {
             participantId: pid,
             condition: this.session.condition || "",
             block: this.session.block || "",
+            orderIndex: alloc.orderIndex !== undefined ? alloc.orderIndex : "",
+            variantOffset: alloc.variantOffset !== undefined ? alloc.variantOffset : "",
+            // The exclusion flag, on every row of the trial rather than only on
+            // its summary. When it is set the scripted feedback contradicted
+            // what the participant actually said, and any attempt-level row
+            // from that trial has to be excludable without first looking up
+            // whether its trial was flagged.
+            rowPreInjectHadSlot: this.trial && !this.trial.endedAt
+                ? (this.trial.preInjectHadSlot ? "yes" : "no") : "",
             recordType,
             ...fields
         };
@@ -1305,6 +1430,20 @@ class WizardOfOzApp extends ApplicationController {
         const now = Date.now();
         const pos = extra.pos || {};
         const from = extra.from || {};
+
+        // Attempt-level columns, passed straight through when a caller supplies
+        // them. Listed rather than spread wholesale so that a typo in a caller
+        // becomes a missing value in a known column instead of a new column
+        // that quietly never reaches the header.
+        const passthrough = {};
+        for (const k of ["utteranceId", "audioFile", "pttHoldMs", "speechOnsetMs",
+                         "utteranceMs", "peakRms", "meanRms", "wordCount",
+                         "speechRateWps", "asrLatencyMs", "wizardLatencyMs",
+                         "msSinceUtteranceEnd", "asrConfidence", "transcribed",
+                         "pitch", "gazeTarget", "dwellMs", "wizardScriptId"]) {
+            if (extra[k] !== undefined && extra[k] !== null) passthrough[k] = extra[k];
+        }
+
         this.logRow("event", {
             // Scene-object columns. Blank on every row that is not about an
             // object, which is most of them.
@@ -1336,8 +1475,103 @@ class WizardOfOzApp extends ApplicationController {
             posX: pos.x !== undefined ? pos.x : "",
             posY: pos.y !== undefined ? pos.y : "",
             posZ: pos.z !== undefined ? pos.z : "",
-            yaw: extra.yaw !== undefined ? extra.yaw : ""
+            yaw: extra.yaw !== undefined ? extra.yaw : "",
+            ...passthrough
         });
+    }
+
+    // ── Per-utterance audio ──────────────────────────────────────────────────
+    //
+    // One WAV per push-to-talk press, written as the press ends, plus one row
+    // describing it. The row is the manifest: it carries the participant,
+    // condition, trial, task, fault type and attempt index alongside the
+    // filename, so the audio set can be analysed without reconstructing which
+    // file belonged to which trial from timestamps.
+    //
+    // Practice trials are recorded too. They are excluded from the analysis of
+    // behaviour, but they are the only speech a participant produces before any
+    // failure has happened, which makes them the baseline every acoustic
+    // measure is read against. Loudness on attempt 2 of task 4 means nothing on
+    // its own; loudness on attempt 2 relative to that person's own practice
+    // baseline is the measure, and it removes the between-person variance that
+    // a study this size cannot otherwise afford.
+
+    /** Where this participant's utterance audio goes. */
+    audioDir() {
+        const pid = this.session.participantId || "warmup";
+        const base = this.session.practice ? PRACTICE_DIR : LOG_DIR;
+        return path.join(base, AUDIO_DIRNAME, pid);
+    }
+
+    /**
+     * Writes one utterance to disk and logs the row that describes it.
+     *
+     * Runs for every capture window that carried audio, including the ones the
+     * recogniser rejected as silent. A press that produced no speech is data:
+     * it is a participant who armed the microphone and then did not know what
+     * to say, and losing it would bias the onset-latency distribution towards
+     * the confident.
+     */
+    saveUtteranceAudio(u) {
+        const pid   = this.session.participantId || "warmup";
+        const trial = this.trial && !this.trial.endedAt ? this.trial : null;
+        const id    = String(u.utteranceId).padStart(4, "0");
+
+        // Named so the file is self-describing on disk and sorts into the order
+        // it was spoken. The utterance id is what makes it unique — attempt
+        // index cannot, because a silent press never becomes an attempt and two
+        // presses would collide on the same number.
+        const parts = [pid, `u${id}`];
+        if (trial) {
+            parts.push(`trial${String(trial.number).padStart(2, "0")}`,
+                       trial.task, trial.variant);
+        }
+        const fileName = parts.join("_").replace(/[^\w.-]/g, "") + ".wav";
+
+        // Declining audio recording means no recording. The measures derived
+        // from the waveform — how loud, how fast, how long before they spoke —
+        // are numbers about an interaction rather than a copy of the
+        // participant's voice, so they stay; the recording itself does not.
+        const declined = this.session.participantId && this.session.audioConsent === false;
+
+        let written = "";
+        if (declined) {
+            // Nothing to do. The row below still records the press.
+        } else try {
+            const dir = this.audioDir();
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, fileName), u.wav);
+            written = fileName;
+        } catch (e) {
+            // Never let a disk problem take the session down. A missing WAV
+            // costs one observation; a crashed server costs the participant.
+            console.error(`\x1b[31m[Audio]\x1b[0m could not write ${fileName}: ${e.message}`);
+            this.logEvent("utterance-audio-failed", e.message,
+                { source: "system", category: "warning", utteranceId: u.utteranceId });
+        }
+
+        // The press itself, as its own row with its own clocks.
+        this.logEvent("utterance-audio",
+            declined ? "(audio not kept — participant declined recording)"
+                     : (u.transcribed ? "" : "(not transcribed — no speech detected)"), {
+            source: "participant", category: "speech",
+            utteranceId: u.utteranceId,
+            audioFile: written,
+            pttHoldMs: u.endedAt - u.startedAt,
+            speechOnsetMs: u.speechOnsetMs !== null ? u.speechOnsetMs : "",
+            utteranceMs: u.durationMs,
+            peakRms: u.peakRms,
+            meanRms: u.meanRms,
+            transcribed: u.transcribed ? "yes" : "no",
+            value: u.peakRms,
+            msSinceTrialStart: trial ? u.endedAt - trial.startedAt : ""
+        });
+
+        // Held for the wizard-latency measure below: how long after the
+        // participant stopped speaking the scripted outcome fired.
+        this.lastUtteranceEndedAt = u.endedAt;
+        this.lastUtteranceId      = u.utteranceId;
+        this.lastUtteranceOnsetMs = u.speechOnsetMs;
     }
 
     // ── Scene object lifecycle ───────────────────────────────────────────────
@@ -1621,6 +1855,44 @@ class WizardOfOzApp extends ApplicationController {
         const cond = payload.condition
             || (type === "background" ? "" : this.session.condition || "");
         const answers = payload.answers || {};
+
+        // Audio consent gates audio capture, and has to be read before anything
+        // else happens with it.
+        //
+        // Keeping a recording of someone's voice is a different thing from
+        // logging what they did, and the consent form asks about it separately
+        // and optionally. An optional tick that changes nothing is not consent,
+        // so it is wired to the behaviour here: decline, and no WAV is written
+        // for that participant. Their interaction log is unaffected — the
+        // timings and the transcript are covered by the logging item they did
+        // agree to.
+        if (payload.questionnaire === "consent") {
+            const said = String(answers.c_audio || "").trim().toLowerCase();
+            const granted = said === "yes" || said === "true" || said === "1";
+            // Guarded rather than assumed: a throw anywhere in this block would
+            // fail the whole consent submission, and a participant whose
+            // consent form errors out is one whose consent is not on record.
+            if (!this.audioConsentByParticipant) this.audioConsentByParticipant = new Map();
+            this.audioConsentByParticipant.set(pid, granted);
+            // Only applies to the live session when it is the same person; a
+            // consent form filled in for someone else must not change what is
+            // being recorded right now.
+            if (!this.session.participantId || this.session.participantId === pid) {
+                this.session.audioConsent = granted;
+            }
+            this.logEvent("audio-consent",
+                this.session.audioConsent
+                    ? "voice recordings may be kept"
+                    : "declined — no audio will be written for this participant", {
+                source: "participant", category: "session",
+                value: this.session.audioConsent ? "yes" : "no"
+            });
+            if (!this.session.audioConsent) {
+                console.log(`\x1b[33m[Consent]\x1b[0m ${pid} declined audio recording — ` +
+                    `utterance WAVs will not be written`);
+            }
+        }
+
         const common = {
             participantId: pid,
             condition: cond,
@@ -1676,15 +1948,50 @@ class WizardOfOzApp extends ApplicationController {
             let m;
             try { m = JSON.parse(data.message.toString()); } catch (_) { return; }
             if (!m || m.type !== "HeadPose") return;
-            this.lastPose = { x: m.x, y: m.y, z: m.z, yaw: m.yaw, at: Date.now() };
-            // Only LOGGED while a trial is live: pose between trials is the
-            // researcher carrying the headset around and is noise in the file.
-            // The mirror still shows it, because "where are they looking right
-            // now" is useful during the briefing too.
-            if (!this.trial || this.trial.endedAt) return;
-            this.logEvent("head-pose", "", {
+            const now = Date.now();
+            this.lastPose = {
+                x: m.x, y: m.y, z: m.z, yaw: m.yaw,
+                pitch: m.pitch, gaze: m.gaze, at: now
+            };
+
+            // Logged for the whole session, not only while a trial is live.
+            //
+            // It used to be gated on an active trial, on the reasoning that
+            // pose between trials is the researcher carrying the headset and is
+            // noise. That is true of the walk to the next task and false of the
+            // two things this measure is actually for. The practice trial is
+            // the acoustic and postural baseline and it is a trial, so it is
+            // covered either way — but the briefing before each task, when the
+            // participant is looking around the scene deciding what to say, is
+            // not, and dwell on the feedback panel does not respect trial
+            // boundaries either. Rows before a session starts are still
+            // dropped; those really are the researcher.
+            //
+            // Between-trial rows are marked so they can be filtered rather than
+            // having to be inferred from timestamps.
+            if (!this.session.participantId) return;
+            const inTrial = !!(this.trial && !this.trial.endedAt);
+
+            // Dwell: consecutive time on the same gaze target. Computed here
+            // rather than at analysis because it needs the previous sample, and
+            // reconstructing "how long had they been looking at this" from a
+            // pose table is the kind of window function that gets written
+            // slightly wrong once and is never checked.
+            const target = m.gaze || "";
+            if (target && target === this.gazeTarget) {
+                this.gazeDwellMs = now - this.gazeSince;
+            } else {
+                this.gazeTarget  = target;
+                this.gazeSince   = now;
+                this.gazeDwellMs = 0;
+            }
+
+            this.logEvent("head-pose", inTrial ? "" : "(between trials)", {
                 source: "participant", category: "pose",
-                pos: { x: m.x, y: m.y, z: m.z }, yaw: m.yaw
+                pos: { x: m.x, y: m.y, z: m.z }, yaw: m.yaw,
+                pitch: m.pitch,
+                gazeTarget: target,
+                dwellMs: target ? this.gazeDwellMs : undefined
             });
         });
 
@@ -1701,9 +2008,15 @@ class WizardOfOzApp extends ApplicationController {
             if (info.kind === "silent" || info.kind === "error") {
                 this.logEvent("stt-" + info.kind,
                     info.detail || `${info.durationMs}ms of audio, no speech detected`, {
-                    source: "system", category: "warning"
+                    source: "system", category: "warning",
+                    utteranceId: info.utteranceId
                 });
             }
+        });
+
+        // One audio file per push-to-talk press, written as the press ends.
+        this.components.transcriptionService.on("utterance", (u) => {
+            this.saveUtteranceAudio(u);
         });
     }
 
@@ -1719,8 +2032,31 @@ class WizardOfOzApp extends ApplicationController {
                 const ctrl = chunk.toString("utf8");
                 if (ctrl.startsWith(STT_CONTROL_PREFIX)) {
                     const action = ctrl.slice(STT_CONTROL_PREFIX.length);
-                    if (action === "start") this.components.transcriptionService.recordingStart(peerUUID);
-                    else if (action === "stop") this.components.transcriptionService.recordingStop(peerUUID);
+                    // The push-to-talk boundaries, as their own rows on the same
+                    // clock as everything else.
+                    //
+                    // These two messages already existed and already carried the
+                    // information; they were consumed to drive the recogniser
+                    // and then dropped. Logging them is what makes an attempt a
+                    // unit with a beginning and an end, rather than a transcript
+                    // that appeared at some point. Everything downstream —
+                    // onset latency, hold duration, how long the wizard took to
+                    // answer — is measured from these.
+                    if (action === "start") {
+                        this.pttDownAt = Date.now();
+                        this.components.transcriptionService.recordingStart(peerUUID);
+                        this.logEvent("ptt-down", "", {
+                            source: "participant", category: "speech"
+                        });
+                    } else if (action === "stop") {
+                        const held = this.pttDownAt ? Date.now() - this.pttDownAt : "";
+                        this.components.transcriptionService.recordingStop(peerUUID);
+                        this.logEvent("ptt-up", "", {
+                            source: "participant", category: "speech",
+                            pttHoldMs: held, value: held
+                        });
+                        this.pttDownAt = null;
+                    }
                     return;
                 }
                 // Mic health from the headset — surfaced on the control panel so a
@@ -1744,8 +2080,9 @@ class WizardOfOzApp extends ApplicationController {
         // Step 2: log transcript for researcher (do NOT auto-send to LLM) and
         // send it straight to the Unity client so the participant sees what the
         // system heard immediately (not at the end of the pipeline).
-        this.components.transcriptionService.on("response", (data) => {
-            const text = data.toString().replace(/(\r\n|\n|\r)/gm, "").replace(/^>/, "").trim();
+        this.components.transcriptionService.on("response", (data, peerUUID, meta = {}) => {
+            const raw  = data.toString();
+            const text = raw.replace(/(\r\n|\n|\r)/gm, "").replace(/^>/, "").trim();
 
             // Drop only what carries no words at all. This used to require five
             // characters, which silently swallowed exactly the utterances the
@@ -1849,9 +2186,35 @@ class WizardOfOzApp extends ApplicationController {
                 this.trial.lastUtterance = text;
             }
 
+            // Speech rate over the speaking window rather than the whole
+            // capture window: a long silence before the first word is planning
+            // time, already measured as `speechOnsetMs`, and counting it here
+            // would make a hesitant participant look like a slow speaker.
+            const words = text.split(/\s+/).filter(Boolean).length;
+            const speakingMs = Number.isFinite(meta.durationMs)
+                ? meta.durationMs - (meta.speechOnsetMs || 0) : null;
+            const rate = speakingMs > 0 ? +(words / (speakingMs / 1000)).toFixed(3) : "";
+
             this.logEvent("transcript", text, {
                 msSinceTrialStart: this.trial ? Date.now() - this.trial.startedAt : "",
-                source: "participant", category: "speech"
+                source: "participant", category: "speech",
+                // Joins this transcript to the WAV it came from, and to the
+                // ptt-down/ptt-up pair that produced it.
+                utteranceId: meta.utteranceId,
+                wordCount: words,
+                speechRateWps: rate,
+                utteranceMs: meta.durationMs,
+                speechOnsetMs: meta.speechOnsetMs !== null ? meta.speechOnsetMs : undefined,
+                peakRms: meta.peakRms,
+                meanRms: meta.meanRms,
+                asrLatencyMs: meta.asrLatencyMs,
+                asrConfidence: asrConfidence(raw),
+                // How long the participant waited between stopping speaking and
+                // the system knowing what they said. Not a participant measure
+                // at all — a pipeline one — but it sits inside every response
+                // time in the file and has to be subtractable from them.
+                msSinceUtteranceEnd: Number.isFinite(meta.utteranceEndedAt)
+                    ? Date.now() - meta.utteranceEndedAt : undefined
             });
             console.log(`\x1b[36m[Transcript]\x1b[0m "${text}"  →  waiting for researcher to inject response`);
 
@@ -1928,6 +2291,23 @@ class WizardOfOzApp extends ApplicationController {
         console.log(`\x1b[32m[WoZ Inject]\x1b[0m ${taskKey}/${vKey} ${outcome}` +
             (outcome === "success" ? "" : `/${scenario}`));
         const approx = this.coordsFor(spec.pos);
+
+        // How long after the participant stopped speaking the wizard fired.
+        //
+        // This is a human in the loop pressing a button, so it varies — by how
+        // busy the wizard is, by how far through the session they are, by
+        // whether the participant said something unexpected. Left unmeasured
+        // that variation sits inside every response-time measure in the study
+        // and is indistinguishable from the participant being slower. Logged, it
+        // is a covariate.
+        const wizardLatencyMs = this.lastUtteranceEndedAt
+            ? Date.now() - this.lastUtteranceEndedAt : "";
+
+        // Which scripted line fired, named rather than described. Two variants
+        // of the same task differ only in the object they mention, and telling
+        // them apart from the feedback text alone means string-matching prose.
+        const wizardScriptId = `${taskKey}/${vKey}/${outcome}`;
+
         this.logEvent("inject", outcome === "success" ? "success" : `error/${scenario}`, {
             task: taskKey, variant: vKey,
             scenario: outcome === "success" ? "" : scenario,
@@ -1936,7 +2316,13 @@ class WizardOfOzApp extends ApplicationController {
             value: spec.pos || spec.action || "",
             objectShape: spec.shape || "",
             color: spec.color || "",
-            pos: approx
+            pos: approx,
+            wizardScriptId,
+            wizardLatencyMs,
+            msSinceUtteranceEnd: wizardLatencyMs,
+            // The utterance this outcome is a reply to, so the exchange
+            // reassembles by sorting on one column.
+            utteranceId: this.lastUtteranceId
         });
 
         // The scene change itself, as its own rows. An inject row says what was
@@ -1968,7 +2354,16 @@ class WizardOfOzApp extends ApplicationController {
             task: taskKey, variant: vKey,
             scenario: outcome === "success" ? "" : scenario,
             source: "system", category: "feedback",
-            value: this.session.condition || ""
+            value: this.session.condition || "",
+            wizardScriptId,
+            // Feedback onset as the server knows it: the moment the spec went
+            // to the headset. The headset reports the moment it actually became
+            // visible or audible, and its offset, as `feedback-onset` and
+            // `feedback-offset` rows — those are the true display times, this is
+            // the send time, and the gap between them is the network and the
+            // scripted thinking delay.
+            utteranceId: this.lastUtteranceId,
+            msSinceUtteranceEnd: wizardLatencyMs
         });
 
         // taskKey and variantKey are added here so Unity can look up the
@@ -2095,7 +2490,21 @@ class WizardOfOzApp extends ApplicationController {
                 if (!pid || !fs.existsSync(file)) {
                     return send(404, { error: `No log for '${pid}'` });
                 }
-                return send(200, { participantId: pid, rows: parseCsvFile(file) });
+                const all = parseCsvFile(file);
+                // Head pose is sampled continuously at 10Hz, so a finished
+                // participant has tens of thousands of pose rows and a few
+                // hundred of everything else. Sent whole, that is a JSON payload
+                // large enough to make the replay page crawl, and none of it is
+                // what the page is for — it draws a timeline of what happened,
+                // and a pose sample is not an event. Pass ?pose=1 to include
+                // them; the CSV on disk always has every row either way.
+                const rows = q.get("pose") === "1"
+                    ? all
+                    : all.filter(r => r.eventType !== "head-pose");
+                return send(200, {
+                    participantId: pid, rows,
+                    poseRowsOmitted: all.length - rows.length
+                });
             }
 
             // ── Read endpoints ────────────────────────────────────────────────
@@ -2201,6 +2610,23 @@ class WizardOfOzApp extends ApplicationController {
                             this.trialCounter = 0;
                             this.sceneObjects.clear();
                             this.objectCounter = 0;
+                            // Otherwise the first inject of a new session is
+                            // dated against the last utterance of the previous
+                            // participant, and reports a wizard latency of
+                            // however long the changeover took.
+                            this.pttDownAt = null;
+                            this.lastUtteranceEndedAt = null;
+                            this.lastUtteranceId = null;
+                            this.gazeTarget = "";
+                            this.gazeDwellMs = 0;
+                            // Consent belongs to a person, never to the panel.
+                            // Carrying it into the next session would record the
+                            // next participant on the strength of the last one's
+                            // permission — so it is looked up for whoever this
+                            // is, and stays unknown if they have not answered.
+                            this.session.audioConsent =
+                                this.audioConsentByParticipant.has(pid)
+                                    ? this.audioConsentByParticipant.get(pid) : null;
                         }
 
                         // Follow the plan for this block unless overridden, so the
@@ -2452,6 +2878,35 @@ class WizardOfOzApp extends ApplicationController {
                             target: payload.name || "",
                             value:  payload.shape || payload.action || "",
                             pos:    { x, y, z }
+                        });
+                        return send(200, { ok: true });
+                    }
+
+                    // Things only the headset can time, reported by the headset.
+                    //
+                    // Feedback onset and offset are the pair that matters. The
+                    // server knows when it SENT a scripted outcome; only the
+                    // headset knows when the panel actually appeared, when the
+                    // agent finished speaking, and when either went away. The
+                    // difference is not small — condition C waits for the
+                    // agent's pre-roll line before the result lands — and
+                    // "how long was the explanation available to them" is the
+                    // denominator of every dwell measure.
+                    //
+                    // Deliberately generic and deliberately optional: a headset
+                    // running an older build simply never posts here, and the
+                    // rows are absent rather than wrong.
+                    if (req.method === "POST" && url === "/headset-event") {
+                        const type = String(payload.type || "headset-event");
+                        this.logEvent(type, String(payload.detail || ""), {
+                            source: "headset",
+                            category: payload.category || "feedback",
+                            value: payload.value !== undefined ? payload.value : "",
+                            target: payload.target || "",
+                            gazeTarget: payload.gazeTarget,
+                            dwellMs: payload.dwellMs,
+                            utteranceId: this.lastUtteranceId,
+                            wizardScriptId: payload.wizardScriptId
                         });
                         return send(200, { ok: true });
                     }

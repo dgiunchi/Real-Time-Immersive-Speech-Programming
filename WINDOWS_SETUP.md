@@ -213,12 +213,18 @@ software working* from *is the network cooperating*.
 Desktop\dreamcodevr\Logs\
 ```
 
-One CSV per participant — `P01.csv`, `P02.csv`. Everything about that person is
-in their one file.
+One CSV per participant — `P01.csv`, `P02.csv` — holding everything that person
+did. Alongside it, `Logs\audio\P01\` holds one short sound file per time they
+held the trigger and spoke.
 
-**Back these up after every session.** They are kept out of version control on
-purpose: participant data is never uploaded. That also means nothing is
-protecting them but you. Copy them to OneDrive or a memory stick the same day.
+**Back up the whole `Logs` folder after every session, audio included.** It is
+kept out of version control on purpose: participant data is never uploaded. That
+also means nothing is protecting it but you. Copy it to OneDrive or a memory
+stick the same day.
+
+> The audio folder is the part people forget, because it is the only data that
+> is not in the CSV. It is also the only data that cannot be regenerated or
+> approximated from anything else.
 
 **Agree participant numbers with the other researcher before you start**, so you
 do not both create a `P02`. The simplest split is odd numbers for one of you and

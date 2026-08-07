@@ -107,10 +107,22 @@
       <li>Do not usually experience significant motion sickness</li>
     </ul>
 
+    <h3>What is recorded?</h3>
+    <p>Three things. What happens in the scene &mdash; what you asked for, what
+       appeared, how long each task took. Where your head was pointing, so we
+       know whether you were looking at the feedback when it appeared. And, if
+       you agree to it below, a sound recording of your voice each time you hold
+       the trigger and speak to the system.</p>
+    <p>The sound recordings are what let us measure <i>how</i> people speak to a
+       system that has just failed them &mdash; whether they get louder, or
+       slower, or repeat themselves. Agreeing to them is optional, and you can
+       take part fully without: if you decline, no sound is saved at any point.</p>
+
     <h3>Will my data be kept confidential?</h3>
     <p>Yes. All data will be anonymised using a participant ID instead of your
-       name. Data will be stored securely on University-approved storage and only
-       the research team will have access.</p>
+       name. Nothing recorded is labelled with your name, including the sound
+       files. Data will be stored securely on University-approved storage and
+       only the research team will have access.</p>
 
     <h3>Are there any risks?</h3>
     <p>No significant risks are anticipated. As with any VR use, if you feel any
@@ -194,8 +206,20 @@ const TICKS = [
     text: "I understand my anonymised data may be used in the researchers' theses and potentially in an academic publication." },
   { id: "c_logging",    required: true,
     text: "I agree to the session being logged (interaction logs and researcher notes) for research purposes." },
+  // Covers the task speech, not only the interview.
+  //
+  // It used to read "I agree to the interview being audio-recorded", from when
+  // the only recording was the one at the end. The study now keeps a separate
+  // sound file for every time the participant holds the trigger and speaks to
+  // the system, so the wording has to say that — a tick that describes less
+  // than what is collected is not consent to what is collected.
+  //
+  // Still optional, and declining it genuinely stops the recordings being
+  // written: the server checks this answer before it saves any audio. The
+  // session itself is unaffected, because the measures the study depends on
+  // most are timings and transcripts, which the logging item above covers.
   { id: "c_audio",      required: false,
-    text: "I agree to the interview being audio-recorded." },
+    text: "I agree to my voice being recorded and kept while I speak to the system during the tasks, and during the interview at the end. Recordings are stored under a participant number, never my name, and are used only for research analysis." },
   { id: "c_age",        required: true,
     text: "I confirm I am 18 years of age or older." },
   { id: "c_takepart",   required: true,

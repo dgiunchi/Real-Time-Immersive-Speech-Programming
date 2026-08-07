@@ -146,6 +146,12 @@ class FasterWhisperHttpSttService extends EventEmitter {
         this.sessions = new Map();
         this.childProcesses = {};
 
+        // Monotonic across the process, so an utterance id is unique within a
+        // session no matter which peer produced it. It is the join key between
+        // the audio file on disk, the acoustic measures, and the transcript that
+        // arrives from the network some hundreds of milliseconds later.
+        this.utteranceCounter = 0;
+
         this.roomClient = scene && scene.getComponent ? scene.getComponent("RoomClient") : null;
         this.registerRoomClientEvents();
 
@@ -187,10 +193,31 @@ class FasterWhisperHttpSttService extends EventEmitter {
                 speechChunks: 0,
                 totalChunks: 0,
             };
+            this.beginUtterance(session);
             this.sessions.set(peerUUID, session);
             this.childProcesses[peerUUID] = session;
         }
         return session;
+    }
+
+    /**
+     * Opens a new utterance on an existing session and starts its clocks.
+     *
+     * Called from recordingStart AND from finalizePeer, because an utterance
+     * does not always end where the push-to-talk does: holding the trigger
+     * through a long pause finalizes on the silence timer and the next words
+     * are a new utterance with no new button press behind them. Restarting the
+     * clocks in one place is what keeps `speechOnsetMs` meaning "time from the
+     * start of this utterance's capture window" in both cases rather than
+     * silently measuring from the last button press two utterances ago.
+     */
+    beginUtterance(session) {
+        session.utteranceId   = ++this.utteranceCounter;
+        session.startedAt     = Date.now();
+        session.speechOnsetAt = null;   // first confirmed speech, absolute ms
+        session.onsetCandidate = null;  // start of the current above-threshold run
+        session.onsetRun      = 0;      // length of that run, in chunks
+        session.rmsSum        = 0;      // for the mean, alongside the peak
     }
 
     addAudioChunk(peerUUID, audioChunk) {
@@ -222,6 +249,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
         // the timer run down and fire.
         const rms = chunkRms(chunk, this.bitsPerSample);
         session.totalChunks += 1;
+        session.rmsSum += rms;
         if (rms > session.peakRms) session.peakRms = rms;
         if (rms >= this.silenceRms) {
             session.speechChunks += 1;
@@ -229,7 +257,25 @@ class FasterWhisperHttpSttService extends EventEmitter {
             // heardVoice back until the count is met is what lets the threshold
             // sit low enough for a quiet mic without feeding Whisper a room.
             if (session.speechChunks >= this.minSpeechChunks) session.heardVoice = true;
+
+            // Speech onset: the start of the first RUN of above-threshold
+            // chunks long enough to be speech, not the first chunk that happens
+            // to cross. A door closing clears an amplitude gate on its own, and
+            // dating onset from it would put the participant's reaction time
+            // hundreds of milliseconds early — on the measure whose whole point
+            // is separating a reflexive repeat from actual planning.
+            if (session.speechOnsetAt === null) {
+                if (session.onsetCandidate === null) session.onsetCandidate = Date.now();
+                session.onsetRun += 1;
+                if (session.onsetRun >= this.minSpeechChunks) {
+                    session.speechOnsetAt = session.onsetCandidate;
+                }
+            }
             this.resetFinalizeTimer(peerUUID, session);
+        } else if (session.speechOnsetAt === null) {
+            // Run broken before it qualified — start looking again.
+            session.onsetCandidate = null;
+            session.onsetRun = 0;
         }
 
         if (durationMs >= this.maxAudioMs) {
@@ -286,6 +332,19 @@ class FasterWhisperHttpSttService extends EventEmitter {
         const totalChunks = session.totalChunks;
         const durationMs = durationMsForBytes(bytes, this.sampleRate, this.channels, this.bitsPerSample);
 
+        // Snapshot this utterance's identity and clocks before they are reset
+        // for the next one.
+        const utteranceId  = session.utteranceId;
+        const startedAt    = session.startedAt;
+        const endedAt      = Date.now();
+        const meanRms      = totalChunks ? session.rmsSum / totalChunks : 0;
+        // Time from the capture window opening to the participant actually
+        // speaking. Null, not zero, when no speech was ever confirmed — a
+        // silent press has no onset, and zero would read as an instant reply.
+        const speechOnsetMs = session.speechOnsetAt !== null
+            ? session.speechOnsetAt - startedAt
+            : null;
+
         session.chunks = [];
         session.bytes = 0;
         session.heardVoice = false;
@@ -293,6 +352,47 @@ class FasterWhisperHttpSttService extends EventEmitter {
         session.speechChunks = 0;
         session.totalChunks = 0;
         session.transcribing = true;
+        this.beginUtterance(session);
+
+        // ── Hand the audio out before anything can decide to discard it ──────
+        //
+        // Emitted for EVERY capture window that carried samples, including the
+        // ones rejected below as silent or too short. Those rejections are about
+        // whether to spend a transcription request, which is a different
+        // question from whether the audio is worth keeping: a press that
+        // produced no speech is itself a finding, and an utterance thrown away
+        // here used to leave no trace but a console line.
+        //
+        // The buffer goes to the listener rather than to a file the service
+        // picks itself, because where participant audio is allowed to land is a
+        // study decision — this service is shared with the other sample apps and
+        // has no business knowing about participant folders.
+        const wavBuffer = bytes > 0
+            ? createWavBuffer(Buffer.concat(chunks, bytes),
+                              this.sampleRate, this.channels, this.bitsPerSample)
+            : null;
+
+        if (wavBuffer && this.listenerCount("utterance") > 0) {
+            this.emit("utterance", {
+                peerUUID,
+                utteranceId,
+                wav: wavBuffer,
+                startedAt,
+                endedAt,
+                durationMs: Math.round(durationMs),
+                speechOnsetMs,
+                peakRms: +peakRms.toFixed(4),
+                meanRms: +meanRms.toFixed(4),
+                speechChunks,
+                totalChunks,
+                heardVoice,
+                // Whether this window will be transcribed at all, so a row can
+                // say "spoke, nothing came back" apart from "never spoke".
+                transcribed: heardVoice && durationMs >= this.minAudioMs,
+                sampleRate: this.sampleRate,
+                reason
+            });
+        }
 
         // Never send pure silence. Whisper does not return empty for silent
         // audio — it hallucinates a plausible sentence ("Thank you.", "you"),
@@ -317,7 +417,8 @@ class FasterWhisperHttpSttService extends EventEmitter {
             // the transcript simply never changes. Saying which happened is the
             // difference between "the mic is dead" and "it heard only silence".
             this.emit("diagnostic", {
-                kind: "silent", peerUUID, durationMs: Math.round(durationMs),
+                kind: "silent", peerUUID, utteranceId,
+                durationMs: Math.round(durationMs),
                 reason, detail,
                 peakRms: +peakRms.toFixed(4), speechChunks, totalChunks,
                 threshold: this.silenceRms
@@ -333,7 +434,8 @@ class FasterWhisperHttpSttService extends EventEmitter {
                 `durationMs=${durationMs.toFixed(0)} bytes=${bytes}`
             );
             this.emit("diagnostic", {
-                kind: "short", peerUUID, durationMs: Math.round(durationMs), reason,
+                kind: "short", peerUUID, utteranceId,
+                durationMs: Math.round(durationMs), reason,
                 detail: `${durationMs.toFixed(0)}ms of audio, too short to transcribe ` +
                         `(minimum ${this.minAudioMs}ms, peak level ${peakRms.toFixed(4)})`,
                 peakRms: +peakRms.toFixed(4)
@@ -342,9 +444,6 @@ class FasterWhisperHttpSttService extends EventEmitter {
             this.deleteIdleSession(peerUUID, session);
             return false;
         }
-
-        const pcmBuffer = Buffer.concat(chunks, bytes);
-        const wavBuffer = createWavBuffer(pcmBuffer, this.sampleRate, this.channels, this.bitsPerSample);
 
         console.log(
             `[FasterWhisperHttpSttService] request start peerUUID=${peerUUID} reason=${reason} ` +
@@ -355,16 +454,32 @@ class FasterWhisperHttpSttService extends EventEmitter {
             kind: "sending", peerUUID, durationMs: Math.round(durationMs), reason
         });
 
+        const requestedAt = Date.now();
         try {
             const responseText = await postWav(this.url, wavBuffer);
             console.log(`[FasterWhisperHttpSttService] response peerUUID=${peerUUID}: ${responseText}`);
-            this.emit("response", Buffer.from(responseText), peerUUID);
+            // Third argument is new and additive: existing listeners take two
+            // and ignore it. It carries what the transcript alone cannot — which
+            // audio file these words came from, and how long the recogniser took
+            // to produce them. Response time measured from the end of speech is
+            // only interpretable once that recogniser delay is subtractable.
+            this.emit("response", Buffer.from(responseText), peerUUID, {
+                utteranceId,
+                utteranceStartedAt: startedAt,
+                utteranceEndedAt: endedAt,
+                durationMs: Math.round(durationMs),
+                speechOnsetMs,
+                peakRms: +peakRms.toFixed(4),
+                meanRms: +meanRms.toFixed(4),
+                asrLatencyMs: Date.now() - requestedAt
+            });
         } catch (error) {
             console.error(`[FasterWhisperHttpSttService] request error peerUUID=${peerUUID}: ${error.message}`);
             // A transcription server that is down or unreachable produced no
             // visible symptom at all beyond an empty transcript.
             this.emit("diagnostic", {
-                kind: "error", peerUUID, detail: error.message, url: this.url
+                kind: "error", peerUUID, utteranceId,
+                detail: error.message, url: this.url
             });
         } finally {
             session.transcribing = false;

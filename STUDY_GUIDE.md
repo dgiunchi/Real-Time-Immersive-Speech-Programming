@@ -401,6 +401,17 @@ researcher control panel.
 - You only need to **rebuild when the C# changes** — never for a new location,
   network or participant. Between participants just relaunch the app.
 
+> **What the attempt-level logging needs.** Most of it needs nothing: the
+> per-utterance audio, push-to-talk timings, speech onset latency, speech rate,
+> and the ASR and wizard latencies are all measured on the server from messages
+> the headset already sends. **They work with the APK you have now.**
+>
+> Three things do need a rebuild, because they can only be measured on the
+> headset: continuous head pose, `gazeTarget`/`dwellMs`, and the
+> `feedback-onset` / `feedback-offset` rows. Until you rebuild, those columns
+> are simply blank — an old APK against the new server is fine, and a new APK
+> against an old server is too. Nothing half-works.
+
 **Networking — plug the cable in before `npm run study`, then unplug.**
 
 That one habit is all you need anywhere in the world. On startup the launcher
@@ -604,8 +615,15 @@ absence of rows. With yaw the turn is an event with a latency:
 22  13610  participant  speech    transcript         <- "Oh, I see it"
 ```
 
-Sampling is movement-gated, so a participant standing still produces no rows.
-That keeps the file readable by eye and means a row is always a change.
+Sampling is **continuous** at 10 Hz, and each row also carries `pitch`,
+`gazeTarget` and `dwellMs`.
+
+It used to be movement-gated — no row until the head had moved 2 cm or turned 2
+degrees — on the reasoning that a still head is not worth recording. That is
+true of the walk between tasks and exactly backwards for dwell: someone reading
+the feedback panel holds their head as still as they ever will, so the gate
+suppressed every sample of the behaviour the measure exists to capture. In the
+log, attentive reading and taking the headset off looked the same. Nothing.
 
 Pose needs `StudyTelemetry.cs`, which is in the pending rebuild.
 
@@ -616,16 +634,45 @@ All files are written to a `Logs/` folder at the top of the project:
 Real-Time-Immersive-Speech-Programming-…/Logs/
 ```
 **One file per participant.** `Logs/P01.csv` is everything P01 did, in the order
-they did it. Nothing about a participant lives anywhere else.
+they did it. Nothing about a participant lives anywhere else — except the audio,
+below, which cannot go in a CSV.
+
+```
+Logs/
+  P01.csv            everything P01 did
+  audio/P01/         one WAV per time they held the trigger and spoke
+  allocation.json    who was assigned which condition and task order
+  archive/           superseded files, never deleted
+```
+
+**`Logs/audio/P01/` holds one sound file per utterance**, named
+`P01_u0007_trial03_task4_v2.wav` — participant, utterance number, trial, task,
+variant. Every one of them has a matching `utterance-audio` row in the CSV
+carrying the same filename, so the audio set is analysable without matching
+anything up by timestamp.
+
+They are written at the push-to-talk boundary, which the server already knew
+exactly, so the segmentation is free at capture time. Doing it afterwards from
+one long session recording would mean hand-cutting every participant against the
+event log before any acoustic analysis could start.
+
+> **Audio recording is consented separately and the tick is enforced.** If a
+> participant declines the audio item on the consent form, no WAV is written for
+> them — the server checks before it saves. Their CSV is unaffected: the
+> loudness, rate and onset numbers are still there, because those are
+> measurements of an interaction rather than a copy of someone's voice.
 
 The `recordType` column says what each row is:
 
 - `session-start` — the assigned plan: condition, task order, variant per task.
 - `event` — the fine-grained trace, one row per state change. `eventType`
-  distinguishes them: `transcript` (what they said), `inject` (what you
-  triggered), `feedback-shown` (what they were actually told), `trial-start`,
-  `trial-end`, `attribution`, `repair-strategy`, `head-pose`, `note`, and the
-  `stt-silent` / `stt-error` warnings.
+  distinguishes them: `ptt-down` / `ptt-up` (the trigger held and released),
+  `utterance-audio` (the recording and its acoustic measures), `transcript`
+  (what they said), `inject` (what you triggered), `feedback-shown` (what they
+  were actually told), `feedback-onset` / `feedback-offset` (when it actually
+  appeared and went away, reported by the headset), `trial-start`, `trial-end`,
+  `attribution`, `repair-strategy`, `head-pose`, `audio-consent`, `note`, and
+  the `stt-silent` / `stt-error` warnings.
 - `trial-summary` — **the primary analysis rows.** One per completed trial,
   carrying `taskOrder, condition, task, variant, scenario, durationMs,
   completionStatus, attempts, injects, attribution, correctAttribution,
@@ -650,6 +697,59 @@ These CSVs are git-ignored so participant data never gets committed.
 **What you can measure from this:** attempts to recovery per condition; trial
 duration; completion status; first-vs-recovery transcript comparison — grouped
 by condition and by error category, which is what the hypotheses need.
+
+### The unit of analysis is the attempt, not the trial
+
+Thirty participants doing six tasks is 180 trials. Those same people make around
+three attempts per task, so the same sessions contain 500-odd attempts — and
+each one carries a continuous outcome rather than a yes/no. That is where the
+power comes from, and it costs no extra participant time: it is all
+instrumentation, recorded whether anyone looks at it or not.
+
+Filter to `eventType=utterance-audio` and each row is one attempt:
+
+| Column | What it is |
+|---|---|
+| `speechOnsetMs` | Trigger pressed → first word. **Short is a reflexive repeat; long is someone planning a different wording.** Nobody else has this. |
+| `pttHoldMs` | How long they held the trigger. |
+| `peakRms`, `meanRms` | Loudness. Read as a delta against that person's own practice-trial baseline, never raw — between-person variation swamps the effect. |
+| `speechRateWps`, `wordCount` | On the `transcript` row. The other half of hyperarticulation: people slow down as well as get louder. |
+| `utteranceId` | Joins the press, the audio, the transcript and the inject that answered it. |
+| `audioFile` | The WAV, for anything the numbers do not cover. |
+
+**Why the practice trial is recorded even though it is excluded from analysis.**
+It is the only speech a participant produces before any failure has happened, so
+it is the baseline every acoustic measure is read against. Hyperarticulation
+measured against a person's own baseline removes the between-person variance,
+which is exactly the variance a study this size cannot otherwise afford. It is
+the cheapest thing in here and one of the most useful.
+
+**Latency confounds are logged, not assumed away.** `asrLatencyMs` is how long
+the recogniser took; `wizardLatencyMs` is how long after the participant stopped
+speaking you pressed the button. The second one varies — with how busy you are,
+how far into the session you are, whether they said something unexpected — and
+unlogged it sits inside every response-time measure in the study, looking
+exactly like the participant being slower. Logged, it is a covariate.
+
+**Gaze turns the manipulation check into a measurement.** `head-pose` rows are
+now continuous rather than movement-gated, and carry `pitch`, `gazeTarget`
+(`panel`, `agent`, `object`) and `dwellMs`. "Did you notice the feedback"
+answered yes is weak; four seconds of dwell on the panel before speaking again
+is strong, and it is on every trial without asking anyone anything. On task 4 —
+where the object spawns behind them — `gazeTarget=object` is the moment they
+found it, with no probe needed.
+
+> The gate mattered more than it sounds. A participant reading the panel holds
+> their head as still as they ever will, so movement-gating suppressed every
+> sample of the behaviour dwell is made of: attentive reading and taking the
+> headset off looked identical in the log. Continuous sampling is roughly 10
+> rows a second — the `/replay` page filters them out so it stays fast, and the
+> CSV keeps them all.
+
+**One clock.** Every row carries `epochMs` (absolute, for merging against video
+and audio), `msSinceSessionStart` and `msSinceTrialStart`, plus a monotonic
+`seq` so two events in the same millisecond keep their order. There are no
+per-subsystem clocks to reconcile afterwards.
 
 > **`attempts` counts participant utterances**, not your button presses (those
 > are `injects`). It is a measure of how much the participant had to try, which

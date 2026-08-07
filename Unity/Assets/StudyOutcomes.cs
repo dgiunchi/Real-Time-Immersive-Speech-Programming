@@ -149,6 +149,64 @@ public class StudyOutcomes : MonoBehaviour
     }
 
     /// <summary>
+    /// Reports something only the headset can time.
+    ///
+    /// The server knows when it SENT a scripted outcome. It cannot know when the
+    /// panel actually appeared, when the agent stopped talking, or when either
+    /// went away — and in condition C those differ from the send time by however
+    /// long the agent's pre-roll line took. "How long was the explanation
+    /// available to them" is the denominator of every dwell measure, so it has
+    /// to come from the side that displayed it.
+    ///
+    /// Static and fire-and-forget so any script can call it without a reference
+    /// and without a failure here ever costing a participant anything.
+    /// </summary>
+    public static void ReportHeadsetEvent(MonoBehaviour host, string type,
+                                          string detail = "", string value = "")
+    {
+        if (!host) return;
+        host.StartCoroutine(PostHeadsetEvent(type, detail, value));
+    }
+
+    private static IEnumerator PostHeadsetEvent(string type, string detail, string value)
+    {
+        var body = $"{{\"type\":{JsonString(type)},\"detail\":{JsonString(detail)}," +
+                   $"\"value\":{JsonString(value)},\"category\":\"feedback\"}}";
+        var host = ServerAutoDiscovery.ResolvedHost ?? "127.0.0.1";
+        using var req = new UnityWebRequest($"http://{host}:8181/headset-event", "POST");
+        req.uploadHandler   = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
+        req.downloadHandler = new DownloadHandlerBuffer();
+        req.SetRequestHeader("Content-Type", "application/json");
+        yield return req.SendWebRequest();
+        // Fire-and-forget: a failed POST is a missing log row, not a study error.
+    }
+
+    /// Feedback text is authored prose and reaches this as JSON. An unescaped
+    /// quote or newline in it would produce a malformed body that the server
+    /// rejects, losing the row for exactly the wordiest explanations.
+    private static string JsonString(string s)
+    {
+        if (s == null) return "\"\"";
+        var sb = new StringBuilder("\"");
+        foreach (var ch in s)
+        {
+            switch (ch)
+            {
+                case '"':  sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n");  break;
+                case '\r': sb.Append("\\r");  break;
+                case '\t': sb.Append("\\t");  break;
+                default:
+                    if (ch < ' ') sb.Append("\\u").Append(((int)ch).ToString("x4"));
+                    else sb.Append(ch);
+                    break;
+            }
+        }
+        return sb.Append('"').ToString();
+    }
+
+    /// <summary>
     /// FindGameObjectsWithTag throws outright when the tag is not declared in
     /// the project's TagManager, and an uncaught throw here takes the rest of
     /// the reset with it. Returning nothing keeps a missing tag survivable.
@@ -342,9 +400,21 @@ public class StudyOutcomes : MonoBehaviour
                 rb.useGravity = false;
                 rb.AddForce(Vector3.forward * 2f, ForceMode.VelocityChange);
             }
+            MostRecentSpawn = go;
             StartCoroutine(ReportSceneEvent("object-spawned", go.name, spec.shape, p));
         }
     }
+
+    /// <summary>
+    /// The last object a trial created, for the gaze measure in StudyTelemetry.
+    ///
+    /// On task 4 this is the object that spawns behind the participant, so
+    /// "looking at it" is the moment they found it — a behavioural measure of
+    /// comprehension that needs no probe and no reconstruction from yaw. On a
+    /// cluster spawn it is the last of the ring, which is close enough: they are
+    /// within a metre of each other and the measure is a twenty-degree cone.
+    /// </summary>
+    public static GameObject MostRecentSpawn { get; private set; }
 
     // ── Named scene objects ───────────────────────────────────────────────────
     // The study scene is "a sphere, a cube and a campfire". The sphere and cube
@@ -644,13 +714,30 @@ public class StudyOutcomes : MonoBehaviour
             if (!string.IsNullOrWhiteSpace(spec.agentPost))
             {
                 var agent = FindObjectOfType<EmbodiedAgentDialogue>(true);
-                if (agent) agent.SpeakCustom(spec.agentPost, LoadAgentClip(spec.taskKey, spec.variantKey, "post"));
+                if (agent)
+                {
+                    var clip = LoadAgentClip(spec.taskKey, spec.variantKey, "post");
+                    agent.SpeakCustom(spec.agentPost, clip);
+                    // Onset is now; offset is when the line finishes. Reported
+                    // as a duration rather than a second POST because the agent
+                    // has no completion callback, and an estimate that is
+                    // explicitly an estimate is better than a timestamp that
+                    // silently is one.
+                    float dur = clip ? clip.length : EstimateSpeech(spec.agentPost);
+                    ReportHeadsetEvent(this, "feedback-onset", "agent",
+                                       Mathf.RoundToInt(dur * 1000f).ToString());
+                }
             }
         }
         else
         {
             var panel = FindObjectOfType<FeedbackPanelController>(true);
-            if (panel) panel.ShowError(spec.label, spec.errorText);
+            if (panel)
+            {
+                panel.ShowError(spec.label, spec.errorText);
+                ReportHeadsetEvent(this, "feedback-onset", "panel",
+                    Mathf.RoundToInt(Mathf.Max(0f, panel.autoHideAfterSeconds) * 1000f).ToString());
+            }
         }
     }
 
