@@ -178,7 +178,7 @@ Minimising is fine.
 The window prints an address like:
 
 ```
-Panel: http://192.168.1.42:8191
+Panel: http://192.168.1.42:8181
 ```
 
 Open it in your browser. That is where you run the session from.
