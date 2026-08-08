@@ -142,6 +142,12 @@ class FasterWhisperHttpSttService extends EventEmitter {
         this.silenceRms = getNumber("STT_SILENCE_RMS", DEFAULT_SILENCE_RMS);
         this.minSpeechChunks = getNumber("STT_MIN_SPEECH_CHUNKS", DEFAULT_MIN_SPEECH_CHUNKS);
         this.requireExplicitRecording = getBoolean("STT_REQUIRE_RECORDING", true);
+        // Rescue-pass tunables. The ratio is how far above its own noise floor a
+        // chunk must sit to count as speech; the floor is the absolute level
+        // below which nothing is speech no matter how quiet the room, which is
+        // what stops a silent room from being rescued into a hallucination.
+        this.speechToNoiseRatio = getNumber("STT_SPEECH_NOISE_RATIO", 2.5);
+        this.absoluteFloorRms   = getNumber("STT_ABSOLUTE_FLOOR_RMS", 0.0012);
 
         this.sessions = new Map();
         this.childProcesses = {};
@@ -218,6 +224,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
         session.onsetCandidate = null;  // start of the current above-threshold run
         session.onsetRun      = 0;      // length of that run, in chunks
         session.rmsSum        = 0;      // for the mean, alongside the peak
+        session.rmsValues     = [];     // every chunk level, for the rescue pass
     }
 
     addAudioChunk(peerUUID, audioChunk) {
@@ -250,6 +257,9 @@ class FasterWhisperHttpSttService extends EventEmitter {
         const rms = chunkRms(chunk, this.bitsPerSample);
         session.totalChunks += 1;
         session.rmsSum += rms;
+        // Capped so a mic left open cannot grow this without bound. 4000 chunks
+        // is far more than any utterance this study produces.
+        if (session.rmsValues.length < 4000) session.rmsValues.push(rms);
         if (rms > session.peakRms) session.peakRms = rms;
         if (rms >= this.silenceRms) {
             session.speechChunks += 1;
@@ -338,6 +348,7 @@ class FasterWhisperHttpSttService extends EventEmitter {
         const startedAt    = session.startedAt;
         const endedAt      = Date.now();
         const meanRms      = totalChunks ? session.rmsSum / totalChunks : 0;
+        const rmsValues    = session.rmsValues || [];
         // Time from the capture window opening to the participant actually
         // speaking. Null, not zero, when no speech was ever confirmed — a
         // silent press has no onset, and zero would read as an instant reply.
@@ -394,11 +405,60 @@ class FasterWhisperHttpSttService extends EventEmitter {
             });
         }
 
+        // ── Rescue pass: quiet speech is still speech ───────────────────────
+        //
+        // The fixed threshold assumes a known microphone gain, and the Quest's
+        // is neither known nor stable — it varies with the headset, the room and
+        // how the participant is wearing it. A real session was discarded with
+        // "peak level 0.0081, threshold 0.005, 2/48 chunks over": the audio was
+        // ABOVE the threshold and still thrown away, because only two chunks
+        // cleared it and three were required. From the wizard's side that is
+        // indistinguishable from the microphone being dead, and it is the
+        // failure that reads to a participant as "it is not listening to me" —
+        // the exact impression this study must not create by accident.
+        //
+        // So before discarding, decide again relative to THIS utterance's own
+        // noise floor rather than an absolute number. Speech sits well above the
+        // room it was recorded in whatever the gain; the ratio survives a change
+        // of gain that a fixed threshold cannot.
+        //
+        // Only ever rescues — it runs when the fixed gate has already said no,
+        // so it cannot make a working setup worse. The absolute floor stops it
+        // amplifying pure silence, where the noise floor is near zero and any
+        // ratio would pass.
+        let rescued = false;
+        if (!heardVoice && rmsValues.length >= this.minSpeechChunks * 2) {
+            const sorted = rmsValues.slice().sort((a, b) => a - b);
+            // 20th percentile as the floor: the median is already contaminated
+            // once someone actually speaks for much of the window.
+            const noiseFloor = sorted[Math.floor(sorted.length * 0.2)];
+            const adaptive = Math.max(this.absoluteFloorRms,
+                                      noiseFloor * this.speechToNoiseRatio);
+            const over = rmsValues.filter(v => v >= adaptive).length;
+            if (over >= this.minSpeechChunks && peakRms >= this.absoluteFloorRms) {
+                rescued = true;
+                console.log(
+                    `[FasterWhisperHttpSttService] rescued quiet utterance ` +
+                    `peerUUID=${peerUUID} peak=${peakRms.toFixed(4)} ` +
+                    `noiseFloor=${noiseFloor.toFixed(4)} adaptive=${adaptive.toFixed(4)} ` +
+                    `${over}/${rmsValues.length} chunks over`
+                );
+                this.emit("diagnostic", {
+                    kind: "rescued", peerUUID, utteranceId,
+                    durationMs: Math.round(durationMs),
+                    detail: `quiet speech accepted: peak ${peakRms.toFixed(4)} against a ` +
+                            `noise floor of ${noiseFloor.toFixed(4)} (${over} chunks over). ` +
+                            `The fixed threshold of ${this.silenceRms} would have discarded this.`,
+                    peakRms: +peakRms.toFixed(4), noiseFloor: +noiseFloor.toFixed(4)
+                });
+            }
+        }
+
         // Never send pure silence. Whisper does not return empty for silent
         // audio — it hallucinates a plausible sentence ("Thank you.", "you"),
         // which would land in the transcript as if the participant had spoken
         // and would be counted as a repair attempt.
-        if (!heardVoice) {
+        if (!heardVoice && !rescued) {
             // The peak is the actionable half of this message. "No speech
             // detected" alone cannot distinguish a dead microphone from a live
             // one whose level sits under the threshold, and those need opposite

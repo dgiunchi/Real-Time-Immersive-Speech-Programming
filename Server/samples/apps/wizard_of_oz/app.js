@@ -2103,7 +2103,11 @@ class WizardOfOzApp extends ApplicationController {
         // identically: nothing appears.
         this.components.transcriptionService.on("diagnostic", (info) => {
             this.sttStatus = { ...info, at: Date.now() };
-            if (info.kind === "silent" || info.kind === "error") {
+            // "rescued" is logged too: that utterance only made it through
+            // because it beat its own noise floor, not the fixed threshold, and
+            // an analysis looking at loudness should be able to see which
+            // recordings were marginal rather than discovering it from the WAVs.
+            if (info.kind === "silent" || info.kind === "error" || info.kind === "rescued") {
                 this.logEvent("stt-" + info.kind,
                     info.detail || `${info.durationMs}ms of audio, no speech detected`, {
                     source: "system", category: "warning",
