@@ -45,6 +45,15 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private float lastStatusReportTime;
     private float lastLevel;
 
+    // Dead-capture watchdog. 1.5s is comfortably longer than any frame hitch
+    // that could stall the write head legitimately, and short enough that a
+    // participant who pressed the trigger gets a working mic back on their next
+    // attempt rather than losing the trial.
+    private const float MicStallSeconds = 1.5f;
+    private int watchdogPosition = -1;
+    private float watchdogPositionChangedAt;
+    private bool micStalled;
+
     private void Start()
     {
         context = NetworkScene.Register(this, networkId);
@@ -84,16 +93,103 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private void RestartMicrophoneIfStopped()
     {
         if (!microphoneClip) return;
-        if (Microphone.IsRecording(null)) return;
+
+        // A STOPPED capture is the easy case. The one that actually cost
+        // sessions is a capture Android has killed underneath us while
+        // Microphone.IsRecording still answers true: the clip exists, the panel
+        // says "recording", the control messages arrive, and every sample is
+        // zero for the rest of the session. Checking IsRecording alone — which
+        // is all this did — cannot see that, so nothing ever recovered it and
+        // the only fix was noticing and relaunching the app.
+        //
+        // The write head is the honest signal. Microphone.GetPosition advances
+        // whenever the recorder is alive, including through a silent room, and
+        // freezes only when the capture is dead. That distinction matters here
+        // more than usual: quiet speech is a real case in this study, and a
+        // detector based on amplitude would call a softly-speaking participant
+        // a hardware fault. This one cannot.
+        // Evaluated once per report — it advances the watchdog's own timing, so
+        // it must not be called twice in a pass.
+        micStalled = MicPositionIsStalled();
+        if (Microphone.IsRecording(null) && !micStalled) return;
 
         if (logRecordingState)
         {
-            Debug.LogWarning("[MicrophoneCapture] capture stopped unexpectedly — restarting");
+            Debug.LogWarning(
+                Microphone.IsRecording(null)
+                    ? $"[MicrophoneCapture] capture is live but the write head has not moved for " +
+                      $"{MicStallSeconds:F1}s — Android killed it underneath us. Restarting."
+                    : "[MicrophoneCapture] capture stopped unexpectedly — restarting");
         }
         Microphone.End(null);
         microphoneClip = null;
         loggedMicrophoneStarted = false;
+        watchdogPosition = -1;
         EnsureMicrophoneStarted();
+        // Re-anchor mid-utterance so the restarted clip does not read as one
+        // enormous jump from a position that belonged to the old one.
+        lastMicPosition = microphoneClip ? Microphone.GetPosition(null) : 0;
+    }
+
+    /// <summary>
+    /// True when the recorder claims to be running but its write head has not
+    /// advanced for MicStallSeconds. Called once per status report, so the cost
+    /// is one GetPosition per second.
+    /// </summary>
+    private bool MicPositionIsStalled()
+    {
+        int position = Microphone.GetPosition(null);
+
+        if (watchdogPosition != position)
+        {
+            watchdogPosition = position;
+            watchdogPositionChangedAt = Time.unscaledTime;
+            return false;
+        }
+
+        // First observation after a start: give it a full window before judging.
+        if (watchdogPositionChangedAt <= 0f)
+        {
+            watchdogPositionChangedAt = Time.unscaledTime;
+            return false;
+        }
+
+        return Time.unscaledTime - watchdogPositionChangedAt > MicStallSeconds;
+    }
+
+    // Taking the headset off and putting it back on suspends the app, and
+    // Android routinely does not hand the recorder back on resume — which is the
+    // single most likely way this breaks mid-session, because participants do
+    // lift the headset to talk to the researcher. Rebuild the capture on resume
+    // rather than waiting for the watchdog to notice a second later.
+    private void OnApplicationPause(bool paused)
+    {
+        if (paused) return;
+        ForceMicrophoneRestart("resumed from pause");
+    }
+
+    private void OnApplicationFocus(bool focused)
+    {
+        if (!focused) return;
+        ForceMicrophoneRestart("regained focus");
+    }
+
+    private void ForceMicrophoneRestart(string reason)
+    {
+        if (!isActiveAndEnabled) return;
+
+        if (logRecordingState)
+        {
+            Debug.Log($"[MicrophoneCapture] {reason} — rebuilding capture");
+        }
+
+        if (microphoneClip) Microphone.End(null);
+        microphoneClip = null;
+        loggedMicrophoneStarted = false;
+        watchdogPosition = -1;
+        watchdogPositionChangedAt = 0f;
+        EnsureMicrophoneStarted();
+        lastMicPosition = microphoneClip ? Microphone.GetPosition(null) : 0;
     }
 
     // Publishes mic health to the researcher's control panel so a dead microphone
@@ -108,7 +204,10 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         RestartMicrophoneIfStopped();
 
         int devices = Microphone.devices.Length;
-        bool live = microphoneClip && Microphone.IsRecording(null);
+        // Not just IsRecording. That is what let the panel report a healthy mic
+        // through an entire session in which nothing was captured, so a stalled
+        // write head counts as not live even though Unity still says otherwise.
+        bool live = microphoneClip && Microphone.IsRecording(null) && !micStalled;
         float level = lastFrameStats.sampleCount > 0
             ? lastFrameStats.volumeSum / lastFrameStats.sampleCount
             : 0f;
