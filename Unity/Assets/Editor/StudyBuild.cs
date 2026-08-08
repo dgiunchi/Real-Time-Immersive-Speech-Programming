@@ -27,11 +27,28 @@ using UnityEngine;
 /// The APK lands in Unity/Builds/DreamCodeVR-study.apk. Install with:
 ///
 ///   adb install -r Unity/Builds/DreamCodeVR-study.apk
+///
+/// WHY YOU SHOULD USE THESE RATHER THAN File → Build And Run
+/// A build drops two extra things beside its output, neither of which has a
+/// setting of its own to move them:
+///
+///   ubiq-genie_BurstDebugInformation_DoNotShip   Burst debug symbols, named
+///       after productName. Unity's own "DoNotShip" suffix says what it is —
+///       disposable, regenerated every build.
+///   RuntimeActionBindings.json                   Written by the Meta XR SDK
+///       (RuntimeSettings.UpdateBindingsOnDisk), which copies it to
+///       "{buildPath}/../", i.e. the folder *containing* the build output.
+///
+/// Both follow the build path. Build to the Desktop and they appear on the
+/// Desktop; build through the menu items below and they appear in
+/// Unity/Builds/, which is already gitignored. That is the whole fix — there is
+/// no checkbox that relocates them independently.
 /// </summary>
 public static class StudyBuild
 {
     private const string OutputDir  = "Builds";
     private const string ApkName    = "DreamCodeVR-study.apk";
+    private const string OsxName    = "DreamCodeVR-study.app";
 
     [MenuItem("Study/Build Quest APK")]
     public static void BuildApk()
@@ -77,6 +94,58 @@ public static class StudyBuild
             // Errors are already in the log above; this is the line a script
             // greps for, and the non-zero exit is what stops a CI step from
             // reporting success on a failed build.
+            Fail($"BUILD FAILED — {summary.result}, {summary.totalErrors} error(s)");
+        }
+    }
+
+    /// <summary>
+    /// The Mac standalone, for trying the scene without putting the headset on.
+    ///
+    /// It exists mainly so there is a one-click path that writes into the
+    /// project. The Desktop copies of the Burst folder and
+    /// RuntimeActionBindings.json came from a Mac build aimed at ~/Desktop, and
+    /// the Build dialog remembers wherever you last pointed it — so the fix is a
+    /// menu item that does not ask.
+    /// </summary>
+    [MenuItem("Study/Build Mac Standalone")]
+    public static void BuildMac()
+    {
+        var scenes = EnabledScenes();
+        if (scenes.Length == 0)
+        {
+            Fail("No scenes are enabled in Build Settings — the app would open on " +
+                 "an empty scene. Add the study scene and enable it.");
+            return;
+        }
+
+        Directory.CreateDirectory(OutputDir);
+        var appPath = Path.Combine(OutputDir, OsxName);
+
+        Log($"Building {scenes.Length} scene(s) → {appPath}");
+
+        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+        {
+            scenes           = scenes,
+            locationPathName = appPath,
+            target           = BuildTarget.StandaloneOSX,
+            targetGroup      = BuildTargetGroup.Standalone,
+            options          = BuildOptions.None
+        });
+
+        var summary = report.summary;
+        if (summary.result == BuildResult.Succeeded)
+        {
+            Log($"BUILD OK — {appPath} ({summary.totalSize / (1024 * 1024)} MB, " +
+                $"{summary.totalTime.TotalMinutes:F1} min)");
+            // Said out loud because the two strays land here rather than on the
+            // Desktop, and someone who has been deleting them off the Desktop
+            // for weeks should know where they moved to.
+            Log($"Burst symbols and RuntimeActionBindings.json are in {OutputDir}/ — " +
+                "gitignored, safe to delete, regenerated each build.");
+            if (Application.isBatchMode) EditorApplication.Exit(0);
+        }
+        else
+        {
             Fail($"BUILD FAILED — {summary.result}, {summary.totalErrors} error(s)");
         }
     }
