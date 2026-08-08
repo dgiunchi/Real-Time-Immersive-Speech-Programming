@@ -1,7 +1,9 @@
 # DreamCodeVR — Study Design
 
 One page, for supervisors and collaborators. Operational detail lives in
-[STUDY_GUIDE.md](STUDY_GUIDE.md); filming in [DEMO_FILMING.md](DEMO_FILMING.md).
+[STUDY_GUIDE.md](STUDY_GUIDE.md); filming in [DEMO_FILMING.md](DEMO_FILMING.md);
+the write-up plan, section by section with the column behind each number, in
+[docs/PAPER_OUTLINE.md](docs/PAPER_OUTLINE.md).
 
 ---
 
@@ -120,33 +122,58 @@ harming, on system-fault ones. Reported as exploratory.
 
 **Co-primary — what the misattribution costs.** Attribution alone is a stated
 belief, and *who cares* is a fair question. The repair move is that belief with a
-price on it, coded live per attempt: added detail · **repeated verbatim** · shrank
-the ask · asked the system · gave up.
+price on it, coded live per attempt: added detail · shrank the ask · asked the
+system · gave up, and the **re-say family** — repeated it · said it slower or
+louder · said it word by word · reworded it with nothing added.
 
-`wastedRepairs` counts verbatim repetitions. That move cannot fix anything — not
+`wastedRepairs` counts the re-say family. Those moves cannot fix anything — not
 a user fault, since the missing information is still missing, and not a system
 limit, since the limit does not care how clearly you speak. It is what
 misattribution looks like from outside, and crucially it is **observable without
 a wizard**: repeated near-identical utterances are already in every voice
 assistant's logs. That is the bridge from this lab study to a deployed system.
 
+The four re-say categories are the observable face of hyperarticulation, and the
+per-utterance acoustics say independently which one happened — speech rate and
+level measured against that participant's own practice baseline. A wizard coding
+live and a waveform agreeing is a considerably stronger claim than either alone,
+which is why the live coding is that specific.
+
+**The unit of analysis is the attempt, not the trial.** Thirty participants ×
+six tasks is 180 trials; the same sessions contain roughly 500 attempts, each
+carrying a continuous outcome rather than a yes/no. Onset latency — trigger
+pressed to first word — separates a reflexive repeat from actual planning, and
+costs no participant time. Gaze dwell on the panel or agent turns the
+manipulation check from a self-report item into a measurement. See
+[docs/PAPER_OUTLINE.md](docs/PAPER_OUTLINE.md) §6.4.
+
 **Secondary — correction quality** (`repairContainsSlot`): does the repair
 actually address the true cause? This is the training-signal measure. A
 correction produced under a wrong diagnosis does not merely fail to help; it
 teaches the wrong lesson.
 
-**Self-report, published instruments only.** SUS (Brooke, 1996), UES-SF
-(O'Brien, Cairns & Hall, 2018), trust in automation (Jian, Bisantz & Drury,
-2000), and the Explanation Satisfaction Scale (Hoffman, Mueller, Klein & Litman,
-2018). Each is administered in its published response format, including the
-trust scale's 1-7 where the rest of the battery is 1-5: rescaling an instrument
-to match its neighbours makes its scores incomparable to the literature while
+**Self-report — 23 rated items, cut down from 76.** NASA-TLX (Hart & Staveland,
+1988), Perceived Support (custom, H3), retrospective attribution (custom, H1),
+IPQ short-form presence (Schubert et al., 2001), speech-system self-efficacy
+paired pre/post, and a single 0-10 discomfort item also paired pre/post.
+
+SUS, UES-SF, trust in automation and the Explanation Satisfaction Scale were
+cut. Each was defensible alone; the battery was not. Past about fifteen minutes
+people straight-line, and a straight-lined scale is worse than an absent one
+because it still looks like data. ESS duplicated Perceived Support item for item
+and was unanswerable in condition A; SUS measures the usability of a system that
+is a researcher pressing buttons; UES was already tied to no hypothesis; and half
+the trust scale is written for autopilots and medical devices. The full reasoning
+is at the top of `questionnaire.html`, and the scoring code still supports every
+one of them — restoring a scale means re-adding its items and nothing else.
+
+Each surviving instrument keeps its published response format, including
+NASA-TLX's twenty intervals scored 0-100 in fives. Rescaling an instrument to
+match its neighbours makes its scores incomparable to the literature while
 leaving the data looking fine.
 
-Explanation satisfaction is not administered in condition A, where nothing is
-explained and every item is unanswerable. Those cells are absent rather than
-missing, and are not imputed. Scoring, reverse-scored items and subscales are
-fixed in advance in [docs/questionnaire_scoring.md](docs/questionnaire_scoring.md).
+Scoring, reverse-scored items and subscales are fixed in advance in
+[docs/questionnaire_scoring.md](docs/questionnaire_scoring.md).
 
 **Manipulation check** per trial: did they register the feedback at all? Without
 it, "feedback made no difference" cannot be distinguished from "they never saw
