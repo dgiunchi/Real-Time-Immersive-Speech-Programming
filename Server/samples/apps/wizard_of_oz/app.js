@@ -86,6 +86,11 @@ const LOG_COLUMNS = [
     "taskOrder", "startTime", "endTime", "durationMs", "completionStatus",
     "attempts", "injects", "attribution", "correctAttribution",
     "attributionCorrect",
+    // Every answer to the "why do you think that happened" probe, in order.
+    // `attribution` above is the first of them and is the H1 result; this says
+    // whether the belief moved during the trial, which it often will once a
+    // second failure lands.
+    "attributionSequence",
     "perceivedReparability", "reparabilityCorrect",
     "noticedFeedback", "firstRepairStrategy",
     "repairSequence", "wastedRepairs", "repairContainsSlot", "preInjectHadSlot",
@@ -541,9 +546,28 @@ function buildTask1(v) {
             agentPre:  `Let me create that for you.`,
             agentPost: `I wasn't told how high your hand needed to be, so I didn't ` +
                        `know when to create the ${o}.`,
-            missingSlot: "hand height",
-            slotTerms: ["height", "high", "above", "shoulder", "chest", "eye level",
-                        "level", "raise", "raised", "up", "upward", "lift"]
+            missingSlot: "how high the hand must be",
+            // A HEIGHT, not the gesture.
+            //
+            // This list used to include "raise", "raised", "lift", "up" and
+            // "upward" — the words for the movement rather than for how far it
+            // goes. The briefing itself says "when you lift your hand up", so
+            // every participant who simply restated the task matched, and two
+            // measures broke at once: preInjectHadSlot flagged nearly every
+            // task-1 trial as excludable, and repairContainsSlot scored a
+            // word-for-word repeat as a targeted fix — recording an adaptation
+            // where the participant had adapted nothing. A false negative here
+            // costs one data point; that false positive corrupts the claim that
+            // these repairs are usable training signal, which is the claim.
+            //
+            // What counts now is a height: a body landmark, a measurement, or
+            // an explicit "this high". Nothing here appears in the briefing.
+            slotTerms: ["shoulder", "shoulders", "chest", "waist", "hip", "hips",
+                        "head", "face", "chin", "eye level", "eyes",
+                        "this high", "that high", "so high", "how high",
+                        "above my", "higher than", "level with",
+                        "metre", "metres", "meter", "meters", "centimetre",
+                        "centimeter", "cm", "inch", "inches", "foot", "feet"]
         },
         success: {
             action: "spawn", shape: v.shape, pos: "hand",
@@ -566,10 +590,21 @@ function buildTask2(v) {
             agentPre:  `I'll move it for you.`,
             agentPost: `The ${m} moved, but I wasn't sure which side of the ${t} ` +
                        `you meant.`,
-            missingSlot: `next to the ${t}`,
-            slotTerms: [t, "next to", "beside", "near", "close", "closer", "toward",
-                        "towards", "adjacent", "by the", "against", "touching",
-                        "alongside", "right of", "left of", "in front"]
+            missingSlot: `which side of the ${t}`,
+            // A SIDE or a direction, not "next to".
+            //
+            // The briefing already asks them to put it "next to the campfire",
+            // and the failure is not that they omitted those words — it is that
+            // "next to" does not say WHICH side, which is what the feedback
+            // says: "I wasn't sure which side of the campfire you meant." So
+            // crediting "next to", "beside", "near" or the target's own name
+            // scored the participant for repeating the instruction back, and
+            // fired on essentially every trial of this task.
+            slotTerms: ["left", "right", "in front", "front of", "behind",
+                        "other side", "this side", "far side", "near side",
+                        "my side", "towards me", "toward me", "facing me",
+                        "between", "on top", "underneath", "under the",
+                        "north", "south", "east", "west"]
         },
         success: { action: "move", target: m, moveTo: t }
     };
@@ -648,24 +683,40 @@ function buildTask4(v) {
  *
  * The omission has to be one people actually make, or the feedback is a lie and
  * anyone who believes it gets scored wrong for doing so. This one qualifies:
- * people state the intention ("so it stands out") rather than the parameter that
- * produces it, and no system can infer a colour from a purpose.
+ * people state the intention ("so you can notice it") rather than the parameter
+ * that produces it, and no system can infer a colour from a purpose.
  */
 function buildTask5(v) {
     const o = v.object;
     return {
-        label: `Create a ${o} that is easy to see`,
+        label: `Create a ${o} that is easy to notice`,
         scenario: "user_error",
-        prompt: `The ground around the campfire is very dark. Ask the system to ` +
-                `put a ${o} on the ground that is easy to see against it.`,
+        // The briefing used to open "the ground around the campfire is very
+        // dark", which is a claim about the scene that is not true — and a
+        // participant looking at ground that is plainly not dark is being told
+        // something they can see is wrong, in the one task that depends on them
+        // trusting what they are told. It then asked for something "easy to see
+        // against it", and the comparative is the part non-native speakers get
+        // stuck on: "against" here means neither "touching" nor "opposed to".
+        //
+        // Two short sentences instead, no comparison and no premise to check.
+        // The omission still lands where it needs to: asked to make something
+        // noticeable, people state the goal and not the setting that achieves
+        // it, and no system can infer a colour from a purpose.
+        //
+        // Nothing here may contain a slotTerm — a briefing that says "bright"
+        // or names a colour hands over the answer and the task stops measuring
+        // anything.
+        prompt: `Ask the system to put a ${o} on the ground next to the ` +
+                `campfire. It should be easy to notice.`,
         error: {
             action: "spawn", shape: v.shape, pos: "floor", physics: true,
             scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: "#6b6b6b",
-            errorText: `The ${o} was created, but no colour was given, so it used ` +
-                       `the default grey and blends into the ground.`,
+            errorText: `The ${o} was created, but no colour was given, so it is ` +
+                       `grey and easy to miss.`,
             agentPre:  `Placing it on the ground.`,
             agentPost: `I made the ${o}, but you didn't say what colour, so it came ` +
-                       `out grey and it doesn't stand out.`,
+                       `out grey and it is easy to miss.`,
             missingSlot: "a colour",
             // Colour words match unusually cleanly: concrete, not common filler,
             // and no ambiguity about whether one was actually supplied.
@@ -695,7 +746,7 @@ function buildTask6(v) {
     return {
         label: `Make the ${o} move on its own`,
         scenario: "system_capability",
-        prompt: `Everything in this scene is still. Ask the system to make the ` +
+        prompt: `Nothing in the scene is moving. Ask the system to make the ` +
                 `${o} start moving by itself and keep moving.`,
         error: {
             action: "noop",
@@ -1830,6 +1881,7 @@ class WizardOfOzApp extends ApplicationController {
             attempts: trial.attempts,
             injects: trial.injects,
             attribution: trial.attribution || "",
+            attributionSequence: (trial.attributionSequence || []).join("|"),
             correctAttribution: trial.correctAttribution || "",
             attributionCorrect: trial.attribution !== null
                 ? (trial.attribution === trial.correctAttribution ? "yes" : "no")
@@ -2894,10 +2946,30 @@ class WizardOfOzApp extends ApplicationController {
                             return send(400, { error: "attribution must be self|system|unsure" });
                         }
                         if (this.trial) {
-                            this.trial.attribution = val;
+                            // Every answer is kept in order; only the FIRST
+                            // becomes the trial's result.
+                            //
+                            // The probe is now inside the repair loop, so it
+                            // can legitimately be asked again after a second or
+                            // third failure. Overwriting would quietly replace
+                            // the answer that matters — the belief held BEFORE
+                            // they had tried anything, which is the belief the
+                            // next attempt acts on — with one given after they
+                            // had already worked out what was happening. That
+                            // later answer is interesting, but it is a different
+                            // measure, and silently substituting it would make
+                            // H1 look better the more times the wizard asked.
+                            this.trial.attributionSequence =
+                                this.trial.attributionSequence || [];
+                            this.trial.attributionSequence.push(val);
+                            if (this.trial.attribution === null ||
+                                this.trial.attribution === undefined) {
+                                this.trial.attribution = val;
+                            }
                             const correct = this.trial.correctAttribution;
                             const isCorrect = val === correct;
                             this.logEvent("attribution",
+                                `probe ${this.trial.attributionSequence.length}: ` +
                                 `participant=${val} correct=${correct} match=${isCorrect}`, {
                                 msSinceTrialStart: Date.now() - this.trial.startedAt,
                                 source: "wizard", category: "measure",
