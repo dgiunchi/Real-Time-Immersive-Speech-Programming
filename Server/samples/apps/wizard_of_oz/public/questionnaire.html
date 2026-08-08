@@ -104,6 +104,8 @@
     <p class="cite">NASA Task Load Index &mdash; Hart &amp; Staveland (1988)</p>
     <p class="note">
       Click anywhere on each scale. Think about the session as a whole.
+      Each scale has 20 steps, as on the original NASA form; scores are recorded
+      0&ndash;100 in fives, which is the scale published results use.
     </p>
     <div id="tlx"></div>
   </div>
@@ -331,21 +333,30 @@ function likert(name, n, lo, hi) {
   return `<div class="scale">${o}</div><div class="ends"><span>${lo}</span><span>${hi}</span></div>`;
 }
 
-// 21 points, 0-100 in steps of 5, exactly as published.
+// The published NASA-TLX scale: a line of TWENTY equal intervals.
 //
-// The end labels carry their numeric value as well as the anchor word. On a
-// strip of identical unlabelled boxes the words alone are weak: they sit in
-// small grey text at the extremes and a participant scanning the row has
-// nothing telling them which direction the numbers run. That is survivable on
-// the five subscales that run Low to High, and a trap on Performance, which
-// runs the other way.
+// Both numbers people remember are right, and they are the same instrument.
+// Hart & Staveland's form is a line divided into 20 intervals (21 tick marks),
+// and the score is the interval number multiplied by five — so the RATING is
+// 0-20 and the SCORE is 0-100 in steps of 5. Every published TLX benchmark is
+// on the 0-100 scale.
+//
+// So the participant now sees what the paper form shows, 0 to 20, and the file
+// stores 0 to 100. Showing 100 was not wrong, but it is not what the form looks
+// like, and a 100-point strip invites people to hunt for a precise value on a
+// scale that only has 21 positions. Storing 0-20 instead would have been the
+// real mistake: it would silently put every TLX number in this study on a scale
+// no published norm uses, and the resulting means would look perfectly
+// plausible next to literature they could not be compared with.
 function tlxScale(name, lo, hi) {
   let o = "";
-  for (let v = 0; v <= 100; v += 5)
-    o += `<label title="${v}"><input type="radio" name="${name}" value="${v}"><span></span></label>`;
+  for (let i = 0; i <= 20; i++) {
+    // What they see is the interval; what is stored is interval x 5.
+    o += `<label title="${i}"><input type="radio" name="${name}" value="${i * 5}"><span></span></label>`;
+  }
   return `<div class="tlx">${o}</div>` +
          `<div class="ends"><span><b>${lo}</b> &middot; 0</span>` +
-         `<span>100 &middot; <b>${hi}</b></span></div>`;
+         `<span>20 &middot; <b>${hi}</b></span></div>`;
 }
 
 async function prefill() {

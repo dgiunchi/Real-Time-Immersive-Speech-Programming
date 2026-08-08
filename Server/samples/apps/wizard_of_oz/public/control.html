@@ -108,6 +108,22 @@
     background: linear-gradient(90deg, rgba(79,140,255,.19), rgba(79,140,255,.04));
     border: 1px solid var(--accent); font-size: 14px;
   }
+  /* The 2 <-> 4 cycle. Both cards are live at once, so they are bracketed
+     rather than badged one at a time — the point being made is that these two
+     are one repeating unit, and that leaving it is a decision (inject success)
+     rather than something that happens by going forwards. */
+  .loop-tag { display: none; }
+  body.guide .card.step-loop .loop-tag {
+    display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 20px;
+    background: rgba(255,182,72,.16); color: var(--warn); border: 1px solid var(--warn);
+    font-size: 10px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;
+    vertical-align: middle;
+  }
+  body.guide .card.step-loop { border-left: 3px solid var(--warn); }
+  /* Only one of the two carries the DO THIS NOW badge while looping, or two
+     cards both claim to be the single next action. */
+  body.guide.looping .card.step-loop .step-badge { display: none; }
+
   .switch { display: flex; align-items: center; gap: 7px; font-size: 13px;
     cursor: pointer; user-select: none; color: var(--muted); }
   .switch input { width: auto; margin: 0; cursor: pointer; accent-color: var(--accent); }
@@ -263,8 +279,10 @@
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
         <div style="flex:1;min-width:220px;">
           <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 2</span><span class="step-badge">DO THIS NOW</span>
-          <h2 style="margin:2px 0 8px;">They speak → inject error</h2>
-          <p class="sub" style="margin:0 0 10px;">One scripted failure per task. Inject regardless of what they say.</p>
+          <h2 style="margin:2px 0 8px;">They speak &rarr; inject error <span class="loop-tag">repeats</span></h2>
+          <p class="sub" style="margin:0 0 10px;">One scripted failure per task, injected regardless of what
+            they say &mdash; and injected <em>again</em> every time a repair does not work. Re-injecting is
+            correct: handing them the success after one attempt destroys the measure.</p>
         </div>
         <div style="flex:1;min-width:220px;">
           <div id="responses"></div>
@@ -343,7 +361,7 @@
     <!-- ── Step 4: repair moves, then resolve ─────────────────────────── -->
     <div class="card" id="step4" data-step="4">
       <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Step 4</span><span class="step-badge">DO THIS NOW</span>
-      <h2 style="margin:2px 0 4px;">Watch what they do &mdash; code every attempt</h2>
+      <h2 style="margin:2px 0 4px;">Watch what they do &mdash; code every attempt <span class="loop-tag">repeats</span></h2>
       <p class="sub" style="margin:0 0 10px;">
         One click <em>per attempt</em>, as it happens. This is a behaviour, not
         something they can be asked about afterwards without inventing a reason
@@ -1031,7 +1049,9 @@ const STEP_SCRIPT = {
   1: { n: 1, say: 'Press <b>Set up the scene</b> first, then read the briefing aloud, then press <b>▶ I\u2019ve read it — start trial</b>.' },
   2: { n: 2, say: 'Let them speak. When they finish, press <b>INJECT ERROR</b>.' },
   3: { n: 3, say: 'Now, before they try anything: ask <b>"why do you think that happened?"</b> word for word. Record the answer. Do not react, do not explain.' },
-  4: { n: 4, say: 'Click one button per repair attempt as it happens. When they have adapted or given up, press <b>INJECT SUCCESS</b>.' },
+  // Written as a loop because it is one. The wizard goes round this until the
+  // participant either supplies what was missing or stops trying.
+  4: { n: 4, say: 'Loop: code the repair (step 4) &rarr; if it did not fix it, press <b>INJECT ERROR</b> again (step 2). Repeat. Only when they have adapted or given up, press <b>INJECT SUCCESS</b>.' },
   5: { n: 5, say: 'Press <b>✓ Next trial &amp; reset scene</b>. The next task loads itself.' },
   done: { n: 0, say: 'All six tasks done. Hand over the <b>questionnaire</b>, then debrief, then <b>End session</b>.' },
   finished: { n: 0, say: 'Participant finished. Everything is saved in their file.' }
@@ -1056,6 +1076,32 @@ function currentStep(status) {
   if (t.attribution === null || t.attribution === undefined) return 3;
   if (!t.noticedFeedback) return 3;
   return 4;
+}
+
+// Steps 2 and 4 are one cycle, not two stages that happen once.
+//
+// A trial is: they speak, a scripted failure is injected, they try to repair
+// it, and if the repair did not work the SAME failure is injected again — the
+// error is deliberately re-injectable, because handing someone the answer after
+// one attempt destroys the measure. Attempts three deep are normal, and the
+// wasted-repair count only means anything because the loop is allowed to run.
+//
+// The guide treated it as a straight line 1→2→3→4→5, so the moment the first
+// error was injected, step 2 dimmed to "done" and stayed there for the rest of
+// the trial. Every time round the loop after that, the button the wizard needed
+// next was the greyed-out one, and the lit card was the one they had already
+// finished with. Step 3 is genuinely once per trial — asking "why do you think
+// that happened" after every failure would ask it six times — so it drops out
+// of the cycle once answered, and 2 and 4 stay live together until a success is
+// injected and the trial resolves.
+function litSteps(status) {
+  const step = currentStep(status);
+  if (step === 4) return { badge: "2 + 4", lit: [2, 4], done: [1, 3] };
+  if (typeof step === "number") {
+    return { badge: String(step), lit: [step],
+             done: [1, 2, 3, 4, 5].filter(n => n < step) };
+  }
+  return { badge: "", lit: [], done: [] };
 }
 
 let guideOn = false;
@@ -1119,18 +1165,33 @@ function applyStepGuide(status) {
   const isSetup = step === "setup";
   document.body.classList.toggle("guide-setup", guideOn && isSetup);
 
-  const activeN = STEP_SCRIPT[step].n;
+  const { badge, lit, done } = litSteps(status);
+  const looping = lit.length > 1;
   document.querySelectorAll(".card[data-step]").forEach(function (card) {
     const n = parseInt(card.getAttribute("data-step"), 10);
-    card.classList.toggle("step-now", n === activeN);
-    card.classList.toggle("step-done", activeN > 0 && n < activeN);
+    card.classList.toggle("step-now", lit.indexOf(n) !== -1);
+    card.classList.toggle("step-done", done.indexOf(n) !== -1);
+    // Marks the two cards as halves of one cycle rather than two separate
+    // things that both happen to be lit.
+    card.classList.toggle("step-loop", looping && lit.indexOf(n) !== -1);
   });
+  document.body.classList.toggle("looping", guideOn && looping);
+
+  // The attempt counter belongs in the guide line: on the third time round,
+  // "code the attempt, then inject" is much less useful than knowing it is the
+  // third, because that is the number the wasted-repair measure is made of.
+  const t = status && status.trial;
+  const attemptNote = looping && t
+    ? ' <span style="opacity:.75;">(attempt ' + ((t.attempts || 0) + 1) +
+      ' &middot; ' + (t.injects || 0) + ' injected so far)</span>'
+    : "";
 
   const now = document.getElementById("guideNow");
   if (now) {
     now.innerHTML =
       '<span style="color:var(--accent);font-weight:700;">' +
-      (isSetup ? "START HERE" : "STEP " + activeN) + "</span> &nbsp;" + STEP_SCRIPT[step].say;
+      (isSetup ? "START HERE" : (looping ? "STEPS " : "STEP ") + badge) + "</span> &nbsp;" +
+      STEP_SCRIPT[step].say + attemptNote;
   }
 }
 
