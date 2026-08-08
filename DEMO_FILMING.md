@@ -49,7 +49,7 @@ unlocked recordings by eye costs more time than the shoot.
 ## Setup
 
 ```bash
-cd ~/Desktop/say-it-again
+cd ~/Desktop/"hci-ai projects"/say-it-again
 ./study
 ```
 

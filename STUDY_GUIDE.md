@@ -306,7 +306,7 @@ believable than one that reports several.
 ## The one command you run
 
 ```bash
-cd ~/Desktop/say-it-again/Server && npm run study
+cd ~/Desktop/"hci-ai projects"/say-it-again/Server && npm run study
 ```
 
 That single command:
