@@ -49,7 +49,7 @@ unlocked recordings by eye costs more time than the shoot.
 ## Setup
 
 ```bash
-cd ~/Desktop/Real-Time-Immersive-Speech-Programming-Visualisation-DreamCodeVR-feedback-loop
+cd ~/Desktop/say-it-again
 ./study
 ```
 

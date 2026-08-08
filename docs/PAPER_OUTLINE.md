@@ -1,5 +1,16 @@
 # Writing it up
 
+**Working title: *Say It Again: Misattributed Blame and Wasted Repair in
+Speech-Driven Agents*.**
+
+The title leads on `wastedRepairs` rather than on attribution, for the same
+reason the paper does: it is the half of the claim that carries a cost, and it
+is the half a deployed system can already observe in its own logs without a
+wizard. It also survives whichever way the statistics fall — people will repeat
+themselves whether or not the effect reaches significance, so the title is not
+hostage to a result. A title built on the acoustic prediction ("Louder, Not
+Clearer") would have been sharper and riskier.
+
 Section by section, with the column that produces each number. The argument is
 already made in [STUDY_DESIGN.md](../STUDY_DESIGN.md) — this is about turning it
 into a paper, and about not overclaiming the half of the design that cannot

@@ -306,7 +306,7 @@ believable than one that reports several.
 ## The one command you run
 
 ```bash
-cd ~/Desktop/Real-Time-Immersive-Speech-Programming-Visualisation-DreamCodeVR-feedback-loop/Server && npm run study
+cd ~/Desktop/say-it-again/Server && npm run study
 ```
 
 That single command:
@@ -320,7 +320,7 @@ Leave that terminal running for the whole session. Press `Ctrl+C` to stop.
 On Windows the same command works from **cmd** or PowerShell:
 
 ```
-cd path\to\Real-Time-Immersive-Speech-Programming-Visualisation-DreamCodeVR-feedback-loop\Server
+cd path\to\say-it-again\Server
 npm run study
 ```
 
@@ -625,13 +625,15 @@ the feedback panel holds their head as still as they ever will, so the gate
 suppressed every sample of the behaviour the measure exists to capture. In the
 log, attentive reading and taking the headset off looked the same. Nothing.
 
-Pose needs `StudyTelemetry.cs`, which is in the pending rebuild.
+Pose needs `StudyTelemetry.cs`, which is already in the current build
+(`Unity/Builds/DreamCodeVR-study.apk`, 8 Aug — newer than every `.cs` file in
+the project, so no rebuild is outstanding).
 
 ## Where the data goes
 
 All files are written to a `Logs/` folder at the top of the project:
 ```
-Real-Time-Immersive-Speech-Programming-…/Logs/
+say-it-again/Logs/
 ```
 **One file per participant.** `Logs/P01.csv` is everything P01 did, in the order
 they did it. Nothing about a participant lives anywhere else — except the audio,

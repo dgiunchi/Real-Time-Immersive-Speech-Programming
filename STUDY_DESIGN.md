@@ -1,9 +1,27 @@
-# DreamCodeVR — Study Design
+# Say It Again — Study Design
 
 One page, for supervisors and collaborators. Operational detail lives in
 [STUDY_GUIDE.md](STUDY_GUIDE.md); filming in [DEMO_FILMING.md](DEMO_FILMING.md);
 the write-up plan, section by section with the column behind each number, in
 [docs/PAPER_OUTLINE.md](docs/PAPER_OUTLINE.md).
+
+### The study has three names, and they are deliberately different
+
+| Where | Name |
+|---|---|
+| Internal — folder, repo, filenames | `say-it-again` |
+| Working paper title | *Say It Again: Misattributed Blame and Wasted Repair in Speech-Driven Agents* |
+| **Participant-facing** — consent form, landing page | *Building Scenes in Virtual Reality with Spoken Instructions* |
+
+The third one is not branding, it is a measure. The participant-facing title
+must not contain the words *attribution*, *blame*, *failure* or *error*. The
+previous title — "Understanding User Attribution and Recovery from Interaction
+Failures" — announced the primary dependent variable on the consent form, which
+every participant reads before task 1. Priming someone to think about who is at
+fault, and then measuring who they think is at fault, is not a study.
+
+The internal name is free to be as blunt as it likes, because participants never
+see it. Keep the two apart.
 
 ---
 
