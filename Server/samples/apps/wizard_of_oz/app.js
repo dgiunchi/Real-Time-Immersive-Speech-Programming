@@ -578,7 +578,8 @@ function buildTask1(v) {
         },
         success: {
             action: "spawn", shape: v.shape, pos: "hand",
-            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color
+            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
+            agentPre: `Let me create that for you.`
         }
     };
 }
@@ -613,7 +614,8 @@ function buildTask2(v) {
                         "between", "on top", "underneath", "under the",
                         "north", "south", "east", "west"]
         },
-        success: { action: "move", target: m, moveTo: t }
+        success: { action: "move", target: m, moveTo: t,
+                   agentPre: `I'll move it for you.` }
     };
 }
 
@@ -650,7 +652,8 @@ function buildTask3(v) {
         // the limit produced, so the adaptation is seen to have worked.
         success: {
             action: "spawn", shape: v.shape, pos: "floor", physics: true, count: 20,
-            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color
+            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
+            agentPre: `Let me try to place those.`
         }
     };
 }
@@ -679,7 +682,8 @@ function buildTask4(v) {
         },
         success: {
             action: "spawn", shape: v.shape, pos: "front", physics: false,
-            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color
+            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
+            agentPre: `Creating it now.`
         }
     };
 }
@@ -733,7 +737,8 @@ function buildTask5(v) {
         },
         success: {
             action: "spawn", shape: v.shape, pos: "floor", physics: true,
-            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color
+            scaleX: v.scale, scaleY: v.scale, scaleZ: v.scale, color: v.color,
+            agentPre: `Placing it on the ground.`
         }
     };
 }
@@ -777,7 +782,8 @@ function buildTask6(v) {
                         "yellow", "green", "blue", "purple", "white",
                         "create", "spawn", "instead"]
         },
-        success: { action: "recolor", target: v.target, color: v.color }
+        success: { action: "recolor", target: v.target, color: v.color,
+                   agentPre: `Let me try.` }
     };
 }
 

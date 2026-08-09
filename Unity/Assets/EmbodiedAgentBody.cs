@@ -34,6 +34,18 @@ public class EmbodiedAgentBody : MonoBehaviour
     private bool speaking;
     private bool pendingVisible = true;   // desired visibility if SetVisible ran before Build
 
+    // Where the body actually ended up, which is not necessarily worldPosition:
+    // a full-size avatar is placed by its head height, not by its root.
+    private Vector3 placedPosition;
+    // The head's own authored transform, so the speaking pulse and nod are
+    // applied RELATIVE to it rather than overwriting it with blob-sized values.
+    private Vector3 headBaseScale = Vector3.one;
+    private Quaternion headBaseRotation = Quaternion.identity;
+    // Only set on the avatar path; null for the primitive blob, which shows
+    // speech through its eyes instead.
+    private Transform speechIndicator;
+    private Vector3 speechIndicatorBaseScale = Vector3.one;
+
     private void Start()
     {
         Build();
@@ -82,6 +94,13 @@ public class EmbodiedAgentBody : MonoBehaviour
         rightEye = MakeEye(new Vector3(0.22f, 0.05f, 0.34f), out rightEyeR);
 
         SetEyeColor(eyeColorIdle);
+
+        // The blob is placed exactly where it was told to be, and its head keeps
+        // the size it was built at. Recorded in the same fields the avatar path
+        // uses so Update needs no branch.
+        placedPosition = worldPosition;
+        headBaseScale = head.localScale;
+        headBaseRotation = head.localRotation;
     }
 
     /// <summary>
@@ -169,19 +188,48 @@ public class EmbodiedAgentBody : MonoBehaviour
         // read, because Renderer.bounds on an inactive object is meaningless.
         holder.SetActive(true);
 
-        StandOnFloor(copy.transform);
-
         // The bob and the facing turn need a head. Ubiq's floating avatar names
         // it "Head"; anything else falls back to the tallest renderer, which is
         // the head on every humanoid rig worth the name.
         head = FindDeepChild(copy.transform, "Head") ?? TallestRenderer(copy.transform) ?? copy.transform;
 
-        // No eye spheres on a real avatar, so the speaking tell has to live
-        // somewhere else. MakeEye still runs, parented to the head, but small
-        // and tucked in front — it reads as an indicator light rather than a
-        // face, and it keeps SetEyeColor working unchanged.
-        leftEye  = MakeEye(new Vector3(-0.10f, 0.10f, 0.30f), out leftEyeR);
-        rightEye = MakeEye(new Vector3( 0.10f, 0.10f, 0.30f), out rightEyeR);
+        // Anchor by the head, then remember the result. Update bobs around
+        // placedPosition, so if this is not recorded the placement is undone on
+        // the very next frame.
+        PlaceAtStandingHeight(copy.transform, head);
+        placedPosition = root.position;
+
+        // Keep the head's authored transform so the speaking nod and pulse are
+        // applied on top of it rather than replacing it.
+        headBaseScale = head.localScale;
+        headBaseRotation = head.localRotation;
+
+        // A single speech indicator, not a pair of eyes.
+        //
+        // The blob's tell was two eye spheres stuck on the front of its head.
+        // On a humanoid avatar that does not work: the offsets are in head-local
+        // units, so on a real head they land inside the mesh or behind it, and
+        // the avatar has its own face already. The result is an agent that
+        // speaks with no visible sign of speaking, which in condition C is the
+        // manipulation failing quietly.
+        //
+        // One emissive sphere floating just above the head reads as "this one is
+        // talking" from any angle, does not fight the avatar's own face, and
+        // needs no rigging. It is driven through the same eye-renderer fields,
+        // so SetEyeColor and the speaking pulse work unchanged.
+        var indicator = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        indicator.name = "SpeechIndicator";
+        StripCollider(indicator);
+        indicator.transform.SetParent(head, false);
+        // Above the head in WORLD-ish terms: head scale varies per avatar, so
+        // the offset is expressed against the head's own size rather than as a
+        // fixed number that would sit in the wrong place on a different rig.
+        indicator.transform.localPosition = new Vector3(0f, 1.35f, 0f);
+        indicator.transform.localScale = Vector3.one * 0.42f;
+        leftEye = rightEye = indicator.transform;
+        leftEyeR = rightEyeR = indicator.GetComponent<Renderer>();
+        speechIndicator = indicator.transform;
+        speechIndicatorBaseScale = indicator.transform.localScale;
         SetEyeColor(eyeColorIdle);
 
         Debug.Log("[EmbodiedAgentBody] agent is using the participant avatar prefab " +
@@ -190,39 +238,48 @@ public class EmbodiedAgentBody : MonoBehaviour
     }
 
     /// <summary>
-    /// Drops the avatar so its lowest visible point rests on the floor.
+    /// Places the avatar by its HEAD, at standing eye height.
     ///
-    /// The agent used to be placed at a hard-coded y of about 1.5m, which put a
-    /// small body at roughly eye height — floating in mid-air with nothing under
-    /// it. That is fine for an abstract helper blob and wrong for something
-    /// wearing a participant's avatar, which reads as a person and therefore
-    /// reads as a person hovering.
+    /// The obvious approach — take the rendered bounds and drop the body until
+    /// its lowest point touches the floor — is wrong here, and wrong in a way
+    /// that produced exactly the reported symptom: a head sitting at ground
+    /// level with the rest apparently underground.
     ///
-    /// Measured rather than assumed, because the prefab's own origin is not
-    /// dependable: Ubiq's floating avatar is normally driven by tracked head and
-    /// hand positions, so with no tracking data its parts sit wherever the
-    /// prefab left them. Taking the rendered bounds and shifting until the
-    /// bottom is at floor level works whatever the authored origin, and works
-    /// for a different avatar prefab later.
+    /// Ubiq's floating avatar has no legs. It is a head, a torso and two hands,
+    /// authored at the heights a standing person's would be, with nothing below
+    /// about waist level. Its lowest rendered part is therefore roughly a metre
+    /// up, and forcing that metre-high part down to y=0 sinks the whole figure
+    /// by a metre, leaving only the top of the head above the floor.
+    ///
+    /// So the head is the anchor instead: put it where a standing person's head
+    /// would be and everything else follows, whether or not the avatar has legs.
     /// </summary>
-    private void StandOnFloor(Transform avatar)
+    private void PlaceAtStandingHeight(Transform avatar, Transform headTransform)
     {
-        var renderers = avatar.GetComponentsInChildren<Renderer>(true);
-        if (renderers.Length == 0) return;
+        if (!headTransform)
+        {
+            // No head to anchor to — fall back to the bounds, which is at least
+            // better than leaving it wherever the prefab's origin fell.
+            var rs = avatar.GetComponentsInChildren<Renderer>(true);
+            if (rs.Length == 0) return;
+            var b = rs[0].bounds;
+            foreach (var r in rs) b.Encapsulate(r.bounds);
+            root.position -= new Vector3(0f, b.min.y - FloorY, 0f);
+            return;
+        }
 
-        var bounds = renderers[0].bounds;
-        foreach (var r in renderers) bounds.Encapsulate(r.bounds);
-
-        // FloorY is the ground the study objects sit on, not the agent's own
-        // origin, so the agent shares a floor with the scene rather than with
-        // whatever height the panel happens to be at.
-        float drop = bounds.min.y - FloorY;
-        root.position -= new Vector3(0f, drop, 0f);
+        float lift = EyeHeight - (headTransform.position.y - FloorY);
+        root.position += new Vector3(0f, lift, 0f);
     }
 
     /// The scene's ground plane. The sphere, cube and campfire are all built
-    /// against y = 0 in StudyOutcomes, so the agent uses the same reference.
+    /// against y = 0 in StudyOutcomes, so the agent shares their floor.
     private const float FloorY = 0f;
+
+    /// Standing eye height. Matches the default camera height a seated-or-standing
+    /// Quest user sits at closely enough that the agent reads as a person facing
+    /// them rather than as a child or a giant.
+    private const float EyeHeight = 1.6f;
 
     private static Transform FindDeepChild(Transform parent, string name)
     {
@@ -269,8 +326,21 @@ public class EmbodiedAgentBody : MonoBehaviour
 
     private void SetEyeColor(Color c)
     {
-        if (leftEyeR) leftEyeR.material.color = c;
-        if (rightEyeR) rightEyeR.material.color = c;
+        // On the avatar path both fields point at the same indicator, so this
+        // assigns twice to one renderer — harmless, and cheaper than branching.
+        if (leftEyeR) Tint(leftEyeR, c);
+        if (rightEyeR && rightEyeR != leftEyeR) Tint(rightEyeR, c);
+    }
+
+    /// Emissive as well as coloured. An unlit sphere changing hue is easy to
+    /// miss in a dim scene lit mainly by a campfire, which is the only light
+    /// this scene reliably has; a glowing one is not.
+    private static void Tint(Renderer r, Color c)
+    {
+        var m = r.material;
+        m.color = c;
+        m.EnableKeyword("_EMISSION");
+        m.SetColor("_EmissionColor", c * 1.6f);
     }
 
     // ── Animation ─────────────────────────────────────────────────────────────
@@ -278,21 +348,45 @@ public class EmbodiedAgentBody : MonoBehaviour
     {
         if (root == null) return;
 
-        // Gentle idle bob.
+        // Gentle idle bob, around wherever the body was actually placed.
+        //
+        // This used to bob around `worldPosition`, which meant it reassigned the
+        // position from scratch every frame and silently threw away any vertical
+        // placement done at build time. The avatar was being put at a sensible
+        // height and then yanked back to the raw configured value one frame
+        // later — which is why it ended up buried with only its head showing.
         bobPhase += Time.deltaTime;
         float bob = Mathf.Sin(bobPhase * 1.6f) * 0.02f;
-        root.position = worldPosition + Vector3.up * bob;
+        root.position = placedPosition + Vector3.up * bob;
 
         // Smooth the speaking level.
         speakLevel = Mathf.MoveTowards(speakLevel, speaking ? 1f : 0f, Time.deltaTime * 4f);
 
         if (head)
         {
-            // Nod + pulse while speaking.
-            float nod = speaking ? Mathf.Sin(Time.time * 10f) * 6f * speakLevel : 0f;
-            head.localRotation = Quaternion.Euler(nod, 0, 0);
+            // Nod plus a small yaw, so it reads as talking rather than as a
+            // metronome. A pure pitch nod at a single frequency looks
+            // mechanical; two axes at different rates look like someone
+            // speaking, and cost the same.
+            float nod  = speaking ? Mathf.Sin(Time.time * 10f) * 9f * speakLevel : 0f;
+            float sway = speaking ? Mathf.Sin(Time.time * 6.3f) * 4f * speakLevel : 0f;
+            head.localRotation = headBaseRotation * Quaternion.Euler(nod, sway, 0f);
+
             float pulse = 1f + Mathf.Sin(Time.time * 12f) * 0.05f * speakLevel;
-            head.localScale = Vector3.one * size * 0.75f * pulse;
+            // Scaled from whatever the head's own scale is, not from `size`.
+            // `size` describes the primitive blob; forcing it onto a real
+            // avatar's head shrank it to a fraction of itself every frame.
+            head.localScale = headBaseScale * pulse;
+        }
+
+        // The indicator does the visible work on the avatar, where the head
+        // pulse is subtle and the avatar has its own face. Swells while
+        // speaking, so "is it talking?" is answerable at a glance and from
+        // behind, which matters because participants turn away mid-trial.
+        if (speechIndicator)
+        {
+            float swell = 1f + Mathf.Sin(Time.time * 11f) * 0.22f * speakLevel + 0.25f * speakLevel;
+            speechIndicator.localScale = speechIndicatorBaseScale * swell;
         }
 
         SetEyeColor(Color.Lerp(eyeColorIdle, eyeColorSpeaking, speakLevel));
