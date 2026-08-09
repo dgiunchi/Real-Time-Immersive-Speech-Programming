@@ -116,6 +116,13 @@ Logs/
 Recordings/
 *.slnx
 
+# Generated from STUDY_DESIGN.md — rebuild with:
+#   node Server/scripts/md2docx.js STUDY_DESIGN.md docs/Say-It-Again-Study-Design.docx
+# Not committed for the same reason the poster is not: a build product that can
+# drift from its source is worse than no build product, because whoever opens it
+# has no way to tell which version of the design they are reading.
+docs/Say-It-Again-Study-Design.docx
+
 # Generated poster artefacts — rebuild with Server/scripts/build-poster.sh
 study-poster.pdf
 study-qr.svg
