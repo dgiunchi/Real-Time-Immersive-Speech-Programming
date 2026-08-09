@@ -56,14 +56,54 @@ That sits on the between-subjects factor at n=10 per cell, so it is treated as a
 **exploratory moderator** and pre-registered as exploratory. Leading with it would
 have hung the paper on the one axis the design cannot power.
 
+## The hypotheses
+
+Stated here in one place because the analysis, the panel and the questionnaire
+all refer to them by number.
+
+**H1 — Misdiagnosis.** Attribution accuracy is lower on system-caused failures
+than on user-caused ones. People reach for a self-blaming explanation the
+evidence does not support, because "I said it badly" is a more available account
+than "this tool cannot do this".
+*Primary test:* `attributionCorrect ~ scenarioType * condition + (1|participant)`,
+mixed-effects logistic. The **main effect of `scenarioType`** is the headline —
+within-participant, three observations per cell.
+
+**H2 — The cost.** Misdiagnosis is not merely a stated belief; it buys wasted
+turns. On system-caused failures participants spend more repair attempts that
+cannot succeed, and the belief that a rephrase would work mediates it.
+*Primary test:* `wastedRepairs ~ scenarioType * condition + (1|participant)`,
+Poisson or negative binomial. Then the mediation `repairConfidence → wastedRepairs`,
+which is the actual argument: someone who believes rewording would have worked
+has a reason to repeat themselves, and on a system-limit trial that belief is
+false.
+
+**H3 — Delivery (exploratory).** How the failure is explained changes both of
+the above. The interesting possibility is not "feedback helps" but that the same
+feedback which helps when the user is at fault **backfires** when the system is,
+by inviting repair attempts that cannot succeed.
+*Status:* between-subjects at n=10 per cell, so it detects only large effects.
+**Pre-registered as exploratory** and reported with confidence intervals rather
+than as the study's point. Leading with H3 would hang the paper on the one axis
+the design cannot power.
+
 ## Design
 
 **3 × 2 mixed factorial.**
 
 | Factor | Levels | Assignment |
 |---|---|---|
-| Feedback modality | **A** none · **B** text panel · **C** embodied agent | Between-subjects |
+| Feedback delivery | **A** none · **B** agent's words as text · **C** agent's words spoken by an avatar | Between-subjects |
 | Fault type | User-correctable · System-caused | Within-subjects |
+
+**A is the control the claim needs, and it is not negotiable.** In B and C the
+feedback states the cause outright — task 6's says "it cannot animate them, so
+there is no wording that would achieve this". A is therefore the only cell in
+which a participant has to diagnose the failure unaided, which is the only cell
+where misattribution can occur freely. Dropping it would design the phenomenon
+out of the study, and would also remove the design's hedge: H1 in B and C rests
+on participants *discounting* an admission of limitation, which is plausible but
+untested. If that bet fails, A is the condition that still yields a result.
 
 - **n = 30**, 10 per modality. Each participant sees one modality across all six
   measured tasks.
@@ -73,12 +113,41 @@ have hung the paper on the one axis the design cannot power.
   roughly halves per-cell noise for about eight extra minutes per session, which
   buys more than ten additional participants would. Trials per person, not
   people, was the binding constraint.
-- B and C are **exclusive**: each carries the explanation exactly once, so the
-  comparison isolates *modality*, not *amount* of information. The transcript
+- B and C carry the **same sentence**, and differ only in how it is delivered.
+  This is the point of the pair, and it was previously wrong: B showed a
+  third-person system report ("The sign was created, but no colour was given…")
+  while C spoke a first-person agent line ("I made the sign, but you didn't say
+  what colour…"). Those differ in person, phrasing and delivery at once, so any
+  B-versus-C difference was uninterpretable. B now shows the agent's own words as
+  text. What is left between the cells is voice and embodiment, which is what the
+  comparison is supposed to be about.
+- B and C are also **exclusive**: each carries the explanation exactly once, so
+  the comparison isolates *delivery*, not *amount* of information. The transcript
   strip stays visible in both, since it is not an explanation.
+- **B has no avatar.** The ladder therefore runs nothing → words → embodied
+  speech, and B-vs-C bundles voice with visual presence rather than separating
+  them. Separating those two would need a fourth cell and N=40; at N=30 the
+  honest description of B-vs-C is "delivery", not "voice".
 - **Wizard-of-Oz.** A hidden researcher triggers pre-scripted outcomes. No live
   LLM, so every participant meets an identical failure and we hold ground truth
   about what caused it — which no field data ever has.
+
+### Implementation status — two deltas still open
+
+This document describes the agreed design. Two parts of it are **not yet in the
+code**, and are listed here so nobody reads the doc as a description of what the
+build currently does.
+
+| Delta | Now | Needs |
+|---|---|---|
+| B shows the agent's words | Panel shows `errorText` (third-person system report); C speaks `agentPost` (first-person) | Panel renders `agentPost` in condition B, so B and C carry one sentence |
+| Graded confidence | `perceivedReparability`, yes / no / unsure | 0–10 rating; new column, since a regraded item is a different item and must not silently merge with pilot values |
+
+Until both land, B-versus-C confounds wording with delivery, and H2's mediation
+runs on three categories rather than a scale.
+
+**P01 and P02 are condition A**, which is unaffected by either delta — no data is
+invalidated by making these changes.
 
 ### The six tasks
 
@@ -165,6 +234,24 @@ costs no participant time. Gaze dwell on the panel or agent turns the
 manipulation check from a self-report item into a measurement. See
 [docs/PAPER_OUTLINE.md](docs/PAPER_OUTLINE.md) §6.4.
 
+**Co-primary — the belief that explains the cost** (`repairConfidence`). Asked
+once per trial, in every condition, immediately after the failure: *how confident
+are you that this system could do it if you asked differently?* Recorded 0–10.
+
+This is the mediator in H2, and it is what makes the argument causal rather than
+correlational. A wasted repair is not irrational — it is exactly what someone
+should do if they believe rewording would work. Measuring the belief separately
+from the behaviour is what allows the two to be related rather than assumed. On a
+system-limitation trial a high rating **is** the false belief H1 predicts, which
+is why the panel flags it there.
+
+It was previously three categories (yes / no / unsure). Graded is strictly
+better for a mediator: a categorical predictor throws away most of the variance
+the mediation depends on, and "unsure" collapses two different states — no
+opinion, and genuine uncertainty — into one code. 0–10 also matches the blame
+split and the discomfort item, so participants meet one scale format rather than
+three.
+
 **Secondary — correction quality** (`repairContainsSlot`): does the repair
 actually address the true cause? This is the training-signal measure. A
 correction produced under a wrong diagnosis does not merely fail to help; it
@@ -237,6 +324,85 @@ value of their feedback to the system.
 This is entirely post-hoc. It needs no protocol change and no extra
 participants, and it converts "usable as training signal" from a claim in the
 introduction into a measured result. Pre-registered alongside the rest.
+
+## The procedure, and why it is in that order
+
+Roughly 60 minutes. The order is not arbitrary — three of the steps exist
+specifically to stop a measure being contaminated by the step before it.
+
+1. **Consent, then background form.** Audio recording is a *separate*, enforced
+   tick: declining means no WAV is written, not a note in a file. Speech-system
+   self-efficacy is asked here so it can be paired with the same items afterwards.
+2. **Practice trial** — change the cube's colour. Excluded from analysis. It
+   exists so the first *measured* task is not doubling as push-to-talk training,
+   and it is the acoustic baseline: the only speech a participant produces before
+   any failure, which every later loudness and rate measure is read against.
+3. **Six measured trials**, three per fault type, order by Williams square.
+4. **Post-session questionnaire** (23 items), then debrief.
+
+Within a trial:
+
+1. **Prepare the scene, then read the briefing, then start the clock.** Three
+   presses, deliberately. The briefing says "in this scene you can see a sphere,
+   a cube and a campfire", and it used to be read to someone still looking at the
+   previous trial's leftovers. The clock starts on the *last* press because
+   reading takes as long as it takes and would otherwise sit inside every trial
+   duration.
+2. **They speak. The wizard injects the scripted failure** — regardless of what
+   was said. `preInjectHadSlot` flags the trials where the participant actually
+   did supply the detail the error then claims was missing; those are excludable
+   and the count is reported.
+3. **The attribution probe, verbatim: *"In your own words, why do you think that
+   happened?"*** Asked *before* they try anything, because the belief that
+   matters is the one the next attempt acts on. Only the **first** answer counts
+   as the trial's result — the probe can legitimately be asked again after a
+   second failure, but substituting a later answer, given once they had worked
+   out what was happening, would make H1 look better the more often the wizard
+   asked. All answers are kept in order in `attributionSequence`.
+4. **The confidence rating** (0–10), then the repair loop.
+5. **Loop until they adapt or give up**, then inject success.
+
+## Why the wizard panel looks like that
+
+The panel is an instrument, not a dashboard. Every part of it exists because a
+specific measure can be corrupted by the researcher.
+
+**Steps 2–4 are drawn as a loop, not a list.** A trial is: speak → failure →
+repair → *same failure again* if the repair did not work. Re-injecting is
+correct, because handing someone the success after one attempt destroys
+`wastedRepairs`, which is the co-primary measure. Attempts three deep are normal.
+The guide used to dim step 2 after the first injection, so on every iteration
+after that the button the wizard needed was the greyed-out one — the panel was
+quietly discouraging the thing the design depends on.
+
+**The probe is printed verbatim and the ground truth is hidden until the answer
+is recorded.** A wizard who knows the correct attribution and improvises the
+question will lead the participant, and this is the primary measure. The prompt
+is on screen word for word so it is read, not paraphrased.
+
+**Repair moves are coded live, in five categories plus a four-way re-say family**
+(same again · slower or louder · word by word · reworded with nothing added).
+Live coding is necessary because a repair is a *behaviour*: asked afterwards,
+people invent a reason for it. The re-say family is split four ways because those
+four are the observable face of hyperarticulation, and the per-utterance
+acoustics — speech rate and level against that participant's own practice
+baseline — say independently which one happened. A wizard coding live and a
+waveform agreeing is a far stronger claim than either alone, but only if the live
+coding is that specific.
+
+**Nothing on screen names the deception.** The panel is titled "Session Control".
+It was "Wizard-of-Oz Control Panel", and one participant read it over the
+researcher's shoulder and worked the study out *before* the post-session
+questionnaire — the one moment those answers have to be uncontaminated. The
+terminal banner was changed for the same reason. The participant-facing study
+title is likewise "Building Scenes in Virtual Reality with Spoken Instructions",
+which is true and names neither blame nor failure; the deception is disclosed in
+the debrief, deliberately and in full, and must not be disclosed by a browser tab
+beforehand.
+
+**Mic health is on screen before a participant is in the headset.** A dead
+microphone otherwise announces itself as an empty transcript mid-session, which
+is indistinguishable from a participant who said nothing.
 
 ## Contribution
 
