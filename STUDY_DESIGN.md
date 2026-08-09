@@ -235,8 +235,11 @@ manipulation check from a self-report item into a measurement. See
 [docs/PAPER_OUTLINE.md](docs/PAPER_OUTLINE.md) §6.4.
 
 **Co-primary — the belief that explains the cost** (`repairConfidence`). Asked
-once per trial, in every condition, immediately after the failure: *how confident
-are you that this system could do it if you asked differently?* Recorded 0–10.
+once per trial, in every condition, immediately after the failure and **before
+they try again**. The existing wording is kept and graded rather than replaced,
+so the item stays comparable with the pilot: *"How confident are you that there
+is something you could say differently that would make that work?"* — 0 = not at
+all, 10 = completely.
 
 This is the mediator in H2, and it is what makes the argument causal rather than
 correlational. A wasted repair is not irrational — it is exactly what someone
@@ -361,6 +364,81 @@ Within a trial:
    asked. All answers are kept in order in `attributionSequence`.
 4. **The confidence rating** (0–10), then the repair loop.
 5. **Loop until they adapt or give up**, then inject success.
+
+## Everything the wizard asks, verbatim
+
+Four things are recorded per trial. Only the first is spoken as a scripted
+sentence; the rest are the researcher's own judgement or a short question.
+
+### 1. The attribution probe — read word for word
+
+> **"In your own words, why do you think that happened?"**
+
+Asked immediately after the failure and **before any repair attempt**. Coded
+into one of three:
+
+| Code | What it sounds like |
+|---|---|
+| `self` | "I wasn't clear / I left something out" |
+| `system` | "It misheard / it can't do that" |
+| `unsure` | no clear cause given |
+
+The instruction to the researcher is as much of the instrument as the question:
+
+> Do not paraphrase, prompt, or react. If they are vague, say *"whatever you
+> think"* **once** — then code what you heard. If it still has no clear cause in
+> it, that is **Genuinely unsure**, which is a real answer and not a failure to
+> ask properly. Do not press for a cleaner one: a coaxed attribution is the
+> experimenter's, not theirs.
+
+`unsure` being a legitimate outcome matters. A wizard who treats it as their own
+failure will keep asking until they get a codeable answer, and that answer is
+manufactured. Ground truth for the trial stays hidden until the response is
+recorded, so the person asking cannot lead toward the correct one.
+
+### 2. The confidence rating — before they try again
+
+> **"How confident are you that there is something you could say differently
+> that would make that work?"** — 0 = not at all, 10 = completely
+
+This is the only rating that stays inside the trial. The graded blame split and
+its confidence rating were moved to the post-session questionnaire, because six
+repetitions of two extra spoken scales is more than the moment after a failure
+can carry, and a rushed scale is worse than a retrospective one. This one cannot
+make that move: asked at the end it becomes a memory of what they believed;
+asked here, it is the belief the next attempt acts on.
+
+### 3. Manipulation check — the researcher's own judgement
+
+> Did they register the feedback? — **Yes / Partly / No**
+> *(condition A: did they notice the failure at all)*
+
+Not a question put to the participant. Without it, "feedback made no difference"
+cannot be distinguished from "they never saw it". Gaze dwell on the panel or
+agent is the objective counterpart and is logged automatically.
+
+### 4. Repair moves — coded live, one click per attempt
+
+Coded as it happens, because a repair is a behaviour: asked afterwards, people
+invent a reason for it.
+
+| Informative | |
+|---|---|
+| Added detail | said the missing bit |
+| Shrank the ask | fewer / simpler |
+| Asked the system | "what went wrong?" |
+| Gave up | stopped / asked you |
+
+| Re-say family — all four count as wasted | |
+|---|---|
+| Same again | same words, same way |
+| Slower / louder | same words, over-enunciated |
+| Word by word | one. word. at. a. time. |
+| Reworded it | different words, nothing added |
+
+The re-say family is split four ways because those four are the observable face
+of hyperarticulation, and the per-utterance acoustics say independently which one
+happened. `wastedRepairs` counts the whole family.
 
 ## Why the wizard panel looks like that
 
