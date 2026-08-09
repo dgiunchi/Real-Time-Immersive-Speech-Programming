@@ -375,7 +375,15 @@ function setupUsbTunnel() {
         log(`Headset ${offline[0].serial} is offline — unplug and replug the cable.`);
     }
     if (!ready.length) {
-        log("No usable headset on USB — relying on Wi-Fi discovery.");
+        // Only say "nothing is plugged in" when nothing IS plugged in. Saying it
+        // after having just reported an unauthorised headset reads as a
+        // contradiction, and the reader believes the second line — so the
+        // instructions above it get ignored and the cable gets blamed.
+        if (!rows.length) {
+            log("No headset on USB — relying on Wi-Fi discovery.");
+        } else {
+            log("Headset is connected but not usable yet — see above. Wi-Fi discovery still active.");
+        }
         return;
     }
 
