@@ -105,23 +105,41 @@ public class EmbodiedAgentBody : MonoBehaviour
         if (manager) prefab = manager.avatarPrefab;
         if (!prefab) return false;
 
+        // Instantiated under a parent that is switched OFF, and switched on only
+        // after the behaviours are gone.
+        //
+        // Stripping after a plain Instantiate is too late: Awake runs during
+        // Instantiate, so the networked components would already have run,
+        // looked for a NetworkScene, and either registered or thrown — before
+        // the first line of stripping code executes. An exception there happens
+        // while the study UI is still being built, which is not a visible error
+        // in a headset, it is an app that never finishes loading.
+        //
+        // A child of an inactive parent is inactive in the hierarchy, and Unity
+        // defers Awake until it becomes active. So nothing on the copy runs at
+        // all until it has nothing left to run.
+        var holder = new GameObject("AgentAvatarHolder");
+        holder.transform.SetParent(root, false);
+        holder.SetActive(false);
+
         GameObject copy;
         try
         {
-            copy = Instantiate(prefab, root);
+            copy = Instantiate(prefab, holder.transform);
         }
         catch (System.Exception e)
         {
             Debug.LogWarning($"[EmbodiedAgentBody] could not instantiate the participant " +
                              $"avatar, falling back to the primitive body: {e.Message}");
+            Destroy(holder);
             return false;
         }
 
         copy.name = "AgentAvatar";
 
-        // Strip behaviour before anything else gets an Update. Destroy is
-        // deferred to end of frame, so DestroyImmediate is what actually
-        // prevents a networked Awake/Start from running this frame.
+        // DestroyImmediate rather than Destroy: Destroy is deferred to the end
+        // of the frame, which would be after the holder is switched on below,
+        // so the behaviours would get exactly the Awake this is meant to avoid.
         foreach (var mb in copy.GetComponentsInChildren<MonoBehaviour>(true))
         {
             if (mb) DestroyImmediate(mb);
@@ -142,6 +160,12 @@ public class EmbodiedAgentBody : MonoBehaviour
         // panel.
         copy.transform.localPosition = Vector3.zero;
         copy.transform.localScale = Vector3.one * Mathf.Max(0.01f, size / 0.18f) * 0.22f;
+
+        // Safe to switch on now: there is nothing left that could Awake into a
+        // network registration. This has to happen before the head is located,
+        // because Renderer.bounds on an inactive object is not meaningful and
+        // TallestRenderer would pick arbitrarily.
+        holder.SetActive(true);
 
         // The bob and the facing turn need a head. Ubiq's floating avatar names
         // it "Head"; anything else falls back to the tallest renderer, which is
