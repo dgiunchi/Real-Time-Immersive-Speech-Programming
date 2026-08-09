@@ -832,7 +832,23 @@ public class StudyOutcomes : MonoBehaviour
             var panel = FindObjectOfType<FeedbackPanelController>(true);
             if (panel)
             {
-                panel.ShowError(spec.label, spec.errorText);
+                // B and C must carry the SAME sentence, differing only in how it
+                // is delivered. This used to show errorText — a third-person
+                // system report ("The sign was created, but no colour was
+                // given...") — while C spoke agentPost, a first-person agent line
+                // ("I made the sign, but you didn't say what colour..."). The two
+                // cells therefore differed in person, phrasing and delivery at
+                // once, and no B-versus-C difference could be attributed to any
+                // of them. Showing the agent's own words leaves delivery as the
+                // only difference, which is what the comparison is for.
+                //
+                // errorText still decides WHETHER this is a failure (above), so a
+                // spec that omits agentPost degrades to the old text rather than
+                // showing a participant nothing at all.
+                var text = string.IsNullOrWhiteSpace(spec.agentPost)
+                    ? spec.errorText
+                    : spec.agentPost;
+                panel.ShowError(spec.label, text);
                 ReportHeadsetEvent(this, "feedback-onset", "panel",
                     Mathf.RoundToInt(Mathf.Max(0f, panel.autoHideAfterSeconds) * 1000f).ToString());
             }

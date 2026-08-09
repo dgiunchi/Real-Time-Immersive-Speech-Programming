@@ -334,14 +334,14 @@
            before they try again, it is the belief the next attempt acts on. -->
       <hr style="border:none;border-top:1px solid var(--line);margin:14px 0 10px;">
       <div style="font-size:12px;color:var(--muted);margin:0 0 6px;">
-        &ldquo;<b>Do you think there is something you could say differently that
-        would make that work?</b>&rdquo;
-        <span style="opacity:.7;">&mdash; ask before they try again</span>
+        &ldquo;<b>How confident are you that there is something you could say
+        differently that would make that work?</b>&rdquo;
+        <span style="opacity:.7;">&mdash; ask before they try again. 0 = not at
+        all, 10 = completely.</span>
       </div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordReparability('yes')">Yes</button>
-        <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordReparability('no')">No</button>
-        <button class="btn-ghost" style="flex:1;font-size:12px;padding:6px;" onclick="recordReparability('unsure')">Unsure</button>
+      <div id="confidenceScale" style="display:flex;gap:3px;"></div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px;">
+        <span>0 &middot; not at all</span><span>completely &middot; 10</span>
       </div>
       <div id="reparResult" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:5px;"></div>
 
@@ -763,16 +763,46 @@ async function recordAttribution(value) {
   addLog("t", `Attribution: participant said "${value}", correct="${res.correct}"`);
 }
 
-async function recordReparability(value) {
-  const res = await post("/attribution-detail", { reparability: value });
+// Eleven buttons rather than a slider. A slider needs aim, and this is clicked
+// while listening to a participant and watching what they do next; a row of
+// targets can be hit without looking away. It also cannot be left at a default,
+// because there is no handle sitting at a value until someone moves it.
+function buildConfidenceScale() {
+  const host = document.getElementById("confidenceScale");
+  if (!host) return;
+  host.innerHTML = Array.from({ length: 11 }, (_, n) =>
+    `<button class="btn-ghost" data-conf="${n}"
+       style="flex:1;font-size:12px;padding:6px 0;min-width:0;"
+       onclick="recordConfidence(${n})">${n}</button>`
+  ).join("");
+}
+
+async function recordConfidence(value) {
+  const res = await post("/attribution-detail", { confidence: value });
   const el = document.getElementById("reparResult");
-  if (res.ok && el) {
-    el.innerHTML = `Recorded: <b>${value}</b>` +
-      (value === "yes"
-        ? ' <span style="opacity:.7;">— on a system-limitation task this is the false belief H2 predicts from</span>'
+  if (!res.ok) { if (el) el.textContent = res.error || "no active trial"; return; }
+
+  // Show which button was taken, so a wizard who looks back a second later can
+  // see the answer landed without re-reading the log.
+  document.querySelectorAll("#confidenceScale [data-conf]").forEach(b => {
+    const on = Number(b.dataset.conf) === value;
+    b.style.borderColor = on ? "var(--accent)" : "";
+    b.style.color       = on ? "var(--accent)" : "";
+    b.style.fontWeight  = on ? "700" : "";
+  });
+
+  if (el) {
+    // The flag fires on high confidence, and only where it is actually false —
+    // on a system-limitation trial there is no wording that would work, so a
+    // high rating IS the belief H2 spends. Threshold at 6 rather than "yes"
+    // because the scale now has a middle, and 5 is not a claim either way.
+    const isSystemFault = res.correctAttribution === "system";
+    el.innerHTML = `Recorded: <b>${value}/10</b>` +
+      (isSystemFault && value >= 6
+        ? ' <span style="color:#ffb648;">— on a system-limitation task this is the false belief H2 predicts from</span>'
         : "");
   }
-  addLog("t", `Perceived reparability: ${value}`);
+  addLog("t", `Repair confidence: ${value}/10`);
 }
 
 // Stand the scene up before reading the briefing.
@@ -1160,8 +1190,26 @@ async function advanceTrial() {
   return completeTrial("completed");
 }
 
+// Clear the confidence selection whenever the trial changes. A 7 left lit from
+// the previous failure reads as "already answered", and the wizard skips the
+// question — losing the H2 mediator for that trial silently, which is the worst
+// way to lose a measure.
+let confidenceTrialKey = null;
+function resetConfidenceIfNewTrial(status) {
+  const t = status && status.trial;
+  const key = t ? `${t.number}:${t.injects || 0}` : null;
+  if (key === confidenceTrialKey) return;
+  confidenceTrialKey = key;
+  document.querySelectorAll("#confidenceScale [data-conf]").forEach(b => {
+    b.style.borderColor = ""; b.style.color = ""; b.style.fontWeight = "";
+  });
+  const el = document.getElementById("reparResult");
+  if (el) el.innerHTML = "";
+}
+
 function applyStepGuide(status) {
   const step = currentStep(status);
+  resetConfidenceIfNewTrial(status);
   renderAdvance(status);
   const isSetup = step === "setup";
   document.body.classList.toggle("guide-setup", guideOn && isSetup);
@@ -1233,6 +1281,7 @@ async function poll() {
 // un-guided on every refresh mid-session.
 try { setGuide(localStorage.getItem("wozGuide") === "1"); } catch (e) { setGuide(false); }
 
+buildConfidenceScale();
 loadTasks();
 poll();
 setInterval(poll, 1000);

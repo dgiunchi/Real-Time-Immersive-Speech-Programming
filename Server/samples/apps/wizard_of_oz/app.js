@@ -91,6 +91,13 @@ const LOG_COLUMNS = [
     // whether the belief moved during the trial, which it often will once a
     // second failure lands.
     "attributionSequence",
+    // 0-10 confidence that a different wording would have worked, asked before
+    // the participant tries again. The mediator in H2.
+    "repairConfidence",
+    // Kept, and empty from here on. P01 and P02 answered the yes/no/unsure
+    // version, and a regraded item is a different item: writing 0-10 values into
+    // the old column would silently merge two scales into one and nothing
+    // downstream could tell which rows were which.
     "perceivedReparability", "reparabilityCorrect",
     "noticedFeedback", "firstRepairStrategy",
     "repairSequence", "wastedRepairs", "repairContainsSlot", "preInjectHadSlot",
@@ -1276,7 +1283,8 @@ class WizardOfOzApp extends ApplicationController {
             // because it cannot survive the move: asked at the end it is a
             // memory of what they believed; asked here, before they try again,
             // it is the belief the next attempt acts on.
-            perceivedReparability: null,
+            perceivedReparability: null,   // legacy, no longer asked
+            repairConfidence: null,        // 0-10, the H2 mediator
             // Manipulation check. Without it, "feedback made no difference"
             // cannot be told apart from "they never registered the feedback",
             // and in condition A it records whether they noticed the failure
@@ -1886,6 +1894,12 @@ class WizardOfOzApp extends ApplicationController {
             attributionCorrect: trial.attribution !== null
                 ? (trial.attribution === trial.correctAttribution ? "yes" : "no")
                 : "",
+            // Written as "" rather than 0 when unanswered — 0 is a real rating
+            // on this scale ("no wording would work"), so an absent answer must
+            // not arrive in the CSV looking like a confident one.
+            repairConfidence: trial.repairConfidence === null ||
+                              trial.repairConfidence === undefined
+                ? "" : trial.repairConfidence,
             perceivedReparability: trial.perceivedReparability || "",
             // Whether that belief matched the scenario. Blank rather than "no"
             // when unasked, so an unrecorded probe cannot be read as a wrong one.
@@ -2995,7 +3009,13 @@ class WizardOfOzApp extends ApplicationController {
                     // else has to change.
                     if (req.method === "POST" && url === "/attribution-detail") {
                         if (!this.trial) return send(200, { ok: true, ignored: "no active trial" });
-                        const out = {};
+                        // Echoed so the panel can flag a high confidence rating
+                        // as the false belief, which is only false on a
+                        // system-limitation trial. The panel is not told the
+                        // ground truth anywhere else, and it must not be until
+                        // after the attribution probe is recorded — by the time
+                        // this endpoint is reached, it already has been.
+                        const out = { correctAttribution: this.trial.correctAttribution || "" };
 
                         // The belief that drives H2. Someone who thinks a
                         // different wording would have worked has a reason to
@@ -3003,20 +3023,41 @@ class WizardOfOzApp extends ApplicationController {
                         // belief is false, and the wasted repair follows from it.
                         // Measuring the belief separately from the behaviour is
                         // what lets the two be related rather than assumed.
-                        if (payload.reparability !== undefined) {
-                            const r = String(payload.reparability).toLowerCase();
-                            if (!["yes", "no", "unsure"].includes(r)) {
-                                return send(400, { error: "reparability must be yes|no|unsure" });
+                        // Recorded 0-10, not yes/no/unsure.
+                        //
+                        // This is the mediator H2 rests on, and three categories
+                        // threw away most of the variance the mediation needs.
+                        // "unsure" was also doing two jobs — no opinion, and
+                        // genuine uncertainty — which are different states that
+                        // predict different behaviour. 0-10 matches the blame
+                        // split and the discomfort item, so a participant meets
+                        // one scale format rather than three.
+                        //
+                        // The QUESTION is unchanged, deliberately: still "is
+                        // there something you could say differently that would
+                        // make that work?", now asked for a confidence rather
+                        // than a verdict. Rewording it as well would have made a
+                        // regraded item into a different item.
+                        if (payload.confidence !== undefined) {
+                            const n = Number(payload.confidence);
+                            if (!Number.isInteger(n) || n < 0 || n > 10) {
+                                return send(400, { error: "confidence must be an integer 0-10" });
                             }
-                            this.trial.perceivedReparability = r;
-                            out.reparability = r;
-                            const truth = this.trial.correctAttribution === "system" ? "no" : "yes";
-                            this.logEvent("perceived-reparability",
-                                `believes rewording would have worked=${r} ` +
-                                `(actually ${truth} for this scenario)`, {
+                            this.trial.repairConfidence = n;
+                            out.confidence = n;
+                            // On a system-limitation trial there IS no wording
+                            // that would work, so a high rating is the false
+                            // belief H1 predicts and H2 spends. Logged as the
+                            // distance from the truthful answer rather than a
+                            // right/wrong flag, because the size of the error is
+                            // the interesting part.
+                            const truthful = this.trial.correctAttribution === "system" ? 0 : 10;
+                            this.logEvent("repair-confidence",
+                                `confidence rewording would work=${n}/10 ` +
+                                `(truthful answer for this scenario is ${truthful})`, {
                                 msSinceTrialStart: Date.now() - this.trial.startedAt,
                                 source: "participant", category: "measure",
-                                value: r === truth ? 1 : 0, target: truth
+                                value: n, target: truthful
                             });
                         }
 

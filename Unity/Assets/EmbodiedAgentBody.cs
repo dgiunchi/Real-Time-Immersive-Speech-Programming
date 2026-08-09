@@ -47,6 +47,20 @@ public class EmbodiedAgentBody : MonoBehaviour
         root.SetParent(transform, false);
         root.position = worldPosition;
 
+        // Preferred: the agent wears the same avatar the participants wear.
+        //
+        // A purple blob with two eyes is a different KIND of thing from the
+        // avatar a participant sees on themselves, and condition C is supposed
+        // to vary how the explanation is delivered — not introduce a novel
+        // creature whose unfamiliarity is doing work the design cannot separate
+        // from embodiment. Reusing the room's own avatar removes that.
+        if (BuildFromParticipantAvatar()) return;
+
+        // Fallback: the primitive body, unchanged. Reached when no AvatarManager
+        // has been created yet (the agent can be built before the room is
+        // joined) or when the prefab cannot be instantiated. An agent that looks
+        // wrong is recoverable; an agent that fails to appear is a lost trial.
+
         // Body (rounded — a slightly squashed sphere)
         var body = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         StripCollider(body);
@@ -68,6 +82,103 @@ public class EmbodiedAgentBody : MonoBehaviour
         rightEye = MakeEye(new Vector3(0.22f, 0.05f, 0.34f), out rightEyeR);
 
         SetEyeColor(eyeColorIdle);
+    }
+
+    /// <summary>
+    /// Instantiates the same avatar prefab the AvatarManager gives participants,
+    /// as scenery. Returns false if there is nothing to instantiate, in which
+    /// case the caller builds the primitive body instead.
+    ///
+    /// Every MonoBehaviour is removed from the copy. That is the whole trick and
+    /// it is not optional: the prefab is a networked object, and left intact it
+    /// would register with the NetworkScene, claim an id, and be transmitted to
+    /// every peer as though a person had joined — inside a study whose entire
+    /// premise is that one participant is alone with a system. Stripped to
+    /// meshes and transforms it is a mannequin, which is all the agent needs,
+    /// because EmbodiedAgentBody already drives the bob, the turn and the
+    /// speaking tell itself.
+    /// </summary>
+    private bool BuildFromParticipantAvatar()
+    {
+        GameObject prefab = null;
+        var manager = FindObjectOfType<Ubiq.Avatars.AvatarManager>(true);
+        if (manager) prefab = manager.avatarPrefab;
+        if (!prefab) return false;
+
+        GameObject copy;
+        try
+        {
+            copy = Instantiate(prefab, root);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[EmbodiedAgentBody] could not instantiate the participant " +
+                             $"avatar, falling back to the primitive body: {e.Message}");
+            return false;
+        }
+
+        copy.name = "AgentAvatar";
+
+        // Strip behaviour before anything else gets an Update. Destroy is
+        // deferred to end of frame, so DestroyImmediate is what actually
+        // prevents a networked Awake/Start from running this frame.
+        foreach (var mb in copy.GetComponentsInChildren<MonoBehaviour>(true))
+        {
+            if (mb) DestroyImmediate(mb);
+        }
+        foreach (var col in copy.GetComponentsInChildren<Collider>(true))
+        {
+            if (col) DestroyImmediate(col);
+        }
+        // Audio would be a second voice in a study measuring one.
+        foreach (var src in copy.GetComponentsInChildren<AudioSource>(true))
+        {
+            if (src) DestroyImmediate(src);
+        }
+
+        // The floating avatar is authored at human scale; `size` describes the
+        // small desk-companion the agent has always been, so match the old
+        // apparent size rather than standing a full-height figure next to the
+        // panel.
+        copy.transform.localPosition = Vector3.zero;
+        copy.transform.localScale = Vector3.one * Mathf.Max(0.01f, size / 0.18f) * 0.22f;
+
+        // The bob and the facing turn need a head. Ubiq's floating avatar names
+        // it "Head"; anything else falls back to the tallest renderer, which is
+        // the head on every humanoid rig worth the name.
+        head = FindDeepChild(copy.transform, "Head") ?? TallestRenderer(copy.transform) ?? copy.transform;
+
+        // No eye spheres on a real avatar, so the speaking tell has to live
+        // somewhere else. MakeEye still runs, parented to the head, but small
+        // and tucked in front — it reads as an indicator light rather than a
+        // face, and it keeps SetEyeColor working unchanged.
+        leftEye  = MakeEye(new Vector3(-0.10f, 0.10f, 0.30f), out leftEyeR);
+        rightEye = MakeEye(new Vector3( 0.10f, 0.10f, 0.30f), out rightEyeR);
+        SetEyeColor(eyeColorIdle);
+
+        Debug.Log("[EmbodiedAgentBody] agent is using the participant avatar prefab " +
+                  $"'{prefab.name}' (stripped of behaviour).");
+        return true;
+    }
+
+    private static Transform FindDeepChild(Transform parent, string name)
+    {
+        foreach (var t in parent.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name.Equals(name, System.StringComparison.OrdinalIgnoreCase)) return t;
+        }
+        return null;
+    }
+
+    private static Transform TallestRenderer(Transform parent)
+    {
+        Transform best = null;
+        float bestY = float.NegativeInfinity;
+        foreach (var r in parent.GetComponentsInChildren<Renderer>(true))
+        {
+            if (r.bounds.center.y > bestY) { bestY = r.bounds.center.y; best = r.transform; }
+        }
+        return best;
     }
 
     private Transform MakeEye(Vector3 localPosFractionOfHead, out Renderer rend)

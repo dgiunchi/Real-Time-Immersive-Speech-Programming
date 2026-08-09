@@ -132,22 +132,28 @@ untested. If that bet fails, A is the condition that still yields a result.
   LLM, so every participant meets an identical failure and we hold ground truth
   about what caused it — which no field data ever has.
 
-### Implementation status — two deltas still open
+### Implementation status
 
-This document describes the agreed design. Two parts of it are **not yet in the
-code**, and are listed here so nobody reads the doc as a description of what the
-build currently does.
+All three changes from the design review are in the code.
 
-| Delta | Now | Needs |
-|---|---|---|
-| B shows the agent's words | Panel shows `errorText` (third-person system report); C speaks `agentPost` (first-person) | Panel renders `agentPost` in condition B, so B and C carry one sentence |
-| Graded confidence | `perceivedReparability`, yes / no / unsure | 0–10 rating; new column, since a regraded item is a different item and must not silently merge with pilot values |
+| Change | State |
+|---|---|
+| B shows the agent's words | **Done.** The panel renders `agentPost`, falling back to `errorText` only if a spec omits it, so B and C carry one sentence and differ in delivery alone |
+| Graded confidence | **Done.** New `repairConfidence` column, 0–10, validated server-side; the panel shows eleven buttons rather than a slider |
+| Agent wears the participants' avatar | **Done.** `EmbodiedAgentBody` instantiates the AvatarManager's own prefab and strips every MonoBehaviour from the copy, falling back to the primitive body if no manager exists yet |
 
-Until both land, B-versus-C confounds wording with delivery, and H2's mediation
-runs on three categories rather than a scale.
+`perceivedReparability` and `reparabilityCorrect` are retained as columns and are
+empty from here on. P01 and P02 answered the yes/no/unsure version, and a
+regraded item is a different item: writing 0–10 values into the old column would
+merge two scales and leave nothing downstream able to tell the rows apart.
 
-**P01 and P02 are condition A**, which is unaffected by either delta — no data is
-invalidated by making these changes.
+**P01 and P02 are condition A**, which none of the three changes touches, so no
+collected data is invalidated.
+
+**The agent's appearance needs an in-headset check.** It is the one change that
+cannot be verified by compiling, and the fallback is silent by design — if the
+prefab cannot be resolved the primitive body appears and the session continues.
+`[EmbodiedAgentBody]` logs which path was taken.
 
 ### The six tasks
 
