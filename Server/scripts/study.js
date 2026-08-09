@@ -348,9 +348,49 @@ function setupUsbTunnel() {
     try {
         devices = execSync(`"${adb}" devices`, { stdio: "pipe", shell: true }).toString();
     } catch (_) { return; }
-    const connected = devices.split("\n").slice(1)
-        .filter(l => l.trim() && l.includes("\tdevice")).length;
-    if (!connected) { log("No headset on USB — relying on Wi-Fi discovery."); return; }
+    // Parse the STATE, not just "is there a line".
+    //
+    // This used to count only lines containing "\tdevice", so a headset that was
+    // plugged in but not yet trusted fell into the same branch as no headset at
+    // all and printed "No headset on USB". That is the least useful thing it
+    // could say: the cable IS in, the researcher can see it is in, and the one
+    // action that would fix it — accepting a dialog inside the headset — is
+    // never mentioned. A new headset is exactly when this happens, because the
+    // trust prompt is per-computer and appears once.
+    const rows = devices.split("\n").slice(1)
+        .map(l => l.trim()).filter(Boolean)
+        .map(l => { const [serial, state] = l.split(/\s+/); return { serial, state }; });
+
+    const ready = rows.filter(r => r.state === "device");
+    const untrusted = rows.filter(r => r.state === "unauthorized");
+    const offline = rows.filter(r => r.state === "offline");
+
+    if (untrusted.length) {
+        log(`Headset ${untrusted[0].serial} is plugged in but NOT AUTHORISED.`);
+        log("  Put it on — there is an 'Allow USB debugging?' prompt waiting.");
+        log("  Tick 'Always allow from this computer', then Allow, then rerun this.");
+        log("  (No prompt? Developer Mode is off for this headset — enable it in the Meta Quest phone app.)");
+    }
+    if (offline.length) {
+        log(`Headset ${offline[0].serial} is offline — unplug and replug the cable.`);
+    }
+    if (!ready.length) {
+        log("No usable headset on USB — relying on Wi-Fi discovery.");
+        return;
+    }
+
+    // A headset with no app installed will sit on a loading screen forever and
+    // give no clue why, so say it here rather than letting it be discovered in
+    // front of a participant.
+    try {
+        const pkgs = execSync(`"${adb}" shell pm list packages ${ANDROID_PACKAGE}`,
+                              { stdio: "pipe", shell: true }).toString();
+        if (!pkgs.includes(ANDROID_PACKAGE)) {
+            log(`The study app is NOT INSTALLED on ${ready[0].serial}.`);
+            log("  Build it (Unity: Study > Build Quest APK), then:");
+            log("  adb install -r Unity/Builds/DreamCodeVR-study.apk");
+        }
+    } catch (_) { /* a failed query is not worth stopping a session over */ }
 
     // (a) IP handoff. Write this Mac's current address into the app's own storage
     // so the headset connects over Wi-Fi immediately, wherever we are today. This
