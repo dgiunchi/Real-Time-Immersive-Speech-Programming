@@ -799,13 +799,40 @@ public class StudyOutcomes : MonoBehaviour
     // cumulative.
     private void NotifyFeedback(OutcomeSpec spec)
     {
+        // The two questions, before the condition check.
+        //
+        // They are asked in every condition, so they are shown in every
+        // condition — including A, which returns immediately below. This is
+        // deliberately not part of the manipulation: identical panel, identical
+        // wording, identical position in all three cells. What differs between
+        // conditions is the EXPLANATION, and there is none here.
+        var questions = FindObjectOfType<QuestionPanelController>(true);
+        if (questions)
+        {
+            if (string.IsNullOrWhiteSpace(spec.errorText)) questions.Hide();
+            else questions.Show();
+        }
+
         var cond = FindObjectOfType<StudyConditionManager>(true);
-        if (cond && cond.IsConditionA()) return;   // A shows nothing, by design
+        if (cond && cond.IsConditionA()) return;   // A shows no explanation, by design
 
         // A correct outcome is silent in every condition: "no agent intervention
         // in C, no panel in B, nothing in A". Only errors are explained, so the
         // feedback itself never signals that the attempt succeeded.
-        if (string.IsNullOrWhiteSpace(spec.errorText)) return;
+        //
+        // Silent means SILENT, not "leave the last failure on screen". Returning
+        // here without clearing left the previous error's explanation up through
+        // the success, next to a "Processing..." line from the attempt that
+        // fixed it — so the panel was still explaining a failure at the exact
+        // moment the participant got what they asked for. Clearing keeps the
+        // outcome unannounced, which is the design, while removing an
+        // explanation that has stopped being true.
+        if (string.IsNullOrWhiteSpace(spec.errorText))
+        {
+            var stale = FindObjectOfType<FeedbackPanelController>(true);
+            if (stale) stale.Clear();
+            return;
+        }
 
         if (cond && cond.IsConditionC())
         {
@@ -896,6 +923,11 @@ public class StudyOutcomes : MonoBehaviour
 
         var transcript = FindObjectOfType<TranscriptDisplay>(true);
         if (transcript) transcript.ClearTranscript();
+
+        // The questions belong to the failure that prompted them, so they must
+        // not still be up when the next trial's briefing is read.
+        var questions = FindObjectOfType<QuestionPanelController>(true);
+        if (questions) questions.Hide();
 
         // The sphere and cube are the scene, not trial debris — put them back so
         // every trial opens on the same arrangement the briefing describes.

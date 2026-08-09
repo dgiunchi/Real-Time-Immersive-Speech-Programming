@@ -154,18 +154,22 @@ public class EmbodiedAgentBody : MonoBehaviour
             if (src) DestroyImmediate(src);
         }
 
-        // The floating avatar is authored at human scale; `size` describes the
-        // small desk-companion the agent has always been, so match the old
-        // apparent size rather than standing a full-height figure next to the
-        // panel.
+        // Full participant scale, not a shrunken desk companion.
+        //
+        // The avatar prefab is authored at human size, so it is used at human
+        // size: an agent scaled to a fifth of a person reads as a toy floating
+        // beside a panel, and condition C is meant to be an embodied
+        // interlocutor. Matching the participants' own avatar is the point of
+        // using their avatar at all.
         copy.transform.localPosition = Vector3.zero;
-        copy.transform.localScale = Vector3.one * Mathf.Max(0.01f, size / 0.18f) * 0.22f;
+        copy.transform.localScale = Vector3.one;
 
         // Safe to switch on now: there is nothing left that could Awake into a
-        // network registration. This has to happen before the head is located,
-        // because Renderer.bounds on an inactive object is not meaningful and
-        // TallestRenderer would pick arbitrarily.
+        // network registration. This has to happen before the bounds below are
+        // read, because Renderer.bounds on an inactive object is meaningless.
         holder.SetActive(true);
+
+        StandOnFloor(copy.transform);
 
         // The bob and the facing turn need a head. Ubiq's floating avatar names
         // it "Head"; anything else falls back to the tallest renderer, which is
@@ -184,6 +188,41 @@ public class EmbodiedAgentBody : MonoBehaviour
                   $"'{prefab.name}' (stripped of behaviour).");
         return true;
     }
+
+    /// <summary>
+    /// Drops the avatar so its lowest visible point rests on the floor.
+    ///
+    /// The agent used to be placed at a hard-coded y of about 1.5m, which put a
+    /// small body at roughly eye height — floating in mid-air with nothing under
+    /// it. That is fine for an abstract helper blob and wrong for something
+    /// wearing a participant's avatar, which reads as a person and therefore
+    /// reads as a person hovering.
+    ///
+    /// Measured rather than assumed, because the prefab's own origin is not
+    /// dependable: Ubiq's floating avatar is normally driven by tracked head and
+    /// hand positions, so with no tracking data its parts sit wherever the
+    /// prefab left them. Taking the rendered bounds and shifting until the
+    /// bottom is at floor level works whatever the authored origin, and works
+    /// for a different avatar prefab later.
+    /// </summary>
+    private void StandOnFloor(Transform avatar)
+    {
+        var renderers = avatar.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0) return;
+
+        var bounds = renderers[0].bounds;
+        foreach (var r in renderers) bounds.Encapsulate(r.bounds);
+
+        // FloorY is the ground the study objects sit on, not the agent's own
+        // origin, so the agent shares a floor with the scene rather than with
+        // whatever height the panel happens to be at.
+        float drop = bounds.min.y - FloorY;
+        root.position -= new Vector3(0f, drop, 0f);
+    }
+
+    /// The scene's ground plane. The sphere, cube and campfire are all built
+    /// against y = 0 in StudyOutcomes, so the agent uses the same reference.
+    private const float FloorY = 0f;
 
     private static Transform FindDeepChild(Transform parent, string name)
     {

@@ -48,6 +48,11 @@ public class StudyUIBootstrapper : MonoBehaviour
     private EmbodiedAgentBody agentBody;
 
     private GameObject transcriptPanel, feedbackPanelRoot, agentPanel, codePanel;
+    // Deliberately NOT handed to StudyConditionManager: this panel is identical
+    // in A, B and C, so it must never be one of the things a condition toggles.
+    private GameObject questionPanelRoot;
+    private QuestionPanelController questionPanel;
+    private TextMeshProUGUI pendingProbeLine, pendingConfidenceLine, pendingScaleLine;
 
     private void Start()
     {
@@ -71,6 +76,7 @@ public class StudyUIBootstrapper : MonoBehaviour
         BuildCanvas();
         BuildTranscriptPanel();
         BuildFeedbackPanel();
+        BuildQuestionPanel();
         BuildAgentPanel();
         BuildCodePanel();
         EnsureManagers();
@@ -139,6 +145,26 @@ public class StudyUIBootstrapper : MonoBehaviour
 
         pendingTranscriptStatus = statusTxt;
         pendingTranscriptText = transcriptTxt;
+    }
+
+    /// The two questions the participant is asked after every failure.
+    ///
+    /// Built low on the canvas, below the feedback panel, so that in condition B
+    /// it never overlaps the explanation and in every condition it occupies the
+    /// same place. Amber rather than the panels' blue-grey, because it is the
+    /// researcher speaking rather than the system reporting, and a participant
+    /// should not have to work out which of those they are reading.
+    private void BuildQuestionPanel()
+    {
+        questionPanelRoot = MakePanel("QuestionPanel", new Vector2(0, -330), new Vector2(900, 300),
+            new Color(0.10f, 0.08f, 0.04f, 0.94f));
+
+        MakeText(questionPanelRoot, "ProbeLine", new Vector2(0, 95), new Vector2(860, 80),
+            "", 30, new Color(1f, 0.86f, 0.55f), out pendingProbeLine);
+        MakeText(questionPanelRoot, "ConfidenceLine", new Vector2(0, -15), new Vector2(860, 110),
+            "", 28, new Color(1f, 0.86f, 0.55f), out pendingConfidenceLine);
+        MakeText(questionPanelRoot, "ScaleLine", new Vector2(0, -110), new Vector2(860, 46),
+            "", 24, new Color(0.75f, 0.78f, 0.85f), out pendingScaleLine);
     }
 
     private void BuildFeedbackPanel()
@@ -230,6 +256,19 @@ public class StudyUIBootstrapper : MonoBehaviour
 
     private void WireEverything()
     {
+        // QuestionPanelController — every condition, wired before anything that
+        // could switch panels off, and never registered with the condition
+        // manager.
+        questionPanel = FindOrAdd<QuestionPanelController>();
+        if (questionPanel)
+        {
+            questionPanel.panelRoot      = questionPanelRoot;
+            questionPanel.probeLine      = pendingProbeLine;
+            questionPanel.confidenceLine = pendingConfidenceLine;
+            questionPanel.scaleLine      = pendingScaleLine;
+            questionPanel.Hide();
+        }
+
         // TranscriptDisplay
         if (transcriptDisplay)
         {
@@ -263,7 +302,18 @@ public class StudyUIBootstrapper : MonoBehaviour
             agentBody = FindOrAdd<EmbodiedAgentBody>();
             if (agentBody)
             {
-                agentBody.worldPosition = panelWorldPosition + new Vector3(-1.15f, -0.1f, 0f);
+                // Beside the panel horizontally, but at floor level rather than
+                // panel level. A full-size avatar hung off the panel's own
+                // height would stand with its feet in mid-air; EmbodiedAgentBody
+                // measures its bounds and drops it onto the floor from here, so
+                // the y given here only needs to be the ground.
+                //
+                // Pushed further out than the old -1.15 because the agent is now
+                // a person rather than a small blob: at human scale that
+                // distance put it close enough to feel like it was standing over
+                // the panel.
+                agentBody.worldPosition = new Vector3(
+                    panelWorldPosition.x - 1.6f, 0f, panelWorldPosition.z);
                 agentDialogue.onAgentStartedSpeaking.AddListener(agentBody.OnStartedSpeaking);
                 agentDialogue.onAgentFinishedSpeaking.AddListener(agentBody.OnFinishedSpeaking);
             }

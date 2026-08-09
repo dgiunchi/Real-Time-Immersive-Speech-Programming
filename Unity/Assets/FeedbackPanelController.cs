@@ -69,18 +69,25 @@ public class FeedbackPanelController : MonoBehaviour
         ScheduleHide();
     }
 
+    // Listening and Processing both mean "a NEW attempt is under way", so the
+    // previous attempt's explanation stops being true at that moment and has to
+    // go. Leaving it up produced the worst state the panel can be in: a stale
+    // error sitting under a live "Processing..." line, which reads as the system
+    // reporting that failure again about the sentence just spoken.
     public void ShowListening()
     {
         RevealPanel();
-        if (statusLine) statusLine.text = "Listening...";
-        if (statusIcon) statusIcon.color = neutralColor;
+        if (statusLine)           statusLine.text = "Listening...";
+        if (errorDescriptionLine) errorDescriptionLine.text = "";
+        if (statusIcon)           statusIcon.color = neutralColor;
     }
 
     public void ShowProcessing()
     {
         RevealPanel();
-        if (statusLine) statusLine.text = "Processing...";
-        if (statusIcon) statusIcon.color = neutralColor;
+        if (statusLine)           statusLine.text = "Processing...";
+        if (errorDescriptionLine) errorDescriptionLine.text = "";
+        if (statusIcon)           statusIcon.color = neutralColor;
     }
 
     public void Clear()
