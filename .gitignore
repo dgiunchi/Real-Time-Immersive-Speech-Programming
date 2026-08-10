@@ -116,15 +116,17 @@ Logs/
 Recordings/
 *.slnx
 
-# Generated Word copies of the two markdown documents. Rebuild with:
+# Generated Word copies of the markdown documents. Rebuild with:
 #   node Server/scripts/md2docx.js STUDY_DESIGN.md          docs/Say-It-Again-Study-Design.docx
 #   node Server/scripts/md2docx.js docs/SUPERVISOR_BRIEF.md docs/Say-It-Again-Supervisor-Brief.docx
+#   node Server/scripts/md2docx.js docs/PREREGISTRATION.md  docs/Say-It-Again-Preregistration.docx
 #
 # Not committed for the same reason the poster is not: a build product that can
 # drift from its source is worse than no build product, because whoever opens it
 # has no way to tell which version of the design they are reading.
 docs/Say-It-Again-Study-Design.docx
 docs/Say-It-Again-Supervisor-Brief.docx
+docs/Say-It-Again-Preregistration.docx
 
 # Generated poster artefacts — rebuild with Server/scripts/build-poster.sh
 study-poster.pdf
