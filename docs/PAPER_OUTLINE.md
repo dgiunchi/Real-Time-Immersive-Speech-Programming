@@ -103,9 +103,9 @@ Split into three tiers, because they have different power.
 
 | Measure | Column | Notes |
 |---|---|---|
-| Attribution | `attribution` | First probe only. `attributionSequence` has all of them |
+| Attribution | `attribution` | `self`/`system`/`both`/`unsure`. First probe only; `attributionSequence` has all of them |
 | Correct? | `attributionCorrect` | vs `correctAttribution`, which is fixed per task |
-| Perceived reparability | `perceivedReparability` | The H2 belief |
+| Repair confidence 0–10 | `repairConfidence` | The H2 belief and mediator |
 | Repair moves | `repairSequence` | Full sequence, in order |
 | **Wasted repairs** | `wastedRepairs` | The re-say family. Co-primary |
 | Correction quality | `repairContainsSlot` | The training-signal measure |

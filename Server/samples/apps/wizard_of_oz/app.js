@@ -237,6 +237,18 @@ function utteranceSimilarity(a, b) {
  * with the wording — so a turn spent on one is the measurable cost of believing
  * the failure was yours. This is the set `wastedRepairs` counts.
  */
+// Saying the same thing again, in any of these ways, adds no information the
+// system did not already have.
+//
+// "wordbyword" was folded into "slower": over-enunciating and going one word at
+// a time are the same behaviour at different intensities, they were being coded
+// interchangeably by whoever happened to be watching, and no hypothesis
+// distinguishes them. Two buttons that mean the same thing do not produce two
+// measures, they produce one noisy one. The acoustics still separate them if it
+// ever matters — speech rate against that participant's own baseline is a
+// better discriminator than a live judgement anyway.
+//
+// It stays in the set so any row already carrying it still counts as wasted.
 const RESAY_STRATEGIES = new Set(["verbatim", "slower", "wordbyword", "paraphrase"]);
 
 /**
@@ -2941,6 +2953,9 @@ class WizardOfOzApp extends ApplicationController {
                     // for something the system cannot do still cannot be done.
                     if (req.method === "POST" && url === "/repair-strategy") {
                         const val = String(payload.strategy || "").toLowerCase();
+                        // "wordbyword" is accepted but no longer offered — see
+                        // RESAY_STRATEGIES. Rejecting it would turn a retired
+                        // button into a 400 for anyone on a cached panel.
                         const allowed = ["detail", "scope", "question", "gaveup",
                                          "verbatim", "slower", "wordbyword", "paraphrase"];
                         if (!allowed.includes(val)) {
@@ -2963,11 +2978,20 @@ class WizardOfOzApp extends ApplicationController {
 
                     // Attribution probe: wizard records what the participant said
                     // when asked why they think the error happened.
-                    // Values: "self" | "system" | "unsure"
+                    // Values: "self" | "system" | "both" | "unsure"
+                    //
+                    // "both" is a real answer, not a hedge, and it had nowhere
+                    // to go before. "I wasn't clear AND it probably can't do
+                    // that anyway" is a complete diagnosis containing a correct
+                    // component; forcing it into "unsure" threw that away and
+                    // inflated the one code that is supposed to mean the
+                    // participant offered no cause at all. On a study about
+                    // attribution, collapsing a divided attribution into
+                    // "no opinion" is losing the phenomenon.
                     if (req.method === "POST" && url === "/attribution") {
                         const val = String(payload.attribution || "").toLowerCase();
-                        if (!["self", "system", "unsure"].includes(val)) {
-                            return send(400, { error: "attribution must be self|system|unsure" });
+                        if (!["self", "system", "both", "unsure"].includes(val)) {
+                            return send(400, { error: "attribution must be self|system|both|unsure" });
                         }
                         if (this.trial) {
                             // Every answer is kept in order; only the FIRST
@@ -2991,6 +3015,14 @@ class WizardOfOzApp extends ApplicationController {
                                 this.trial.attribution = val;
                             }
                             const correct = this.trial.correctAttribution;
+                            // Strict match only. "both" contains the right
+                            // answer but is not it, and quietly crediting it
+                            // would make attribution accuracy depend on how
+                            // generously the code was written rather than on
+                            // what the participant believed. It is recorded as
+                            // its own category so the analysis can decide —
+                            // partial credit is a modelling choice, and it
+                            // belongs in the model, not buried in the logger.
                             const isCorrect = val === correct;
                             this.logEvent("attribution",
                                 `probe ${this.trial.attributionSequence.length}: ` +

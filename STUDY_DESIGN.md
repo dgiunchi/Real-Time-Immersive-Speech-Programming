@@ -387,7 +387,18 @@ into one of three:
 |---|---|
 | `self` | "I wasn't clear / I left something out" |
 | `system` | "It misheard / it can't do that" |
+| `both` | "I wasn't clear **and** it probably can't do that anyway" |
 | `unsure` | no clear cause given |
+
+`both` is a real answer rather than a hedge, and it previously had nowhere to
+go. A divided attribution contains a correct component, and forcing it into
+`unsure` discarded that while inflating the one code that is supposed to mean
+*no cause was offered at all*. On a study about attribution, collapsing a
+divided attribution into "no opinion" loses the phenomenon.
+
+It is scored strictly — `both` is not counted as correct. Partial credit is a
+modelling decision and belongs in the model, not buried in the logger, so the
+category is recorded as itself and the analysis decides what to do with it.
 
 The instruction to the researcher is as much of the instrument as the question:
 
@@ -435,16 +446,22 @@ invent a reason for it.
 | Asked the system | "what went wrong?" |
 | Gave up | stopped / asked you |
 
-| Re-say family — all four count as wasted | |
+| Re-say family — all three count as wasted | |
 |---|---|
 | Same again | same words, same way |
-| Slower / louder | same words, over-enunciated |
-| Word by word | one. word. at. a. time. |
+| Slower / louder | over-enunciated, including one word at a time |
 | Reworded it | different words, nothing added |
 
-The re-say family is split four ways because those four are the observable face
-of hyperarticulation, and the per-utterance acoustics say independently which one
+The re-say family is split three ways because those are the observable face of
+hyperarticulation, and the per-utterance acoustics say independently which one
 happened. `wastedRepairs` counts the whole family.
+
+It was four. "Word by word" was folded into "slower / louder": over-enunciating
+and going one word at a time are the same behaviour at different intensities,
+they were being coded interchangeably depending on who was watching, and no
+hypothesis distinguishes them. Two buttons meaning the same thing do not produce
+two measures, they produce one noisy one — and speech rate against that
+participant's own baseline separates them better than a live judgement can.
 
 ## Why the wizard panel looks like that
 

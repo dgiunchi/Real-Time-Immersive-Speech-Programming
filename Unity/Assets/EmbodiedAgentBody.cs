@@ -396,8 +396,19 @@ public class EmbodiedAgentBody : MonoBehaviour
             var to = Camera.main.transform.position - root.position;
             to.y = 0;
             if (to.sqrMagnitude > 0.0001f)
+            {
+                // TOWARDS the participant, not away.
+                //
+                // This was LookRotation(-to), which points the body's forward
+                // axis directly away from whoever it is addressing. On the old
+                // blob that was survivable — it was a sphere with two dots, so
+                // "backwards" mostly read as "featureless". On a humanoid avatar
+                // it is unmistakable: the agent stands with its back to the
+                // participant and talks over its shoulder, which is what the
+                // "talking with his behind" report is.
                 root.rotation = Quaternion.Slerp(root.rotation,
-                    Quaternion.LookRotation(-to), Time.deltaTime * 5f);
+                    Quaternion.LookRotation(to), Time.deltaTime * 5f);
+            }
         }
     }
 

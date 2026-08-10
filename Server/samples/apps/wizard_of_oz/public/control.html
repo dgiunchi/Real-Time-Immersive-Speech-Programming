@@ -208,11 +208,6 @@
       <div class="card" style="margin:0;padding:14px;">
         <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Microphone</div>
         <div id="micStatus" style="font-size:13px;line-height:1.7;">Waiting for headset…</div>
-        <button class="btn-ghost" style="width:100%;margin-top:8px;font-size:12px;padding:6px;background:#1a2a40;"
-                onmousedown="remoteRecord(true)" onmouseup="remoteRecord(false)"
-                onmouseleave="remoteRecord(false)" ontouchstart="remoteRecord(true)" ontouchend="remoteRecord(false)">
-          Hold to record (headset fallback)
-        </button>
         <button id="browserMicBtn" class="btn-ghost" style="width:100%;margin-top:6px;font-size:12px;padding:6px;background:#1a3a1a;"
                 onmousedown="browserMicStart()" onmouseup="browserMicStop()"
                 onmouseleave="browserMicStop()" ontouchstart="browserMicStart()" ontouchend="browserMicStop()">
@@ -251,20 +246,30 @@
           <div id="variantChips" class="tasks" style="margin:0;"></div>
         </div>
       </div>
-      <div id="taskPrompt" style="padding:12px;background:#0d1117;border-radius:8px;font-size:14px;line-height:1.6;border-left:3px solid var(--accent);">
-        <span style="color:var(--muted);">Enter a participant ID and click Start Session →</span>
-      </div>
-      <div style="margin-top:10px;font-size:12px;color:var(--muted);">
-        Do <b>not</b> tell them what to say. They must phrase it themselves.
-      </div>
-      <button class="btn-ghost" id="prepareBtn" style="width:100%;margin-top:12px;font-size:14px;padding:11px;"
+      <button class="btn-ghost" id="prepareBtn" style="width:100%;font-size:14px;padding:11px;"
               onclick="prepareScene()">
         1 &middot; Set up the scene
         <span style="font-size:11px;opacity:.65;display:block;margin-top:2px;">
           clears the last trial and rebuilds the sphere, cube and campfire &mdash; do this before you read
         </span>
       </button>
-      <button class="btn-accent" id="startTrialBtn" style="width:100%;margin-top:8px;font-size:15px;padding:13px;"
+
+      <!-- The briefing sits BETWEEN the two buttons because that is the order it
+           is used in: set the scene up, read this out, start the clock. It used
+           to sit above both, so the script being read was furthest from the
+           button pressed on finishing it, and the eye had to travel back up past
+           two controls mid-sentence. -->
+      <div style="margin:12px 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">
+        Read this briefing to the participant &mdash; do not tell them what to say
+      </div>
+      <div id="taskPrompt" style="padding:14px;background:#0d1117;border-radius:8px;font-size:16px;line-height:1.6;border-left:3px solid var(--accent);">
+        <span style="color:var(--muted);">Enter a participant ID and click Start Session &rarr;</span>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted);">
+        They must phrase it themselves.
+      </div>
+
+      <button class="btn-accent" id="startTrialBtn" style="width:100%;margin-top:12px;font-size:15px;padding:13px;"
               onclick="startTrial()">
         2 &middot; &#9654; I&rsquo;ve read it &mdash; start trial
         <span style="font-size:11px;opacity:.75;display:block;margin-top:2px;font-weight:400;">
@@ -316,6 +321,9 @@
         </button>
         <button class="btn-ghost" style="flex:1;font-size:13px;" onclick="recordAttribution('system')">
           Blamed the system<br><span style="font-size:11px;opacity:.65;">&ldquo;It misheard / it can't do that&rdquo;</span>
+        </button>
+        <button class="btn-ghost" style="flex:1;font-size:13px;" onclick="recordAttribution('both')">
+          Blamed both<br><span style="font-size:11px;opacity:.65;">&ldquo;I wasn't clear AND it can't do that&rdquo;</span>
         </button>
         <button class="btn-ghost" style="flex:1;font-size:13px;" onclick="recordAttribution('unsure')">
           Genuinely unsure<br><span style="font-size:11px;opacity:.65;">no clear cause given</span>
@@ -395,10 +403,7 @@
           Same again<br><span style="font-size:10px;opacity:.65;">same words, same way</span>
         </button>
         <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;border-color:#7a2b2b;" onclick="recordRepair('slower')">
-          Slower / louder<br><span style="font-size:10px;opacity:.65;">same words, over-enunciated</span>
-        </button>
-        <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;border-color:#7a2b2b;" onclick="recordRepair('wordbyword')">
-          Word by word<br><span style="font-size:10px;opacity:.65;">one. word. at. a. time.</span>
+          Slower / louder<br><span style="font-size:10px;opacity:.65;">over-enunciated, incl. word by word</span>
         </button>
         <button class="btn-ghost" style="flex:1;min-width:88px;font-size:12px;padding:6px;border-color:#7a2b2b;" onclick="recordRepair('paraphrase')">
           Reworded it<br><span style="font-size:10px;opacity:.65;">different words, nothing added</span>
@@ -725,7 +730,6 @@ const REPAIR_LABELS = {
   gaveup:     "gave up",
   verbatim:   "said the same thing again",
   slower:     "said it slower / louder",
-  wordbyword: "said it word by word",
   paraphrase: "reworded it, nothing added"
 };
 
@@ -734,7 +738,7 @@ const REPAIR_LABELS = {
 // so none of them can fix a limitation. Must match RESAY_STRATEGIES in app.js —
 // this copy only drives the live counter shown to the wizard; the number that
 // reaches the data is computed server-side.
-const RESAY = ["verbatim", "slower", "wordbyword", "paraphrase"];
+const RESAY = ["verbatim", "slower", "paraphrase"];
 
 async function recordRepair(value) {
   const res = await post("/repair-strategy", { strategy: value });
