@@ -43,6 +43,7 @@ public class QuestionPanelController : MonoBehaviour
     public TextMeshProUGUI probeLine;
     public TextMeshProUGUI confidenceLine;
     public TextMeshProUGUI scaleLine;
+    public TextMeshProUGUI anchorLine;
 
     // Kept in one place so the headset and the wizard panel cannot drift apart.
     // If either sentence changes, it changes in both or the participant is
@@ -52,8 +53,18 @@ public class QuestionPanelController : MonoBehaviour
     public const string ConfidenceText =
         "How confident are you that there is something you could say differently " +
         "that would make that work?";
+    // Every point on the scale, not just its ends.
+    //
+    // This read "0 = not at all · 10 = completely", which describes the anchors
+    // accurately and shows the scale not at all: two labelled values with
+    // nothing between them look like two options, and a participant answering
+    // that picks one of the two. Showing all eleven numbers is what makes it a
+    // scale rather than a choice, and it is the difference between a mediator
+    // with usable variance and a bimodal one.
     private const string ScaleText =
-        "0 = not at all          ·          10 = completely";
+        "0    1    2    3    4    5    6    7    8    9    10";
+    private const string AnchorText =
+        "not at all confident                    completely confident";
 
     private void Awake()
     {
@@ -67,6 +78,7 @@ public class QuestionPanelController : MonoBehaviour
         if (probeLine)      probeLine.text      = ProbeText;
         if (confidenceLine) confidenceLine.text = ConfidenceText;
         if (scaleLine)      scaleLine.text      = ScaleText;
+        if (anchorLine)     anchorLine.text     = AnchorText;
         if (panelRoot)      panelRoot.SetActive(true);
     }
 

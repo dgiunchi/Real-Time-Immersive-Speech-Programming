@@ -52,7 +52,7 @@ public class StudyUIBootstrapper : MonoBehaviour
     // in A, B and C, so it must never be one of the things a condition toggles.
     private GameObject questionPanelRoot;
     private QuestionPanelController questionPanel;
-    private TextMeshProUGUI pendingProbeLine, pendingConfidenceLine, pendingScaleLine;
+    private TextMeshProUGUI pendingProbeLine, pendingConfidenceLine, pendingScaleLine, pendingAnchorLine;
 
     private void Start()
     {
@@ -163,8 +163,14 @@ public class StudyUIBootstrapper : MonoBehaviour
             "", 30, new Color(1f, 0.86f, 0.55f), out pendingProbeLine);
         MakeText(questionPanelRoot, "ConfidenceLine", new Vector2(0, -15), new Vector2(860, 110),
             "", 28, new Color(1f, 0.86f, 0.55f), out pendingConfidenceLine);
-        MakeText(questionPanelRoot, "ScaleLine", new Vector2(0, -110), new Vector2(860, 46),
-            "", 24, new Color(0.75f, 0.78f, 0.85f), out pendingScaleLine);
+        // The numbers get their own line and are the largest thing on the lower
+        // half of the panel, because they are what the participant has to choose
+        // from. The anchors sit under them in a quieter colour: they explain the
+        // ends, they are not themselves the options.
+        MakeText(questionPanelRoot, "ScaleLine", new Vector2(0, -100), new Vector2(860, 48),
+            "", 30, new Color(0.92f, 0.94f, 1f), out pendingScaleLine);
+        MakeText(questionPanelRoot, "AnchorLine", new Vector2(0, -140), new Vector2(860, 38),
+            "", 21, new Color(0.62f, 0.66f, 0.74f), out pendingAnchorLine);
     }
 
     private void BuildFeedbackPanel()
@@ -266,6 +272,7 @@ public class StudyUIBootstrapper : MonoBehaviour
             questionPanel.probeLine      = pendingProbeLine;
             questionPanel.confidenceLine = pendingConfidenceLine;
             questionPanel.scaleLine      = pendingScaleLine;
+            questionPanel.anchorLine     = pendingAnchorLine;
             questionPanel.Hide();
         }
 
