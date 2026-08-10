@@ -23,12 +23,19 @@ does guessing wrong cost them?
 **H1 — Misdiagnosis.** Attribution accuracy is lower on system-caused failures
 than on user-caused failures.
 
-*Direction is specified and it opposes the standard prediction.* Self-serving
-bias holds that people attribute failure externally to protect self-esteem, which
-predicts *higher* accuracy on system-caused trials. We predict the reverse, on
-the grounds that external attribution requires a causal model of the other party
-and an opaque system supplies none — leaving the participant's own phrasing as
-the only available hypothesis.
+*Direction is specified in advance.* Whether people protect themselves by
+attributing failure externally has been disputed since Miller and Ross (1975)
+reported only minimal evidence for self-protective attribution under failure, and
+Zuckerman (1979) replied that the motivational bias survives scrutiny. We predict
+self-attribution here on a non-motivational basis: external attribution requires
+a causal model of the other party, and an opaque system supplies none, leaving
+the participant's own phrasing as the only available hypothesis.
+
+Note that self-blame for voice-assistant failures is already documented
+(Baughan et al., CHI 2023) — but for failures users themselves attributed to
+ambiguity in their own requests, collected retrospectively and without ground
+truth. H1 tests whether it persists when the cause is unambiguously the system.
+See `docs/RELATED_WORK.md`.
 
 **H2 — Cost.** On system-caused failures participants expend more repair
 attempts that cannot succeed (`wastedRepairs`) than on user-caused failures, and

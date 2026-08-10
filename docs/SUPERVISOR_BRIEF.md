@@ -30,21 +30,30 @@ They do it because repeating is the only hypothesis a silent failure supports.
 > **When a speech agent fails without saying why, who do people blame — and what
 > does guessing wrong cost them?**
 
-The non-obvious part is the direction of the prediction.
+The non-obvious part is not that people blame themselves — it is *when*, and what
+it costs.
 
-Classical attribution research (self-serving bias) says people attribute
-**failure externally** to protect self-esteem: it should be the machine's fault.
-I predict the opposite — that people blame themselves — and the reason is
-mechanistic rather than emotional:
+Whether people protect themselves by attributing failure externally has been
+contested since Miller & Ross (1975) found only minimal evidence for it, against
+Zuckerman's (1979) reply that the bias holds up. And self-blame with voice
+assistants is already documented: Baughan et al. (CHI 2023) found users blame
+themselves for failures they attributed to ambiguity in their own requests.
+
+**But that study collected failures retrospectively from users, with no ground
+truth about what actually caused any of them** — so self-blame was observed for
+failures the participants themselves believed they had caused, which is arguably
+accurate attribution rather than misattribution.
+
+The open question is whether self-blame persists when the cause is
+**unambiguously the system**. My prediction is that it does, on a
+non-motivational basis:
 
 > External attribution requires a causal model of the other party. An opaque
 > system denies the user one, so the only hypothesis available is the one about
 > their own behaviour: *"I must have said it badly."*
 
-If that holds, it is a boundary condition on a robust and well-established
-effect, not merely an observation about voice interfaces. If it fails, the design
-still yields a usable result, because the cost measure below is recorded
-independently of what participants say.
+Testing that needs scripted failures and withheld ground truth, which is what
+this design provides. Full positioning in `docs/RELATED_WORK.md`.
 
 ## 3. Hypotheses
 
@@ -162,8 +171,12 @@ Three claims, in order of how far they travel:
 2. **Misattribution has a countable price, and it is detectable in production.**
    Repeated near-identical utterances are already logged by every voice
    assistant. A system could detect the pattern and change its response.
-3. **Opacity may reverse self-serving attribution.** A boundary condition on a
-   well-established effect.
+3. **Self-blame persists when the cause is unambiguously the system.** Prior work
+   observes self-blame for failures users believed they caused; this tests it
+   where they demonstrably did not, with ground truth held by the experimenter.
+   It also extends hyperarticulation research: Oviatt et al. (1998) explain
+   over-enunciation as adaptation to being *misheard*, and three of these six
+   tasks involve no misrecognition at all.
 
 ## 7. Status
 

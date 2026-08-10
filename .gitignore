@@ -120,6 +120,8 @@ Recordings/
 #   node Server/scripts/md2docx.js STUDY_DESIGN.md          docs/Say-It-Again-Study-Design.docx
 #   node Server/scripts/md2docx.js docs/SUPERVISOR_BRIEF.md docs/Say-It-Again-Supervisor-Brief.docx
 #   node Server/scripts/md2docx.js docs/PREREGISTRATION.md  docs/Say-It-Again-Preregistration.docx
+#   node Server/scripts/md2docx.js docs/RELATED_WORK.md    docs/Say-It-Again-Related-Work.docx
+docs/Say-It-Again-Related-Work.docx
 #
 # Not committed for the same reason the poster is not: a build product that can
 # drift from its source is worse than no build product, because whoever opens it
