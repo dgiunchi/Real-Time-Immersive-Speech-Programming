@@ -3364,7 +3364,32 @@ function serveFile(res, filePath, contentType) {
             res.end("Not found: " + path.basename(filePath));
             return;
         }
-        res.writeHead(200, { "Content-Type": contentType });
+        // Never cached, and this is not a nicety.
+        //
+        // These responses used to carry Content-Type and nothing else. With no
+        // Cache-Control, no ETag and no Last-Modified, a browser falls back to
+        // HEURISTIC caching — it invents a freshness lifetime and serves its own
+        // stored copy. Every page here lives at a fixed URL on localhost, so the
+        // researcher's browser would keep showing a control panel from an
+        // earlier version of the code no matter how many times the file on disk
+        // changed, and no matter how many times the server restarted.
+        //
+        // The failure is invisible and it lies in the worst possible direction:
+        // it does not error, it silently shows an older panel that still works.
+        // Hours were spent today re-cloning the repository and re-downloading
+        // the branch to explain a stale page that was never coming from the
+        // repository at all.
+        //
+        // no-store rather than no-cache, because no-cache still permits a stored
+        // copy subject to revalidation, and these files are small, local, and
+        // read from disk on every request anyway. There is nothing to gain by
+        // caching them and a whole afternoon to lose.
+        res.writeHead(200, {
+            "Content-Type": contentType,
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        });
         res.end(data);
     });
 }
