@@ -14,24 +14,29 @@ nearly all of it Unity downloading while you do something else.
 **The `-b` is not optional.** The study lives on a branch; the default branch is
 an older state of the project that does not compile against this Unity version.
 
-**Windows** — Command Prompt, not PowerShell:
+Open a terminal — **Command Prompt or PowerShell on Windows, Terminal on a
+Mac** — and paste this. It is the same on all three:
 
 ```
-cd /d %USERPROFILE%
 git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/Real-Time-Immersive-Speech-Programming.git dreamcodevr
 ```
 
-**macOS / Linux:**
+> One command, no `cd`, and nothing that differs between shells, which is
+> deliberate. All three open in your home folder, and giving `git clone` the
+> destination as its last word means the project lands there — Windows
+> `C:\Users\<you>\dreamcodevr`, Mac `~/dreamcodevr` — without a second line
+> that would need `cd /d` in Command Prompt, `cd` in PowerShell, and `&&` in
+> neither the same way. If you have ever pasted a Windows command and been told
+> *"The token '&&' is not a valid statement separator"*, that is Command Prompt
+> syntax landing in PowerShell, and it is why there is none of it here.
 
-```
-cd ~
-git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/Real-Time-Immersive-Speech-Programming.git dreamcodevr
-```
-
-> Clone into your home folder rather than the Desktop. On Windows with OneDrive
-> backup on — the default on a new machine — `%USERPROFILE%\Desktop` is not
-> where your Desktop is, and every command that uses it fails with *"The system
-> cannot find the path specified"* while the folder sits visible on screen.
+> **Your home folder, not the Desktop, on purpose.** With OneDrive PC backup on
+> — the default on a new Windows 11 machine — your Desktop really lives at
+> `%USERPROFILE%\OneDrive\Desktop`, and plain `%USERPROFILE%\Desktop` does not
+> exist. Anything under it fails with *"The system cannot find the path
+> specified"* while the folder sits visible on screen. Cloning to the home
+> folder avoids the question, and keeps OneDrive from trying to sync a Unity
+> project, which it is bad at and which slows every build down.
 
 > **If you skip the `-b`** you get the default branch, and Unity greets you with
 > `The type or namespace name 'Newtonsoft' could not be found` followed by
@@ -50,21 +55,37 @@ nothing on the headset.
 
 ### 3. Start the server
 
-One command, and it is the same word on both machines:
+One command. Which shell you are in decides how it is written:
 
 | | |
 |---|---|
-| **Windows** | `%USERPROFILE%\dreamcodevr\study` |
+| **Command Prompt** | `%USERPROFILE%\dreamcodevr\study` |
+| **PowerShell** | `& $HOME\dreamcodevr\study.cmd` |
 | **macOS / Linux** | `~/dreamcodevr/study` |
 
-Windows resolves that to `study.cmd`, a Mac to the `study` script beside it.
-It installs what it needs on first run, asks which mode you want, and prints the
-address of the browser panel you drive the session from. Leave the window open;
-closing it stops everything.
+Windows runs `study.cmd`, a Mac the `study` script beside it. Same script, same
+questions, same panel. It installs what it needs on first run, asks which mode
+you want, and prints the address of the browser panel you drive the session
+from. Leave the window open; closing it stops everything.
 
-If your copy is somewhere else, `cd` to it and run `study`. On Windows that
-means `cd /d "C:\path\with spaces\dreamcodevr" && study` — `/d` so it can cross
-drives, one pair of quotes around the whole path, and no `./`.
+> **PowerShell is the awkward one**, and it is what Windows 11 opens by
+> default, so it is probably what you have. It does not expand `%USERPROFILE%`
+> — that is `$HOME` or `$env:USERPROFILE` — and it will not run a path as a
+> command without the `&` in front. Typing `cmd` and pressing Enter first drops
+> you into Command Prompt, where the shorter line works, and is the easier fix
+> if a command from somewhere else is refusing to run.
+
+If your copy is somewhere else, `cd` to it and run the script from there:
+
+| | |
+|---|---|
+| **Command Prompt** | `cd /d "C:\path with spaces\dreamcodevr"` then `study` |
+| **PowerShell** | `cd "C:\path with spaces\dreamcodevr"` then `.\study.cmd` |
+| **macOS / Linux** | `cd "~/path with spaces/dreamcodevr"` then `./study` |
+
+Chaining those with `&&` works in Command Prompt and on a Mac, but **not** in
+Windows PowerShell 5.1, which answers *"The token '&&' is not a valid statement
+separator in this version."* Use `;` there, or just run the two lines.
 
 **Windows users:** [WINDOWS_SETUP.md](WINDOWS_SETUP.md) expands all of this from
 a blank laptop, with the headset developer-mode steps and a troubleshooting
