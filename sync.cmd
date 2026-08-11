@@ -76,9 +76,16 @@ if "%~1"=="--pull" (
 )
 
 REM -- 3. Commit ------------------------------------------------------------
-git add -A
+REM Tracked changes only. 'git add -A' swept up stale directories and a Unity
+REM crash dump on its first real run, re-creating duplicates that had just been
+REM removed. New files are listed below and added deliberately with git add.
+git add -u
 git reset --quiet -- "Unity/Assets/Demos/Server.asset" 2>nul
 git reset --quiet -- "Unity/Assets/Resources/DevAgentSettings.asset" 2>nul
+
+for /f "delims=" %%u in ('git ls-files --others --exclude-standard') do (
+    echo [sync] not synced, untracked: %%u
+)
 
 git diff --cached --quiet
 if errorlevel 1 (

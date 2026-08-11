@@ -122,13 +122,33 @@ fi
 [ "$1" = "--pull" ] && { say "pull only, as asked. Done."; exit 0; }
 
 # ── 3. Commit ────────────────────────────────────────────────────────────────
-git add -A
+# Stage tracked changes only. Untracked files are listed, never added.
+#
+# `git add -A` was the obvious thing and it was wrong. On its first real run it
+# swept up two stale directories left on disk by an earlier restructure and
+# committed a 2,939-line Unity crash dump, re-creating the duplicate
+# Packages/ and ProjectSettings/ at the repository root that had just been
+# removed — a sync command that quietly undoes a structural fix is worse than no
+# sync command.
+#
+# Files you genuinely want added are added deliberately, once, with `git add`.
+# After that this picks them up like anything else. The asymmetry is on purpose:
+# forgetting to add a new file costs one command, and adding the wrong thing to a
+# repository with three remotes costs considerably more.
+git add -u
 
 # Unstage the per-machine files even if they changed after step 1 (./study
 # rewrites Server.asset whenever it runs, which may be mid-sync).
 for f in "${LOCAL_ONLY[@]}"; do
     git reset --quiet -- "$f" 2>/dev/null || true
 done
+
+UNTRACKED=$(git ls-files --others --exclude-standard | head -20)
+if [ -n "$UNTRACKED" ]; then
+    warn "not synced — these are new files git is not tracking yet:"
+    echo "$UNTRACKED" | sed 's/^/         /'
+    warn "add the ones you want with:  git add <file>   then run ./sync again"
+fi
 
 if git diff --cached --quiet; then
     say "nothing local to commit"

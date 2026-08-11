@@ -143,3 +143,9 @@ Unity/OldAgentVoice_unused/
 
 # Participant landing page — separate repo, pushed to abyyworld/vr-voice-study
 study-site/
+
+# Unity crash dumps. Written next to the project when the editor dies, and one
+# of them is thousands of lines of stack trace that briefly got committed by an
+# over-eager sync.
+mono_crash.*.json
+**/mono_crash.*.json
