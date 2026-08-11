@@ -377,7 +377,7 @@ researcher control panel.
 
 ### 2. Open Unity and deploy to the Quest
 - In Unity Hub, open the `Unity/` folder of this project.
-- Open the scene **`Assets/Demos/DynamicCompiler/DynamicCompiler`** (the campfire
+- Open the scene **`Unity/Assets/Demos/DynamicCompiler/DynamicCompiler`** (the campfire
   scene — NOT `Scenes/SampleScene`, which is an empty placeholder).
 - If a "TMP Importer" window pops up, click **Import TMP Essentials**.
 - **One-time scene setup:** create an empty GameObject (`GameObject → Create Empty`),
@@ -533,7 +533,7 @@ restart — you do not need to rebuild or reinstall the APK.**
 
 ### 4b. Optional — agent voice for condition C
 The agent speaks via on-screen subtitles by default. To give it a real voice,
-drop `.wav` clips into `Assets/Resources/AgentVoice/` — they are picked up
+drop `.wav` clips into `Unity/Assets/Resources/AgentVoice/` — they are picked up
 automatically. Without clips, subtitles are used.
 
 ### 5. Questionnaires

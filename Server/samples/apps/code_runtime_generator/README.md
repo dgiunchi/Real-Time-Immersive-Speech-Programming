@@ -1,4 +1,4 @@
-﻿# Code Runtime Generator Sample
+# Code Runtime Generator Sample
 
 This sample runs DreamCodeVR: Unity sends selected-object context and push-to-talk audio to the Node app. The server transcribes speech with faster-whisper HTTP, sends recognized text to OpenAI, extracts one C# `MonoBehaviour`, and sends it back to Unity to compile and attach in the scene.
 
@@ -88,7 +88,7 @@ The app starts a Ubiq room server using `config.json`:
 ## Run Unity
 
 1. Open the `Unity` folder with Unity `2021.3.16f1`.
-2. Open `Assets/Demos/DynamicCompiler/DynamicCompiler.unity`.
+2. Open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`.
 3. In the scene, select `Network Scene` / `Room Client`.
 4. Set server address to the machine running Node. Use `localhost` only when Unity Editor and server run on the same PC.
 5. Ensure TCP port is `8009`.

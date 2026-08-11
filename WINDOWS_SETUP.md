@@ -182,7 +182,11 @@ assumes.
 
 ## Step 6 — Open the project
 
-Unity Hub → **Open** → select `C:\Users\<you>\say-it-again`.
+Unity Hub → **Open** → select `C:\Users\<you>\say-it-again\Unity`.
+
+Select the **`Unity` folder inside**, not the outer `say-it-again` folder. The
+outer one is not a Unity project, and the Hub will not say so clearly — it
+simply will not open.
 
 Select the **`Unity` folder inside**, not the outer `say-it-again` folder.
 

@@ -135,7 +135,7 @@ Reference detail for the current DreamCodeVR fork. To just get it running, use
 
 ### Required tools
 
-- Unity `6000.3.19f1` — the version in `ProjectSettings/ProjectVersion.txt`,
+- Unity `6000.3.19f1` — the version in `Unity/ProjectSettings/ProjectVersion.txt`,
   and it has to match: opening in another version re-imports and upgrades the
   project, so two researchers stop running the same build
 - Node.js with npm
@@ -197,7 +197,7 @@ cd Server\samples\apps\code_runtime_generator
 node app.js
 ```
 
-Then open the Unity project from the `Unity` folder with Unity `6000.3.19f1`, open `Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
+Then open the Unity project from the `Unity` folder with Unity `6000.3.19f1`, open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
 
 In VR, hold the left controller trigger to record speech. Release it to send the utterance to STT. Point at an object with the ray to select it; red ray means selected target.
 
@@ -205,7 +205,7 @@ In VR, hold the left controller trigger to record speech. Release it to send the
 
 Generated folders such as `Server/samples/venv`, `node_modules`, Unity `Library`, `Temp`, `obj`, runtime logs, and sample input/output files are ignored. If any of those are already tracked, remove them from Git with `git rm --cached` so they stay on disk but stop being pushed.
 
-**`Assets/Demos/Server.asset` is tracked but deliberately not synced.** The
+**`Unity/Assets/Demos/Server.asset` is tracked but deliberately not synced.** The
 launcher rewrites one line of it — `sendToIp` — with whatever LAN address this
 machine has right now, so left alone it would report itself as modified after
 every single run, and two researchers on two networks would conflict on that
@@ -216,7 +216,7 @@ automatically on first run; there is nothing to set up. If you ever genuinely
 need to commit a change to that file:
 
 ```bash
-git update-index --no-skip-worktree Assets/Demos/Server.asset
+git update-index --no-skip-worktree Unity/Assets/Demos/Server.asset
 ```
 
 **Line endings are pinned in `.gitattributes`.** Only the files an interpreter

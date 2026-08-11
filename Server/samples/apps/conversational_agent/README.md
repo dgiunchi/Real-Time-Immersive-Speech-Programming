@@ -1,4 +1,4 @@
-﻿# Multi-Party Conversational Agent Sample
+# Multi-Party Conversational Agent Sample
 
 This guide provides instructions on using the Ubiq-Genie framework to create an application that enables collaborative interaction with a conversational agent in a shared environment. The agent recognizes users present in the room, responds to their queries, faces the speaker during the interaction, and uses simple gestures while communicating.
 
@@ -20,7 +20,7 @@ Follow these steps to run the sample:
     node app.js
     ```
 
-4. Launch Unity and navigate to the `Assets/Samples/Ubiq-Genie/ConversationalAgent` directory. Open the `ConversationalAgent.unity` scene.
+4. Launch Unity and navigate to the `Unity/Assets/Samples/Ubiq-Genie/ConversationalAgent` directory. Open the `ConversationalAgent.unity` scene.
 5. Check that the `Room Client` under the `Network Scene` object has the correct IP address and port for the server. If the server is running on the same machine as the Unity Editor, the IP address should be `localhost`.
 6. In the Unity Editor, press the `Play` button to launch the application.
 7. Speak into the microphone. The agent will respond to your queries and requests, facing you while speaking and employing simple gestures.

@@ -1,4 +1,4 @@
-﻿# Voice-based Texture Generation Sample
+# Voice-based Texture Generation Sample
 
 This guide demonstrates how to use the Ubiq-Genie framework to create an application that generates textures based on voice commands. Users also have the option to specify target objects using ray-based selection.
 
@@ -22,7 +22,7 @@ Follow these steps to run the sample:
     node app.js
     ```
 
-4. Launch Unity and navigate to the `Assets/Samples/Ubiq-Genie/TextureGeneration` directory. Open the `TextureGeneration.unity` scene.
+4. Launch Unity and navigate to the `Unity/Assets/Samples/Ubiq-Genie/TextureGeneration` directory. Open the `TextureGeneration.unity` scene.
 5. Ensure the `Room Client` under the `Network Scene` object has the correct IP address and port for the server. If the server is running on the same machine as the Unity Editor, the IP address should be `localhost`.
 6. In the Unity Editor, press the `Play` button to launch the application.
 7. Press and hold the space bar on desktop or use the grip button in VR to record a voice command, releasing it to stop the recording.

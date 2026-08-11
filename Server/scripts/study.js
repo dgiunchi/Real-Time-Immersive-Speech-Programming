@@ -29,7 +29,7 @@ const serverRoot  = path.resolve(__dirname, "..");
 const repoRoot    = path.resolve(serverRoot, "..");
 const wozDir      = path.join(serverRoot, "samples", "apps", "wizard_of_oz");
 const certSrcDir  = path.join(serverRoot, "samples", "apps", "code_runtime_generator");
-const serverAsset = path.resolve(repoRoot, "Assets", "Demos", "Server.asset");
+const serverAsset = path.resolve(repoRoot, "Unity", "Assets", "Demos", "Server.asset");
 const controlUrl  = "http://localhost:8181";
 const STUDY_PORTS = [8005, 8010, 8181, 8007];
 const UBIQ_PORT   = 8005;   // Ubiq RoomServer TCP port (matches config.json)
@@ -425,7 +425,7 @@ function setupUsbTunnel() {
         if (!pkgs.includes(ANDROID_PACKAGE)) {
             log(`The study app is NOT INSTALLED on ${ready[0].serial}.`);
             log("  Build it (Unity: Study > Build Quest APK), then:");
-            log("  adb install -r Builds/DreamCodeVR-study.apk");
+            log("  adb install -r Unity/Builds/DreamCodeVR-study.apk");
         }
     } catch (_) { /* a failed query is not worth stopping a session over */ }
 
