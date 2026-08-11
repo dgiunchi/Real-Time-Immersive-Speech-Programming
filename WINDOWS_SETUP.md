@@ -64,16 +64,26 @@ Nothing needs changing.
 Open **Command Prompt** and run these two lines:
 
 ```
-cd %USERPROFILE%\Desktop
+cd /d %USERPROFILE%
 git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/Real-Time-Immersive-Speech-Programming.git dreamcodevr
 ```
 
-That last word matters: it puts everything in a short folder,
-`Desktop\dreamcodevr`, which every path below assumes.
+That puts everything in `C:\Users\<you>\dreamcodevr`, which every path below
+assumes.
+
+> **Not the Desktop, on purpose.** If OneDrive is backing up your PC — the
+> default on a new Windows 11 machine — your Desktop is really
+> `%USERPROFILE%\OneDrive\Desktop`, and `%USERPROFILE%\Desktop` is a path that
+> does not exist. Every `cd` to it answers *"The system cannot find the path
+> specified"*, and the folder you are looking at on screen is not the folder
+> the command is looking for. Putting the clone one level up sidesteps the
+> whole question. It also keeps OneDrive from trying to sync a Unity project,
+> which it is bad at and which will slow your builds down.
 
 > If that URL asks for credentials you do not have, ask for access, or for the
 > supervisor's copy of the repository instead. Do not download a ZIP of the
-> default branch — the study lives on the branch named above.
+> default branch — the study lives on the branch named above, and a ZIP has no
+> `.git` folder, so none of the branch commands here will work on it.
 
 ## Step 5 — Headset developer mode
 
@@ -93,7 +103,7 @@ That last word matters: it puts everything in a short folder,
 
 ## Step 6 — Open the project
 
-Unity Hub → **Open** → select `Desktop\dreamcodevr\Unity`.
+Unity Hub → **Open** → select `C:\Users\<you>\dreamcodevr\Unity`.
 
 Select the **`Unity` folder inside**, not the outer `dreamcodevr` folder.
 
@@ -153,10 +163,10 @@ The whole routine, every time.
 Open **Command Prompt** and paste:
 
 ```
-%USERPROFILE%\Desktop\dreamcodevr\study
+%USERPROFILE%\dreamcodevr\study
 ```
 
-This is the same command the other researcher runs, pointed at your Desktop.
+This is the same command the other researcher runs, pointed at your copy.
 Windows resolves it to `study.cmd`; a Mac resolves it to the `study` script
 beside it. Same instruction, either machine.
 
@@ -223,7 +233,7 @@ software working* from *is the network cooperating*.
 ## Where the data goes
 
 ```
-Desktop\dreamcodevr\Logs\
+C:\Users\<you>\dreamcodevr\Logs\
 ```
 
 One CSV per participant — `P01.csv`, `P02.csv` — holding everything that person
@@ -247,6 +257,45 @@ even for the other.
 
 ## Troubleshooting
 
+**`The system cannot find the path specified`**, and you cannot find the clone
+
+Almost always OneDrive. With PC backup on — the default on a new Windows 11
+machine — your Desktop is `%USERPROFILE%\OneDrive\Desktop`, and plain
+`%USERPROFILE%\Desktop` does not exist at all, so anything under it fails no
+matter what you put there. The folder is on the screen in front of you and the
+path to it is still wrong.
+
+Rather than guess, ask Windows where the project actually is:
+
+```
+where /r %USERPROFILE% StoryTellerManager.cs
+```
+
+It prints a full path ending `...\Unity\Assets\StoryTellerManager.cs`. Chop off
+the last two folders — `\Unity\Assets\...` — and what is left is the folder to
+`cd` into. So a result of
+
+```
+C:\Users\you\OneDrive\Desktop\dreamcodevr\Unity\Assets\StoryTellerManager.cs
+```
+
+means the command you want is
+
+```
+cd /d "C:\Users\you\OneDrive\Desktop\dreamcodevr"
+```
+
+If it prints nothing at all, the project is not under your user folder — it may
+never have been cloned on this machine, or it is on another drive. Go back to
+**Step 4** and clone it fresh; nothing is lost by having a second copy, as long
+as you do not delete a `Logs\` folder from the first one.
+
+**`fatal: not a git repository`** in a folder that clearly holds the project
+
+It came from a downloaded ZIP rather than `git clone`. A ZIP contains the files
+but not the `.git` folder, so it has no branches and no way to switch to one.
+Clone it properly with **Step 4** and use the new folder.
+
 **`The type or namespace name 'Newtonsoft' could not be found`**
 **`Error building Player because scripts have compile errors in the editor`**
 
@@ -268,12 +317,12 @@ Two symptoms travel together, and either one on its own is enough to tell:
 Close Unity first, then, in Command Prompt:
 
 ```
-cd /d "%USERPROFILE%\Desktop\dreamcodevr"
+cd /d "%USERPROFILE%\dreamcodevr"
 git checkout Visualisation-DreamCodeVR-feedback-loop
 git pull
 ```
 
-Reopen `Desktop\dreamcodevr\Unity` in Unity Hub. It re-imports, which takes a
+Reopen `dreamcodevr\Unity` in Unity Hub. It re-imports, which takes a
 while, and it will want **Unity 6000.3.19f1** rather than the 2021 version
 `main` asked for — install that from Step 1 if Hub says it is missing. Then
 carry on from **Step 7**, because switching branch does not switch the build
@@ -301,7 +350,7 @@ Find the real one with `ipconfig` (it starts `192.168.` or `10.`), then:
 
 ```
 set STUDY_LAN_IP=192.168.1.42
-%USERPROFILE%\Desktop\dreamcodevr\study
+%USERPROFILE%\dreamcodevr\study
 ```
 
 using your actual address.
@@ -317,7 +366,7 @@ knock on by accident.
 
 **`'study' is not recognized as an internal or external command`**
 Either the path is wrong, or you are in PowerShell rather than Command Prompt.
-PowerShell needs `& "%USERPROFILE%\Desktop\dreamcodevr\study"` with the
+PowerShell needs `& "%USERPROFILE%\dreamcodevr\study"` with the
 ampersand and quotes. Command Prompt is simpler.
 
 ---

@@ -4,16 +4,80 @@ code within an active application.
 
 ![Illustrations of DreamcodeVR concept](DCVR.png)
 
+## Start here
+
+Three steps, identical on Windows and on a Mac. Roughly an hour the first time,
+nearly all of it Unity downloading while you do something else.
+
+### 1. Get the project
+
+**The `-b` is not optional.** The study lives on a branch; the default branch is
+an older state of the project that does not compile against this Unity version.
+
+**Windows** — Command Prompt, not PowerShell:
+
+```
+cd /d %USERPROFILE%
+git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/Real-Time-Immersive-Speech-Programming.git dreamcodevr
+```
+
+**macOS / Linux:**
+
+```
+cd ~
+git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/Real-Time-Immersive-Speech-Programming.git dreamcodevr
+```
+
+> Clone into your home folder rather than the Desktop. On Windows with OneDrive
+> backup on — the default on a new machine — `%USERPROFILE%\Desktop` is not
+> where your Desktop is, and every command that uses it fails with *"The system
+> cannot find the path specified"* while the folder sits visible on screen.
+
+> **If you skip the `-b`** you get the default branch, and Unity greets you with
+> `The type or namespace name 'Newtonsoft' could not be found` followed by
+> `Error building Player because scripts have compile errors in the editor`.
+> That error means the branch, not your machine. Re-clone with the line above.
+
+### 2. Build onto the headset
+
+Open **`dreamcodevr/Unity`** — the inner folder, not the outer one — in Unity
+**`6000.3.19f1`**, installed with **Android Build Support**.
+
+Then **File → Build Profiles → Android → Switch Platform**, and only after that
+**Build And Run**. A fresh clone opens on the desktop platform, and building
+without switching produces a desktop app in twenty seconds with no error and
+nothing on the headset.
+
+### 3. Start the server
+
+One command, and it is the same word on both machines:
+
+| | |
+|---|---|
+| **Windows** | `%USERPROFILE%\dreamcodevr\study` |
+| **macOS / Linux** | `~/dreamcodevr/study` |
+
+Windows resolves that to `study.cmd`, a Mac to the `study` script beside it.
+It installs what it needs on first run, asks which mode you want, and prints the
+address of the browser panel you drive the session from. Leave the window open;
+closing it stops everything.
+
+If your copy is somewhere else, `cd` to it and run `study`. On Windows that
+means `cd /d "C:\path\with spaces\dreamcodevr" && study` — `/d` so it can cross
+drives, one pair of quotes around the whole path, and no `./`.
+
+**Windows users:** [WINDOWS_SETUP.md](WINDOWS_SETUP.md) expands all of this from
+a blank laptop, with the headset developer-mode steps and a troubleshooting
+list. Printable copy: [docs/WINDOWS_SETUP.pdf](docs/WINDOWS_SETUP.pdf).
+
+---
+
 Dreamcode VR is based on Ubiq and Ubiq Genie. Ubiq is a framework developed by UCL for social VR experiments, and Ubiq-Genie is a framework that enables you to build server-assisted collaborative mixed reality applications with Unity using the [Ubiq](https://ubiq.online) framework.
 
 ## Current Setup
 
-Use this section for the current DreamCodeVR fork.
-
-> **Setting up a second machine to run the study?**
-> [WINDOWS_SETUP.md](WINDOWS_SETUP.md) is the step-by-step version for Windows,
-> from a blank laptop to a session running. A printable copy is at
-> [docs/WINDOWS_SETUP.pdf](docs/WINDOWS_SETUP.pdf).
+Reference detail for the current DreamCodeVR fork. To just get it running, use
+[Start here](#start-here) above — this section is the longer form.
 
 ### Required tools
 
@@ -79,7 +143,7 @@ cd Server\samples\apps\code_runtime_generator
 node app.js
 ```
 
-Then open the Unity project from the `Unity` folder with Unity `2021.3.16f1`, open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
+Then open the Unity project from the `Unity` folder with Unity `6000.3.19f1`, open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
 
 In VR, hold the left controller trigger to record speech. Release it to send the utterance to STT. Point at an object with the ray to select it; red ray means selected target.
 
