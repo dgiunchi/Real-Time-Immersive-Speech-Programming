@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 /**
  * One-command study launcher.
@@ -39,7 +39,7 @@ const HANDOFF_FILE    = "study_server.txt";              // matches ServerAutoDi
 
 function log(msg) { console.log(`\x1b[1m\x1b[36m[study]\x1b[0m ${msg}`); }
 
-// â”€â”€ 0. Mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── 0. Mode ───────────────────────────────────────────────────────────────────
 //
 // One command, two modes. The server is identical in both; what differs is how
 // the HEADSET is configured, which is why this is a launcher concern and not a
@@ -131,7 +131,7 @@ function resolveMode() {
     const probe = openTty();
     if (probe !== null) { try { fs.closeSync(probe); } catch (_) {} hasTty = true; }
     if (!hasTty) {
-        log("Not a terminal â€” defaulting to STUDY mode.");
+        log("Not a terminal — defaulting to STUDY mode.");
         return "study";
     }
 
@@ -162,14 +162,14 @@ const CAPTURE_PROPS = {
 // The caller must not claim the headset is safe on the strength of having tried.
 function applyHeadsetMode(mode) {
     const adb = findAdb();
-    if (!adb) { log("adb not found â€” headset settings unchanged."); return false; }
+    if (!adb) { log("adb not found — headset settings unchanged."); return false; }
     let devices = "";
     try { devices = execSync(`"${adb}" devices`, { stdio: "pipe", shell: true }).toString(); }
     catch (_) { return false; }
     const connected = devices.split("\n").slice(1)
         .filter(l => l.trim() && l.includes("\tdevice")).length;
     if (!connected) {
-        log(`No headset on USB â€” ${mode} settings not applied.`);
+        log(`No headset on USB — ${mode} settings not applied.`);
         if (mode === "study") {
             log("\x1b[33mPlug in and rerun if the headset was last used for filming.\x1b[0m");
         }
@@ -194,8 +194,8 @@ function applyHeadsetMode(mode) {
     }
 }
 
-// â”€â”€ 1. Kill stale processes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-log("Clearing ports 8005 / 8010 / 8181â€¦");
+// ── 1. Kill stale processes ───────────────────────────────────────────────────
+log("Clearing ports 8005 / 8010 / 8181…");
 for (const port of STUDY_PORTS) {
     try {
         if (IS_WINDOWS) {
@@ -211,14 +211,14 @@ for (const port of STUDY_PORTS) {
     } catch (_) {}
 }
 
-// â”€â”€ 2. Auto-detect LAN IP and patch Server.asset â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── 2. Auto-detect LAN IP and patch Server.asset ──────────────────────────────
 //
 // Reads the interface table directly instead of shelling out. The old version
 // ran `ipconfig getifaddr en0`, which is macOS-only twice over: Windows has an
 // `ipconfig` that takes no such argument and prints an unrelated table, and the
 // en0/en1 names do not exist there at all. On Windows it fell through to
 // 127.0.0.1, which is then what gets written onto the headset as the address to
-// connect back to â€” so the headset would look for the server on itself and the
+// connect back to — so the headset would look for the server on itself and the
 // session would never start.
 function getLanIp() {
     const ifaces = os.networkInterfaces();
@@ -251,7 +251,7 @@ function getLanIp() {
 // Server.asset is tracked, and the line patched just below holds whichever LAN
 // address this machine happens to have right now. So every single launch leaves
 // the repository dirty, and two researchers on two networks conflict on that
-// one line forever â€” a conflict neither of them has any reason to resolve,
+// one line forever — a conflict neither of them has any reason to resolve,
 // because the next launch on either machine overwrites the result anyway.
 //
 // `--skip-worktree` tells this clone to stop reporting the file. It is the flag
@@ -270,14 +270,14 @@ function keepServerAssetLocal() {
                  { cwd: repoRoot, stdio: "pipe" });
     } catch (_) {
         // Not a git clone (someone downloaded the ZIP), git not on PATH, or the
-        // file is not tracked in this checkout. All three are fine â€” the flag is
+        // file is not tracked in this checkout. All three are fine — the flag is
         // a courtesy to whoever runs `git status`, not something the study needs.
     }
 }
 
 function patchServerAsset(ip) {
     if (!fs.existsSync(serverAsset)) {
-        log("Server.asset not found â€” skipping IP patch (is Unity folder at ../Unity?)");
+        log("Server.asset not found — skipping IP patch (is Unity folder at ../Unity?)");
         return;
     }
     let txt = fs.readFileSync(serverAsset, "utf8");
@@ -292,7 +292,7 @@ function patchServerAsset(ip) {
         return;
     }
     fs.writeFileSync(serverAsset, patched);
-    log(`Server.asset â†’ Quest standalone IP set to ${ip}`);
+    log(`Server.asset → Quest standalone IP set to ${ip}`);
 }
 
 const lanIp = getLanIp();
@@ -300,16 +300,16 @@ log(`LAN IP: ${lanIp}`);
 keepServerAssetLocal();
 patchServerAsset(lanIp);
 
-// â”€â”€ 2a. USB fallback: adb reverse â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── 2a. USB fallback: adb reverse ─────────────────────────────────────────────
 // Wi-Fi auto-discovery only works when the Quest and Mac share a subnet. In a lab
-// that is often false â€” the headset sits on the lab AP while the Mac is on the
+// that is often false — the headset sits on the lab AP while the Mac is on the
 // institutional network, so the UDP beacon never reaches it (broadcasts do not
 // route) and the app falls back to localhost, which on the headset is itself:
 // "connection lost".
 //
 // `adb reverse` maps the headset's OWN localhost:PORT back to this Mac over the
 // USB cable. Because the app already dials localhost, that fallback becomes the
-// working path â€” no rebuild, no IP config, and immune to subnet layout, client
+// working path — no rebuild, no IP config, and immune to subnet layout, client
 // isolation and the missing multicast permission. Wi-Fi still works when the two
 // do share a network; this simply means a session is never lost to the network.
 /**
@@ -372,7 +372,7 @@ function findAdb() {
 
 function setupUsbTunnel() {
     const adb = findAdb();
-    if (!adb) { log("adb not found â€” USB fallback unavailable (Wi-Fi only)."); return; }
+    if (!adb) { log("adb not found — USB fallback unavailable (Wi-Fi only)."); return; }
     let devices = "";
     try {
         devices = execSync(`"${adb}" devices`, { stdio: "pipe", shell: true }).toString();
@@ -383,7 +383,7 @@ function setupUsbTunnel() {
     // plugged in but not yet trusted fell into the same branch as no headset at
     // all and printed "No headset on USB". That is the least useful thing it
     // could say: the cable IS in, the researcher can see it is in, and the one
-    // action that would fix it â€” accepting a dialog inside the headset â€” is
+    // action that would fix it — accepting a dialog inside the headset — is
     // never mentioned. A new headset is exactly when this happens, because the
     // trust prompt is per-computer and appears once.
     const rows = devices.split("\n").slice(1)
@@ -396,22 +396,22 @@ function setupUsbTunnel() {
 
     if (untrusted.length) {
         log(`Headset ${untrusted[0].serial} is plugged in but NOT AUTHORISED.`);
-        log("  Put it on â€” there is an 'Allow USB debugging?' prompt waiting.");
+        log("  Put it on — there is an 'Allow USB debugging?' prompt waiting.");
         log("  Tick 'Always allow from this computer', then Allow, then rerun this.");
-        log("  (No prompt? Developer Mode is off for this headset â€” enable it in the Meta Quest phone app.)");
+        log("  (No prompt? Developer Mode is off for this headset — enable it in the Meta Quest phone app.)");
     }
     if (offline.length) {
-        log(`Headset ${offline[0].serial} is offline â€” unplug and replug the cable.`);
+        log(`Headset ${offline[0].serial} is offline — unplug and replug the cable.`);
     }
     if (!ready.length) {
         // Only say "nothing is plugged in" when nothing IS plugged in. Saying it
         // after having just reported an unauthorised headset reads as a
-        // contradiction, and the reader believes the second line â€” so the
+        // contradiction, and the reader believes the second line — so the
         // instructions above it get ignored and the cable gets blamed.
         if (!rows.length) {
-            log("No headset on USB â€” relying on Wi-Fi discovery.");
+            log("No headset on USB — relying on Wi-Fi discovery.");
         } else {
-            log("Headset is connected but not usable yet â€” see above. Wi-Fi discovery still active.");
+            log("Headset is connected but not usable yet — see above. Wi-Fi discovery still active.");
         }
         return;
     }
@@ -441,7 +441,7 @@ function setupUsbTunnel() {
                  { stdio: "pipe", shell: true });
         execSync(`"${adb}" push "${tmp}" "${dest}"`, { stdio: "pipe", shell: true });
         fs.unlinkSync(tmp);
-        log(`Headset told to use ${lanIp}:${UBIQ_PORT} â€” it can run unplugged on Wi-Fi.`);
+        log(`Headset told to use ${lanIp}:${UBIQ_PORT} — it can run unplugged on Wi-Fi.`);
     } catch (e) {
         log(`Could not write IP to headset (${e.message.split("\n")[0]}).`);
     }
@@ -453,18 +453,18 @@ function setupUsbTunnel() {
         for (const port of [UBIQ_PORT, 8010, 8181]) {
             execSync(`"${adb}" reverse tcp:${port} tcp:${port}`, { stdio: "pipe", shell: true });
         }
-        log(`USB tunnel active (ports ${UBIQ_PORT}/8010/8181) â€” backup if Wi-Fi is locked down.`);
+        log(`USB tunnel active (ports ${UBIQ_PORT}/8010/8181) — backup if Wi-Fi is locked down.`);
     } catch (e) {
-        log(`USB tunnel failed (${e.message.split("\n")[0]}) â€” relying on Wi-Fi discovery.`);
+        log(`USB tunnel failed (${e.message.split("\n")[0]}) — relying on Wi-Fi discovery.`);
     }
 }
 setupUsbTunnel();
 applyHeadsetMode(MODE);
 
-// â”€â”€ 2b. Discovery beacon â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── 2b. Discovery beacon ──────────────────────────────────────────────────────
 // The Quest headset listens on UDP BEACON_PORT and connects to whatever server
 // address it hears here. This means the headset finds the Mac automatically on
-// ANY Wi-Fi they share â€” no IP configuration and no rebuild when the network
+// ANY Wi-Fi they share — no IP configuration and no rebuild when the network
 // changes. Requires only that the Quest and Mac are on the same network.
 function computeBroadcastAddrs() {
     const addrs = new Set(["255.255.255.255"]);
@@ -503,7 +503,7 @@ function startBeacon() {
     sock.bind(BEACON_PORT, () => {
         sock.setBroadcast(true);
         const targets = computeBroadcastAddrs();
-        log(`Discovery beacon broadcasting "${lanIp}:${UBIQ_PORT}" on UDP ${BEACON_PORT} â†’ ${targets.join(", ")}`);
+        log(`Discovery beacon broadcasting "${lanIp}:${UBIQ_PORT}" on UDP ${BEACON_PORT} → ${targets.join(", ")}`);
         setInterval(() => {
             for (const t of targets) {
                 sock.send(message, 0, message.length, BEACON_PORT, t, () => {});
@@ -513,15 +513,15 @@ function startBeacon() {
 }
 startBeacon();
 
-// â”€â”€ 3. Dependencies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── 3. Dependencies ───────────────────────────────────────────────────────────
 if (!fs.existsSync(path.join(serverRoot, "node_modules", "ubiq"))) {
-    log("Installing dependencies (first run, this may take a minute)â€¦");
+    log("Installing dependencies (first run, this may take a minute)…");
     execSync("npm install", { cwd: serverRoot, stdio: "inherit" });
 } else {
     log("Dependencies present.");
 }
 
-// â”€â”€ 4. Certs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── 4. Certs ──────────────────────────────────────────────────────────────────
 for (const f of ["cert.pem", "key.pem"]) {
     const dst = path.join(wozDir, f);
     const src = path.join(certSrcDir, f);
@@ -531,7 +531,7 @@ for (const f of ["cert.pem", "key.pem"]) {
     }
 }
 
-// â”€â”€ 5. Speech-server reachability check (non-blocking) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── 5. Speech-server reachability check (non-blocking) ───────────────────────
 // Any HTTP response (even 404) counts as reachable; only a connect failure
 // means the transcription server can't be reached from this network.
 const sttUrl = process.env.STT_HTTP_URL || "http://130.136.2.161:50101/stt/transcribe";
@@ -540,7 +540,7 @@ const sttUrl = process.env.STT_HTTP_URL || "http://130.136.2.161:50101/stt/trans
     const u = new URL(sttUrl);
     const req = http.request(
         { host: u.hostname, port: u.port || 80, path: u.pathname, method: "GET", timeout: 4000 },
-        () => log(`\x1b[32mSpeech server reachable\x1b[0m (${u.hostname}) â€” live transcripts will work.`)
+        () => log(`\x1b[32mSpeech server reachable\x1b[0m (${u.hostname}) — live transcripts will work.`)
     );
     const warn = () => {
         req.destroy();
@@ -554,7 +554,7 @@ const sttUrl = process.env.STT_HTTP_URL || "http://130.136.2.161:50101/stt/trans
     req.end();
 })();
 
-// â”€â”€ 6. Open browser and start server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── 6. Open browser and start server ─────────────────────────────────────────
 function openBrowser(url) {
     const cmd = process.platform === "darwin" ? "open"
               : process.platform === "win32"  ? "start"
@@ -620,13 +620,13 @@ setTimeout(() => { log(`Opening control panel: ${controlUrl}`); openBrowser(cont
 // After the server's own ready banner, so this is what remains on screen.
 setTimeout(() => printNextSteps(MODE), 7000);
 
-log("Starting Wizard-of-Oz study serverâ€¦");
+log("Starting Wizard-of-Oz study server…");
 const child = spawn("node", [path.join(__dirname, "start-wizard-of-oz.js")], {
     cwd: serverRoot, stdio: "inherit"
 });
 child.on("exit", (code) => process.exit(code || 0));
 
-// â”€â”€ Shutdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Shutdown ──────────────────────────────────────────────────────────────────
 //
 // Demo mode tidies up after itself on Ctrl+C: clips come off the headset and
 // the filming settings are undone. Both used to be commands to remember, which
@@ -644,7 +644,7 @@ process.on("SIGINT", () => {
     console.log("");
 
     if (MODE === "demo") {
-        log("Finishing upâ€¦");
+        log("Finishing up…");
         try {
             execSync(`node "${path.join(__dirname, "demo.js")}" pull`,
                      { stdio: "inherit", shell: true });

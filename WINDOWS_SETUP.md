@@ -1,4 +1,4 @@
-﻿# Running the study on Windows
+# Running the study on Windows
 
 For a second researcher setting up their own machine.
 
@@ -25,13 +25,13 @@ background. After that, starting a session takes a minute.
 
 ---
 
-# Part 1 â€” One-time setup
+# Part 1 — One-time setup
 
-## Step 1 â€” Unity Hub and Unity 6000.3.19f1
+## Step 1 — Unity Hub and Unity 6000.3.19f1
 
 1. Get **Unity Hub** from <https://unity.com/download> and install it.
 2. Sign in (a free personal licence is fine) and activate it.
-3. Hub â†’ **Installs** â†’ **Install Editor** â†’ **Archive** tab â†’ the
+3. Hub → **Installs** → **Install Editor** → **Archive** tab → the
    *"download archive"* link.
 4. Find **Unity 6000.3.19f1** and click its **Unity Hub** button.
 
@@ -50,14 +50,44 @@ background. After that, starting a session takes a minute.
 
 6. Install. Several gigabytes, so give it time.
 
-## Step 2 â€” Node.js
+## Step 2 — Node.js
 
-<https://nodejs.org> â†’ the green **LTS** button â†’ Next through the installer.
+<https://nodejs.org> → the green **LTS** button → Next through the installer.
 Nothing needs changing.
 
-## Step 3 â€” Git
+## Step 3 — Git, and it must be on the PATH
 
-<https://git-scm.com/download/win> â†’ Next through it.
+<https://git-scm.com/download/win> → Next through it, but **do not change the
+PATH screen**. Leave it on the default, *"Git from the command line and also
+from 3rd-party software"*.
+
+That screen is the whole reason this step has a warning. Unity does not have Git
+built in: it shells out to the `git` on your PATH. Two of this project's
+packages are fetched from GitHub rather than from Unity's registry —
+
+```
+com.ucl.ubiq                 github.com/UCL-VR/ubiq.git
+com.unity.webrtc-ubiq-fork   github.com/UCL-VR/unity-webrtc-ubiq-fork.git
+```
+
+— so if Unity cannot run `git`, it cannot resolve them, and **the project will
+not open.** Depending on the version it either hangs on the loading bar, closes
+again immediately, or opens with the scene empty and errors in the console. None
+of those says "install Git properly", which is why this costs people an evening.
+
+It does not happen on macOS, because git is on the PATH there by default. It is a
+Windows-only failure and it looks like the project is broken.
+
+**Verify before going further.** Open a *new* Command Prompt — a window opened
+before the install still has the old PATH — and run:
+
+```
+git --version
+```
+
+A version number means Unity will find it. *"'git' is not recognized"* means it
+will not: re-run the Git installer and choose the default PATH option. If Unity
+was already open, quit and reopen it, because it reads the PATH at startup.
 
 Then one line in Command Prompt, before you clone anything:
 
@@ -74,7 +104,7 @@ git config --global core.longpaths true
 >
 > Windows will not create a path longer than 260, which leaves 134 characters
 > for the folder you clone into. `C:\Users\<you>\say-it-again` is around 27, so
-> the clone in Step 4 is safe â€” but clone somewhere deeper, or into a OneDrive
+> the clone in Step 4 is safe — but clone somewhere deeper, or into a OneDrive
 > folder carrying your university's full name, and git writes most of the
 > project and then stops with
 >
@@ -85,12 +115,12 @@ git config --global core.longpaths true
 >
 > The trap is that it half-succeeds. You are left with a folder that looks like
 > the project, quietly missing a dozen `.cs` and `.cs.meta` files. A Unity
-> project missing `.meta` files does not report an error â€” it regenerates them
+> project missing `.meta` files does not report an error — it regenerates them
 > with brand new GUIDs, and every reference that pointed at the old ones breaks
 > instead. `core.longpaths` removes the limit, and the setting is global, so
 > this is the only time you will need it.
 
-## Step 4 â€” Get the project
+## Step 4 — Get the project
 
 Open **Command Prompt** and run this one line:
 
@@ -101,7 +131,7 @@ git clone --depth 1 https://github.com/abyyworld/say-it-again.git %USERPROFILE%\
 That puts everything in `C:\Users\<you>\say-it-again`, which every path below
 assumes.
 
-> **Do not drop the `--depth 1`.** The full history is about **1.3 GB** â€” old
+> **Do not drop the `--depth 1`.** The full history is about **1.3 GB** — old
 > Unity scenes, compiler DLLs and a 31 MB test recording, all still present in
 > past commits. The files you need are 108 MB. A plain clone downloads the lot
 > and, on anything less than a solid connection, dies partway with
@@ -120,8 +150,8 @@ assumes.
 > Mac Terminal. A separate `cd` would need `cd /d` in one and `cd` in another,
 > and joining the two with `&&` fails outright in PowerShell.
 
-> **Not the Desktop, on purpose.** If OneDrive is backing up your PC â€” the
-> default on a new Windows 11 machine â€” your Desktop is really
+> **Not the Desktop, on purpose.** If OneDrive is backing up your PC — the
+> default on a new Windows 11 machine — your Desktop is really
 > `%USERPROFILE%\OneDrive\Desktop`, and `%USERPROFILE%\Desktop` is a path that
 > does not exist. Every `cd` to it answers *"The system cannot find the path
 > specified"*, and the folder you are looking at on screen is not the folder
@@ -131,35 +161,35 @@ assumes.
 
 > If that URL asks for credentials you do not have, ask for access, or for the
 > supervisor's copy of the repository instead. Do not download a ZIP of the
-> default branch â€” the study lives on the branch named above, and a ZIP has no
+> default branch — the study lives on the branch named above, and a ZIP has no
 > `.git` folder, so none of the branch commands here will work on it.
 
-## Step 5 â€” Headset developer mode
+## Step 5 — Headset developer mode
 
 1. Pair the headset in the **Meta Horizon** phone app.
-2. Headset â†’ **Settings â†’ System â†’ Developer** â†’ turn developer mode and
+2. Headset → **Settings → System → Developer** → turn developer mode and
    **USB Connection Dialog** on.
 3. Plug the headset into the laptop.
 4. **Put the headset on.** There is an *"Allow USB debugging?"* prompt waiting
-   inside it â€” tick **Always allow**, tap **Allow**.
+   inside it — tick **Always allow**, tap **Allow**.
 
    You cannot see or accept that prompt from the laptop. This is the single
    most common reason the headset appears to be invisible.
 
 ---
 
-# Part 2 â€” Building onto the headset
+# Part 2 — Building onto the headset
 
-## Step 6 â€” Open the project
+## Step 6 — Open the project
 
-Unity Hub â†’ **Open** â†’ select `C:\Users\<you>\say-it-again`.
+Unity Hub → **Open** → select `C:\Users\<you>\say-it-again`.
 
 Select the **`Unity` folder inside**, not the outer `say-it-again` folder.
 
-The first open takes **15â€“40 minutes** while it compiles the project. It will
+The first open takes **15–40 minutes** while it compiles the project. It will
 look frozen. It is not. Let it finish.
 
-## Step 7 â€” Switch the platform to Android
+## Step 7 — Switch the platform to Android
 
 **This is the step that catches everyone.**
 
@@ -173,23 +203,23 @@ worked.
 
 So, before building:
 
-1. **File â†’ Build Profiles**
+1. **File → Build Profiles**
 2. Select **Android**
 3. Click **Switch Platform**
 
-10â€“30 minutes the first time, because it re-compresses every texture for
+10–30 minutes the first time, because it re-compresses every texture for
 Android. Once only.
 
 You will know it worked because **Android** now has the Unity logo beside it in
 that window.
 
-## Step 8 â€” Build And Run
+## Step 8 — Build And Run
 
 Headset plugged in and awake:
 
-**File â†’ Build Profiles â†’ Build And Run**
+**File → Build Profiles → Build And Run**
 
-- The **first** build takes **30â€“40 minutes**. That is normal â€” it compiles the
+- The **first** build takes **30–40 minutes**. That is normal — it compiles the
   engine to native code. Later builds are a few minutes.
 - **Do not unplug the headset.** If it sleeps and drops off USB near the end,
   the build itself is fine but installing fails. Plug it back in and press
@@ -197,17 +227,17 @@ Headset plugged in and awake:
 
 When it finishes, the app launches in the headset by itself.
 
-Afterwards you find it under **Apps â†’ Unknown Sources â†’ DreamCodeVR**. It does
-not appear in the normal app list â€” that is where sideloaded apps live, and is
+Afterwards you find it under **Apps → Unknown Sources → DreamCodeVR**. It does
+not appear in the normal app list — that is where sideloaded apps live, and is
 expected.
 
 ---
 
-# Part 3 â€” Running a session
+# Part 3 — Running a session
 
 The whole routine, every time.
 
-## Step 9 â€” Start the study server
+## Step 9 — Start the study server
 
 Open **Command Prompt** and paste:
 
@@ -231,13 +261,13 @@ It asks which mode you want, then starts everything.
 >
 > Three differences, and only three: `/d` after `cd` so it can cross drives,
 > the whole path in **one** pair of quotes because it has a space in it, and
-> `study` rather than `./study` â€” Command Prompt has no `./`, and finds
+> `study` rather than `./study` — Command Prompt has no `./`, and finds
 > `study.cmd` in the folder you are standing in by itself.
 
 > **The first time**, it spends a minute or two installing what the server
 > needs. Once only.
 
-> **Windows will ask for firewall permission** â€” *"Allow Node.js to communicate
+> **Windows will ask for firewall permission** — *"Allow Node.js to communicate
 > on these networks"*. Tick **Private networks** and **Allow access**. If you
 > click Cancel the headset cannot reach the laptop; close the window, run the
 > command again, and allow it that time.
@@ -245,7 +275,7 @@ It asks which mode you want, then starts everything.
 **Leave that window open for the whole session.** Closing it stops everything.
 Minimising is fine.
 
-## Step 10 â€” Open the panel
+## Step 10 — Open the panel
 
 The window prints an address like:
 
@@ -255,9 +285,9 @@ Panel: http://192.168.1.42:8181
 
 Open it in your browser. That is where you run the session from.
 
-## Step 11 â€” Put the headset on
+## Step 11 — Put the headset on
 
-Open **DreamCodeVR** (Apps â†’ Unknown Sources). It finds the laptop by itself.
+Open **DreamCodeVR** (Apps → Unknown Sources). It finds the laptop by itself.
 There is no address to type anywhere, and it works on whatever Wi-Fi you are
 both on that day.
 
@@ -267,7 +297,7 @@ both on that day.
 
 Do not let the first time you run this be with someone sitting in the room.
 
-With the **USB cable plugged in**, go through steps 9â€“11 and check that:
+With the **USB cable plugged in**, go through steps 9–11 and check that:
 
 - The panel opens in the browser.
 - The headset app connects, rather than sitting on "Looking for server".
@@ -285,7 +315,7 @@ software working* from *is the network cooperating*.
 C:\Users\<you>\say-it-again\Logs\
 ```
 
-One CSV per participant â€” `P01.csv`, `P02.csv` â€” holding everything that person
+One CSV per participant — `P01.csv`, `P02.csv` — holding everything that person
 did. Alongside it, `Logs\audio\P01\` holds one short sound file per time they
 held the trigger and spoke.
 
@@ -306,123 +336,43 @@ even for the other.
 
 ## Troubleshooting
 
-**`fatal: fetch-pack: invalid index-pack output`** while cloning
-**`fetch-pack: unexpected disconnect while reading sideband packet`**
+**The project will not open. Pressing Open in Unity Hub does nothing, hangs on
+the loading bar, or closes straight back to the Hub**
 
-The download dropped partway. Nothing is wrong with the repository â€” its full
-history is about 1.3 GB, and git has to receive all of it in one piece before it
-can write anything to disk, so a momentary interruption loses the whole transfer.
-
-Delete the half-finished folder, then clone with `--depth 1`:
+Almost always **Git is not on the PATH**, so Unity cannot fetch the two packages
+it pulls from GitHub. See Step 3. Check it in a *new* Command Prompt:
 
 ```
-rmdir /s /q "%USERPROFILE%\say-it-again"
-git clone --depth 1 https://github.com/abyyworld/say-it-again.git %USERPROFILE%\say-it-again
+git --version
 ```
 
-That skips the history and pulls about 76 MB instead of 1.3 GB. It contains
-every file the study needs; only `git log` and `git blame` for old commits are
-missing, which nothing here uses.
+No version number means that is the cause. Re-run the Git installer, keep the
+default PATH option, then quit Unity Hub completely and reopen it.
 
-**Unity Hub's "Connect to source control" only offers to create a new repository**
-
-Close it. That dialog does one thing â€” publish the folder as a **brand new**
-GitHub repository â€” and there is no option in it to attach an existing one.
-Left to finish, it would create a second repository called `unity` under your
-account holding only the `Unity` folder, with no `Server`, no `study.cmd`, and
-no connection to the project everyone else is working in.
-
-It cannot see the repository you already have because the two roots differ. Git
-lives at `say-it-again\.git`; the Unity project is the `Unity` folder one level
-inside it. Unity Hub looks for `.git` beside the project it opened, does not
-find one, and concludes there is nothing to connect to.
-
-Nothing is wrong, and nothing needs connecting. The clone is already linked to
-GitHub â€” run `git` commands from the outer `say-it-again` folder, or point
-GitHub Desktop at that same outer folder if you would rather have buttons.
-
-**`The system cannot find the path specified`**, and you cannot find the clone
-
-Almost always OneDrive. With PC backup on â€” the default on a new Windows 11
-machine â€” your Desktop is `%USERPROFILE%\OneDrive\Desktop`, and plain
-`%USERPROFILE%\Desktop` does not exist at all, so anything under it fails no
-matter what you put there. The folder is on the screen in front of you and the
-path to it is still wrong.
-
-Rather than guess, ask Windows where the project actually is:
+To confirm it rather than guess, open the Package Manager log — it names the
+failure outright, usually `Cannot perform upm operation` or a git error against
+`github.com/UCL-VR/...`:
 
 ```
-where /r %USERPROFILE% StoryTellerManager.cs
+%LOCALAPPDATA%\Unity\Editor\upm.log
 ```
 
-It prints a full path ending `...\Unity\Assets\StoryTellerManager.cs`. Chop off
-the last two folders â€” `\Unity\Assets\...` â€” and what is left is the folder to
-`cd` into. So a result of
+Two other causes worth ruling out, in order:
 
-```
-C:\Users\you\OneDrive\Desktop\say-it-again\Assets\StoryTellerManager.cs
-```
-
-means the command you want is
-
-```
-cd /d "C:\Users\you\OneDrive\Desktop\say-it-again"
-```
-
-If it prints nothing at all, the project is not under your user folder â€” it may
-never have been cloned on this machine, or it is on another drive. Go back to
-**Step 4** and clone it fresh; nothing is lost by having a second copy, as long
-as you do not delete a `Logs\` folder from the first one.
-
-**`fatal: not a git repository`** in a folder that clearly holds the project
-
-It came from a downloaded ZIP rather than `git clone`. A ZIP contains the files
-but not the `.git` folder, so it has no branches and no way to switch to one.
-Clone it properly with **Step 4** and use the new folder.
-
-**`The type or namespace name 'Newtonsoft' could not be found`**
-**`Error building Player because scripts have compile errors in the editor`**
-
-You are on the wrong branch. This is not a Windows problem and there is nothing
-to fix in the code â€” the clone is simply of `main`, which is an older state of
-the project that predates the study: Unity 2021.3.16f1, the old Ubiq, and no
-JSON library, which is the missing `Newtonsoft` the compiler is complaining
-about. The study lives on `Visualisation-DreamCodeVR-feedback-loop`, and `main`
-has never been brought up to match it.
-
-Two symptoms travel together, and either one on its own is enough to tell:
-
-- Unity reports the error on **lines 17 and 18** of `StoryTellerManager.cs`.
-  On the study branch those imports sit on lines 16 and 17.
-- There is no `study.cmd` and no `WINDOWS_SETUP.md` in the folder â€” this file
-  does not exist on `main`, so if you are reading it on screen rather than on
-  GitHub, you are already on the right branch and the cause is something else.
-
-Close Unity first, then, in Command Prompt:
-
-```
-cd /d "%USERPROFILE%\say-it-again"
-git checkout Visualisation-DreamCodeVR-feedback-loop
-git pull
-```
-
-Reopen `say-it-again` in Unity Hub. It re-imports, which takes a
-while, and it will want **Unity 6000.3.19f1** rather than the 2021 version
-`main` asked for â€” install that from Step 1 if Hub says it is missing. Then
-carry on from **Step 7**, because switching branch does not switch the build
-platform back to Android.
-
-> **Do not fix `main` instead.** Adding the JSON package to it would make it
-> compile and would still be the wrong thing to build: it is a different app
-> from the one running on the Mac, without the study logging, the agent, or
-> the panel. Two researchers running two builds is not a study.
+- **You selected the wrong folder.** It must be `say-it-again\Unity`, not the
+  outer `say-it-again`. The outer folder is not a Unity project and the Hub will
+  not tell you so clearly.
+- **It is working and looks frozen.** The first open takes 15–40 minutes with no
+  progress for long stretches. Before deciding it has failed, leave it a full
+  hour and check whether `Unity\Library` is growing on disk. If it is, it is
+  importing, not stuck.
 
 **Build And Run finished in 20 seconds and nothing is on the headset**
 You are still on the Windows platform. Go back to Step 7.
 
 **The headset sits on "Looking for server"**
 Usually the Wi-Fi blocking devices from seeing each other, which is normal on
-university networks. Plug the USB cable in and run the `study` command again â€”
+university networks. Plug the USB cable in and run the `study` command again —
 it tunnels the connection down the cable and the Wi-Fi stops mattering.
 
 Otherwise check both are on the same network, not one on eduroam and one on a
@@ -444,12 +394,12 @@ Charge-only cable, or the *"Allow USB debugging?"* prompt was never accepted.
 Put the headset on and look for it.
 
 **The app is not hearing the participant**
-Check the headset's microphone is not muted â€” Quick Settings inside the headset.
+Check the headset's microphone is not muted — Quick Settings inside the headset.
 This is a headset setting, nothing to do with the study software, and easy to
 knock on by accident.
 
 **`'study' is not recognized as an internal or external command`**
-The path is wrong. Check the folder is where you think it is â€” see the first
+The path is wrong. Check the folder is where you think it is — see the first
 entry in this list.
 
 **`The token '&&' is not a valid statement separator in this version`**
@@ -458,7 +408,7 @@ entry in this list.
 
 You are in **PowerShell**, and every command in this guide is written for
 **Command Prompt**. Windows 11 opens PowerShell by default, and its prompt
-starts `PS C:\Users\you>` â€” that `PS` is the tell.
+starts `PS C:\Users\you>` — that `PS` is the tell.
 
 The two shells are not compatible, and the errors say so in a way that sounds
 like your command is malformed rather than pasted into the wrong program.
@@ -482,7 +432,7 @@ If you would rather stay in PowerShell, the same three commands are:
 | `cd /d "C:\some\folder"` | `cd "C:\some\folder"` |
 | `where /r %USERPROFILE% StoryTellerManager.cs` | `Get-ChildItem $HOME -Filter StoryTellerManager.cs -Recurse -ErrorAction SilentlyContinue \| % FullName` |
 
-PowerShell does not expand `%USERPROFILE%` â€” use `$HOME` â€” and it will not run
+PowerShell does not expand `%USERPROFILE%` — use `$HOME` — and it will not run
 a path as a program without `&` in front of it.
 
 ---
