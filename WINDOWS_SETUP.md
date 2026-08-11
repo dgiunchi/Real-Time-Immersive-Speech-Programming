@@ -371,6 +371,41 @@ Two other causes worth ruling out, in order:
   hour and check whether `Unity\Library` is growing on disk. If it is, it is
   importing, not stuck.
 
+**The build sits on "Compiling libil2cpp" / "il2cpp arm64" for ages**
+
+Usually it is working. IL2CPP translates the whole game and engine to C++ and
+then compiles that for the headset's processor. On this project that is **780
+generated .cpp files and about 2.8 GB of output**, so the first build on a
+machine takes **30–45 minutes**, most of it on this one step with no progress
+bar moving. Later builds are a few minutes because the work is cached.
+
+**Tell working from stuck** rather than guessing. In Explorer, watch:
+
+```
+say-it-again\Unity\Library\Bee\artifacts\Android
+```
+
+If its size is climbing, it is compiling. Task Manager showing a busy CPU across
+several cores says the same thing. Neither moving for ten minutes means stuck.
+
+**If it is genuinely slow, it is almost always the antivirus.** Windows Defender
+scans every one of those thousands of generated files as it is written, and that
+can double or triple the build. Add an exclusion for the project folder:
+
+*Windows Security → Virus & threat protection → Manage settings →
+Exclusions → Add an exclusion → Folder →* `C:\Users\<you>\say-it-again`
+
+This is safe — it is your own source tree, not downloaded binaries — and it is
+the single biggest build-time win on Windows.
+
+Two other things that stall this step:
+
+- **Disk space.** The Bee cache alone reaches about 13 GB, and IL2CPP needs
+  room for the C++ on top. Under ~20 GB free, the build can stop without a
+  clear error.
+- **Sleep.** If the laptop sleeps mid-build the toolchain does not always
+  recover. Set it not to sleep on mains power before starting the first one.
+
 **Build And Run finished in 20 seconds and nothing is on the headset**
 You are still on the Windows platform. Go back to Step 7.
 
