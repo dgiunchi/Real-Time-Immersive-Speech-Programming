@@ -7,7 +7,7 @@
  *
  * Automatically on every run:
  *   1. Kills any stale processes on ports 8005 / 8010 / 8181.
- *   2. Detects the Mac's current LAN IP and patches Unity/Assets/Demos/Server.asset
+ *   2. Detects the Mac's current LAN IP and patches Assets/Demos/Server.asset
  *      so the Quest headset always finds the right server on any network.
  *   3. Installs node dependencies if missing.
  *   4. Copies TLS certs into the wizard_of_oz app if missing.
@@ -29,7 +29,7 @@ const serverRoot  = path.resolve(__dirname, "..");
 const repoRoot    = path.resolve(serverRoot, "..");
 const wozDir      = path.join(serverRoot, "samples", "apps", "wizard_of_oz");
 const certSrcDir  = path.join(serverRoot, "samples", "apps", "code_runtime_generator");
-const serverAsset = path.resolve(serverRoot, "..", "Unity", "Assets", "Demos", "Server.asset");
+const serverAsset = path.resolve(repoRoot, "Assets", "Demos", "Server.asset");
 const controlUrl  = "http://localhost:8181";
 const STUDY_PORTS = [8005, 8010, 8181, 8007];
 const UBIQ_PORT   = 8005;   // Ubiq RoomServer TCP port (matches config.json)
@@ -262,7 +262,7 @@ function getLanIp() {
 // a session.
 //
 // To deliberately commit a change to this file:
-//     git update-index --no-skip-worktree Unity/Assets/Demos/Server.asset
+//     git update-index --no-skip-worktree Assets/Demos/Server.asset
 function keepServerAssetLocal() {
     const tracked = path.relative(repoRoot, serverAsset).split(path.sep).join("/");
     try {

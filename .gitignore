@@ -92,7 +92,7 @@ crashlytics-build.properties
 **/Assets/AddressableAssetsData/*/*.bin*
 
 # Keep Unity asset metadata for tracked assets
-!Unity/Assets/**/*.meta
+!Assets/**/*.meta
 
 # Project runtime/generated data
 Server/samples/*.wav
@@ -101,7 +101,7 @@ Server/samples/*.jpg
 Server/samples/*.png
 Server/samples/apps/code_runtime_generator/data/input.txt
 Server/samples/apps/code_runtime_generator/data/response.txt
-Unity/Recordings/
+Recordings/
 
 # Study results (participant data - never commit)
 #
@@ -139,7 +139,7 @@ study-site/poster-built.html
 # Same three artefacts for the other two studies, whose sources live in
 # study-site/omni-connect/ and study-site/indoor-room/. Covered already by the
 # study-site/ rule below, listed here so the pattern is not a surprise.
-Unity/OldAgentVoice_unused/
+OldAgentVoice_unused/
 
 # Participant landing page — separate repo, pushed to abyyworld/vr-voice-study
 study-site/
