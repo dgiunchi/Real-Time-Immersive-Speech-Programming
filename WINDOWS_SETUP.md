@@ -65,11 +65,11 @@ Open **Command Prompt** and run these two lines:
 
 ```
 cd %USERPROFILE%\Desktop
-git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/Real-Time-Immersive-Speech-Programming.git dreamcodevr
+git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/say-it-again.git say-it-again
 ```
 
 That last word matters: it puts everything in a short folder,
-`Desktop\dreamcodevr`, which every path below assumes.
+`Desktop\say-it-again`, which every path below assumes.
 
 > If that URL asks for credentials you do not have, ask for access, or for the
 > supervisor's copy of the repository instead. Do not download a ZIP of the
@@ -93,9 +93,9 @@ That last word matters: it puts everything in a short folder,
 
 ## Step 6 — Open the project
 
-Unity Hub → **Open** → select `Desktop\dreamcodevr\Unity`.
+Unity Hub → **Open** → select `Desktop\say-it-again\Unity`.
 
-Select the **`Unity` folder inside**, not the outer `dreamcodevr` folder.
+Select the **`Unity` folder inside**, not the outer `say-it-again` folder.
 
 The first open takes **15–40 minutes** while it compiles the project. It will
 look frozen. It is not. Let it finish.
@@ -153,7 +153,7 @@ The whole routine, every time.
 Open **Command Prompt** and paste:
 
 ```
-%USERPROFILE%\Desktop\dreamcodevr\study
+%USERPROFILE%\Desktop\say-it-again\study
 ```
 
 This is the same command the other researcher runs, pointed at your Desktop.
@@ -210,7 +210,7 @@ software working* from *is the network cooperating*.
 ## Where the data goes
 
 ```
-Desktop\dreamcodevr\Logs\
+Desktop\say-it-again\Logs\
 ```
 
 One CSV per participant — `P01.csv`, `P02.csv` — holding everything that person
@@ -251,7 +251,7 @@ Find the real one with `ipconfig` (it starts `192.168.` or `10.`), then:
 
 ```
 set STUDY_LAN_IP=192.168.1.42
-%USERPROFILE%\Desktop\dreamcodevr\study
+%USERPROFILE%\Desktop\say-it-again\study
 ```
 
 using your actual address.
@@ -267,7 +267,7 @@ knock on by accident.
 
 **`'study' is not recognized as an internal or external command`**
 Either the path is wrong, or you are in PowerShell rather than Command Prompt.
-PowerShell needs `& "%USERPROFILE%\Desktop\dreamcodevr\study"` with the
+PowerShell needs `& "%USERPROFILE%\Desktop\say-it-again\study"` with the
 ampersand and quotes. Command Prompt is simpler.
 
 ---
