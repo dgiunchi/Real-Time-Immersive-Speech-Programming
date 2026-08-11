@@ -13,6 +13,38 @@
 set -e
 cd "$(dirname "${BASH_SOURCE[0]}")/Server"
 
+# The two checks below already existed in study.cmd and did not exist here, so
+# a fresh clone failed differently depending on which machine you were sitting
+# at. On Windows you got a sentence telling you what to install; on macOS you
+# got `env: node: No such file or directory`, which names neither the problem
+# nor the fix. Same repository, same command, two different experiences — so
+# they are mirrored here line for line.
+if ! command -v node >/dev/null 2>&1; then
+    echo
+    echo "  Node.js is not installed, or not on PATH."
+    echo "  Install the LTS build from https://nodejs.org, then open a NEW"
+    echo "  terminal window - this one will not see it."
+    echo
+    exit 1
+fi
+
+# study.js does install its own dependencies, but only after printing a banner
+# and asking which mode to run. Doing it here means the minutes-long install
+# happens before the question rather than after the answer, which matters when
+# a participant is already sitting in the chair.
+if [ ! -d node_modules ]; then
+    echo
+    echo "  First run - installing what the server needs. Once only, a minute or two."
+    echo
+    if ! npm install; then
+        echo
+        echo "  npm install failed. Check the internet connection and try again."
+        echo
+        exit 1
+    fi
+    echo
+fi
+
 # node directly rather than through npm: npm prints two lines of its own before
 # anything happens, and the first thing on screen should be the mode question.
 case "${1:-}" in

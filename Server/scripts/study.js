@@ -26,6 +26,7 @@ const path  = require("path");
 const IS_WINDOWS = process.platform === "win32";
 
 const serverRoot  = path.resolve(__dirname, "..");
+const repoRoot    = path.resolve(serverRoot, "..");
 const wozDir      = path.join(serverRoot, "samples", "apps", "wizard_of_oz");
 const certSrcDir  = path.join(serverRoot, "samples", "apps", "code_runtime_generator");
 const serverAsset = path.resolve(serverRoot, "..", "Unity", "Assets", "Demos", "Server.asset");
@@ -247,6 +248,33 @@ function getLanIp() {
     return process.env.STUDY_LAN_IP || best.ip;
 }
 
+// Server.asset is tracked, and the line patched just below holds whichever LAN
+// address this machine happens to have right now. So every single launch leaves
+// the repository dirty, and two researchers on two networks conflict on that
+// one line forever — a conflict neither of them has any reason to resolve,
+// because the next launch on either machine overwrites the result anyway.
+//
+// `--skip-worktree` tells this clone to stop reporting the file. It is the flag
+// that survives the file being rewritten in place, which `assume-unchanged` is
+// not documented to do. Set on every run rather than written down as a setup
+// step: a setup step that has to happen before the first launch is a setup step
+// somebody will miss, and the symptom of missing it is a merge conflict during
+// a session.
+//
+// To deliberately commit a change to this file:
+//     git update-index --no-skip-worktree Unity/Assets/Demos/Server.asset
+function keepServerAssetLocal() {
+    const tracked = path.relative(repoRoot, serverAsset).split(path.sep).join("/");
+    try {
+        execSync(`git update-index --skip-worktree "${tracked}"`,
+                 { cwd: repoRoot, stdio: "pipe" });
+    } catch (_) {
+        // Not a git clone (someone downloaded the ZIP), git not on PATH, or the
+        // file is not tracked in this checkout. All three are fine — the flag is
+        // a courtesy to whoever runs `git status`, not something the study needs.
+    }
+}
+
 function patchServerAsset(ip) {
     if (!fs.existsSync(serverAsset)) {
         log("Server.asset not found — skipping IP patch (is Unity folder at ../Unity?)");
@@ -269,6 +297,7 @@ function patchServerAsset(ip) {
 
 const lanIp = getLanIp();
 log(`LAN IP: ${lanIp}`);
+keepServerAssetLocal();
 patchServerAsset(lanIp);
 
 // ── 2a. USB fallback: adb reverse ─────────────────────────────────────────────

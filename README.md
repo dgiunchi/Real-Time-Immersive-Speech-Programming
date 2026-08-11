@@ -194,6 +194,30 @@ In VR, hold the left controller trigger to record speech. Release it to send the
 
 Generated folders such as `Server/samples/venv`, `node_modules`, Unity `Library`, `Temp`, `obj`, runtime logs, and sample input/output files are ignored. If any of those are already tracked, remove them from Git with `git rm --cached` so they stay on disk but stop being pushed.
 
+**`Unity/Assets/Demos/Server.asset` is tracked but deliberately not synced.** The
+launcher rewrites one line of it — `sendToIp` — with whatever LAN address this
+machine has right now, so left alone it would report itself as modified after
+every single run, and two researchers on two networks would conflict on that
+line forever. Neither would ever want to resolve it: the next launch on either
+machine overwrites the result regardless. So the launcher marks the file
+`--skip-worktree` on startup, which stops this clone reporting it. That happens
+automatically on first run; there is nothing to set up. If you ever genuinely
+need to commit a change to that file:
+
+```bash
+git update-index --no-skip-worktree Unity/Assets/Demos/Server.asset
+```
+
+**Line endings are pinned in `.gitattributes`.** Only the files an interpreter
+has to parse are pinned — `study`, `*.sh`, `*.py` to LF, `*.cmd` to CRLF — plus
+`binary` markers on the assets. Everything else is left exactly as committed on
+purpose: a blanket `* text=auto` would rewrite all 988 tracked text files in one
+unreviewable commit, and CRLF is harmless to Node, to Unity, and to Markdown.
+The pins matter because Git for Windows sets `core.autocrlf=true` in its system
+config, and without them a Windows contributor could commit `study` with CRLF
+endings. macOS would then fail it with `bad interpreter: /bin/bash^M` — an error
+that names the wrong file and never mentions line endings.
+
 ## Features
 
 Ubiq's goal is to enable your networked project. It includes message passing, room management, rendezvous and matchmaking, object spawning, shared binary blobs, multiple synchronisation models, lighweight XR interaction examples, customisable avatars and voice chat across Windows, Linux, Android, MacOS, and Javascript running in the browser.

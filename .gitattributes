@@ -1,0 +1,60 @@
+# Line endings.
+#
+# Deliberately NOT `* text=auto`. Every one of this repository's 988 tracked
+# text files is stored with CRLF, so a blanket normalisation would rewrite all
+# of them — 966 Unity assets included — in a single commit. That diff is
+# unreviewable, and it would land on a working macOS checkout for no functional
+# gain: CRLF is harmless to Node, to Unity, and to every .md and .json here.
+#
+# It is not harmless to a POSIX shell. A `#!/bin/bash` line ending in CR makes
+# the kernel search for an interpreter named, literally, `/bin/bash<CR>`, and
+# all the user is told is
+#
+#     bash: ./study: /bin/bash^M: bad interpreter: No such file or directory
+#
+# which names the wrong file and does not mention line endings at all. So the
+# rule below is scoped to exactly the files an interpreter has to parse, and
+# nothing else is touched.
+
+study                        text eol=lf
+*.sh                         text eol=lf
+*.py                         text eol=lf
+Server/scripts/demo.js       text eol=lf
+Server/scripts/mic-check.js  text eol=lf
+
+# cmd.exe is the mirror case. A batch file with LF-only endings breaks
+# multi-line `if (...)` blocks — and breaks them quietly, which is worse than
+# the bash failure above. study.cmd is full of them.
+*.cmd                        text eol=crlf
+*.bat                        text eol=crlf
+
+# Binary, marked explicitly. A contributor whose git has core.autocrlf=true —
+# the default on Windows, and the setting that produced the mess above — must
+# never be able to insert CR bytes into a PNG, a WAV, or a managed DLL.
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.tga     binary
+*.psd     binary
+*.exr     binary
+*.pdf     binary
+*.pptx    binary
+*.docx    binary
+*.xlsx    binary
+*.wav     binary
+*.mp3     binary
+*.mp4     binary
+*.ttf     binary
+*.otf     binary
+*.fbx     binary
+*.dll     binary
+*.so      binary
+*.dylib   binary
+*.jar     binary
+*.aar     binary
+*.apk     binary
+*.aab     binary
+*.zip     binary
+*.unitypackage binary
