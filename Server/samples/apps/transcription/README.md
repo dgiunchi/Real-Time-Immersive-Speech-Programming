@@ -1,4 +1,4 @@
-# Transcription Sample
+﻿# Transcription Sample
 
 This guide provides instructions on how to use the Ubiq-Genie framework to transcribe audio streams in a room using the transcription sample. The transcriptions are stored in a file named `transcription.txt` located in the `Server/samples/apps/transcription` directory.
 
@@ -20,7 +20,7 @@ Follow these steps to run the sample:
     node app.js
     ```
 
-4. Launch Unity and navigate to the `Unity/Assets/Samples/Ubiq-Genie/Transcription` directory. Open the `Transcription.unity` scene. Confirm that the `Room Client` under the `Network Scene` object has the correct IP address and port for the server. If the server is running on the same machine as the Unity Editor, the IP address should be set to `localhost`.
+4. Launch Unity and navigate to the `Assets/Samples/Ubiq-Genie/Transcription` directory. Open the `Transcription.unity` scene. Confirm that the `Room Client` under the `Network Scene` object has the correct IP address and port for the server. If the server is running on the same machine as the Unity Editor, the IP address should be set to `localhost`.
 5. In the Unity Editor, press the `Play` button to launch the application.
 6. Speak into the microphone. The transcriptions will appear in the `transcription.txt` file (prefixed with the UUID of the user who spoke) and will also be displayed in the Unity Editor debug console.
 

@@ -1,26 +1,26 @@
-# DreamCodeVR — Error-Feedback Study Guide
+﻿# DreamCodeVR â€” Error-Feedback Study Guide
 
 Everything you need to run the Wizard-of-Oz study comparing three feedback
 conditions for AI/speech-pipeline errors in VR authoring.
 
-- **Condition A** — No feedback (participant sees only the scene result)
-- **Condition B** — Text panel **only** (no agent)
-- **Condition C** — Embodied agent **only** (agent speaks it; no text panel)
+- **Condition A** â€” No feedback (participant sees only the scene result)
+- **Condition B** â€” Text panel **only** (no agent)
+- **Condition C** â€” Embodied agent **only** (agent speaks it; no text panel)
 
 B and C are deliberately exclusive: each carries the explanation exactly once, so
 the comparison isolates *modality* rather than *amount* of information. The
-transcript strip ("what the system heard") stays visible in both — it is not an
+transcript strip ("what the system heard") stays visible in both â€” it is not an
 explanation, and holding it constant keeps B and C differing in one thing only.
 
 A hidden researcher triggers pre-scripted *success* or *error* outcomes, so
-every participant gets the identical experience — no live LLM.
+every participant gets the identical experience â€” no live LLM.
 
 Setting up a second researcher's Windows machine, from a blank laptop to a
 running session: [WINDOWS_SETUP.md](WINDOWS_SETUP.md)
 (printable: [docs/WINDOWS_SETUP.pdf](docs/WINDOWS_SETUP.pdf)).
 
 Design summary for supervisors: [STUDY_DESIGN.md](STUDY_DESIGN.md).
-For the demo films — shot list, scripted lines, capture setup — see
+For the demo films â€” shot list, scripted lines, capture setup â€” see
 [DEMO_FILMING.md](DEMO_FILMING.md). Film with a stand-in before data collection
 begins, never with a real participant.
 
@@ -99,7 +99,7 @@ explained, so the feedback channel never doubles as a success signal.
 Fix this before collecting data. Deciding what counts as a result after seeing
 the numbers is the single easiest way to lose a paper.
 
-**Primary — attribution accuracy.** Per trial, did the participant's stated
+**Primary â€” attribution accuracy.** Per trial, did the participant's stated
 cause match the ground truth (`attributionCorrect`)? Analysed as a mixed-effects
 logistic regression: `correct ~ condition * scenarioType + (1|participant)`.
 
@@ -133,7 +133,7 @@ where that cut sits stays an analysis decision.
 check is a yes/no, and someone who answers "yes I saw it" after twenty seconds
 of silence did not notice it the way someone who reacted in two did.
 
-**Co-primary — what the misattribution costs** (`firstRepairStrategy`,
+**Co-primary â€” what the misattribution costs** (`firstRepairStrategy`,
 `repairSequence`, `wastedRepairs`). Attribution on its own is a stated belief,
 and a reviewer can fairly ask who cares. The repair move is the belief with a
 price on it, and it is the only part of this a shipping product could act on.
@@ -143,7 +143,7 @@ Coded live, once per attempt: `detail` (added the missing information),
 `question` (asked the system what went wrong), `gaveup`.
 
 `verbatim` is the measure that carries the practical claim. It cannot fix
-anything — not a user fault, because the missing information is still missing,
+anything â€” not a user fault, because the missing information is still missing,
 and not a system limit, because the limit does not care how clearly you speak.
 It is what misattribution looks like from the outside, and unlike attribution it
 is observable without a wizard: any product can count repeated near-identical
@@ -153,22 +153,22 @@ futile.
 
 Model: `wastedRepairs ~ condition * scenarioType + (1|participant)`, Poisson.
 
-**Secondary — repair quality** (`repairContainsSlot`), **attempts to recovery**
+**Secondary â€” repair quality** (`repairContainsSlot`), **attempts to recovery**
 (`attempts`), **time to first repair**, **completion** (`completionStatus`).
 
 `repairContainsSlot` is the training-signal measure and deserves more weight
 than its name suggests. A correction produced under a wrong diagnosis does not
-address the real cause, so it is worthless as feedback to learn from — worse
+address the real cause, so it is worthless as feedback to learn from â€” worse
 than worthless, since it teaches the wrong lesson. This column is where that
 claim becomes a number.
 
 **Manipulation check** (`noticedFeedback`). Report it. A null result means
 nothing if participants never registered the feedback.
 
-**Power.** n=10 per cell detects only large between-group effects (d≈1.3 at
+**Power.** n=10 per cell detects only large between-group effects (dâ‰ˆ1.3 at
 80%). Treat the modality main effect as **exploratory** and say so in the paper.
-The within-participant contrast — user-fault vs system-fault scenarios, where
-every participant is their own control — is far better powered and is where the
+The within-participant contrast â€” user-fault vs system-fault scenarios, where
+every participant is their own control â€” is far better powered and is where the
 real claim lives.
 
 **Pre-register** the above before participant 1. It costs an hour and converts
@@ -206,17 +206,17 @@ errors.
 
 One trial per task, six measured tasks per participant.
 
-1. Confirm the **task** and **variant** on the panel (★ = assigned by the plan).
-2. Click **▶ Start trial** — clears the scene and starts the clock.
+1. Confirm the **task** and **variant** on the panel (â˜… = assigned by the plan).
+2. Click **â–¶ Start trial** â€” clears the scene and starts the clock.
 3. Read the **briefing**. Do not tell them what to say.
-4. They speak → click **INJECT ERROR**.
+4. They speak â†’ click **INJECT ERROR**.
 5. Feedback appears per condition (A none / B panel / C agent).
 6. Ask **"Why do you think that happened?"** and click their answer in Step 3.
    Ask it the same way every time and do not react to whether they are right.
 7. They try again:
-   - adapted → **INJECT SUCCESS** (silent), then **✓ End trial & load next**
-   - same mistake → **INJECT ERROR again**; do not hand them the answer
-8. Repeat. Ending a trial loads the next task by itself — there is no separate
+   - adapted â†’ **INJECT SUCCESS** (silent), then **âœ“ End trial & load next**
+   - same mistake â†’ **INJECT ERROR again**; do not hand them the answer
+8. Repeat. Ending a trial loads the next task by itself â€” there is no separate
    "next task" step. After the sixth, the panel asks for the post-condition
    questionnaire, and submitting it ends the session.
 
@@ -372,33 +372,33 @@ set STUDY_LAN_IP=192.168.1.42 && npm run study # Windows cmd
 ## Running a session
 
 ### 1. Start the server
-Run the command above. Your browser opens `http://localhost:8181` — the
+Run the command above. Your browser opens `http://localhost:8181` â€” the
 researcher control panel.
 
 ### 2. Open Unity and deploy to the Quest
 - In Unity Hub, open the `Unity/` folder of this project.
 - Open the scene **`Assets/Demos/DynamicCompiler/DynamicCompiler`** (the campfire
-  scene — NOT `Scenes/SampleScene`, which is an empty placeholder).
+  scene â€” NOT `Scenes/SampleScene`, which is an empty placeholder).
 - If a "TMP Importer" window pops up, click **Import TMP Essentials**.
-- **One-time scene setup:** create an empty GameObject (`GameObject → Create Empty`),
+- **One-time scene setup:** create an empty GameObject (`GameObject â†’ Create Empty`),
   name it `StudyManager`, and add the **`StudyUIBootstrapper`** component to it.
-  Pick the condition (A/B/C) in its Inspector. That's the only wiring you need —
+  Pick the condition (A/B/C) in its Inspector. That's the only wiring you need â€”
   it builds every panel, the embodied agent, discovery, and the outcome runner,
   and connects all the scripts automatically at runtime. (Optionally also add
   `StudySessionLogger` for speech-attempt and task-timing logs.) Save the scene.
 
-**Running on the Meta Quest (this is a Mac — Quest Link is not available):**
+**Running on the Meta Quest (this is a Mac â€” Quest Link is not available):**
 - The study runs as a **standalone Android build on the headset**, which talks to
   the Mac's server over Wi-Fi.
-- One-time: put the Quest in **Developer Mode** (Meta Quest phone app → your
-  headset → Developer Mode), connect it by USB-C, and accept the "Allow USB
+- One-time: put the Quest in **Developer Mode** (Meta Quest phone app â†’ your
+  headset â†’ Developer Mode), connect it by USB-C, and accept the "Allow USB
   debugging" prompt in the headset.
-- One-time Unity settings: **Build target = Android** (File → Build Profiles →
-  Switch Platform); **Player → Other Settings → Scripting Backend = IL2CPP**,
-  **Target Architectures = ARM64**; **XR Plug-in Management → Android → Oculus**.
-- Each build: **File → Build Profiles → Build And Run**. Unity builds the APK,
+- One-time Unity settings: **Build target = Android** (File â†’ Build Profiles â†’
+  Switch Platform); **Player â†’ Other Settings â†’ Scripting Backend = IL2CPP**,
+  **Target Architectures = ARM64**; **XR Plug-in Management â†’ Android â†’ Oculus**.
+- Each build: **File â†’ Build Profiles â†’ Build And Run**. Unity builds the APK,
   installs it, and launches it on the headset.
-- You only need to **rebuild when the C# changes** — never for a new location,
+- You only need to **rebuild when the C# changes** â€” never for a new location,
   network or participant. Between participants just relaunch the app.
 
 > **What the attempt-level logging needs.** Most of it needs nothing: the
@@ -409,10 +409,10 @@ researcher control panel.
 > Three things do need a rebuild, because they can only be measured on the
 > headset: continuous head pose, `gazeTarget`/`dwellMs`, and the
 > `feedback-onset` / `feedback-offset` rows. Until you rebuild, those columns
-> are simply blank — an old APK against the new server is fine, and a new APK
+> are simply blank â€” an old APK against the new server is fine, and a new APK
 > against an old server is too. Nothing half-works.
 
-**Networking — plug the cable in before `npm run study`, then unplug.**
+**Networking â€” plug the cable in before `npm run study`, then unplug.**
 
 That one habit is all you need anywhere in the world. On startup the launcher
 finds the Mac's current IP and writes it straight into the app's storage over
@@ -420,14 +420,14 @@ USB, so the headset knows where to connect before it even starts looking. Once
 connected the session runs over Wi-Fi and **the cable can come out**.
 
 It also opens a USB tunnel as a backup, which works even on networks that block
-everything else — but that one needs the cable to stay in.
+everything else â€” but that one needs the cable to stay in.
 
 <details>
 <summary>Why the cable, when there's auto-discovery?</summary>
 
 Discovery works by UDP broadcast, and broadcasts do not cross subnets. Labs
 routinely put the headset on a local AP and the Mac on the institutional
-network — different subnets, so the beacon never arrives. The app then falls
+network â€” different subnets, so the beacon never arrives. The app then falls
 back to `localhost`, which on the headset is *itself*: **"connection lost."**
 
 Ordinary TCP between the two is fine (verified across exactly that split); only
@@ -445,7 +445,7 @@ the Quest.
 Almost always one of three things, in this order:
 
 **1. The headset is off your head.** The Quest sleeps the moment you take it off
-and Unity suspends with it — black screen, no response, no logs. Put it on. To
+and Unity suspends with it â€” black screen, no response, no logs. Put it on. To
 check: `adb shell dumpsys power | grep mWakefulness` (`Asleep` = this is it).
 
 **2. The server isn't running.** The app connects but nothing responds to your
@@ -455,7 +455,7 @@ clicks. `npm run study` must stay running the whole session.
 so you see a partial view or the grey boundary screen instead of the scene.
 Set the boundary in the headset.
 
-**Desk testing without wearing it** — these two make the headset behave as if
+**Desk testing without wearing it** â€” these two make the headset behave as if
 worn, which is handy while you rehearse:
 
 ```bash
@@ -463,7 +463,7 @@ adb shell am broadcast -a com.oculus.vrpowermanager.prox_close  # stay awake off
 adb shell setprop debug.oculus.guardian_pause 1                 # run with no boundary
 ```
 
-⚠ **Turn the guardian back on before any participant wears it** — it is the
+âš  **Turn the guardian back on before any participant wears it** â€” it is the
 boundary that stops them walking into things:
 
 ```bash
@@ -473,50 +473,50 @@ adb shell am broadcast -a com.oculus.vrpowermanager.automation_disable
 
 ### 3. Set up the participant on the control panel
 - Enter the **Participant ID** (e.g. `P01`). The panel immediately shows that
-  participant's **counterbalanced plan** — which condition and which task to run
+  participant's **counterbalanced plan** â€” which condition and which task to run
   in each of the three blocks.
 - Leave **Condition** on *"Follow counterbalanced plan"* and pick the **Block**
   you're about to run, then click **Start / Update Session**.
-- The headset switches to that condition automatically — no rebuild, and no need
+- The headset switches to that condition automatically â€” no rebuild, and no need
   to match anything by hand in Unity.
 
 Before the first block, have the participant complete the **Background form**
-(link in the panel header) — once per participant.
+(link in the panel header) â€” once per participant.
 
 ### 4. Run each task
 Each participant does all three tasks, with two error types per task.
 
-1. Check the **Task & variant** card — ★ marks what the master table assigns.
-   Pick the **error type** (★ marks the two assigned to this participant + task).
-2. Click **▶ Start trial**. The scene clears and the clock starts.
-3. Read the **briefing** shown on the panel. **Do not tell them what to say** —
+1. Check the **Task & variant** card â€” â˜… marks what the master table assigns.
+   Pick the **error type** (â˜… marks the two assigned to this participant + task).
+2. Click **â–¶ Start trial**. The scene clears and the clock starts.
+3. Read the **briefing** shown on the panel. **Do not tell them what to say** â€”
    they must phrase the instruction themselves.
-4. They speak their instruction (hold the controller trigger — either hand — or
+4. They speak their instruction (hold the controller trigger â€” either hand â€” or
    **Space** in the Unity Editor). The transcript appears on the panel.
 5. Click **INJECT ERROR**. After a short "thinking" pause the outcome appears
    and the condition's feedback fires. The panel shows you the exact panel text
    and agent line, so you can read the agent line aloud if a voice clip is missing.
 6. They try again:
-   - problem repaired → **INJECT SUCCESS** (deliberately silent — no feedback)
-   - same mistake repeated → **INJECT ERROR again**, and say *"have another
+   - problem repaired â†’ **INJECT SUCCESS** (deliberately silent â€” no feedback)
+   - same mistake repeated â†’ **INJECT ERROR again**, and say *"have another
      look at the feedback and try once more"*
-7. Click **✓ End trial**. Repeat from step 1 with the task's **second** assigned
-   error type, then **⏭ Next condition** for the next task.
+7. Click **âœ“ End trial**. Repeat from step 1 with the task's **second** assigned
+   error type, then **â­ Next condition** for the next task.
 8. Use **Quick note** for observations at any point.
 
 > **There is no live AI.** You decide every outcome by clicking. If you click
-> nothing, nothing happens — that is the method, and it is what keeps the
+> nothing, nothing happens â€” that is the method, and it is what keeps the
 > experience identical for everyone in a condition.
 
 **What the participant sees (task 1, "Happened Differently"):**
-- **A – No feedback:** the ball appears on the floor instead of their hand.
+- **A â€“ No feedback:** the ball appears on the floor instead of their hand.
   Nothing else. They must work it out alone. (Control condition.)
-- **B – Text panel:** the ball appears on the floor and the panel reads *"The
+- **B â€“ Text panel:** the ball appears on the floor and the panel reads *"The
   ball appeared, but not in your hand. Please specify the location."* No agent.
-- **C – Embodied agent:** the ball appears on the floor and the assistant says
+- **C â€“ Embodied agent:** the ball appears on the floor and the assistant says
   *"The ball was created, but I wasn't sure exactly where you wanted it."* No panel.
 
-In every case the cause traces back to the participant's own phrasing — they
+In every case the cause traces back to the participant's own phrasing â€” they
 never said where the ball should appear.
 
 ### 4a. Editing the tasks (no rebuild needed)
@@ -524,29 +524,29 @@ Briefings, panel wording and agent dialogue live in
 [`Server/samples/apps/wizard_of_oz/app.js`](Server/samples/apps/wizard_of_oz/app.js).
 Variants are generated from three builder functions (`buildTask1/2/3`) rather
 than written out 36 times, so editing one line of wording updates that error
-across all three variants and keeps them parallel — which is what makes variants
+across all three variants and keeps them parallel â€” which is what makes variants
 interchangeable in the first place. To change only one variant, edit its entry in
 the `TASKS` table below the builders.
 
 The headset executes these as data, so **edits take effect on the next server
-restart — you do not need to rebuild or reinstall the APK.**
+restart â€” you do not need to rebuild or reinstall the APK.**
 
-### 4b. Optional — agent voice for condition C
+### 4b. Optional â€” agent voice for condition C
 The agent speaks via on-screen subtitles by default. To give it a real voice,
-drop `.wav` clips into `Unity/Assets/Resources/AgentVoice/` — they are picked up
+drop `.wav` clips into `Assets/Resources/AgentVoice/` â€” they are picked up
 automatically. Without clips, subtitles are used.
 
 ### 5. Questionnaires
 - **Once per participant, before the first block:** `http://localhost:8181/background`
-  — age range, VR experience, technical background, assistant use.
-- **After each block (3× per participant):** `http://localhost:8181/questionnaire`
-  — **SUS** (10 items), **UES-SF** (12 items, randomised order; reverse-score the
+  â€” age range, VR experience, technical background, assistant use.
+- **After each block (3Ã— per participant):** `http://localhost:8181/questionnaire`
+  â€” **SUS** (10 items), **UES-SF** (12 items, randomised order; reverse-score the
   three perceived-usability items), and **Perceived Support** (4 items + overall).
 
 Pre-fill either with `?pid=P01`. Both refuse to submit until every item is
 answered, highlighting anything missed.
 
-Then run the **semi-structured interview** (5–10 min) from the study materials —
+Then run the **semi-structured interview** (5â€“10 min) from the study materials â€”
 that part is on paper/audio, not in this system.
 
 ---
@@ -592,7 +592,7 @@ which come from the headset.
 | `timestampIso`, `epochMs` | Absolute, for lining the log up against video and audio |
 | `msSinceSessionStart` | Position in the session, for fatigue and drift |
 | `msSinceTrialStart` | Position in the trial, the analysis unit |
-| `participantId` … `attempt` | Full context repeated on every row, so any row reads on its own |
+| `participantId` â€¦ `attempt` | Full context repeated on every row, so any row reads on its own |
 | `source` | `wizard` / `participant` / `system`. Without it, the researcher pausing and the participant pausing are the same silence |
 | `category` | `session` `ui` `scene` `trial` `speech` `outcome` `feedback` `measure` `pose` `warning` |
 | `eventType`, `detail`, `value`, `target` | What happened |
@@ -618,15 +618,15 @@ absence of rows. With yaw the turn is an event with a latency:
 Sampling is **continuous** at 10 Hz, and each row also carries `pitch`,
 `gazeTarget` and `dwellMs`.
 
-It used to be movement-gated — no row until the head had moved 2 cm or turned 2
-degrees — on the reasoning that a still head is not worth recording. That is
+It used to be movement-gated â€” no row until the head had moved 2 cm or turned 2
+degrees â€” on the reasoning that a still head is not worth recording. That is
 true of the walk between tasks and exactly backwards for dwell: someone reading
 the feedback panel holds their head as still as they ever will, so the gate
 suppressed every sample of the behaviour the measure exists to capture. In the
 log, attentive reading and taking the headset off looked the same. Nothing.
 
 Pose needs `StudyTelemetry.cs`, which is already in the current build
-(`Unity/Builds/DreamCodeVR-study.apk`, 8 Aug — newer than every `.cs` file in
+(`Builds/DreamCodeVR-study.apk`, 8 Aug â€” newer than every `.cs` file in
 the project, so no rebuild is outstanding).
 
 ## Where the data goes
@@ -636,7 +636,7 @@ All files are written to a `Logs/` folder at the top of the project:
 say-it-again/Logs/
 ```
 **One file per participant.** `Logs/P01.csv` is everything P01 did, in the order
-they did it. Nothing about a participant lives anywhere else — except the audio,
+they did it. Nothing about a participant lives anywhere else â€” except the audio,
 below, which cannot go in a CSV.
 
 ```
@@ -648,7 +648,7 @@ Logs/
 ```
 
 **`Logs/audio/P01/` holds one sound file per utterance**, named
-`P01_u0007_trial03_task4_v2.wav` — participant, utterance number, trial, task,
+`P01_u0007_trial03_task4_v2.wav` â€” participant, utterance number, trial, task,
 variant. Every one of them has a matching `utterance-audio` row in the CSV
 carrying the same filename, so the audio set is analysable without matching
 anything up by timestamp.
@@ -660,14 +660,14 @@ event log before any acoustic analysis could start.
 
 > **Audio recording is consented separately and the tick is enforced.** If a
 > participant declines the audio item on the consent form, no WAV is written for
-> them — the server checks before it saves. Their CSV is unaffected: the
+> them â€” the server checks before it saves. Their CSV is unaffected: the
 > loudness, rate and onset numbers are still there, because those are
 > measurements of an interaction rather than a copy of someone's voice.
 
 The `recordType` column says what each row is:
 
-- `session-start` — the assigned plan: condition, task order, variant per task.
-- `event` — the fine-grained trace, one row per state change. `eventType`
+- `session-start` â€” the assigned plan: condition, task order, variant per task.
+- `event` â€” the fine-grained trace, one row per state change. `eventType`
   distinguishes them: `ptt-down` / `ptt-up` (the trigger held and released),
   `utterance-audio` (the recording and its acoustic measures), `transcript`
   (what they said), `inject` (what you triggered), `feedback-shown` (what they
@@ -675,13 +675,13 @@ The `recordType` column says what each row is:
   appeared and went away, reported by the headset), `trial-start`, `trial-end`,
   `attribution`, `repair-strategy`, `head-pose`, `audio-consent`, `note`, and
   the `stt-silent` / `stt-error` warnings.
-- `trial-summary` — **the primary analysis rows.** One per completed trial,
+- `trial-summary` â€” **the primary analysis rows.** One per completed trial,
   carrying `taskOrder, condition, task, variant, scenario, durationMs,
   completionStatus, attempts, injects, attribution, correctAttribution,
   attributionCorrect, noticedFeedback, firstRepairStrategy, repairSequence,
   wastedRepairs, msToFirstRepair, maxUtteranceSimilarity`. Filter to these and
-  you have the analysis table — no joining.
-- `questionnaire` — one row per submitted form. Items are held as JSON in the
+  you have the analysis table â€” no joining.
+- `questionnaire` â€” one row per submitted form. Items are held as JSON in the
   `answers` column, so background and post-condition forms share the schema
   regardless of which items each asks.
 
@@ -690,20 +690,20 @@ task, variant, attempt, three clocks), so no analysis step depends on carrying
 state forward from earlier rows. The schema is wide and most columns are blank
 in most rows; that is the price of one file per participant, and it is worth it.
 
-Superseded files — anything written before a column change, and the older
-multi-file layout — are moved to `Logs/archive/` rather than left beside the
+Superseded files â€” anything written before a column change, and the older
+multi-file layout â€” are moved to `Logs/archive/` rather than left beside the
 live ones.
 
 These CSVs are git-ignored so participant data never gets committed.
 
 **What you can measure from this:** attempts to recovery per condition; trial
-duration; completion status; first-vs-recovery transcript comparison — grouped
+duration; completion status; first-vs-recovery transcript comparison â€” grouped
 by condition and by error category, which is what the hypotheses need.
 
 ### The unit of analysis is the attempt, not the trial
 
 Thirty participants doing six tasks is 180 trials. Those same people make around
-three attempts per task, so the same sessions contain 500-odd attempts — and
+three attempts per task, so the same sessions contain 500-odd attempts â€” and
 each one carries a continuous outcome rather than a yes/no. That is where the
 power comes from, and it costs no extra participant time: it is all
 instrumentation, recorded whether anyone looks at it or not.
@@ -712,9 +712,9 @@ Filter to `eventType=utterance-audio` and each row is one attempt:
 
 | Column | What it is |
 |---|---|
-| `speechOnsetMs` | Trigger pressed → first word. **Short is a reflexive repeat; long is someone planning a different wording.** Nobody else has this. |
+| `speechOnsetMs` | Trigger pressed â†’ first word. **Short is a reflexive repeat; long is someone planning a different wording.** Nobody else has this. |
 | `pttHoldMs` | How long they held the trigger. |
-| `peakRms`, `meanRms` | Loudness. Read as a delta against that person's own practice-trial baseline, never raw — between-person variation swamps the effect. |
+| `peakRms`, `meanRms` | Loudness. Read as a delta against that person's own practice-trial baseline, never raw â€” between-person variation swamps the effect. |
 | `speechRateWps`, `wordCount` | On the `transcript` row. The other half of hyperarticulation: people slow down as well as get louder. |
 | `utteranceId` | Joins the press, the audio, the transcript and the inject that answered it. |
 | `audioFile` | The WAV, for anything the numbers do not cover. |
@@ -728,8 +728,8 @@ the cheapest thing in here and one of the most useful.
 
 **Latency confounds are logged, not assumed away.** `asrLatencyMs` is how long
 the recogniser took; `wizardLatencyMs` is how long after the participant stopped
-speaking you pressed the button. The second one varies — with how busy you are,
-how far into the session you are, whether they said something unexpected — and
+speaking you pressed the button. The second one varies â€” with how busy you are,
+how far into the session you are, whether they said something unexpected â€” and
 unlogged it sits inside every response-time measure in the study, looking
 exactly like the participant being slower. Logged, it is a covariate.
 
@@ -737,15 +737,15 @@ exactly like the participant being slower. Logged, it is a covariate.
 now continuous rather than movement-gated, and carry `pitch`, `gazeTarget`
 (`panel`, `agent`, `object`) and `dwellMs`. "Did you notice the feedback"
 answered yes is weak; four seconds of dwell on the panel before speaking again
-is strong, and it is on every trial without asking anyone anything. On task 4 —
-where the object spawns behind them — `gazeTarget=object` is the moment they
+is strong, and it is on every trial without asking anyone anything. On task 4 â€”
+where the object spawns behind them â€” `gazeTarget=object` is the moment they
 found it, with no probe needed.
 
 > The gate mattered more than it sounds. A participant reading the panel holds
 > their head as still as they ever will, so movement-gating suppressed every
 > sample of the behaviour dwell is made of: attentive reading and taking the
 > headset off looked identical in the log. Continuous sampling is roughly 10
-> rows a second — the `/replay` page filters them out so it stays fast, and the
+> rows a second â€” the `/replay` page filters them out so it stays fast, and the
 > CSV keeps them all.
 
 **One clock.** Every row carries `epochMs` (absolute, for merging against video
@@ -767,16 +767,16 @@ overwritten and no file ever mixes two layouts.
 ## Voice / microphone
 
 **Push-to-talk:** hold the trigger on **either** controller (grip also works)
-while speaking, then release. The transcript appears 1–2 s after you release.
+while speaking, then release. The transcript appears 1â€“2 s after you release.
 
 **Check the mic before every session.** The control panel has a live
 **Microphone** card showing whether the headset's mic is capturing and a level
 meter that moves when it hears sound. If it says *"No report from headset"*, the
 app isn't running or isn't connected. If it says *"NOT capturing"*, check
-microphone permission: headset → *Settings → Apps → [the app] → Permissions →
+microphone permission: headset â†’ *Settings â†’ Apps â†’ [the app] â†’ Permissions â†’
 Microphone*.
 
-**If the trigger fails mid-session**, use **Hold to record** on the panel — it
+**If the trigger fails mid-session**, use **Hold to record** on the panel â€” it
 drives recording remotely so a session isn't lost.
 
 Speech-to-text calls the lab's Whisper server (`http://130.136.2.161:50101`).
@@ -788,13 +788,13 @@ endpoint, set `STT_HTTP_URL` before launching.
 
 ## Piloting order (from the supervisor)
 
-1. Pilot **one task** with the embodied-agent interaction (1–2 questions max,
+1. Pilot **one task** with the embodied-agent interaction (1â€“2 questions max,
    no infinite loops).
-2. Expand to 2–3 pilot participants; check the interaction feels right.
+2. Expand to 2â€“3 pilot participants; check the interaction feels right.
 3. Then run all 3 tasks with the same narrative.
 4. Full run: ~10 participants, **within-subjects** (each does all of A, B and C
    in counterbalanced order), 3 tasks per condition, ~45 min per session.
 
 ## Keyboard shortcuts
-- **Space** (Unity Editor) — hold to record voice
-- **F12** — toggle the in-Unity Wizard-of-Oz panel (alternative to the web panel)
+- **Space** (Unity Editor) â€” hold to record voice
+- **F12** â€” toggle the in-Unity Wizard-of-Oz panel (alternative to the web panel)

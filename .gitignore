@@ -143,3 +143,14 @@ OldAgentVoice_unused/
 
 # Participant landing page — separate repo, pushed to abyyworld/vr-voice-study
 study-site/
+
+# Folded in from Unity/.gitignore when the Unity project moved to the repo root.
+.gradle/
+ExportedObj/
+.consulo/
+.vsconfig
+
+# Assets/XR is deliberately NOT ignored: these assets enable the Oculus loader
+# for Android, and a clone without them builds a flat, non-VR app that installs,
+# launches, and does nothing useful in a headset.
+

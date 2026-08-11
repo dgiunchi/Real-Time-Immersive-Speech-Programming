@@ -1,4 +1,4 @@
-# DreamCodeVR
+﻿# DreamCodeVR
 DreamCodeVR is a Unity project developed at UCL based on Ubiq Social VR Platform and Ubiq Genie (plugin for backend services). It is designed to assist users, irrespective of their coding skills, in crafting basic object behavior in VR environments by translating spoken language into
 code within an active application. 
 
@@ -11,15 +11,15 @@ nearly all of it Unity downloading while you do something else.
 
 ### 1. Get the project
 
-Open a terminal — **Command Prompt or PowerShell on Windows, Terminal on a
-Mac** — and paste this. It is the same on all three:
+Open a terminal â€” **Command Prompt or PowerShell on Windows, Terminal on a
+Mac** â€” and paste this. It is the same on all three:
 
 ```
 git clone --depth 1 https://github.com/abyyworld/say-it-again.git say-it-again
 ```
 
 > **`--depth 1` is the part that matters.** The full history is about **1.3 GB**
-> — old Unity scenes, compiler DLLs and a 31 MB test recording that were
+> â€” old Unity scenes, compiler DLLs and a 31 MB test recording that were
 > committed years ago and are still in every past commit. The files you
 > actually need are 108 MB. Without `--depth 1` git downloads all 1.3 GB, and
 > on anything short of a solid connection it gives up partway with
@@ -37,7 +37,7 @@ git clone --depth 1 https://github.com/abyyworld/say-it-again.git say-it-again
 > **On Windows, run `git config --global core.longpaths true` first.** The
 > longest path in this repository is 125 characters, and Windows refuses to
 > create anything over 260, leaving 134 for the folder you clone into. The home
-> folder above is well inside that, so the command as written is safe — but a
+> folder above is well inside that, so the command as written is safe â€” but a
 > deeper destination makes git write most of the project and then stop with
 > `Filename too long` / `fatal: unable to checkout working tree`. It
 > half-succeeds, leaving a folder that looks complete but is missing a dozen
@@ -47,15 +47,15 @@ git clone --depth 1 https://github.com/abyyworld/say-it-again.git say-it-again
 
 > One command, no `cd`, and nothing that differs between shells, which is
 > deliberate. All three open in your home folder, and giving `git clone` the
-> destination as its last word means the project lands there — Windows
-> `C:\Users\<you>\say-it-again`, Mac `~/say-it-again` — without a second line
+> destination as its last word means the project lands there â€” Windows
+> `C:\Users\<you>\say-it-again`, Mac `~/say-it-again` â€” without a second line
 > that would need `cd /d` in Command Prompt, `cd` in PowerShell, and `&&` in
 > neither the same way. If you have ever pasted a Windows command and been told
 > *"The token '&&' is not a valid statement separator"*, that is Command Prompt
 > syntax landing in PowerShell, and it is why there is none of it here.
 
 > **Your home folder, not the Desktop, on purpose.** With OneDrive PC backup on
-> — the default on a new Windows 11 machine — your Desktop really lives at
+> â€” the default on a new Windows 11 machine â€” your Desktop really lives at
 > `%USERPROFILE%\OneDrive\Desktop`, and plain `%USERPROFILE%\Desktop` does not
 > exist. Anything under it fails with *"The system cannot find the path
 > specified"* while the folder sits visible on screen. Cloning to the home
@@ -65,16 +65,16 @@ git clone --depth 1 https://github.com/abyyworld/say-it-again.git say-it-again
 > **No branch to choose.** `Visualisation-DreamCodeVR-feedback-loop` is the
 > default branch, so a plain clone lands on the study. If you are looking at an
 > older copy that opens in Unity with `The type or namespace name 'Newtonsoft'
-> could not be found`, that clone is sitting on `main` — an earlier state of the
+> could not be found`, that clone is sitting on `main` â€” an earlier state of the
 > project with no JSON package. `git checkout Visualisation-DreamCodeVR-feedback-loop`
 > inside the folder fixes it; the error is the branch, not your machine.
 
 ### 2. Build onto the headset
 
-Open **`say-it-again/Unity`** — the inner folder, not the outer one — in Unity
+Open **`say-it-again`** â€” the inner folder, not the outer one â€” in Unity
 **`6000.3.19f1`**, installed with **Android Build Support**.
 
-Then **File → Build Profiles → Android → Switch Platform**, and only after that
+Then **File â†’ Build Profiles â†’ Android â†’ Switch Platform**, and only after that
 **Build And Run**. A fresh clone opens on the desktop platform, and building
 without switching produces a desktop app in twenty seconds with no error and
 nothing on the headset.
@@ -96,7 +96,7 @@ from. Leave the window open; closing it stops everything.
 
 > **PowerShell is the awkward one**, and it is what Windows 11 opens by
 > default, so it is probably what you have. It does not expand `%USERPROFILE%`
-> — that is `$HOME` or `$env:USERPROFILE` — and it will not run a path as a
+> â€” that is `$HOME` or `$env:USERPROFILE` â€” and it will not run a path as a
 > command without the `&` in front. Typing `cmd` and pressing Enter first drops
 > you into Command Prompt, where the shorter line works, and is the easier fix
 > if a command from somewhere else is refusing to run.
@@ -114,7 +114,7 @@ Windows PowerShell 5.1, which answers *"The token '&&' is not a valid statement
 separator in this version."* Use `;` there, or just run the two lines.
 
 That is the whole setup. **No API key, no Python environment, no config file to
-edit** — the study is Wizard-of-Oz, so a researcher plays the agent from the
+edit** â€” the study is Wizard-of-Oz, so a researcher plays the agent from the
 browser panel and nothing calls a language model. The one external service it
 uses is speech-to-text, which has a working address built in. The OpenAI key in
 the reference section below is for the code-generation demo, which the study
@@ -131,11 +131,11 @@ Dreamcode VR is based on Ubiq and Ubiq Genie. Ubiq is a framework developed by U
 ## Current Setup
 
 Reference detail for the current DreamCodeVR fork. To just get it running, use
-[Start here](#start-here) above — this section is the longer form.
+[Start here](#start-here) above â€” this section is the longer form.
 
 ### Required tools
 
-- Unity `6000.3.19f1` — the version in `Unity/ProjectSettings/ProjectVersion.txt`,
+- Unity `6000.3.19f1` â€” the version in `ProjectSettings/ProjectVersion.txt`,
   and it has to match: opening in another version re-imports and upgrades the
   project, so two researchers stop running the same build
 - Node.js with npm
@@ -197,7 +197,7 @@ cd Server\samples\apps\code_runtime_generator
 node app.js
 ```
 
-Then open the Unity project from the `Unity` folder with Unity `6000.3.19f1`, open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
+Then open the Unity project from the `Unity` folder with Unity `6000.3.19f1`, open `Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
 
 In VR, hold the left controller trigger to record speech. Release it to send the utterance to STT. Point at an object with the ray to select it; red ray means selected target.
 
@@ -205,8 +205,8 @@ In VR, hold the left controller trigger to record speech. Release it to send the
 
 Generated folders such as `Server/samples/venv`, `node_modules`, Unity `Library`, `Temp`, `obj`, runtime logs, and sample input/output files are ignored. If any of those are already tracked, remove them from Git with `git rm --cached` so they stay on disk but stop being pushed.
 
-**`Unity/Assets/Demos/Server.asset` is tracked but deliberately not synced.** The
-launcher rewrites one line of it — `sendToIp` — with whatever LAN address this
+**`Assets/Demos/Server.asset` is tracked but deliberately not synced.** The
+launcher rewrites one line of it â€” `sendToIp` â€” with whatever LAN address this
 machine has right now, so left alone it would report itself as modified after
 every single run, and two researchers on two networks would conflict on that
 line forever. Neither would ever want to resolve it: the next launch on either
@@ -216,17 +216,17 @@ automatically on first run; there is nothing to set up. If you ever genuinely
 need to commit a change to that file:
 
 ```bash
-git update-index --no-skip-worktree Unity/Assets/Demos/Server.asset
+git update-index --no-skip-worktree Assets/Demos/Server.asset
 ```
 
 **Line endings are pinned in `.gitattributes`.** Only the files an interpreter
-has to parse are pinned — `study`, `*.sh`, `*.py` to LF, `*.cmd` to CRLF — plus
+has to parse are pinned â€” `study`, `*.sh`, `*.py` to LF, `*.cmd` to CRLF â€” plus
 `binary` markers on the assets. Everything else is left exactly as committed on
 purpose: a blanket `* text=auto` would rewrite all 988 tracked text files in one
 unreviewable commit, and CRLF is harmless to Node, to Unity, and to Markdown.
 The pins matter because Git for Windows sets `core.autocrlf=true` in its system
 config, and without them a Windows contributor could commit `study` with CRLF
-endings. macOS would then fail it with `bad interpreter: /bin/bash^M` — an error
+endings. macOS would then fail it with `bad interpreter: /bin/bash^M` â€” an error
 that names the wrong file and never mentions line endings.
 
 ## Features
@@ -300,7 +300,7 @@ For a demo video of the samples, please refer to the [Ubiq-Genie demo video](htt
 
 - make an interaction between two (or more) objects (need a visible ID for the object known by the model)
 
-- ​improve prompt programming (probably needs to be dynamic; prompt needs to change during the session)
+- â€‹improve prompt programming (probably needs to be dynamic; prompt needs to change during the session)
 
 - add interaction for checking only when use activate the recording session
 
