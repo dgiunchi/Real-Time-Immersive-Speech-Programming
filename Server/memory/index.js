@@ -163,6 +163,7 @@ class SharedMemory {
                     candidateSetId: envelope.candidateSetId || null,
                     interactionMode: envelope.interactionMode || null,
                     authoringMode: envelope.authoringMode || null,
+                    consentRoute: envelope.consentRoute || null,
                     riskScore: envelope.riskScore,
                     validationState: envelope.validationState || null,
                     verificationDurationMs: envelope.verificationDurationMs ?? null,

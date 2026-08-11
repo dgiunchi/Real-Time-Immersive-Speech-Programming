@@ -34,6 +34,24 @@ function validateStudyContext(context, { requireCorrelationId = true } = {}) {
     return context;
 }
 
+// Trial-scoped H4 configuration: how many candidates the generator should draft
+// (N=1 vs. N>1, switchable per trial). Optional; when set it travels with the
+// study context so the runtime can hand it to the orchestrator per turn.
+function validateCandidateTarget(candidateTarget) {
+    if (candidateTarget == null) return null;
+    const value = Number(candidateTarget);
+    if (!Number.isInteger(value) || value < 1 || value > 5) {
+        throw new Error("candidateTarget must be an integer between 1 and 5");
+    }
+    return value;
+}
+
+function studyContextOf(entry) {
+    const context = Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]]));
+    if (Number.isInteger(entry.candidateTarget)) context.candidateTarget = entry.candidateTarget;
+    return context;
+}
+
 class ArtifactLog {
     constructor({ filePath } = {}) {
         this.filePath = filePath || path.join(__dirname, "data", "artifact_log.jsonl");
@@ -66,15 +84,14 @@ class ArtifactLog {
             this.byObjectId.get(entry.targetObjectId).push(entry);
         }
         if (entry.eventType === "study_trial_started") {
-            const context = Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]]));
+            const context = studyContextOf(entry);
             this.activeTrialBySession.set(entry.sessionId, context);
             this.studyContextByCorrelation.set(entry.correlationId, context);
         } else if (entry.eventType === "study_trial_ended") {
             const active = this.activeTrialBySession.get(entry.sessionId);
             if (active && active.trialId === entry.trialId) this.activeTrialBySession.delete(entry.sessionId);
         } else if (entry.studyEvent && entry.correlationId && entry.participantId) {
-            const context = Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]]));
-            this.studyContextByCorrelation.set(entry.correlationId, context);
+            this.studyContextByCorrelation.set(entry.correlationId, studyContextOf(entry));
         }
     }
 
@@ -105,11 +122,13 @@ class ArtifactLog {
 
     startStudyTrial(context) {
         validateStudyContext(context);
+        const candidateTarget = validateCandidateTarget(context.candidateTarget);
         if (this.activeTrialBySession.has(context.sessionId)) {
             throw new Error(`sessionId '${context.sessionId}' already has an active study trial`);
         }
         return this.append({
             ...context,
+            ...(candidateTarget != null ? { candidateTarget } : {}),
             eventType: "study_trial_started",
             studyEvent: true,
             taskCompletion: false,
@@ -156,15 +175,14 @@ class ArtifactLog {
             try {
                 const entry = JSON.parse(line);
                 if (entry.eventType === "study_trial_started") {
-                    const loaded = Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]]));
+                    const loaded = studyContextOf(entry);
                     this.activeTrialBySession.set(entry.sessionId, loaded);
                     this.studyContextByCorrelation.set(entry.correlationId, loaded);
                 } else if (entry.eventType === "study_trial_ended") {
                     const active = this.activeTrialBySession.get(entry.sessionId);
                     if (active && active.trialId === entry.trialId) this.activeTrialBySession.delete(entry.sessionId);
                 } else if (entry.studyEvent && entry.correlationId && entry.participantId) {
-                    this.studyContextByCorrelation.set(entry.correlationId,
-                        Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]])));
+                    this.studyContextByCorrelation.set(entry.correlationId, studyContextOf(entry));
                 }
             } catch (_) { /* malformed lines are reported during the normal load */ }
         }
@@ -212,4 +230,4 @@ class ArtifactLog {
     }
 }
 
-module.exports = { ArtifactLog, STUDY_CONTEXT_FIELDS, STUDY_ID_PATTERN, validateStudyContext };
+module.exports = { ArtifactLog, STUDY_CONTEXT_FIELDS, STUDY_ID_PATTERN, validateStudyContext, validateCandidateTarget };

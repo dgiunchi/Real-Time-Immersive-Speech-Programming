@@ -10,20 +10,23 @@ const TRIAL_COLUMNS = Object.freeze([
     "participantId", "sessionId", "trialId", "condition", "taskId", "interactionMode",
     "trialStartedAtUtc", "trialEndedAtUtc", "taskCompletion", "taskSuccess",
     "taskQualityScore", "taskQualitySignalsJson", "totalTaskTimeMs", "correlationIds",
-    "intentCapturedAtUtc", "firstAcknowledgementAtUtc", "validatedExecutionAtUtc",
-    "immediateAcknowledgementLatencyMs", "validatedExecutionLatencyMs",
+    "intentCapturedAtUtc", "firstAcknowledgementAtUtc", "firstProposalAtUtc",
+    "validatedExecutionAtUtc", "immediateAcknowledgementLatencyMs",
+    "proposalLatencyMs", "validatedExecutionLatencyMs",
     "generatedArtifactCount", "compileFailureCount", "validationFailureCount",
     "runtimeFailureCount", "verificationApplyCount", "verificationClarifyCount",
     "verificationRepairCount", "verificationRejectCount",
     "verificationCandidateDurationsMsJson", "verificationTimeTotalMs",
-    "previewToCommitTimeMs", "verificationLiveMismatchCount", "groundingErrorCount",
+    "verificationBypassedCount", "previewToCommitTimeMs",
+    "verificationLiveMismatchCount", "groundingErrorCount",
     "staleApplicationCount", "staleProposalCount", "invalidCorrelationIdCount",
     "invalidTargetObjectCount", "timestampAgeAtApplicationMsJson",
     "memoryRetrievalLatencyMsJson", "memoryRetrievalLatencyMeanMs",
     "unsafeProposalCount", "blockedUnsafeArtifactCount", "repairAttemptCount",
     "clarificationTurnCount", "confirmationCount", "rejectionCount", "undoCount",
-    "rollbackCount", "interruptionCount", "resumptionCount",
-    "interruptionTotalTimeMs", "candidatesGenerated", "selectedCandidateId",
+    "rollbackCount", "decisionRouteBreakdownJson", "interruptionCount",
+    "resumptionCount", "interruptionTotalTimeMs", "candidateTargetCount",
+    "candidatesGenerated", "selectedCandidateId",
     "selectedCandidateRank", "selectedCandidateScore",
     "firstProposalAcceptedWithoutRevision", "agentStatusMessageCount",
     "firstAgentStatusAtUtc", "goalCount", "goalIterationsTotal",
@@ -41,7 +44,8 @@ const LONG_COLUMNS = Object.freeze([
     "correlationIdValid", "targetObjectValid", "selectedCandidateRank",
     "selectedCandidateScore", "studySource", "goalId", "goalIteration",
     "verificationLevel", "goalStatus", "boundExhausted",
-    "resolutionLatencyMs", "speculative",
+    "resolutionLatencyMs", "speculative", "authoringMode", "consentRoute",
+    "validationState", "verificationBypassed",
 ]);
 
 function readJsonLines(filePath) {
@@ -177,7 +181,12 @@ function aggregateTrial(events) {
     const selectedCandidateId = selection && (selection.selectedCandidateId ||
         (selection.selected && selection.selected.candidateId)) ||
         (last(candidateEvents, (event) => event.status === "selected") || {}).candidateId || "";
-    const selectedEvent = last(candidateEvents, (event) => event.candidateId === selectedCandidateId) || selection || {};
+    // Prefer an event that actually carries the surfaced rank (candidate_selected /
+    // candidate_selection) - the last mention of the candidate is usually the
+    // ArtifactResult, which has no ranking fields.
+    const selectedEvent = last(candidateEvents, (event) => event.candidateId === selectedCandidateId &&
+            (Number.isFinite(event.selectedCandidateRank) || Number.isFinite(event.rank))) ||
+        last(candidateEvents, (event) => event.candidateId === selectedCandidateId) || selection || {};
     const decisionApproved = first(events, (event) =>
         event.eventType === "user_decision:approved" ||
         (event.eventType === "user_decision" && event.status === "approved"));
@@ -206,6 +215,23 @@ function aggregateTrial(events) {
     const intentAt = intent ? eventTime(intent) : null;
     const ackAt = acknowledgement ? eventTime(acknowledgement) : null;
     const validatedAt = validated ? eventTime(validated) : null;
+    const firstProposal = first(events, (event) => event.eventType === "propose_artifact");
+    const firstProposalAt = firstProposal ? eventTime(firstProposal) : null;
+    // Per-consent-route decision breakdown (paper Measures: per-route accept/
+    // reject/undo). Route falls back to the authoring mode when the decision
+    // envelope carried no explicit consent route.
+    const decisionRouteBreakdown = {};
+    for (const event of events) {
+        const type = String(event.eventType || "");
+        const decision = type === "user_decision:approved" || type === "confirmation" ? "approved"
+            : type === "user_decision:rejected" || type === "rejection" ? "rejected"
+            : type === "user_decision:timeout" ? "timeout"
+            : type === "user_decision:undo" || type === "undo" ? "undo" : null;
+        if (!decision) continue;
+        const route = event.consentRoute || event.authoringMode || "unknown";
+        if (!decisionRouteBreakdown[route]) decisionRouteBreakdown[route] = { approved: 0, rejected: 0, timeout: 0, undo: 0 };
+        decisionRouteBreakdown[route][decision] += 1;
+    }
     const goalIds = new Set(events.map((event) => event.goalId).filter(Boolean));
     const goalIterations = events.filter((event) => event.eventType === "goal_iteration_executed");
     const goalTerminations = events.filter((event) => event.eventType === "goal_terminated");
@@ -231,8 +257,10 @@ function aggregateTrial(events) {
         correlationIds: [...new Set(events.map((event) => event.correlationId).filter(Boolean))].join(";"),
         intentCapturedAtUtc: iso(intentAt),
         firstAcknowledgementAtUtc: iso(ackAt),
+        firstProposalAtUtc: iso(firstProposalAt),
         validatedExecutionAtUtc: iso(validatedAt),
         immediateAcknowledgementLatencyMs: Number.isFinite(intentAt) && Number.isFinite(ackAt) ? ackAt - intentAt : "",
+        proposalLatencyMs: Number.isFinite(intentAt) && Number.isFinite(firstProposalAt) ? firstProposalAt - intentAt : "",
         validatedExecutionLatencyMs: Number.isFinite(intentAt) && Number.isFinite(validatedAt) ? validatedAt - intentAt : "",
         generatedArtifactCount: proposals.length || uniqueCandidates.size,
         compileFailureCount: count(reasonEvents, ({ event, code }) => code === "compile_failure" || event.failureStage === "compile"),
@@ -246,6 +274,7 @@ function aggregateTrial(events) {
         verificationRejectCount: count(verification, (event) => verificationOutcome(event) === "reject"),
         verificationCandidateDurationsMsJson: JSON.stringify(verificationDurations),
         verificationTimeTotalMs: verificationDurations.reduce((sum, value) => sum + value, 0),
+        verificationBypassedCount: count(events, (event) => event.verificationBypassed === true),
         previewToCommitTimeMs: preview && commit ? eventTime(commit) - eventTime(preview) : "",
         verificationLiveMismatchCount: mismatchExplicit + mismatchDerived,
         groundingErrorCount: count(events, (event) => event.eventType === "grounding_error" ||
@@ -274,9 +303,11 @@ function aggregateTrial(events) {
         undoCount: count(events, (event) => event.eventType === "user_decision:undo" || event.eventType === "undo"),
         rollbackCount: count(events, (event) => String(event.eventType || "").includes("rollback") &&
             event.status !== "not_found"),
+        decisionRouteBreakdownJson: JSON.stringify(decisionRouteBreakdown),
         interruptionCount: interruptions.length,
         resumptionCount: resumptions.length,
         interruptionTotalTimeMs: interruptionTotal,
+        candidateTargetCount: Number.isInteger(started.candidateTarget) ? started.candidateTarget : "",
         candidatesGenerated: uniqueCandidates.size || Number(selection && selection.candidateCount) || 1,
         selectedCandidateId,
         selectedCandidateRank: selectedEvent.selectedCandidateRank ?? selectedEvent.rank ?? "",
@@ -336,6 +367,10 @@ function longRow(event) {
         boundExhausted: event.boundExhausted ?? "",
         resolutionLatencyMs: event.resolutionLatencyMs ?? "",
         speculative: event.speculative ?? "",
+        authoringMode: event.authoringMode || "",
+        consentRoute: event.consentRoute || "",
+        validationState: event.validationState || "",
+        verificationBypassed: event.verificationBypassed ?? "",
     };
 }
 

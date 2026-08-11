@@ -62,8 +62,11 @@ process.on("SIGTERM", () => { cleanup(); process.exit(143); });
             entry.reasonCode === "continuous_assist_disabled"),
         "monitor-only mode must not start a proactive model turn");
         const exported = buildStudyExports(allArtifacts);
-        assert.strictEqual(exported.trialRows.length, 1, "mock pipeline must export exactly one study trial");
-        const row = exported.trialRows[0];
+        assert.strictEqual(exported.trialRows.length, 2, "mock pipeline must export exactly two study trials (one per condition arm)");
+        const row = exported.trialRows.find((trial) => trial.condition === "agenticxr_verification");
+        const bypassRow = exported.trialRows.find((trial) => trial.condition === "agenticxr_no_verification");
+        assert.ok(row, "verification-arm trial row exists");
+        assert.ok(bypassRow, "no-verification-arm trial row exists");
         for (const column of TRIAL_COLUMNS) assert.ok(Object.hasOwn(row, column), `missing study export column ${column}`);
         assert.strictEqual(row.participantId, "mock-participant-001");
         assert.strictEqual(row.taskCompletion, true);
@@ -72,7 +75,19 @@ process.on("SIGTERM", () => { cleanup(); process.exit(143); });
         assert.ok(Number.isFinite(row.validatedExecutionLatencyMs));
         assert.ok(Number.isFinite(row.memoryRetrievalLatencyMeanMs));
         assert.ok(row.agentStatusMessageCount >= 1);
-        console.log(`[mock_integration] study export PASS (${TRIAL_COLUMNS.length} trial columns)`);
+        assert.ok(row.verificationApplyCount >= 1, "verification arm must carry dry-run apply evidence");
+        assert.strictEqual(row.verificationBypassedCount, 0, "verification arm must have no bypassed dry-runs");
+        // H2 contract: the same intent produced a committed proposal in both arms,
+        // differing only in dry-run evidence and validation-state marking.
+        assert.strictEqual(bypassRow.taskCompletion, true);
+        assert.ok(Number.isFinite(bypassRow.validatedExecutionLatencyMs), "bypass arm still reaches validated execution");
+        assert.strictEqual(bypassRow.verificationApplyCount, 0, "bypass arm must have no dry-run apply evidence");
+        assert.ok(bypassRow.verificationBypassedCount >= 2, "bypass arm records skips on simulate and proposal");
+        assert.strictEqual(bypassRow.candidateTargetCount, 1, "H4 N=1 switch is stamped on the bypass trial");
+        assert.strictEqual(bypassRow.candidatesGenerated, 1);
+        assert.strictEqual(bypassRow.selectedCandidateRank, 1, "the lone candidate's surfaced rank is logged");
+        assert.ok(bypassRow.agentStatusMessageCount >= 1, "status visibility is unchanged in the bypass arm");
+        console.log(`[mock_integration] study export PASS (${TRIAL_COLUMNS.length} trial columns, both condition arms)`);
         await run(["mcp/unity_scene_bridge/cache_test_flow.mjs"]);
         console.log("[mock_integration] PASS");
     } finally {

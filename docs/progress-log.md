@@ -711,3 +711,106 @@ Evidence boundary:
 - Proactive assistance has not been run with a live Anthropic account or Quest.
 - Entertainment/productivity/training support beyond authoring remains architectural,
   not demonstrated application evidence.
+
+## 2026-08-11 — Study-readiness pass: condition mechanics for L1--L5 trials
+
+Executed `docs/code-study-readiness-2026-08-11.md`. Goal: make the four
+condition mechanics of the paper's Study Design executable — implicit triggers for
+L1/L2, the H2 dry-run-bypass arm, the H4 N=1 vs. N>1 switch, and per-trial export
+completeness — by extending the existing sensor/cache/policy/log modules, with no
+parallel systems added.
+
+**1. Unity implicit-trigger emitters (L1/L2).** New
+`Unity/Assets/AgenticCache/ImplicitTriggerSensors.cs`: an authorable
+`AgenticRegionVolume` component (doorway/station/region volumes with a `regionId`;
+membership polled against the head position, so no XR-rig Rigidbody setup) emitting
+discrete `locomotion` entering/exiting events; user-to-object `proximity`
+enter/exit with hysteresis (1.5 m enter / 2.0 m exit defaults); and a head-ray
+`gaze` emitter (10° cone, 0.8 s dwell, discrete dwell-start/dwell-end events).
+All three ride the existing `CachePublisher.PublishSensorEvent` → SceneDelta
+`sensorEvents` path that `sensor_registry`/`ActivityMonitor`/`RegionStore` already
+ingest, so a threshold crossing reaches `continuous_monitor.js` and starts an L2
+turn gated by `mode_policy` exactly as an explicit request would be. Gaze is
+explicitly a HEAD-direction ray with dwell, not eye tracking — the paper should
+say so where L2's trigger list uses the word "gaze". Deliberately excluded
+(privacy/IRB, per the prompt): continuous trajectories, eye tracking, camera
+capture — only discrete transitions are emitted. `AgenticSceneRegistry` gained a
+`GetTrackedObjects()` accessor; `AgenticXRBootstrap` installs the component.
+
+**2. H2 dry-run bypass (`agenticxr_no_verification`).** The registered study
+trial's `condition` is now the per-session switch: when it is
+`agenticxr_no_verification`, `simulate_artifact` skips the Verification Space
+round trip and logs `status: skipped_no_verification` with
+`verificationOutcome: bypassed`; `rank_artifact_candidates` accepts that recorded
+skip as eligibility evidence (only in this arm — `candidate_selector.js` requires
+the `verificationBypassed` context flag, which `server.js` derives from the
+registered trial, never from the model); and `propose_artifact` stamps
+`verificationState: "unverified"` + `verificationBypassed: true` and forwards the
+flag so Unity's `CacheExchangeManager` skips only the staging-clone compile while
+keeping freshness checks, preview (labelled UNVERIFIED), and consent identical.
+`checkModePolicy` is untouched and runs identically in all conditions — the bypass
+cannot widen autonomy. Condition constants live in `mode_policy.js`
+(`STUDY_CONDITIONS`, `isVerificationBypassed`). Outside a registered trial no
+bypass is possible.
+
+**3. H4 candidate-count switch.** `startStudyTrial` (researcher CLI
+`--candidates=N`, MCP `start_study_trial.candidateTarget`) accepts an optional
+integer 1–5 that travels with the study context (including across the
+cross-process context reload), reaches the spawned orchestrator turn as
+`AGENTICXR_CANDIDATE_COUNT`, and parameterizes the code_generator prompt (default
+remains best-of-three). `rankCandidates` and the ranking tool now accept a
+single-candidate set so N=1 trials still log candidate count, surfaced rank, and
+score; rejected candidates were already journaled and retrievable via
+`get_artifact_history`.
+
+**4. Export completeness.** `trials.csv` grew from 67 to 72 columns:
+`firstProposalAtUtc` + `proposalLatencyMs` (the previously missing intent→proposal
+envelope pair), `verificationBypassedCount`, `candidateTargetCount`, and
+`decisionRouteBreakdownJson` (per-consent-route approved/rejected/timeout/undo
+counts). `events.csv` gained the machine-enum columns `authoringMode`,
+`consentRoute`, `validationState`, `verificationBypassed` (35 columns total), and
+`memory/index.js` now records `consentRoute` from decision/result envelopes. Fixed
+a real derivation bug found by the new tests: `selectedCandidateRank` was read
+from the LAST event mentioning the selected candidate (usually the rank-less
+ArtifactResult), so the surfaced rank never actually exported; it now prefers
+rank-bearing events. `docs/study-logging-schema.md` updated to match (condition
+semantics, candidateTarget, new columns, CLI flags).
+
+**Verification performed:**
+
+- `cd Server; npm test` — PASS, 304 assertions (was 258), including: bypass
+  eligibility only under the no-verification condition and never for a rejected
+  Validator verdict; L4 unable to bypass confirmation in any condition;
+  single-candidate ranking; candidateTarget validation and cross-process reload;
+  and a two-arm export contrast on the same intent — the verification-arm trial
+  row shows dry-run apply evidence and zero bypasses, the bypass-arm row shows
+  zero applies, ≥2 recorded skips, N=1, rank 1, an unverified-marked proposal in
+  the long export, and a committed validated execution in both arms.
+- `cd Server; npm run test:integration` — PASS against a real local Ubiq room +
+  mock Unity peer. The scripted session now runs TWO study trials with the same
+  intent (`agenticxr_verification` best-of-3, then `agenticxr_no_verification`
+  N=1) through the live MCP bridge; the exporter produced both condition-stamped
+  rows with the expected dry-run-evidence contrast, and the pre-existing
+  activity-trigger, cache-gap/backfill, and staleness flows still pass.
+- Unity `6000.3.9f1 -batchmode -nographics -quit` — exit code 0, no C# errors,
+  `Exiting batchmode successfully now!` (`unity-study-readiness-compile.log`).
+- `npm run doctor` (claude mode) — fails on exactly two checks, both
+  environment-supplied: `ANTHROPIC_API_KEY` and `STT_HTTP_URL`.
+
+**Status labels (honest boundary):**
+
+- Implicit-trigger emitters: **source-complete** (batch-compiled; wire contract
+  deterministic-tested). Not yet observed emitting in Play Mode or on device —
+  the server-side ingestion they feed is mock-tested.
+- Dry-run bypass arm: **mock-tested** end to end (deterministic + live-transport
+  mock integration). The Unity-side skip branch itself is source-complete only.
+- H4 candidate switch: **mock-tested** (deterministic + mock integration); the
+  prompt-side N parameterization has not run against a live model.
+- Export completeness: **mock-tested** (two-arm mock session produces the trial
+  CSV; exporter fails loudly on missing identity — pre-existing, re-verified).
+- **Item 5 (first live end-to-end run): NOT performed.** This environment has no
+  `ANTHROPIC_API_KEY` and no `STT_HTTP_URL`, and Play Mode needs a human at the
+  editor. The gate in `docs/LIVE_SYSTEM_REQUIREMENTS.md` §9 stands: select →
+  speak → generate → dry-run → preview → approve → commit → rollback has never
+  been observed live, so nothing in this pass is labelled live-exercised, and the
+  paper's Implementation Status section must not describe any of it as such.

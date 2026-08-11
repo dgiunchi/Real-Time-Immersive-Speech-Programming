@@ -250,9 +250,15 @@ class CodeGeneration extends ApplicationController {
             targetObjectId,
             studySource: "code_runtime_generator",
         });
+        // Per-trial H4 configuration: the registered trial's candidateTarget (N=1
+        // vs. N>1) reaches the orchestrator turn through its environment.
+        const studyContext = this.artifactLog.getStudyContext({ sessionId: peerUUID, correlationId });
+        const turnEnv = studyContext && Number.isInteger(studyContext.candidateTarget)
+            ? { ...process.env, AGENTICXR_CANDIDATE_COUNT: String(studyContext.candidateTarget) }
+            : process.env;
         const child = spawn(process.execPath, [orchestrator, intent, targetObjectId, peerUUID, correlationId], {
             cwd: path.resolve(__dirname, "../../.."),
-            env: process.env,
+            env: turnEnv,
             stdio: "inherit",
             windowsHide: true,
         });

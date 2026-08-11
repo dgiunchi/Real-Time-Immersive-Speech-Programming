@@ -9,11 +9,11 @@ const { EventJournal } = require("../cache/event_journal");
 const { CacheReconciler } = require("../cache/cache_reconciler");
 const { ProposalGate } = require("../cache/proposal_gate");
 const { makeCacheEnvelope, toWireFormat, fromWireFormat, STRINGIFY_PAYLOAD_FOR_UNITY } = require("../cache/protocol");
-const { checkModePolicy } = require("../orchestrator/mode_policy");
-const { rankCandidates, validateLifecycle } = require("../orchestrator/candidate_selector");
+const { checkModePolicy, STUDY_CONDITIONS, SIMULATION_SKIPPED_STATUS, isVerificationBypassed } = require("../orchestrator/mode_policy");
+const { rankCandidates, validateLifecycle, scoreCandidate } = require("../orchestrator/candidate_selector");
 const { PersonPolicyStore } = require("../memory/person_policy");
 const { ExperienceContextStore } = require("../memory/experience_context");
-const { ArtifactLog } = require("../memory/artifact_log");
+const { ArtifactLog, validateCandidateTarget } = require("../memory/artifact_log");
 const { CheckpointStore } = require("../memory/checkpoint_store");
 const { ActivityMonitor } = require("../memory/activity_monitor");
 const { TRIAL_COLUMNS, LONG_COLUMNS, buildStudyExports, writeCsv } = require("../evaluation/study_export");
@@ -187,6 +187,40 @@ const entertainmentCandidates = rankCandidates([
 equal(entertainmentCandidates.selected.candidateId, "entertainment-fit",
     "non-authoring entertainment context changes deterministic candidate ranking");
 
+// --- H2 dry-run bypass condition (docs/code-study-readiness-2026-08-11.md §2) ---
+ok(isVerificationBypassed(STUDY_CONDITIONS.NO_VERIFICATION), "agenticxr_no_verification bypasses dry-runs");
+ok(!isVerificationBypassed(STUDY_CONDITIONS.VERIFICATION), "agenticxr_verification keeps dry-runs");
+ok(!isVerificationBypassed(STUDY_CONDITIONS.BASELINE), "baseline keeps dry-runs");
+ok(!isVerificationBypassed(null), "no registered trial means no bypass");
+const skippedCandidate = { candidateId: "skipped", operation: "create", code: "class Skipped {}",
+    validationState: "accepted", simulationStatus: SIMULATION_SKIPPED_STATUS, riskScore: 0.1 };
+ok(!scoreCandidate(skippedCandidate, {}).eligible,
+    "a skipped dry-run stays ineligible outside the no-verification arm");
+ok(scoreCandidate(skippedCandidate, { verificationBypassed: true }).eligible,
+    "the no-verification arm accepts the recorded dry-run skip as expected evidence");
+ok(!scoreCandidate({ ...skippedCandidate, validationState: "rejected" }, { verificationBypassed: true }).eligible,
+    "the bypass never excuses a rejected Validator/Critic verdict");
+// mode_policy is identical across conditions - the bypass cannot widen autonomy.
+ok(!checkModePolicy({ interactionMode: "L4", authoringMode: "automatic", riskScore: 0.1,
+    triggerSource: "explicit_request", reversible: true, localOnly: true }).accepted,
+"L4 still cannot bypass confirmation in any study condition");
+
+// --- H4 N=1 vs N>1 per-trial candidate switch (item 3) ---
+const singleCandidateResult = rankCandidates([
+    { candidateId: "only", operation: "create", code: "class Only {}", validationState: "accepted",
+        simulationStatus: "simulated", riskScore: 0.2, authoringMode: "semi_auto_confirm" },
+]);
+equal(singleCandidateResult.selected.candidateId, "only", "a single-candidate set ranks its lone candidate");
+equal(singleCandidateResult.ranked.length, 1, "single-candidate ranking logs exactly one rank");
+assert.throws(() => rankCandidates([]), /at least one/, "an empty candidate set still fails");
+assertions += 1;
+assert.throws(() => validateCandidateTarget(0), /between 1 and 5/, "candidateTarget 0 is rejected");
+assertions += 1;
+assert.throws(() => validateCandidateTarget(2.5), /between 1 and 5/, "fractional candidateTarget is rejected");
+assertions += 1;
+equal(validateCandidateTarget(null), null, "candidateTarget stays optional");
+equal(validateCandidateTarget("3"), 3, "numeric-string candidateTarget normalizes");
+
 const testDataDir = path.join(root, "evaluation", "data", "contract-test");
 fs.rmSync(testDataDir, { recursive: true, force: true });
 fs.mkdirSync(testDataDir, { recursive: true });
@@ -314,20 +348,97 @@ studyLog.endStudyTrial({
     correlationId: "turn-correlation", taskCompletion: true, taskSuccess: true,
     taskQualityScore: 4, taskQualitySignals: { rubricVersion: "v1", behaviorMatched: true }, at: 2000,
 });
+
+// Second arm of the H2 contract: the SAME intent runs under agenticxr_no_verification
+// (with the H4 N=1 switch). The pipeline shape is identical - the only differences
+// are the recorded dry-run skip and the unverified proposal marking.
+const bypassContext = {
+    participantId: "participant-001",
+    sessionId: "study-session-b",
+    trialId: "trial-02",
+    condition: "agenticxr_no_verification",
+    taskId: "task-door-guidance",
+    interactionMode: "L4",
+    correlationId: "trial-b-correlation",
+    candidateTarget: 1,
+};
+studyLog.startStudyTrial({ ...bypassContext, at: 3000 });
+studyLog.appendStudyEvent({ sessionId: bypassContext.sessionId, correlationId: "turn-b", eventType: "intent_captured", at: 3100 });
+studyLog.appendStudyEvent({ sessionId: bypassContext.sessionId, correlationId: "turn-b", eventType: "agent_status_surfaced", status: "thinking", at: 3120 });
+studyLog.appendStudyEvent({
+    sessionId: bypassContext.sessionId, correlationId: "turn-b",
+    eventType: "simulate_artifact", candidateId: "candidate-b1", candidateSetId: "candidate-set-b",
+    status: "skipped_no_verification", verificationOutcome: "bypassed",
+    verificationBypassed: true, verificationDurationMs: 0, at: 3200,
+});
+studyLog.appendStudyEvent({
+    sessionId: bypassContext.sessionId, correlationId: "turn-b",
+    eventType: "candidate_selected", candidateId: "candidate-b1", candidateSetId: "candidate-set-b",
+    selectedCandidateRank: 1, selectedCandidateScore: 96, status: "selected",
+    verificationBypassed: true, at: 3210,
+});
+studyLog.appendStudyEvent({
+    sessionId: bypassContext.sessionId, correlationId: "turn-b",
+    eventType: "candidate_selection", candidateSetId: "candidate-set-b",
+    candidateCount: 1, selectedCandidateId: "candidate-b1",
+    selectedCandidateRank: 1, selectedCandidateScore: 96, verificationBypassed: true, at: 3220,
+});
+studyLog.appendStudyEvent({
+    sessionId: bypassContext.sessionId, correlationId: "turn-b",
+    eventType: "propose_artifact", candidateId: "candidate-b1", candidateSetId: "candidate-set-b",
+    targetObjectId: "object-study", status: "pending", validationState: "accepted",
+    verificationState: "unverified", verificationBypassed: true,
+    authoringMode: "semi_auto_confirm", consentRoute: "explicit_confirmation", at: 3300,
+});
+studyLog.appendStudyEvent({
+    sessionId: bypassContext.sessionId, correlationId: "turn-b",
+    eventType: "user_decision:approved", targetObjectId: "object-study", status: "approved",
+    authoringMode: "semi_auto_confirm", consentRoute: "explicit_confirmation", at: 3400,
+});
+studyLog.appendStudyEvent({
+    sessionId: bypassContext.sessionId, correlationId: "turn-b",
+    eventType: "artifactresult", targetObjectId: "object-study", artifactId: "artifact-study-b",
+    candidateId: "candidate-b1", status: "committed", commitAttachDurationMs: 11, at: 3500,
+});
+studyLog.endStudyTrial({
+    sessionId: bypassContext.sessionId, trialId: bypassContext.trialId,
+    correlationId: "turn-b", taskCompletion: true, taskSuccess: true,
+    taskQualityScore: 4, taskQualitySignals: { rubricVersion: "v1", behaviorMatched: true }, at: 4000,
+});
+
 const studyExports = buildStudyExports(fs.readFileSync(studyLogPath, "utf8").trim().split(/\r?\n/).map(JSON.parse));
-equal(studyExports.trialRows.length, 1, "study exporter emits one row per participant task-trial");
-equal(studyExports.trialRows[0].participantId, studyContext.participantId, "study exporter joins the pseudonymous participant");
-equal(studyExports.trialRows[0].trialId, studyContext.trialId, "study exporter joins events to the correct trial");
-equal(studyExports.trialRows[0].immediateAcknowledgementLatencyMs, 25, "acknowledgement latency uses separate timestamps");
-equal(studyExports.trialRows[0].validatedExecutionLatencyMs, 400, "validated execution latency uses intent and committed timestamps");
-equal(studyExports.trialRows[0].candidatesGenerated, 3, "H4 candidate count is exported");
-equal(studyExports.trialRows[0].firstProposalAcceptedWithoutRevision, true, "H4 first acceptance is cleanly derived");
-equal(studyExports.trialRows[0].interruptionTotalTimeMs, 25, "interruption/resumption duration is exported");
-equal(studyExports.trialRows[0].goalCount, 1, "goal count is exported");
-equal(studyExports.trialRows[0].goalIterationsTotal, 1, "goal iterations are exported");
-equal(studyExports.trialRows[0].goalDelayedResolutionLatencyMsJson, "[250]", "delayed goal latency is exported");
-equal(studyExports.trialRows[0].speculativeCandidatesAdopted, 1, "speculative adoption is exported");
-for (const column of TRIAL_COLUMNS) ok(Object.hasOwn(studyExports.trialRows[0], column), `trial export contains required column ${column}`);
+equal(studyExports.trialRows.length, 2, "study exporter emits one row per participant task-trial");
+const verificationRow = studyExports.trialRows.find((row) => row.trialId === studyContext.trialId);
+const bypassRow = studyExports.trialRows.find((row) => row.trialId === bypassContext.trialId);
+equal(verificationRow.participantId, studyContext.participantId, "study exporter joins the pseudonymous participant");
+equal(verificationRow.trialId, studyContext.trialId, "study exporter joins events to the correct trial");
+equal(verificationRow.immediateAcknowledgementLatencyMs, 25, "acknowledgement latency uses separate timestamps");
+equal(verificationRow.proposalLatencyMs, 200, "proposal latency uses intent and first-proposal timestamps");
+equal(verificationRow.validatedExecutionLatencyMs, 400, "validated execution latency uses intent and committed timestamps");
+equal(verificationRow.candidatesGenerated, 3, "H4 candidate count is exported");
+equal(verificationRow.firstProposalAcceptedWithoutRevision, true, "H4 first acceptance is cleanly derived");
+equal(verificationRow.interruptionTotalTimeMs, 25, "interruption/resumption duration is exported");
+equal(verificationRow.goalCount, 1, "goal count is exported");
+equal(verificationRow.goalIterationsTotal, 1, "goal iterations are exported");
+equal(verificationRow.goalDelayedResolutionLatencyMsJson, "[250]", "delayed goal latency is exported");
+equal(verificationRow.speculativeCandidatesAdopted, 1, "speculative adoption is exported");
+// The H2 contrast: identical pipeline shape, differing only in dry-run evidence and
+// validation-state marking, with the condition stamped on every event.
+equal(verificationRow.verificationBypassedCount, 0, "the verification arm has no bypassed dry-runs");
+ok(verificationRow.verificationApplyCount >= 1, "the verification arm carries dry-run apply evidence");
+equal(bypassRow.condition, "agenticxr_no_verification", "the bypass arm is stamped with its condition");
+ok(bypassRow.verificationBypassedCount >= 2, "the bypass arm records skips on simulate and proposal");
+equal(bypassRow.verificationApplyCount, 0, "the bypass arm has no dry-run apply evidence");
+equal(bypassRow.candidateTargetCount, 1, "the H4 N=1 switch is exported per trial");
+equal(bypassRow.candidatesGenerated, 1, "the bypass trial generated a single candidate");
+equal(bypassRow.selectedCandidateRank, 1, "the lone candidate's surfaced rank is logged");
+ok(Number.isFinite(bypassRow.validatedExecutionLatencyMs), "the bypass arm still reaches validated execution");
+const routeBreakdown = JSON.parse(bypassRow.decisionRouteBreakdownJson);
+equal(routeBreakdown.explicit_confirmation.approved, 1, "per-route accept decisions are exported");
+const bypassProposalRow = studyExports.longRows.find((row) =>
+    row.trialId === bypassContext.trialId && row.eventType === "propose_artifact");
+equal(bypassProposalRow.verificationBypassed, true, "the unverified proposal is marked in the long export");
+for (const column of TRIAL_COLUMNS) ok(Object.hasOwn(verificationRow, column), `trial export contains required column ${column}`);
 for (const column of LONG_COLUMNS) ok(Object.hasOwn(studyExports.longRows[0], column), `long export contains required column ${column}`);
 const trialCsvPath = path.join(testDataDir, "trials.csv");
 const eventCsvPath = path.join(testDataDir, "events.csv");
@@ -335,6 +446,14 @@ writeCsv(trialCsvPath, TRIAL_COLUMNS, studyExports.trialRows);
 writeCsv(eventCsvPath, LONG_COLUMNS, studyExports.longRows);
 ok(fs.readFileSync(trialCsvPath, "utf8").startsWith(TRIAL_COLUMNS.join(",")), "trial CSV has the stable analysis header");
 ok(fs.readFileSync(eventCsvPath, "utf8").startsWith(LONG_COLUMNS.join(",")), "long CSV has the stable event header");
+// A separate process (e.g. the runtime spawning an orchestrator turn) must see the
+// per-trial candidate target after reloading the shared log file. trial-02 above
+// was ended, so register a fresh open trial for the cross-process check.
+const crossProcessLog = new ArtifactLog({ filePath: studyLogPath });
+crossProcessLog.startStudyTrial({ ...bypassContext, sessionId: "study-session-c", trialId: "trial-03",
+    correlationId: "trial-c-correlation", at: 5000 });
+equal(new ArtifactLog({ filePath: studyLogPath }).getStudyContext({ sessionId: "study-session-c" }).candidateTarget, 1,
+    "candidateTarget survives the cross-process study-context reload");
 
 const unityManager = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CacheExchangeManager.cs"), "utf8");
 const unityPublisher = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CachePublisher.cs"), "utf8");
@@ -343,6 +462,14 @@ for (const required of ["CommitAccepted", "CommitRejected", "UserDecision", "Rol
 }
 ok(unityPublisher.includes("PublishCurrentSnapshot();"), "production Unity publisher emits a snapshot");
 ok(unityPublisher.includes("PublishStateDelta("), "production Unity publisher scans changed state");
+ok(unityManager.includes("verificationBypassed"), "Unity honors the H2 dry-run bypass flag without touching consent");
+const implicitSensors = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "ImplicitTriggerSensors.cs"), "utf8");
+for (const required of ["AgenticRegionVolume", "PublishSensorEvent", "\\\"sensorType\\\":\\\"locomotion\\\"",
+    "\\\"sensorType\\\":\\\"proximity\\\"", "\\\"sensorType\\\":\\\"gaze\\\"", "gazeDwellSeconds", "entering"]) {
+    ok(implicitSensors.includes(required), `implicit trigger emitters contain ${required}`);
+}
+const bootstrap = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "AgenticXRBootstrap.cs"), "utf8");
+ok(bootstrap.includes("ImplicitTriggerSensors"), "bootstrap installs the implicit trigger emitters");
 const roslynRuntime = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "Scenes", "Scripts", "TestRoslyn.cs"), "utf8");
 for (const deniedCapability of ["system.io", "system.net", "system.diagnostics", "system.reflection",
     "system.runtime.interopservices", "unityengine.networking", "dllimport", "stackalloc",

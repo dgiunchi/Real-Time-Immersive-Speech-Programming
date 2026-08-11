@@ -27,6 +27,12 @@ const { appendEvaluationEvent } = require("../evaluation/event_logger");
 const BRIDGE_SERVER_PATH = path.join(__dirname, "..", "mcp", "unity_scene_bridge", "server.js");
 const BRIDGE_SERVER_NAME = "unity_scene_bridge";
 
+// H4 per-trial switch: the runtime sets AGENTICXR_CANDIDATE_COUNT from the
+// registered study trial's candidateTarget (N=1 vs. N>1). Defaults to the paper's
+// best-of-three outside a trial. This process is spawned once per turn, so reading
+// the environment at module load is per-turn configuration, not a global.
+const CANDIDATE_COUNT = Math.min(5, Math.max(1, Number(process.env.AGENTICXR_CANDIDATE_COUNT) || 3));
+
 function bridgeTool(name) {
     return `mcp__${BRIDGE_SERVER_NAME}__${name}`;
 }
@@ -55,11 +61,11 @@ const AGENTS = {
         model: "sonnet",
     },
     code_generator: {
-        description: "Drafts three distinct lifecycle candidates from a grounded intent. Use after scene grounding and history retrieval.",
+        description: `Drafts ${CANDIDATE_COUNT} distinct lifecycle candidate(s) from a grounded intent. Use after scene grounding and history retrieval.`,
         prompt:
             "You are the Code Generator for AgenticXR. Given a scene grounding summary and the user's " +
             "natural-language intent, operation (create/edit/remove), existing artifact history, and experience context, " +
-            "produce exactly THREE materially distinct candidates. Create/edit candidates contain one C# MonoBehaviour; " +
+            `produce exactly ${CANDIDATE_COUNT} materially distinct candidate(s). Create/edit candidates contain one C# MonoBehaviour; ` +
             "edit names existingArtifactId and refines the current implementation; remove names existingArtifactId and has no code. " +
             "Treat experience context as a behavioral constraint, not a label: productivity should reduce distraction, " +
             "training should favor guidance and recoverability, entertainment may favor playful feedback, and exploration " +
@@ -68,7 +74,7 @@ const AGENTS = {
             "Constraints: ASCII only; no keyboard/mouse input APIs; no System.IO, " +
             "System.Net, System.Diagnostics, or reflection; a Component name that does not collide with a " +
             "common Unity type; if a new object is instantiated, parent it under transform; default any speed " +
-            "to 1; tag the target 'game'. Output ONLY a JSON array of three objects with candidateId, operation, " +
+            `to 1; tag the target 'game'. Output ONLY a JSON array of ${CANDIDATE_COUNT} object(s) with candidateId, operation, ` +
             "existingArtifactId, approach, experienceMode, and code (null only for remove).",
         tools: [],
         model: "sonnet",
@@ -146,12 +152,17 @@ timeline (see Server/memory/timeline_registry.js):
 2. Classify the lifecycle operation as create, edit, or remove. Retrieve
    ${bridgeTool("get_evolution_history")}, ${bridgeTool("get_person_policy")}, and
    ${bridgeTool("get_experience_context")}, then use code_generator to draft exactly
-   three candidates sharing one candidateSetId.
+   ${CANDIDATE_COUNT} candidate(s) sharing one candidateSetId.
 3. Call ${bridgeTool("send_agent_status")} with state "validating". For EACH candidate,
    use validator_critic independently and call ${bridgeTool("simulate_artifact")}.
-   Never rank an unvalidated or unsimulated candidate.
-4. Call ${bridgeTool("rank_artifact_candidates")} with all three verdicts and dry-run
-   outcomes. Stop if none is eligible. Rejected alternatives remain in evolution
+   Never rank an unvalidated or unsimulated candidate. Exception, decided by the
+   tool, never by you: if simulate_artifact returns status "skipped_no_verification",
+   the registered study condition has bypassed Verification Space dry-runs - carry
+   that exact status forward as the candidate's simulationStatus and continue; the
+   proposal will be marked unverified. You may not skip a dry-run on your own.
+4. Call ${bridgeTool("rank_artifact_candidates")} with every candidate's verdict and
+   dry-run outcome (a single-candidate set is valid and still logged). Stop if none
+   is eligible. Rejected alternatives remain in evolution
    history and are shown only when an L5 user explicitly asks for alternatives.
 5. conflict_resolver - check the target object is safe to modify right now.
    If decision is not "proceed", stop and explain why instead of proceeding.

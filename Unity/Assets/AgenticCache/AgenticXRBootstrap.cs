@@ -16,6 +16,7 @@ namespace AgenticCache
             var panel = root.AddComponent<AgenticXRConsentPanel>();
             var watchdog = root.AddComponent<GeneratedBehaviourWatchdog>();
             var exchange = root.AddComponent<CacheExchangeManager>();
+            var implicitSensors = root.AddComponent<ImplicitTriggerSensors>();
 
             exchange.sceneRegistry = registry;
             exchange.cachePublisher = publisher;
@@ -26,6 +27,8 @@ namespace AgenticCache
             publisher.localCache = exchange.localCache;
             publisher.sceneRegistry = registry;
             publisher.sessionId = exchange.sessionId;
+            implicitSensors.publisher = publisher;
+            implicitSensors.sceneRegistry = registry;
             panel.Initialize(exchange);
 
             if (exchange.compiler == null)

@@ -13,7 +13,7 @@ const path = require("path");
 const nconf = require("nconf");
 const { z } = require("zod");
 const { SESSION_ID_PATTERN } = require("./protocol");
-const { checkModePolicy } = require("../../orchestrator/mode_policy");
+const { checkModePolicy, isVerificationBypassed, SIMULATION_SKIPPED_STATUS } = require("../../orchestrator/mode_policy");
 const { rankCandidates, validateLifecycle, LIFECYCLE_OPERATIONS } = require("../../orchestrator/candidate_selector");
 const { VERIFICATION_LEVELS } = require("../../orchestrator/goal_schema");
 const { appendEvaluationEvent } = require("../../evaluation/event_logger");
@@ -103,6 +103,14 @@ async function main() {
             correlationId,
             ...event,
         });
+    }
+
+    // The per-session study condition is whatever the registered trial says - the
+    // researcher CLI / start_study_trial is the single switch. Outside a trial there
+    // is no condition and therefore never a verification bypass.
+    function activeStudyCondition({ sessionId, correlationId } = {}) {
+        const context = memory.artifactLog.getStudyContext({ sessionId, correlationId });
+        return context ? context.condition || null : null;
     }
 
     function recordProposalGate(args, result) {
@@ -268,7 +276,13 @@ async function main() {
                         return { content: [{ type: "text", text: `propose_artifact rejected by interaction-mode policy: ${policy.reasons.join("; ")}` }], isError: true };
                     }
                 }
-                const result = await bridge.proposeArtifact(args);
+                // In the agenticxr_no_verification arm the proposal proceeds through
+                // the identical gate/consent path but is explicitly marked unverified
+                // (no dry-run evidence exists). checkModePolicy above already ran
+                // unchanged - the bypass never widens autonomy.
+                const proposeCondition = activeStudyCondition(args);
+                const verificationBypassed = isVerificationBypassed(proposeCondition);
+                const result = await bridge.proposeArtifact({ ...args, verificationBypassed });
                 memory.artifactLog.append({
                     eventType: "propose_artifact",
                     sessionId,
@@ -296,6 +310,8 @@ async function main() {
                     artifactId: result.payload && result.payload.artifactId,
                     timestampAgeMs: Number.isFinite(args.snapshotTakenAt)
                         ? Math.max(0, Date.now() - args.snapshotTakenAt) : null,
+                    verificationBypassed: verificationBypassed || undefined,
+                    verificationState: verificationBypassed ? "unverified" : undefined,
                 });
                 memory.personPolicy.recordEvent({ sessionId, eventType: `propose_artifact:${result.payload && result.payload.status}`, targetObjectId, at: Date.now() });
                 return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
@@ -315,7 +331,7 @@ async function main() {
         "rank_artifact_candidates",
         {
             title: "Rank independently verified artifact candidates",
-            description: "Selects the best eligible candidate after every candidate has its own Validator/Critic and Verification Space result. Ranking never bypasses mode or proposal gates.",
+            description: "Selects the best eligible candidate after every candidate has its own Validator/Critic and Verification Space result (or, in the agenticxr_no_verification study arm, a recorded dry-run skip). Accepts a single-candidate set for N=1 trials so candidate count and rank are always logged. Ranking never bypasses mode or proposal gates.",
             inputSchema: {
                 sessionId: sessionIdSchema,
                 correlationId: z.string(),
@@ -325,13 +341,16 @@ async function main() {
                     candidateId: z.string(), operation: z.enum(LIFECYCLE_OPERATIONS), code: z.string().optional(),
                     existingArtifactId: z.string().optional(), validationState: z.string(), simulationStatus: z.string(),
                     riskScore: z.number().min(0).max(1), authoringMode: z.string().optional(), experienceMode: z.string().optional(),
-                })).min(2),
+                })).min(1),
             },
         },
         async ({ sessionId, correlationId, targetObjectId, candidateSetId, candidates }) => {
+            const rankCondition = activeStudyCondition({ sessionId, correlationId });
+            const verificationBypassed = isVerificationBypassed(rankCondition);
             const result = rankCandidates(candidates, {
                 profile: memory.personPolicy.getPolicy({ sessionId }),
                 experienceContext: memory.experienceContext.get(sessionId),
+                verificationBypassed,
             });
             for (const candidate of result.ranked) {
                 memory.artifactLog.append({
@@ -342,6 +361,7 @@ async function main() {
                     selectedCandidateScore: candidate.ranking.score,
                     status: candidate.ranking.eligible ? (candidate === result.selected ? "selected" : "not_selected") : "ineligible",
                     selectionReason: candidate === result.selected ? `highest deterministic score ${candidate.ranking.score}` : `score ${candidate.ranking.score}`,
+                    verificationBypassed: verificationBypassed || undefined,
                 });
             }
             memory.artifactLog.append({
@@ -355,6 +375,7 @@ async function main() {
                 selectedCandidateRank: result.selected ? result.ranked.indexOf(result.selected) + 1 : null,
                 selectedCandidateScore: result.selected && result.selected.ranking.score,
                 status: result.selected ? "selected" : "no_eligible_candidate",
+                verificationBypassed: verificationBypassed || undefined,
             });
             appendEvaluationEvent({
                 eventType: "candidate_selection", sessionId, correlationId, targetObjectId, candidateSetId,
@@ -403,6 +424,47 @@ async function main() {
                         reasonCode: "lifecycle_invariant",
                     });
                     return { content: [{ type: "text", text: `simulate_artifact lifecycle rejected: ${lifecycle.reasons.join("; ")}` }], isError: true };
+                }
+                // H2 condition arm (agenticxr_no_verification): skip the Verification
+                // Space round trip entirely and record the skip honestly. Shared XR
+                // Memory, freshness checks, preview, and consent are untouched -
+                // only dry-run evidence is absent, and the eventual proposal is
+                // marked unverified. Deterministic: driven by the registered trial
+                // condition, never by the model.
+                const simulateCondition = activeStudyCondition(args);
+                if (isVerificationBypassed(simulateCondition)) {
+                    memory.artifactLog.append({
+                        eventType: "simulate_artifact",
+                        sessionId,
+                        targetObjectId,
+                        correlationId,
+                        intent: intent || null,
+                        interactionMode: interactionMode || null,
+                        operation: lifecycle.operation,
+                        candidateId: args.candidateId || null,
+                        candidateSetId: args.candidateSetId || null,
+                        status: SIMULATION_SKIPPED_STATUS,
+                        verificationOutcome: "bypassed",
+                        verificationBypassed: true,
+                        verificationDurationMs: 0,
+                        condition: simulateCondition,
+                    });
+                    memory.personPolicy.recordEvent({ sessionId, eventType: `simulate_artifact:${SIMULATION_SKIPPED_STATUS}`, targetObjectId, at: Date.now() });
+                    return {
+                        content: [{
+                            type: "text",
+                            text: JSON.stringify({
+                                correlationId: correlationId || null,
+                                payload: {
+                                    status: SIMULATION_SKIPPED_STATUS,
+                                    note: "Verification Space dry-run skipped by study condition " +
+                                        `'${simulateCondition}'. Treat this candidate's simulationStatus as ` +
+                                        `'${SIMULATION_SKIPPED_STATUS}' when ranking; the proposal will be marked unverified.`,
+                                },
+                                verificationBypassed: true,
+                            }, null, 2),
+                        }],
+                    };
                 }
                 const result = await bridge.proposeArtifact({ ...args, simulate: true });
                 memory.artifactLog.append({
@@ -705,6 +767,8 @@ async function main() {
                 taskId: sessionIdSchema,
                 interactionMode: z.enum(["baseline", "L1", "L2", "L3", "L4", "L5"]),
                 correlationId: sessionIdSchema,
+                candidateTarget: z.number().int().min(1).max(5).optional()
+                    .describe("H4 per-trial candidate count: 1 for the single-candidate arm, >1 for best-of-N"),
             },
         },
         async (context) => {

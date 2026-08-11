@@ -95,6 +95,14 @@ namespace AgenticCache
                 ? value.gameObject : null;
         }
 
+        // Snapshot of the currently tracked stable objects, for pollers (e.g.
+        // ImplicitTriggerSensors) that need positions rather than serialized state.
+        public List<StableObjectId> GetTrackedObjects()
+        {
+            RefreshObjects();
+            return new List<StableObjectId>(byId.Values);
+        }
+
         public string GetSelectedObjectId()
         {
             var selected = GetSelectedObject();

@@ -55,6 +55,25 @@ Identifiers allow ASCII letters, digits, `.`, `_`, `:`, and `-`, with a maximum 
 128 characters. A missing identifier fails loudly. Null envelope metadata cannot
 overwrite the registered trial context.
 
+### Condition semantics and per-trial configuration
+
+The registered `condition` is not only a label — it is the per-session switch for
+the H2 arm. When the active trial's condition is `agenticxr_no_verification`, the
+bridge deterministically skips Verification Space dry-runs: `simulate_artifact`
+returns `status: skipped_no_verification` without a Unity round trip, candidate
+ranking accepts that recorded skip as expected evidence (only in this arm), and the
+proposal is stamped `verificationState: "unverified"` plus
+`verificationBypassed: true` while Shared XR Memory, freshness checks, preview,
+consent routing, and `mode_policy` remain identical. Outside a registered trial no
+bypass is ever possible. The model cannot trigger or fake the skip — it is derived
+from the trial registration in the artifact log.
+
+Trial registration also accepts an optional `candidateTarget` (integer 1–5): the H4
+per-trial switch between single-candidate (N=1) and best-of-N generation. It
+travels with the study context, reaches the orchestrator turn via
+`AGENTICXR_CANDIDATE_COUNT`, and is exported per trial as `candidateTargetCount`
+alongside the observed `candidatesGenerated` and the surfaced candidate's rank.
+
 ## Event schema
 
 Common optional join/evidence fields are:
@@ -80,6 +99,9 @@ Common optional join/evidence fields are:
 | `unsafeProposal` | boolean | Validator/policy classified the proposal as unsafe. |
 | `blockedUnsafeArtifact` | boolean | Capability policy prevented execution. |
 | `verificationLiveMismatch` | boolean | Dry-run result disagreed with live result. |
+| `verificationBypassed` | boolean | The `agenticxr_no_verification` arm skipped this dry-run/proposal's verification. |
+| `verificationState` | string | `unverified` on proposals whose dry-run was bypassed; absent otherwise. |
+| `consentRoute` | string | `automatic_low_risk` or `explicit_confirmation`; used for per-route decision counts. |
 | `selectedCandidateRank` | integer | One-based deterministic rank. |
 | `selectedCandidateScore` | number | Deterministic selection score; not a probability. |
 | `goalId` / `goalIteration` | string / integer | Persistent bounded goal and trigger-driven iteration. |
@@ -102,6 +124,7 @@ Common optional join/evidence fields are:
 | `propose_artifact` | bridge/baseline runtime | candidate, risk, operation, outcome | Generated-artifact count, unsafe proposal, preview start; H1/H2/H4 | Agentic path mock-tested; baseline only records code sent |
 | `proposal_preview_surfaced` | outbound typed proposal | candidate/version | Preview-to-commit start | Mock-tested; live panel not observed |
 | `simulate_artifact` / `verification_outcome` | Verification Space | outcome, duration, candidate | Apply/clarify/repair/reject and verification time; H2/H4 | Apply/reject mock-tested; clarify/repair use structured event API until live flow emits them |
+| `simulate_artifact` with `status: skipped_no_verification` | condition-gated bridge bypass | `verificationBypassed`, `verificationOutcome: bypassed` | H2 no-verification arm: dry-run skipped, proposal marked unverified | Implemented, deterministic- and mock-integration-tested |
 | `candidate_selected` / `candidate_rejected` | deterministic ranker | rank, score, candidate IDs | Candidate count/selection/rank/score; H4 | Implemented and mock-tested |
 | `candidate_selection` | deterministic ranker | selected candidate and set size | H4 grouping | Implemented and mock-tested |
 | `proposal_gate_checked` | backend Proposal Gate | validity, age, stale flag | Correlation/target validity, timestamp age, stale proposal; H2 | Implemented and deterministic-tested |
@@ -138,20 +161,23 @@ Common optional join/evidence fields are:
 - Task performance: `taskCompletion`, `taskSuccess`, `taskQualityScore`,
   `taskQualitySignalsJson`, `totalTaskTimeMs`.
 - Latency timestamps and deltas: `intentCapturedAtUtc`,
-  `firstAcknowledgementAtUtc`, `validatedExecutionAtUtc`,
-  `immediateAcknowledgementLatencyMs`, `validatedExecutionLatencyMs`.
+  `firstAcknowledgementAtUtc`, `firstProposalAtUtc`, `validatedExecutionAtUtc`,
+  `immediateAcknowledgementLatencyMs`, `proposalLatencyMs`,
+  `validatedExecutionLatencyMs`.
 - Artifacts/failures: `generatedArtifactCount`, compile/validation/runtime failure
   counts, four verification-outcome counts,
   `verificationCandidateDurationsMsJson`, `verificationTimeTotalMs`,
+  `verificationBypassedCount` (H2 no-verification arm),
   `previewToCommitTimeMs`, `verificationLiveMismatchCount`.
 - Grounding/safety: grounding/stale/invalid-ID/invalid-target counts,
   `timestampAgeAtApplicationMsJson`, memory latency list/mean,
   unsafe and blocked-unsafe counts.
 - Repair/consent: repair, clarification, confirmation, rejection, undo, and rollback
-  counts.
+  counts, plus `decisionRouteBreakdownJson` — per-consent-route (falling back to
+  authoring mode) approved/rejected/timeout/undo counts.
 - Interruption: interruption/resumption counts and `interruptionTotalTimeMs`.
-- H4: `candidatesGenerated`, selected ID/rank/score, and
-  `firstProposalAcceptedWithoutRevision`.
+- H4: `candidateTargetCount` (registered N), `candidatesGenerated` (observed),
+  selected ID/rank/score, and `firstProposalAcceptedWithoutRevision`.
 - Visibility: status count and `firstAgentStatusAtUtc`.
 - Goal loops: goal/iteration counts, iterations to completion, verifier levels,
   escalation/bound-exhaustion counts, and delayed-resolution latencies.
@@ -167,7 +193,9 @@ cell means the pipeline had no applicable timestamp/value.
 It intentionally omits `intent`, generated code, transcript text, raw audio,
 free-form validation summaries, and free-form errors. Its columns are the required
 identity fields plus correlation/timestamp/event, object/artifact/candidate IDs,
-machine status/reason code, durations, validity flags, rank/score, and source.
+machine status/reason code, durations, validity flags, rank/score, source, and the
+machine-enum route/validation fields `authoringMode`, `consentRoute`,
+`validationState`, and `verificationBypassed`.
 Goal-loop rows additionally retain only structured goal/iteration/verifier/status,
 bound, delayed-latency, and speculative fields. Objective text and prepared code are
 not exported.
@@ -177,8 +205,12 @@ not exported.
 From `Server`:
 
 ```powershell
-node evaluation/study_trial.js start --participant=P001 --session=S001 --trial=T01 --condition=agenticxr_verification --task=door_guidance --mode=L4 --correlation=T01-root
+node evaluation/study_trial.js start --participant=P001 --session=S001 --trial=T01 --condition=agenticxr_verification --task=door_guidance --mode=L4 --correlation=T01-root --candidates=3
 ```
+
+`--condition=agenticxr_no_verification` activates the H2 dry-run bypass for the
+trial (see "Condition semantics" above). `--candidates=1` selects the H4
+single-candidate arm; omit it for the runtime default of three.
 
 Run the task. Record non-inferable events when required:
 

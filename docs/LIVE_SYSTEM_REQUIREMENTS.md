@@ -1,6 +1,6 @@
 # AgenticXR live-system requirements
 
-Last reviewed: 2026-07-31
+Last reviewed: 2026-08-11
 
 This is the living checklist for running the complete AgenticXR system with Unity,
 Meta Quest, Ubiq, speech recognition, Claude orchestration, continuous activity
@@ -134,8 +134,18 @@ New-NetFirewallRule `
 - [ ] The project compiles without C# errors.
 
 The automatic AgenticXR bootstrap should install the cache exchange manager, scene
-publisher, runtime compiler integration, continuous sensor publication, visible
+publisher, runtime compiler integration, continuous sensor publication, implicit
+trigger emitters (region volumes, proximity, head-ray gaze dwell), visible
 status, and world-space Approve/Reject/Undo panel.
+
+For the L1/L2 study tasks, author the implicit triggers in the scene:
+
+- [ ] Add an `AgenticRegionVolume` component (with a `regionId`) to each doorway/
+  station/target region the protocol references. Membership is polled against the
+  head position; no Rigidbody or trigger-collider setup on the XR rig is needed.
+- [ ] Confirm proximity enter/exit and gaze dwell events appear in
+  `get_activity_stream` when moving toward / looking at a `game`-tagged object.
+  Gaze is a head-direction ray with dwell, not eye tracking.
 
 ## 6. Quest requirements
 
@@ -224,6 +234,8 @@ Run in this order:
 - [ ] Server doctor, deterministic tests, and mock integration pass.
 - [ ] Unity Editor joins the Ubiq room.
 - [ ] Scene/sensor observations reach `get_activity_stream`.
+- [ ] Walking into an `AgenticRegionVolume` produces a `locomotion` region event;
+  approaching an object produces `proximity`; dwelling on it produces `gaze`.
 - [ ] A typed/manual Claude request succeeds with mock or Editor Unity.
 - [ ] Quest joins the same room.
 - [ ] Quest push-to-talk reaches STT.
@@ -290,6 +302,13 @@ evidence.
 
 ### Implemented or scaffolded, but not yet live-evaluated
 
+- [x] Unity implicit-trigger emitters for L1/L2 (authorable region volumes,
+  proximity enter/exit, head-ray gaze dwell) compile in batch mode and their wire
+  contract is deterministic-tested; the polled events have not been observed in
+  Play Mode or on device (2026-08-11).
+- [x] The H2 dry-run bypass condition (`agenticxr_no_verification`) and the H4
+  per-trial candidate switch (`candidateTarget`, N=1 vs. N>1) are implemented,
+  deterministic-tested, and mock-integration-tested end to end (2026-08-11).
 - [x] Bounded goal-loop controller, verification levels, delayed evidence, escalation,
   and kill switch have deterministic tests.
 - [x] Idle future-goal prediction and speculative candidate storage exist and are

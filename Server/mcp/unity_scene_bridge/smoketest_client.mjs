@@ -180,5 +180,86 @@ log("end_study_trial", await client.callTool({
     },
 }));
 
+// --- H2 condition-arm contract (docs/code-study-readiness-2026-08-11.md §2): the
+// SAME intent runs again under agenticxr_no_verification with the H4 N=1 switch.
+// Expected contrast: no Verification Space round trip (a recorded skip instead), an
+// unverified-marked proposal, identical consent routing, and a committed result.
+const bypassSessionId = "smoketest-session-2";
+const bypassCorrelationId = "smoketest-bypass-1";
+log("start_study_trial (no-verification arm, N=1)", await client.callTool({
+    name: "start_study_trial",
+    arguments: {
+        participantId: "mock-participant-001",
+        sessionId: bypassSessionId,
+        trialId: "mock-trial-002",
+        condition: "agenticxr_no_verification",
+        taskId: "mock-authoring-task",
+        interactionMode: "L4",
+        correlationId: bypassCorrelationId,
+        candidateTarget: 1,
+    },
+}));
+log("record_intent (same intent, bypass arm)", await client.callTool({
+    name: "record_intent",
+    arguments: { text: "make this sphere pulse red when I touch it", sessionId: bypassSessionId, correlationId: bypassCorrelationId },
+}));
+log("send_agent_status (bypass arm)", await client.callTool({
+    name: "send_agent_status",
+    arguments: { sessionId: bypassSessionId, correlationId: bypassCorrelationId, state: "thinking", detail: "Bypass-arm visibility check." },
+}));
+log("query_scene (bypass arm)", await client.callTool({
+    name: "query_scene",
+    arguments: { objectId: targetObjectId, sessionId: bypassSessionId, correlationId: bypassCorrelationId },
+}));
+log("simulate_artifact (expect status skipped_no_verification)", await client.callTool({
+    name: "simulate_artifact",
+    arguments: {
+        code: "public class BounceSafe : MonoBehaviour {}", operation: "create",
+        candidateId: "candidate-b1", candidateSetId: "smoketest-candidate-set-2",
+        targetObjectId, intent: "make it bounce", sessionId: bypassSessionId, correlationId: "sim2-candidate-b1",
+    },
+}));
+log("rank_artifact_candidates (single skipped candidate)", await client.callTool({
+    name: "rank_artifact_candidates",
+    arguments: {
+        sessionId: bypassSessionId, correlationId: bypassCorrelationId, targetObjectId,
+        candidateSetId: "smoketest-candidate-set-2",
+        candidates: [
+            { candidateId: "candidate-b1", operation: "create", code: "public class BounceSafe : MonoBehaviour {}", validationState: "accepted", simulationStatus: "skipped_no_verification", riskScore: 0.1, authoringMode: "semi_auto_confirm", experienceMode: "training" },
+        ],
+    },
+}));
+log("propose_artifact (bypass arm, expect committed + unverified marking)", await client.callTool({
+    name: "propose_artifact",
+    arguments: {
+        code: "public class BounceSafe : MonoBehaviour {}",
+        targetObjectId,
+        intent: "make it bounce",
+        authoringMode: "semi_auto_confirm",
+        interactionMode: "L4",
+        operation: "create",
+        candidateId: "candidate-b1",
+        candidateSetId: "smoketest-candidate-set-2",
+        candidateCount: 1,
+        selectionReason: "single-candidate trial (H4 N=1 arm)",
+        experienceMode: "training",
+        snapshotTakenAt: Date.now(),
+        sessionId: bypassSessionId,
+        correlationId: bypassCorrelationId,
+    },
+}));
+log("end_study_trial (bypass arm)", await client.callTool({
+    name: "end_study_trial",
+    arguments: {
+        sessionId: bypassSessionId,
+        trialId: "mock-trial-002",
+        correlationId: bypassCorrelationId,
+        taskCompletion: true,
+        taskSuccess: true,
+        taskQualityScore: 4,
+        taskQualitySignals: { rubricVersion: "mock-v1", behaviorMatched: true },
+    },
+}));
+
 await client.close();
 process.exit(0);

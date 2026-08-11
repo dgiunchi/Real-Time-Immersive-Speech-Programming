@@ -32,6 +32,11 @@ namespace AgenticCache
             public int candidateCount;
             public string selectionReason;
             public string experienceMode;
+            // Study condition agenticxr_no_verification (H2 arm): true skips ONLY the
+            // Verification Space staging-clone dry-run. Freshness checks, preview,
+            // and consent routing are unchanged, and mode policy is enforced
+            // server-side before the proposal is ever sent.
+            public bool verificationBypassed;
         }
 
         [Serializable] private sealed class BackfillRequestPayload { public bool requestSnapshot; public long lastSeenSeq; }
@@ -293,30 +298,35 @@ namespace AgenticCache
                 return;
             }
 
-            ShowStatus("validating", "Testing Claude's code on a staging clone.");
-            var verificationStartedAt = Time.realtimeSinceStartupAsDouble;
-            GameObject clone = null;
-            ScriptProxy stageProxy = null;
-            string stageError = null;
-            var staged = removes;
-            if (!removes)
+            var staged = removes || payload.verificationBypassed;
+            if (!staged)
             {
-                clone = Instantiate(target);
+                ShowStatus("validating", "Testing Claude's code on a staging clone.");
+                var verificationStartedAt = Time.realtimeSinceStartupAsDouble;
+                var clone = Instantiate(target);
                 clone.name = target.name + " [AgenticXR Verification]";
                 clone.SetActive(false);
-                stageError = compiler == null ? "The Roslyn runtime compiler is unavailable in this scene." : null;
+                ScriptProxy stageProxy = null;
+                var stageError = compiler == null ? "The Roslyn runtime compiler is unavailable in this scene." : null;
                 staged = compiler != null && compiler.TryCompileAndAttach(clone, payload.code, out stageProxy, out stageError);
                 if (stageProxy != null) stageProxy.Dispose();
                 Destroy(clone);
-            }
-            envelope.verificationDurationMs = (Time.realtimeSinceStartupAsDouble - verificationStartedAt) * 1000.0;
-            if (!staged)
-            {
-                SendArtifactResult(envelope, "error", null, stageError ?? "Staging compilation failed.");
-                return;
+                envelope.verificationDurationMs = (Time.realtimeSinceStartupAsDouble - verificationStartedAt) * 1000.0;
+                if (!staged)
+                {
+                    SendArtifactResult(envelope, "error", null, stageError ?? "Staging compilation failed.");
+                    return;
+                }
             }
             if (string.Equals(payload.mode, "simulate", StringComparison.OrdinalIgnoreCase))
             {
+                if (payload.verificationBypassed)
+                {
+                    // The backend skips dry-runs server-side in this condition; if one
+                    // still arrives, answer honestly rather than faking evidence.
+                    SendArtifactResult(envelope, "skipped_no_verification", null, null);
+                    return;
+                }
                 SendArtifactResult(envelope, "simulated", null, null);
                 ShowStatus("validated", "The proposal passed the Verification Space dry-run.");
                 return;
@@ -324,7 +334,9 @@ namespace AgenticCache
 
             localCache.MarkProposalPending(envelope.correlationId, envelope.targetObjectId, envelope.snapshotId,
                 envelope.objectRevision, envelope.authoringMode, envelope.interactionMode);
-            localCache.SetPreview(envelope.correlationId, payload.validationSummary ?? "Compiled successfully on an inactive verification clone.");
+            localCache.SetPreview(envelope.correlationId, payload.verificationBypassed
+                ? "UNVERIFIED: this proposal skipped the Verification Space dry-run (study condition)."
+                : payload.validationSummary ?? "Compiled successfully on an inactive verification clone.");
             pending[envelope.correlationId] = new PendingArtifact
             {
                 envelope = envelope,

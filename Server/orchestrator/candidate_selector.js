@@ -1,5 +1,7 @@
 "use strict";
 
+const { SIMULATION_SKIPPED_STATUS } = require("./mode_policy");
+
 const LIFECYCLE_OPERATIONS = Object.freeze(["create", "edit", "remove"]);
 
 function validateLifecycle(candidate) {
@@ -27,9 +29,13 @@ function contextFit(candidate, experienceContext) {
     return candidate.experienceMode === experienceContext.mode ? 1 : -1;
 }
 
-function scoreCandidate(candidate, { profile, experienceContext } = {}) {
+function scoreCandidate(candidate, { profile, experienceContext, verificationBypassed = false } = {}) {
     const lifecycle = validateLifecycle(candidate);
-    const simulationPassed = candidate.simulationStatus === "simulated";
+    // In the agenticxr_no_verification study arm the Verification Space dry-run is
+    // deliberately skipped, so the skipped status is the expected evidence there -
+    // and only there. Everywhere else an unsimulated candidate stays ineligible.
+    const simulationPassed = candidate.simulationStatus === "simulated" ||
+        (verificationBypassed && candidate.simulationStatus === SIMULATION_SKIPPED_STATUS);
     const validationPassed = candidate.validationState === "accepted";
     if (!lifecycle.accepted || !simulationPassed || !validationPassed) {
         return { eligible: false, score: Number.NEGATIVE_INFINITY, lifecycle, preferenceFit: 0, contextFit: 0 };
@@ -41,8 +47,10 @@ function scoreCandidate(candidate, { profile, experienceContext } = {}) {
     return { eligible: true, score: Math.round(score * 100) / 100, lifecycle, preferenceFit: userFit, contextFit: activityFit };
 }
 
+// A single-candidate set is valid: the study's H4 N=1 arm still ranks (and logs)
+// its lone candidate so candidate count and surfaced rank are recorded per trial.
 function rankCandidates(candidates, context = {}) {
-    if (!Array.isArray(candidates) || candidates.length < 2) throw new Error("rankCandidates requires at least two candidates");
+    if (!Array.isArray(candidates) || candidates.length < 1) throw new Error("rankCandidates requires at least one candidate");
     const ranked = candidates.map((candidate, index) => ({
         ...candidate,
         candidateId: candidate.candidateId || `candidate-${index + 1}`,

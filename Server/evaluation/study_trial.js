@@ -51,6 +51,9 @@ function run(argv = process.argv.slice(2)) {
             taskId: required(args, "task"),
             interactionMode: required(args, "mode"),
             correlationId: required(args, "correlation"),
+            // H4 per-trial switch: --candidates=1 for the single-candidate arm,
+            // --candidates=3 (or omit for the runtime default) for best-of-N.
+            candidateTarget: args.candidates == null ? null : Number(args.candidates),
             studySource: "researcher_cli",
         });
     } else if (command === "end") {

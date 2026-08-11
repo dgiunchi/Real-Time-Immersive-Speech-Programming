@@ -207,7 +207,7 @@ class SceneBridgeClient extends EventEmitter {
         sessionId, correlationId, timeoutMs, sceneEpoch, snapshotId, objectRevision, snapshotTakenAt,
         validationState = "accepted", validationSummary, riskScore, consentRoute, requiredPermissions,
         expectedSideEffects, artifactVersion, operation = "create", existingArtifactId, candidateId,
-        candidateSetId, candidateCount, selectionReason, experienceMode } = {}) {
+        candidateSetId, candidateCount, selectionReason, experienceMode, verificationBypassed = false } = {}) {
         if (!targetObjectId || (operation !== "remove" && !code)) {
             throw new Error("proposeArtifact requires targetObjectId and code for create/edit");
         }
@@ -239,6 +239,9 @@ class SceneBridgeClient extends EventEmitter {
                 candidateCount: candidateCount || 1,
                 selectionReason: selectionReason || null,
                 experienceMode: experienceMode || null,
+                // H2 study arm only: Unity skips the staging-clone dry-run but keeps
+                // freshness checks, preview, and consent routing unchanged.
+                verificationBypassed: verificationBypassed === true,
             },
         });
         envelope.sceneEpoch = sceneEpoch || null;

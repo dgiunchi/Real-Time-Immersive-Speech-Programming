@@ -10,9 +10,11 @@
 // payload.sensorEvents array, kept optional so existing plain SceneDelta payloads
 // (e.g. from earlier versions of mock_unity_peer.js) remain valid without it.
 //
-// Unity-side sensor *components* (the C# MonoBehaviours that actually detect
-// proximity/gaze/collision/locomotion) are NOT built in this pass - this module
-// defines the server-side contract and normalizer they will eventually feed.
+// Unity-side emitters (2026-08-11): Unity/Assets/AgenticCache/ImplicitTriggerSensors.cs
+// now emits discrete `locomotion` (region volume entry/exit), `proximity`
+// (enter/exit within a radius), and `gaze` (head-ray dwell) events onto this path,
+// alongside CachePublisher's scene-entry locomotion and selection-gaze events.
+// collision/handTracking/gesture remain server-contract-only, with no Unity emitter.
 
 const KNOWN_SENSOR_TYPES = Object.freeze(["proximity", "collision", "gaze", "handTracking", "gesture", "locomotion"]);
 

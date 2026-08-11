@@ -2,6 +2,23 @@
 
 const { VERIFICATION_LEVELS } = require("./goal_schema");
 
+// Study conditions (docs/study-logging-schema.md, paper Measures subsection). The
+// H2 arm skips Verification Space dry-runs ONLY - it never widens autonomy:
+// checkModePolicy below stays authoritative and identical across all conditions.
+const STUDY_CONDITIONS = Object.freeze({
+    BASELINE: "baseline",
+    NO_VERIFICATION: "agenticxr_no_verification",
+    VERIFICATION: "agenticxr_verification",
+});
+
+// Dry-run results carry this status instead of "simulated" when the active study
+// condition bypasses verification, so unverified proposals are always marked.
+const SIMULATION_SKIPPED_STATUS = "skipped_no_verification";
+
+function isVerificationBypassed(condition) {
+    return condition === STUDY_CONDITIONS.NO_VERIFICATION;
+}
+
 function routeByVerifiability({ verificationLevel, boundExhausted = false } = {}) {
     if (boundExhausted) return {
         automaticEligible: false,
@@ -58,4 +75,4 @@ function checkModePolicy({ interactionMode, authoringMode, riskScore, triggerSou
     return { accepted: reasons.length === 0, reasons, verificationRoute };
 }
 
-module.exports = { checkModePolicy, routeByVerifiability };
+module.exports = { checkModePolicy, routeByVerifiability, STUDY_CONDITIONS, SIMULATION_SKIPPED_STATUS, isVerificationBypassed };
