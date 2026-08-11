@@ -18,13 +18,13 @@ Open a terminal — **Command Prompt or PowerShell on Windows, Terminal on a
 Mac** — and paste this. It is the same on all three:
 
 ```
-git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/Real-Time-Immersive-Speech-Programming.git dreamcodevr
+git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/say-it-again.git say-it-again
 ```
 
 > One command, no `cd`, and nothing that differs between shells, which is
 > deliberate. All three open in your home folder, and giving `git clone` the
 > destination as its last word means the project lands there — Windows
-> `C:\Users\<you>\dreamcodevr`, Mac `~/dreamcodevr` — without a second line
+> `C:\Users\<you>\say-it-again`, Mac `~/say-it-again` — without a second line
 > that would need `cd /d` in Command Prompt, `cd` in PowerShell, and `&&` in
 > neither the same way. If you have ever pasted a Windows command and been told
 > *"The token '&&' is not a valid statement separator"*, that is Command Prompt
@@ -45,7 +45,7 @@ git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworl
 
 ### 2. Build onto the headset
 
-Open **`dreamcodevr/Unity`** — the inner folder, not the outer one — in Unity
+Open **`say-it-again/Unity`** — the inner folder, not the outer one — in Unity
 **`6000.3.19f1`**, installed with **Android Build Support**.
 
 Then **File → Build Profiles → Android → Switch Platform**, and only after that
@@ -59,9 +59,9 @@ One command. Which shell you are in decides how it is written:
 
 | | |
 |---|---|
-| **Command Prompt** | `%USERPROFILE%\dreamcodevr\study` |
-| **PowerShell** | `& $HOME\dreamcodevr\study.cmd` |
-| **macOS / Linux** | `~/dreamcodevr/study` |
+| **Command Prompt** | `%USERPROFILE%\say-it-again\study` |
+| **PowerShell** | `& $HOME\say-it-again\study.cmd` |
+| **macOS / Linux** | `~/say-it-again/study` |
 
 Windows runs `study.cmd`, a Mac the `study` script beside it. Same script, same
 questions, same panel. It installs what it needs on first run, asks which mode
@@ -79,9 +79,9 @@ If your copy is somewhere else, `cd` to it and run the script from there:
 
 | | |
 |---|---|
-| **Command Prompt** | `cd /d "C:\path with spaces\dreamcodevr"` then `study` |
-| **PowerShell** | `cd "C:\path with spaces\dreamcodevr"` then `.\study.cmd` |
-| **macOS / Linux** | `cd "~/path with spaces/dreamcodevr"` then `./study` |
+| **Command Prompt** | `cd /d "C:\path with spaces\say-it-again"` then `study` |
+| **PowerShell** | `cd "C:\path with spaces\say-it-again"` then `.\study.cmd` |
+| **macOS / Linux** | `cd "~/path with spaces/say-it-again"` then `./study` |
 
 Chaining those with `&&` works in Command Prompt and on a Mac, but **not** in
 Windows PowerShell 5.1, which answers *"The token '&&' is not a valid statement

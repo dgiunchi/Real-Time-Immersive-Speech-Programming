@@ -65,10 +65,10 @@ Open **Command Prompt** and run these two lines:
 
 ```
 cd /d %USERPROFILE%
-git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/Real-Time-Immersive-Speech-Programming.git dreamcodevr
+git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/say-it-again.git say-it-again
 ```
 
-That puts everything in `C:\Users\<you>\dreamcodevr`, which every path below
+That puts everything in `C:\Users\<you>\say-it-again`, which every path below
 assumes.
 
 > **Not the Desktop, on purpose.** If OneDrive is backing up your PC — the
@@ -103,9 +103,9 @@ assumes.
 
 ## Step 6 — Open the project
 
-Unity Hub → **Open** → select `C:\Users\<you>\dreamcodevr\Unity`.
+Unity Hub → **Open** → select `C:\Users\<you>\say-it-again\Unity`.
 
-Select the **`Unity` folder inside**, not the outer `dreamcodevr` folder.
+Select the **`Unity` folder inside**, not the outer `say-it-again` folder.
 
 The first open takes **15–40 minutes** while it compiles the project. It will
 look frozen. It is not. Let it finish.
@@ -163,7 +163,7 @@ The whole routine, every time.
 Open **Command Prompt** and paste:
 
 ```
-%USERPROFILE%\dreamcodevr\study
+%USERPROFILE%\say-it-again\study
 ```
 
 This is the same command the other researcher runs, pointed at your copy.
@@ -233,7 +233,7 @@ software working* from *is the network cooperating*.
 ## Where the data goes
 
 ```
-C:\Users\<you>\dreamcodevr\Logs\
+C:\Users\<you>\say-it-again\Logs\
 ```
 
 One CSV per participant — `P01.csv`, `P02.csv` — holding everything that person
@@ -276,13 +276,13 @@ the last two folders — `\Unity\Assets\...` — and what is left is the folder 
 `cd` into. So a result of
 
 ```
-C:\Users\you\OneDrive\Desktop\dreamcodevr\Unity\Assets\StoryTellerManager.cs
+C:\Users\you\OneDrive\Desktop\say-it-again\Unity\Assets\StoryTellerManager.cs
 ```
 
 means the command you want is
 
 ```
-cd /d "C:\Users\you\OneDrive\Desktop\dreamcodevr"
+cd /d "C:\Users\you\OneDrive\Desktop\say-it-again"
 ```
 
 If it prints nothing at all, the project is not under your user folder — it may
@@ -317,12 +317,12 @@ Two symptoms travel together, and either one on its own is enough to tell:
 Close Unity first, then, in Command Prompt:
 
 ```
-cd /d "%USERPROFILE%\dreamcodevr"
+cd /d "%USERPROFILE%\say-it-again"
 git checkout Visualisation-DreamCodeVR-feedback-loop
 git pull
 ```
 
-Reopen `dreamcodevr\Unity` in Unity Hub. It re-imports, which takes a
+Reopen `say-it-again\Unity` in Unity Hub. It re-imports, which takes a
 while, and it will want **Unity 6000.3.19f1** rather than the 2021 version
 `main` asked for — install that from Step 1 if Hub says it is missing. Then
 carry on from **Step 7**, because switching branch does not switch the build
@@ -350,7 +350,7 @@ Find the real one with `ipconfig` (it starts `192.168.` or `10.`), then:
 
 ```
 set STUDY_LAN_IP=192.168.1.42
-%USERPROFILE%\dreamcodevr\study
+%USERPROFILE%\say-it-again\study
 ```
 
 using your actual address.
@@ -365,9 +365,41 @@ This is a headset setting, nothing to do with the study software, and easy to
 knock on by accident.
 
 **`'study' is not recognized as an internal or external command`**
-Either the path is wrong, or you are in PowerShell rather than Command Prompt.
-PowerShell needs `& "%USERPROFILE%\dreamcodevr\study"` with the
-ampersand and quotes. Command Prompt is simpler.
+The path is wrong. Check the folder is where you think it is — see the first
+entry in this list.
+
+**`The token '&&' is not a valid statement separator in this version`**
+**`A positional parameter cannot be found that accepts argument ...`**
+**`Missing opening '(' after keyword 'for'`**
+
+You are in **PowerShell**, and every command in this guide is written for
+**Command Prompt**. Windows 11 opens PowerShell by default, and its prompt
+starts `PS C:\Users\you>` — that `PS` is the tell.
+
+The two shells are not compatible, and the errors say so in a way that sounds
+like your command is malformed rather than pasted into the wrong program.
+`cd /d`, `&&`, `where /r` and `for /f` are all Command Prompt syntax and none of
+them exist in PowerShell.
+
+The fix is one word. Type:
+
+```
+cmd
+```
+
+and press Enter. The prompt changes to `C:\Users\you>` with no `PS`, and every
+command in this guide works as written. Type `exit` to go back.
+
+If you would rather stay in PowerShell, the same three commands are:
+
+| Command Prompt | PowerShell |
+|---|---|
+| `%USERPROFILE%\say-it-again\study` | `& $HOME\say-it-again\study.cmd` |
+| `cd /d "C:\some\folder"` | `cd "C:\some\folder"` |
+| `where /r %USERPROFILE% StoryTellerManager.cs` | `Get-ChildItem $HOME -Filter StoryTellerManager.cs -Recurse -ErrorAction SilentlyContinue \| % FullName` |
+
+PowerShell does not expand `%USERPROFILE%` — use `$HOME` — and it will not run
+a path as a program without `&` in front of it.
 
 ---
 
