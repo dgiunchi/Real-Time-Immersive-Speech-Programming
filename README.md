@@ -4,16 +4,101 @@ code within an active application.
 
 ![Illustrations of DreamcodeVR concept](DCVR.png)
 
+## Start here
+
+Three steps, identical on Windows and on a Mac. Roughly an hour the first time,
+nearly all of it Unity downloading while you do something else.
+
+### 1. Get the project
+
+**The `-b` is not optional.** The study lives on a branch; the default branch is
+an older state of the project that does not compile against this Unity version.
+
+Open a terminal — **Command Prompt or PowerShell on Windows, Terminal on a
+Mac** — and paste this. It is the same on all three:
+
+```
+git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/say-it-again.git say-it-again
+```
+
+> One command, no `cd`, and nothing that differs between shells, which is
+> deliberate. All three open in your home folder, and giving `git clone` the
+> destination as its last word means the project lands there — Windows
+> `C:\Users\<you>\say-it-again`, Mac `~/say-it-again` — without a second line
+> that would need `cd /d` in Command Prompt, `cd` in PowerShell, and `&&` in
+> neither the same way. If you have ever pasted a Windows command and been told
+> *"The token '&&' is not a valid statement separator"*, that is Command Prompt
+> syntax landing in PowerShell, and it is why there is none of it here.
+
+> **Your home folder, not the Desktop, on purpose.** With OneDrive PC backup on
+> — the default on a new Windows 11 machine — your Desktop really lives at
+> `%USERPROFILE%\OneDrive\Desktop`, and plain `%USERPROFILE%\Desktop` does not
+> exist. Anything under it fails with *"The system cannot find the path
+> specified"* while the folder sits visible on screen. Cloning to the home
+> folder avoids the question, and keeps OneDrive from trying to sync a Unity
+> project, which it is bad at and which slows every build down.
+
+> **If you skip the `-b`** you get the default branch, and Unity greets you with
+> `The type or namespace name 'Newtonsoft' could not be found` followed by
+> `Error building Player because scripts have compile errors in the editor`.
+> That error means the branch, not your machine. Re-clone with the line above.
+
+### 2. Build onto the headset
+
+Open **`say-it-again/Unity`** — the inner folder, not the outer one — in Unity
+**`6000.3.19f1`**, installed with **Android Build Support**.
+
+Then **File → Build Profiles → Android → Switch Platform**, and only after that
+**Build And Run**. A fresh clone opens on the desktop platform, and building
+without switching produces a desktop app in twenty seconds with no error and
+nothing on the headset.
+
+### 3. Start the server
+
+One command. Which shell you are in decides how it is written:
+
+| | |
+|---|---|
+| **Command Prompt** | `%USERPROFILE%\say-it-again\study` |
+| **PowerShell** | `& $HOME\say-it-again\study.cmd` |
+| **macOS / Linux** | `~/say-it-again/study` |
+
+Windows runs `study.cmd`, a Mac the `study` script beside it. Same script, same
+questions, same panel. It installs what it needs on first run, asks which mode
+you want, and prints the address of the browser panel you drive the session
+from. Leave the window open; closing it stops everything.
+
+> **PowerShell is the awkward one**, and it is what Windows 11 opens by
+> default, so it is probably what you have. It does not expand `%USERPROFILE%`
+> — that is `$HOME` or `$env:USERPROFILE` — and it will not run a path as a
+> command without the `&` in front. Typing `cmd` and pressing Enter first drops
+> you into Command Prompt, where the shorter line works, and is the easier fix
+> if a command from somewhere else is refusing to run.
+
+If your copy is somewhere else, `cd` to it and run the script from there:
+
+| | |
+|---|---|
+| **Command Prompt** | `cd /d "C:\path with spaces\say-it-again"` then `study` |
+| **PowerShell** | `cd "C:\path with spaces\say-it-again"` then `.\study.cmd` |
+| **macOS / Linux** | `cd "~/path with spaces/say-it-again"` then `./study` |
+
+Chaining those with `&&` works in Command Prompt and on a Mac, but **not** in
+Windows PowerShell 5.1, which answers *"The token '&&' is not a valid statement
+separator in this version."* Use `;` there, or just run the two lines.
+
+**Windows users:** [WINDOWS_SETUP.md](WINDOWS_SETUP.md) expands all of this from
+a blank laptop, with the headset developer-mode steps and a troubleshooting
+list. Printable copy: [docs/WINDOWS_SETUP.pdf](docs/WINDOWS_SETUP.pdf).
+
+---
+
 Dreamcode VR is based on Ubiq and Ubiq Genie. Ubiq is a framework developed by UCL for social VR experiments, and Ubiq-Genie is a framework that enables you to build server-assisted collaborative mixed reality applications with Unity using the [Ubiq](https://ubiq.online) framework.
 
 ## Current Setup
 
-Use this section for the current DreamCodeVR fork.
-
-> **Setting up a second machine to run the study?**
-> [WINDOWS_SETUP.md](WINDOWS_SETUP.md) is the step-by-step version for Windows,
-> from a blank laptop to a session running. A printable copy is at
-> [docs/WINDOWS_SETUP.pdf](docs/WINDOWS_SETUP.pdf).
+Reference detail for the current DreamCodeVR fork. To just get it running, use
+[Start here](#start-here) above — this section is the longer form.
 
 ### Required tools
 
@@ -79,7 +164,7 @@ cd Server\samples\apps\code_runtime_generator
 node app.js
 ```
 
-Then open the Unity project from the `Unity` folder with Unity `2021.3.16f1`, open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
+Then open the Unity project from the `Unity` folder with Unity `6000.3.19f1`, open `Unity/Assets/Demos/DynamicCompiler/DynamicCompiler.unity`, verify the `Room Client` points to the server IP and TCP port `8009`, then press Play or build to device.
 
 In VR, hold the left controller trigger to record speech. Release it to send the utterance to STT. Point at an object with the ray to select it; red ray means selected target.
 

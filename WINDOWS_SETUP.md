@@ -64,16 +64,26 @@ Nothing needs changing.
 Open **Command Prompt** and run these two lines:
 
 ```
-cd %USERPROFILE%\Desktop
+cd /d %USERPROFILE%
 git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/say-it-again.git say-it-again
 ```
 
-That last word matters: it puts everything in a short folder,
-`Desktop\say-it-again`, which every path below assumes.
+That puts everything in `C:\Users\<you>\say-it-again`, which every path below
+assumes.
+
+> **Not the Desktop, on purpose.** If OneDrive is backing up your PC — the
+> default on a new Windows 11 machine — your Desktop is really
+> `%USERPROFILE%\OneDrive\Desktop`, and `%USERPROFILE%\Desktop` is a path that
+> does not exist. Every `cd` to it answers *"The system cannot find the path
+> specified"*, and the folder you are looking at on screen is not the folder
+> the command is looking for. Putting the clone one level up sidesteps the
+> whole question. It also keeps OneDrive from trying to sync a Unity project,
+> which it is bad at and which will slow your builds down.
 
 > If that URL asks for credentials you do not have, ask for access, or for the
 > supervisor's copy of the repository instead. Do not download a ZIP of the
-> default branch — the study lives on the branch named above.
+> default branch — the study lives on the branch named above, and a ZIP has no
+> `.git` folder, so none of the branch commands here will work on it.
 
 ## Step 5 — Headset developer mode
 
@@ -93,7 +103,7 @@ That last word matters: it puts everything in a short folder,
 
 ## Step 6 — Open the project
 
-Unity Hub → **Open** → select `Desktop\say-it-again\Unity`.
+Unity Hub → **Open** → select `C:\Users\<you>\say-it-again\Unity`.
 
 Select the **`Unity` folder inside**, not the outer `say-it-again` folder.
 
@@ -153,14 +163,27 @@ The whole routine, every time.
 Open **Command Prompt** and paste:
 
 ```
-%USERPROFILE%\Desktop\say-it-again\study
+%USERPROFILE%\say-it-again\study
 ```
 
-This is the same command the other researcher runs, pointed at your Desktop.
+This is the same command the other researcher runs, pointed at your copy.
 Windows resolves it to `study.cmd`; a Mac resolves it to the `study` script
 beside it. Same instruction, either machine.
 
 It asks which mode you want, then starts everything.
+
+> **If your copy lives somewhere else**, the shape is `cd` to the folder, then
+> `study`. This is the line-for-line translation of the Mac one:
+>
+> | | |
+> |---|---|
+> | Mac | `cd ~/Desktop/"hci-ai projects"/say-it-again && ./study` |
+> | Windows | `cd /d "%USERPROFILE%\Desktop\hci-ai projects\say-it-again" && study` |
+>
+> Three differences, and only three: `/d` after `cd` so it can cross drives,
+> the whole path in **one** pair of quotes because it has a space in it, and
+> `study` rather than `./study` — Command Prompt has no `./`, and finds
+> `study.cmd` in the folder you are standing in by itself.
 
 > **The first time**, it spends a minute or two installing what the server
 > needs. Once only.
@@ -210,7 +233,7 @@ software working* from *is the network cooperating*.
 ## Where the data goes
 
 ```
-Desktop\say-it-again\Logs\
+C:\Users\<you>\say-it-again\Logs\
 ```
 
 One CSV per participant — `P01.csv`, `P02.csv` — holding everything that person
@@ -234,6 +257,82 @@ even for the other.
 
 ## Troubleshooting
 
+**`The system cannot find the path specified`**, and you cannot find the clone
+
+Almost always OneDrive. With PC backup on — the default on a new Windows 11
+machine — your Desktop is `%USERPROFILE%\OneDrive\Desktop`, and plain
+`%USERPROFILE%\Desktop` does not exist at all, so anything under it fails no
+matter what you put there. The folder is on the screen in front of you and the
+path to it is still wrong.
+
+Rather than guess, ask Windows where the project actually is:
+
+```
+where /r %USERPROFILE% StoryTellerManager.cs
+```
+
+It prints a full path ending `...\Unity\Assets\StoryTellerManager.cs`. Chop off
+the last two folders — `\Unity\Assets\...` — and what is left is the folder to
+`cd` into. So a result of
+
+```
+C:\Users\you\OneDrive\Desktop\say-it-again\Unity\Assets\StoryTellerManager.cs
+```
+
+means the command you want is
+
+```
+cd /d "C:\Users\you\OneDrive\Desktop\say-it-again"
+```
+
+If it prints nothing at all, the project is not under your user folder — it may
+never have been cloned on this machine, or it is on another drive. Go back to
+**Step 4** and clone it fresh; nothing is lost by having a second copy, as long
+as you do not delete a `Logs\` folder from the first one.
+
+**`fatal: not a git repository`** in a folder that clearly holds the project
+
+It came from a downloaded ZIP rather than `git clone`. A ZIP contains the files
+but not the `.git` folder, so it has no branches and no way to switch to one.
+Clone it properly with **Step 4** and use the new folder.
+
+**`The type or namespace name 'Newtonsoft' could not be found`**
+**`Error building Player because scripts have compile errors in the editor`**
+
+You are on the wrong branch. This is not a Windows problem and there is nothing
+to fix in the code — the clone is simply of `main`, which is an older state of
+the project that predates the study: Unity 2021.3.16f1, the old Ubiq, and no
+JSON library, which is the missing `Newtonsoft` the compiler is complaining
+about. The study lives on `Visualisation-DreamCodeVR-feedback-loop`, and `main`
+has never been brought up to match it.
+
+Two symptoms travel together, and either one on its own is enough to tell:
+
+- Unity reports the error on **lines 17 and 18** of `StoryTellerManager.cs`.
+  On the study branch those imports sit on lines 16 and 17.
+- There is no `study.cmd` and no `WINDOWS_SETUP.md` in the folder — this file
+  does not exist on `main`, so if you are reading it on screen rather than on
+  GitHub, you are already on the right branch and the cause is something else.
+
+Close Unity first, then, in Command Prompt:
+
+```
+cd /d "%USERPROFILE%\say-it-again"
+git checkout Visualisation-DreamCodeVR-feedback-loop
+git pull
+```
+
+Reopen `say-it-again\Unity` in Unity Hub. It re-imports, which takes a
+while, and it will want **Unity 6000.3.19f1** rather than the 2021 version
+`main` asked for — install that from Step 1 if Hub says it is missing. Then
+carry on from **Step 7**, because switching branch does not switch the build
+platform back to Android.
+
+> **Do not fix `main` instead.** Adding the JSON package to it would make it
+> compile and would still be the wrong thing to build: it is a different app
+> from the one running on the Mac, without the study logging, the agent, or
+> the panel. Two researchers running two builds is not a study.
+
 **Build And Run finished in 20 seconds and nothing is on the headset**
 You are still on the Windows platform. Go back to Step 7.
 
@@ -251,7 +350,7 @@ Find the real one with `ipconfig` (it starts `192.168.` or `10.`), then:
 
 ```
 set STUDY_LAN_IP=192.168.1.42
-%USERPROFILE%\Desktop\say-it-again\study
+%USERPROFILE%\say-it-again\study
 ```
 
 using your actual address.
@@ -266,9 +365,41 @@ This is a headset setting, nothing to do with the study software, and easy to
 knock on by accident.
 
 **`'study' is not recognized as an internal or external command`**
-Either the path is wrong, or you are in PowerShell rather than Command Prompt.
-PowerShell needs `& "%USERPROFILE%\Desktop\say-it-again\study"` with the
-ampersand and quotes. Command Prompt is simpler.
+The path is wrong. Check the folder is where you think it is — see the first
+entry in this list.
+
+**`The token '&&' is not a valid statement separator in this version`**
+**`A positional parameter cannot be found that accepts argument ...`**
+**`Missing opening '(' after keyword 'for'`**
+
+You are in **PowerShell**, and every command in this guide is written for
+**Command Prompt**. Windows 11 opens PowerShell by default, and its prompt
+starts `PS C:\Users\you>` — that `PS` is the tell.
+
+The two shells are not compatible, and the errors say so in a way that sounds
+like your command is malformed rather than pasted into the wrong program.
+`cd /d`, `&&`, `where /r` and `for /f` are all Command Prompt syntax and none of
+them exist in PowerShell.
+
+The fix is one word. Type:
+
+```
+cmd
+```
+
+and press Enter. The prompt changes to `C:\Users\you>` with no `PS`, and every
+command in this guide works as written. Type `exit` to go back.
+
+If you would rather stay in PowerShell, the same three commands are:
+
+| Command Prompt | PowerShell |
+|---|---|
+| `%USERPROFILE%\say-it-again\study` | `& $HOME\say-it-again\study.cmd` |
+| `cd /d "C:\some\folder"` | `cd "C:\some\folder"` |
+| `where /r %USERPROFILE% StoryTellerManager.cs` | `Get-ChildItem $HOME -Filter StoryTellerManager.cs -Recurse -ErrorAction SilentlyContinue \| % FullName` |
+
+PowerShell does not expand `%USERPROFILE%` — use `$HOME` — and it will not run
+a path as a program without `&` in front of it.
 
 ---
 
