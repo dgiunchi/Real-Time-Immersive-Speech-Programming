@@ -55,9 +55,39 @@ background. After that, starting a session takes a minute.
 <https://nodejs.org> → the green **LTS** button → Next through the installer.
 Nothing needs changing.
 
-## Step 3 — Git
+## Step 3 — Git, and it must be on the PATH
 
-<https://git-scm.com/download/win> → Next through it.
+<https://git-scm.com/download/win> → Next through it, but **do not change the
+PATH screen**. Leave it on the default, *"Git from the command line and also
+from 3rd-party software"*.
+
+That screen is the whole reason this step has a warning. Unity does not have Git
+built in: it shells out to the `git` on your PATH. Two of this project's
+packages are fetched from GitHub rather than from Unity's registry —
+
+```
+com.ucl.ubiq                 github.com/UCL-VR/ubiq.git
+com.unity.webrtc-ubiq-fork   github.com/UCL-VR/unity-webrtc-ubiq-fork.git
+```
+
+— so if Unity cannot run `git`, it cannot resolve them, and **the project will
+not open.** Depending on the version it either hangs on the loading bar, closes
+again immediately, or opens with the scene empty and errors in the console. None
+of those says "install Git properly", which is why this costs people an evening.
+
+It does not happen on macOS, because git is on the PATH there by default. It is a
+Windows-only failure and it looks like the project is broken.
+
+**Verify before going further.** Open a *new* Command Prompt — a window opened
+before the install still has the old PATH — and run:
+
+```
+git --version
+```
+
+A version number means Unity will find it. *"'git' is not recognized"* means it
+will not: re-run the Git installer and choose the default PATH option. If Unity
+was already open, quit and reopen it, because it reads the PATH at startup.
 
 ## Step 4 — Get the project
 
@@ -233,6 +263,37 @@ even for the other.
 ---
 
 ## Troubleshooting
+
+**The project will not open. Pressing Open in Unity Hub does nothing, hangs on
+the loading bar, or closes straight back to the Hub**
+
+Almost always **Git is not on the PATH**, so Unity cannot fetch the two packages
+it pulls from GitHub. See Step 3. Check it in a *new* Command Prompt:
+
+```
+git --version
+```
+
+No version number means that is the cause. Re-run the Git installer, keep the
+default PATH option, then quit Unity Hub completely and reopen it.
+
+To confirm it rather than guess, open the Package Manager log — it names the
+failure outright, usually `Cannot perform upm operation` or a git error against
+`github.com/UCL-VR/...`:
+
+```
+%LOCALAPPDATA%\Unity\Editor\upm.log
+```
+
+Two other causes worth ruling out, in order:
+
+- **You selected the wrong folder.** It must be `say-it-again\Unity`, not the
+  outer `say-it-again`. The outer folder is not a Unity project and the Hub will
+  not tell you so clearly.
+- **It is working and looks frozen.** The first open takes 15–40 minutes with no
+  progress for long stretches. Before deciding it has failed, leave it a full
+  hour and check whether `Unity\Library` is growing on disk. If it is, it is
+  importing, not stuck.
 
 **Build And Run finished in 20 seconds and nothing is on the headset**
 You are still on the Windows platform. Go back to Step 7.
