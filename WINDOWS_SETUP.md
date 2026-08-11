@@ -61,15 +61,33 @@ Nothing needs changing.
 
 ## Step 4 — Get the project
 
-Open **Command Prompt** and run these two lines:
+Open **Command Prompt** and run this one line:
 
 ```
-cd /d %USERPROFILE%
-git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/say-it-again.git say-it-again
+git clone --depth 1 https://github.com/abyyworld/say-it-again.git %USERPROFILE%\say-it-again
 ```
 
 That puts everything in `C:\Users\<you>\say-it-again`, which every path below
 assumes.
+
+> **Do not drop the `--depth 1`.** The full history is about **1.3 GB** — old
+> Unity scenes, compiler DLLs and a 31 MB test recording, all still present in
+> past commits. The files you need are 108 MB. A plain clone downloads the lot
+> and, on anything less than a solid connection, dies partway with
+>
+> ```
+> fatal: fetch-pack: invalid index-pack output
+> fetch-pack: unexpected disconnect while reading sideband packet
+> ```
+>
+> That looks like a corrupt repository. It is a dropped download. `--depth 1`
+> fetches the current version of each file and skips the history, about 76 MB,
+> and gives you everything the study needs.
+
+> **One line, no `cd`.** Giving `git clone` the destination as its last argument
+> means it works the same whether you are in Command Prompt, PowerShell, or a
+> Mac Terminal. A separate `cd` would need `cd /d` in one and `cd` in another,
+> and joining the two with `&&` fails outright in PowerShell.
 
 > **Not the Desktop, on purpose.** If OneDrive is backing up your PC — the
 > default on a new Windows 11 machine — your Desktop is really
@@ -256,6 +274,41 @@ even for the other.
 ---
 
 ## Troubleshooting
+
+**`fatal: fetch-pack: invalid index-pack output`** while cloning
+**`fetch-pack: unexpected disconnect while reading sideband packet`**
+
+The download dropped partway. Nothing is wrong with the repository — its full
+history is about 1.3 GB, and git has to receive all of it in one piece before it
+can write anything to disk, so a momentary interruption loses the whole transfer.
+
+Delete the half-finished folder, then clone with `--depth 1`:
+
+```
+rmdir /s /q "%USERPROFILE%\say-it-again"
+git clone --depth 1 https://github.com/abyyworld/say-it-again.git %USERPROFILE%\say-it-again
+```
+
+That skips the history and pulls about 76 MB instead of 1.3 GB. It contains
+every file the study needs; only `git log` and `git blame` for old commits are
+missing, which nothing here uses.
+
+**Unity Hub's "Connect to source control" only offers to create a new repository**
+
+Close it. That dialog does one thing — publish the folder as a **brand new**
+GitHub repository — and there is no option in it to attach an existing one.
+Left to finish, it would create a second repository called `unity` under your
+account holding only the `Unity` folder, with no `Server`, no `study.cmd`, and
+no connection to the project everyone else is working in.
+
+It cannot see the repository you already have because the two roots differ. Git
+lives at `say-it-again\.git`; the Unity project is the `Unity` folder one level
+inside it. Unity Hub looks for `.git` beside the project it opened, does not
+find one, and concludes there is nothing to connect to.
+
+Nothing is wrong, and nothing needs connecting. The clone is already linked to
+GitHub — run `git` commands from the outer `say-it-again` folder, or point
+GitHub Desktop at that same outer folder if you would rather have buttons.
 
 **`The system cannot find the path specified`**, and you cannot find the clone
 

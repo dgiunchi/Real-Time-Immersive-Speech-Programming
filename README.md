@@ -11,15 +11,28 @@ nearly all of it Unity downloading while you do something else.
 
 ### 1. Get the project
 
-**The `-b` is not optional.** The study lives on a branch; the default branch is
-an older state of the project that does not compile against this Unity version.
-
 Open a terminal — **Command Prompt or PowerShell on Windows, Terminal on a
 Mac** — and paste this. It is the same on all three:
 
 ```
-git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworld/say-it-again.git say-it-again
+git clone --depth 1 https://github.com/abyyworld/say-it-again.git say-it-again
 ```
+
+> **`--depth 1` is the part that matters.** The full history is about **1.3 GB**
+> — old Unity scenes, compiler DLLs and a 31 MB test recording that were
+> committed years ago and are still in every past commit. The files you
+> actually need are 108 MB. Without `--depth 1` git downloads all 1.3 GB, and
+> on anything short of a solid connection it gives up partway with
+>
+> ```
+> fatal: fetch-pack: invalid index-pack output
+> fetch-pack: unexpected disconnect while reading sideband packet
+> ```
+>
+> which reads like a broken repository and is really just a dropped transfer.
+> `--depth 1` takes the latest commit of each file and skips the history, so it
+> pulls about 76 MB. You lose `git log` and `git blame` for old commits, which
+> matters to nobody running the study.
 
 > One command, no `cd`, and nothing that differs between shells, which is
 > deliberate. All three open in your home folder, and giving `git clone` the
@@ -38,10 +51,12 @@ git clone -b Visualisation-DreamCodeVR-feedback-loop https://github.com/abyyworl
 > folder avoids the question, and keeps OneDrive from trying to sync a Unity
 > project, which it is bad at and which slows every build down.
 
-> **If you skip the `-b`** you get the default branch, and Unity greets you with
-> `The type or namespace name 'Newtonsoft' could not be found` followed by
-> `Error building Player because scripts have compile errors in the editor`.
-> That error means the branch, not your machine. Re-clone with the line above.
+> **No branch to choose.** `Visualisation-DreamCodeVR-feedback-loop` is the
+> default branch, so a plain clone lands on the study. If you are looking at an
+> older copy that opens in Unity with `The type or namespace name 'Newtonsoft'
+> could not be found`, that clone is sitting on `main` — an earlier state of the
+> project with no JSON package. `git checkout Visualisation-DreamCodeVR-feedback-loop`
+> inside the folder fixes it; the error is the branch, not your machine.
 
 ### 2. Build onto the headset
 
@@ -86,6 +101,13 @@ If your copy is somewhere else, `cd` to it and run the script from there:
 Chaining those with `&&` works in Command Prompt and on a Mac, but **not** in
 Windows PowerShell 5.1, which answers *"The token '&&' is not a valid statement
 separator in this version."* Use `;` there, or just run the two lines.
+
+That is the whole setup. **No API key, no Python environment, no config file to
+edit** — the study is Wizard-of-Oz, so a researcher plays the agent from the
+browser panel and nothing calls a language model. The one external service it
+uses is speech-to-text, which has a working address built in. The OpenAI key in
+the reference section below is for the code-generation demo, which the study
+does not run.
 
 **Windows users:** [WINDOWS_SETUP.md](WINDOWS_SETUP.md) expands all of this from
 a blank laptop, with the headset developer-mode steps and a troubleshooting
