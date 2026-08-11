@@ -59,6 +59,37 @@ Nothing needs changing.
 
 <https://git-scm.com/download/win> → Next through it.
 
+Then one line in Command Prompt, before you clone anything:
+
+```
+git config --global core.longpaths true
+```
+
+> **This one is not optional on Windows.** The longest file in this repository
+> is 125 characters:
+>
+> ```
+> Unity/Assets/RoslynCSharp/Scripts/RoslynCSharp.Compiler/Runtime/AssemblyReference/AssemblyReferenceFromAssemblyObject.cs.meta
+> ```
+>
+> Windows will not create a path longer than 260, which leaves 134 characters
+> for the folder you clone into. `C:\Users\<you>\say-it-again` is around 27, so
+> the clone in Step 4 is safe — but clone somewhere deeper, or into a OneDrive
+> folder carrying your university's full name, and git writes most of the
+> project and then stops with
+>
+> ```
+> error: unable to create file Unity/Assets/RoslynCSharp/... : Filename too long
+> fatal: unable to checkout working tree
+> ```
+>
+> The trap is that it half-succeeds. You are left with a folder that looks like
+> the project, quietly missing a dozen `.cs` and `.cs.meta` files. A Unity
+> project missing `.meta` files does not report an error — it regenerates them
+> with brand new GUIDs, and every reference that pointed at the old ones breaks
+> instead. `core.longpaths` removes the limit, and the setting is global, so
+> this is the only time you will need it.
+
 ## Step 4 — Get the project
 
 Open **Command Prompt** and run this one line:

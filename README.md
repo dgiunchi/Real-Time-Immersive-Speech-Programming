@@ -34,6 +34,17 @@ git clone --depth 1 https://github.com/abyyworld/say-it-again.git say-it-again
 > pulls about 76 MB. You lose `git log` and `git blame` for old commits, which
 > matters to nobody running the study.
 
+> **On Windows, run `git config --global core.longpaths true` first.** The
+> longest path in this repository is 125 characters, and Windows refuses to
+> create anything over 260, leaving 134 for the folder you clone into. The home
+> folder above is well inside that, so the command as written is safe — but a
+> deeper destination makes git write most of the project and then stop with
+> `Filename too long` / `fatal: unable to checkout working tree`. It
+> half-succeeds, leaving a folder that looks complete but is missing a dozen
+> Unity `.cs` and `.cs.meta` files, and Unity responds to missing `.meta` files
+> by regenerating them with new GUIDs rather than by complaining. See
+> [WINDOWS_SETUP.md](WINDOWS_SETUP.md) Step 3.
+
 > One command, no `cd`, and nothing that differs between shells, which is
 > deliberate. All three open in your home folder, and giving `git clone` the
 > destination as its last word means the project lands there — Windows
