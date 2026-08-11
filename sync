@@ -1,0 +1,163 @@
+#!/bin/bash
+# One-command sync with GitHub, for working across two machines.
+#
+#   ./sync              pull, commit everything, push
+#   ./sync "message"    same, with your own commit message
+#   ./sync --pull       pull only, commit and push nothing
+#
+# There is a sync.cmd beside this file that does the same on Windows, so the
+# instruction is identical on either machine.
+#
+# WHY THIS EXISTS RATHER THAN A BACKGROUND AUTO-SYNC
+# A daemon that commits and pushes on a timer is the obvious thing to want and
+# the wrong thing to have on this project, for three reasons that are specific
+# to it rather than general nervousness:
+#
+#   1. Logs/ holds participant data — CSVs and one WAV per utterance. It is
+#      gitignored, but an auto-sync that ever ran `git add -A -f`, or that
+#      someone "fixed" by removing the ignore rule, publishes recordings of
+#      named people to a repository with three remotes. There is no undo for
+#      that.
+#   2. Unity scenes and prefabs are 900-line YAML files. Two machines editing
+#      one scene and pushing on a timer produces conflicts a merge cannot
+#      resolve, and the result is a scene that opens with objects missing
+#      rather than an error.
+#   3. Server.asset and DevAgentSettings.asset carry the LAN IP of whichever
+#      machine last ran ./study. Committing them means every sync hands the
+#      other machine an address that is wrong for it.
+#
+# So this is deliberately manual, and deliberately one command. It refuses
+# rather than guesses, and everything it declines to do, it says out loud.
+
+set -e
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+BLUE=$'\033[1;36m'; RED=$'\033[1;31m'; YEL=$'\033[1;33m'; OFF=$'\033[0m'
+say()  { echo "${BLUE}[sync]${OFF} $*"; }
+warn() { echo "${YEL}[sync]${OFF} $*"; }
+die()  { echo "${RED}[sync]${OFF} $*" >&2; exit 1; }
+
+# Per-machine files. Never committed, and restored rather than carried into the
+# commit, so a sync cannot hand the other machine this machine's IP.
+LOCAL_ONLY=(
+  "Unity/Assets/Demos/Server.asset"
+  "Unity/Assets/Resources/DevAgentSettings.asset"
+)
+
+# ── --setup: teach git to merge Unity files with Unity's own tool ────────────
+# Run once per machine. The rules live in .gitattributes and travel with the
+# repository; the DRIVER they name is a local git config entry and does not, so
+# a fresh clone has the rules and no tool to run, and git silently falls back to
+# a line-based merge — which is the thing the rules exist to prevent.
+if [ "$1" = "--setup" ]; then
+    # Depth 7, not 4. Unity 6 moved this out of Unity.app/Contents/Tools into
+    # Contents/Helpers, which is a level deeper, so a shallower search finds the
+    # tool on a 2022 install and reports it missing on the editor this project
+    # actually uses. Newest editor first, hence the reverse sort.
+    for root in "/Applications/Unity/Hub/Editor" "$HOME/Applications/Unity/Hub/Editor"; do
+        [ -d "$root" ] || continue
+        found=$(find "$root" -maxdepth 7 -name UnityYAMLMerge -type f -perm -u+x 2>/dev/null | sort -r | head -1)
+        [ -n "$found" ] && break
+    done
+    [ -z "$found" ] && die "UnityYAMLMerge not found under /Applications/Unity/Hub/Editor.
+     It ships with the editor, so this usually means Unity is installed
+     somewhere else. Point git at it by hand:
+       git config merge.unityyamlmerge.driver '<path> merge -p \"\$BASE\" \"\$REMOTE\" \"\$LOCAL\" \"\$MERGED\"'"
+
+    git config merge.unityyamlmerge.name "Unity SmartMerge"
+    git config merge.unityyamlmerge.driver "'$found' merge -p \"\$BASE\" \"\$REMOTE\" \"\$LOCAL\" \"\$MERGED\""
+    git config merge.unityyamlmerge.recursive binary
+    say "Unity merge tool configured for this clone:"
+    say "  $found"
+    say "Scenes and prefabs will now be merged by Unity rather than line by line."
+    exit 0
+fi
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+[ "$BRANCH" = "HEAD" ] && die "Detached HEAD — checkout a branch first."
+say "branch: $BRANCH"
+
+# Warn once if the driver is missing. The .gitattributes rules are inert
+# without it, and inert in the direction that loses work.
+if ! git config --get merge.unityyamlmerge.driver >/dev/null 2>&1; then
+    warn "Unity merge tool not configured on this machine — run ./sync --setup once."
+fi
+
+# ── Guard: participant data must never be staged ─────────────────────────────
+# Checked before anything else, because everything after this point stages files.
+if git status --porcelain | grep -qE '^\?\?\s+Logs/|^[AM]\s+Logs/'; then
+    die "Logs/ is showing as trackable — participant data. Aborting.
+     Check .gitignore still contains 'Logs/' before running this again."
+fi
+
+# ── 1. Put the per-machine files back ────────────────────────────────────────
+for f in "${LOCAL_ONLY[@]}"; do
+    if [ -f "$f" ] && ! git diff --quiet -- "$f" 2>/dev/null; then
+        git checkout -- "$f" 2>/dev/null && say "restored $(basename "$f") (per-machine, not synced)"
+    fi
+done
+
+# ── 2. Pull ──────────────────────────────────────────────────────────────────
+# --rebase keeps a straight history instead of a merge commit every sync, and
+# --autostash means uncommitted work does not block the pull.
+say "fetching…"
+git fetch --quiet origin "$BRANCH" 2>/dev/null || git fetch --quiet origin || true
+
+if git rev-parse --verify --quiet "origin/$BRANCH" >/dev/null; then
+    BEHIND=$(git rev-list --count "HEAD..origin/$BRANCH" 2>/dev/null || echo 0)
+    if [ "$BEHIND" -gt 0 ]; then
+        say "pulling $BEHIND commit(s) from GitHub…"
+        if ! git pull --rebase --autostash --quiet origin "$BRANCH"; then
+            die "Pull hit a conflict, and this script will not guess its way out.
+     Fix the listed files, then:  git rebase --continue
+     Or abandon the pull with:    git rebase --abort"
+        fi
+    else
+        say "already up to date with GitHub"
+    fi
+else
+    warn "no origin/$BRANCH yet — will publish it on the first push"
+fi
+
+[ "$1" = "--pull" ] && { say "pull only, as asked. Done."; exit 0; }
+
+# ── 3. Commit ────────────────────────────────────────────────────────────────
+git add -A
+
+# Unstage the per-machine files even if they changed after step 1 (./study
+# rewrites Server.asset whenever it runs, which may be mid-sync).
+for f in "${LOCAL_ONLY[@]}"; do
+    git reset --quiet -- "$f" 2>/dev/null || true
+done
+
+if git diff --cached --quiet; then
+    say "nothing local to commit"
+else
+    COUNT=$(git diff --cached --name-only | wc -l | tr -d ' ')
+    MSG="${1:-Sync from $(hostname -s) — $(date '+%Y-%m-%d %H:%M')}"
+
+    # A Unity scene in the commit is worth naming. It is the file most likely to
+    # conflict badly later, and knowing which sync introduced it is the
+    # difference between a two-minute fix and an afternoon.
+    if git diff --cached --name-only | grep -qE '\.(unity|prefab)$'; then
+        warn "this commit touches a Unity scene or prefab — if the other machine"
+        warn "edited the same one, expect a conflict that needs Unity to resolve"
+    fi
+
+    git commit --quiet -m "$MSG"
+    say "committed $COUNT file(s): $MSG"
+fi
+
+# ── 4. Push ──────────────────────────────────────────────────────────────────
+AHEAD=$(git rev-list --count "origin/$BRANCH..HEAD" 2>/dev/null || echo 1)
+if [ "$AHEAD" -eq 0 ]; then
+    say "nothing to push. Done."
+    exit 0
+fi
+
+say "pushing $AHEAD commit(s)…"
+if git push --quiet origin "$BRANCH"; then
+    say "pushed. GitHub is up to date."
+else
+    die "Push rejected — the remote moved while this ran. Run ./sync again."
+fi

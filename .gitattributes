@@ -58,3 +58,23 @@ Server/scripts/mic-check.js  text eol=lf
 *.aab     binary
 *.zip     binary
 *.unitypackage binary
+
+# Unity scenes, prefabs and assets: merged by Unity's own tool, not by git.
+#
+# These are YAML, so git will happily "merge" two edits line by line and produce
+# a file that parses and is wrong — objects with duplicated fileIDs, components
+# attached to nothing, a scene that opens with things missing and no error to
+# say why. That is the failure mode of two people editing one scene, and it is
+# silent.
+#
+# UnityYAMLMerge understands the format and refuses where it cannot resolve.
+# `merge=unityyamlmerge` selects it; `-text` stops git offering its own
+# line-based merge as a fallback. It needs the driver configured once per
+# machine — `./sync --setup` does it, and setup instructions repeat it.
+*.unity      merge=unityyamlmerge -text
+*.prefab     merge=unityyamlmerge -text
+*.asset      merge=unityyamlmerge -text
+*.mat        merge=unityyamlmerge -text
+*.anim       merge=unityyamlmerge -text
+*.controller merge=unityyamlmerge -text
+*.physicMaterial merge=unityyamlmerge -text
