@@ -162,6 +162,19 @@ beside it. Same instruction, either machine.
 
 It asks which mode you want, then starts everything.
 
+> **If your copy lives somewhere else**, the shape is `cd` to the folder, then
+> `study`. This is the line-for-line translation of the Mac one:
+>
+> | | |
+> |---|---|
+> | Mac | `cd ~/Desktop/"hci-ai projects"/say-it-again && ./study` |
+> | Windows | `cd /d "%USERPROFILE%\Desktop\hci-ai projects\say-it-again" && study` |
+>
+> Three differences, and only three: `/d` after `cd` so it can cross drives,
+> the whole path in **one** pair of quotes because it has a space in it, and
+> `study` rather than `./study` — Command Prompt has no `./`, and finds
+> `study.cmd` in the folder you are standing in by itself.
+
 > **The first time**, it spends a minute or two installing what the server
 > needs. Once only.
 
@@ -233,6 +246,43 @@ even for the other.
 ---
 
 ## Troubleshooting
+
+**`The type or namespace name 'Newtonsoft' could not be found`**
+**`Error building Player because scripts have compile errors in the editor`**
+
+You are on the wrong branch. This is not a Windows problem and there is nothing
+to fix in the code — the clone is simply of `main`, which is an older state of
+the project that predates the study: Unity 2021.3.16f1, the old Ubiq, and no
+JSON library, which is the missing `Newtonsoft` the compiler is complaining
+about. The study lives on `Visualisation-DreamCodeVR-feedback-loop`, and `main`
+has never been brought up to match it.
+
+Two symptoms travel together, and either one on its own is enough to tell:
+
+- Unity reports the error on **lines 17 and 18** of `StoryTellerManager.cs`.
+  On the study branch those imports sit on lines 16 and 17.
+- There is no `study.cmd` and no `WINDOWS_SETUP.md` in the folder — this file
+  does not exist on `main`, so if you are reading it on screen rather than on
+  GitHub, you are already on the right branch and the cause is something else.
+
+Close Unity first, then, in Command Prompt:
+
+```
+cd /d "%USERPROFILE%\Desktop\dreamcodevr"
+git checkout Visualisation-DreamCodeVR-feedback-loop
+git pull
+```
+
+Reopen `Desktop\dreamcodevr\Unity` in Unity Hub. It re-imports, which takes a
+while, and it will want **Unity 6000.3.19f1** rather than the 2021 version
+`main` asked for — install that from Step 1 if Hub says it is missing. Then
+carry on from **Step 7**, because switching branch does not switch the build
+platform back to Android.
+
+> **Do not fix `main` instead.** Adding the JSON package to it would make it
+> compile and would still be the wrong thing to build: it is a different app
+> from the one running on the Mac, without the study logging, the agent, or
+> the panel. Two researchers running two builds is not a study.
 
 **Build And Run finished in 20 seconds and nothing is on the headset**
 You are still on the Windows platform. Go back to Step 7.
