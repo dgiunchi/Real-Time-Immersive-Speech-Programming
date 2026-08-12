@@ -124,11 +124,10 @@ namespace DreamCodeVRPlus
         // ---- ground --------------------------------------------------------------
         private void BuildGround()
         {
-            var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            var ground = DcvrPrim.Create(PrimitiveType.Plane);
             ground.name = "DCVR_Ground";
             ground.transform.SetParent(transform, false);
             ground.transform.localScale = new Vector3(12f, 1f, 12f);   // 120 m
-            SafeDestroy(ground.GetComponent<Collider>());
 
             _gridMat = MakeMaterial("DreamCodeVRPlus/Grid", "DCVR_GridMat");
             if (_gridMat != null)
@@ -145,12 +144,11 @@ namespace DreamCodeVRPlus
         // ---- platform ------------------------------------------------------------
         private void BuildPlatform()
         {
-            var disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            var disc = DcvrPrim.Create(PrimitiveType.Cylinder);
             disc.name = "DCVR_Platform";
             disc.transform.SetParent(transform, false);
             disc.transform.localPosition = PlatformCenter + new Vector3(0f, 0.06f, 0f);
             disc.transform.localScale = new Vector3(PlatformRadius * 2f, 0.06f, PlatformRadius * 2f);
-            SafeDestroy(disc.GetComponent<Collider>());
             _platform = disc.transform;
 
             Material m = MakeUnlit("DCVR_PlatformMat", new Color(0.055f, 0.075f, 0.105f));
@@ -258,13 +256,12 @@ namespace DreamCodeVRPlus
                 float h = 8f + (float)rng.NextDouble() * 20f;
                 float w = 1.1f + (float)rng.NextDouble() * 2.2f;
 
-                var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                var slab = DcvrPrim.Create(PrimitiveType.Cube);
                 slab.name = $"DCVR_Monolith{i}";
                 slab.transform.SetParent(root.transform, false);
                 slab.transform.localPosition = new Vector3(Mathf.Cos(a) * dist, h * 0.5f, Mathf.Sin(a) * dist);
                 slab.transform.localScale = new Vector3(w, h, w);
                 slab.transform.localRotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 60f, 0f);
-                SafeDestroy(slab.GetComponent<Collider>());
                 var r = slab.GetComponent<Renderer>();
                 r.sharedMaterial = body;
                 r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -274,12 +271,11 @@ namespace DreamCodeVRPlus
                 // any amount of geometry would.
                 if (edge != null)
                 {
-                    var seam = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    var seam = DcvrPrim.Create(PrimitiveType.Cube);
                     seam.name = $"DCVR_MonolithSeam{i}";
                     seam.transform.SetParent(slab.transform, false);
                     seam.transform.localScale = new Vector3(0.06f, 0.86f, 0.06f);
                     seam.transform.localPosition = new Vector3(0.52f, 0f, 0.52f);
-                    SafeDestroy(seam.GetComponent<Collider>());
                     var sr = seam.GetComponent<Renderer>();
                     sr.sharedMaterial = edge;
                     sr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -306,13 +302,12 @@ namespace DreamCodeVRPlus
                 float h = 6f + (float)rng.NextDouble() * 26f;
                 float w = 6f + (float)rng.NextDouble() * 12f;
 
-                var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                var slab = DcvrPrim.Create(PrimitiveType.Cube);
                 slab.name = $"DCVR_Far{i}";
                 slab.transform.SetParent(root.transform, false);
                 slab.transform.localPosition =
                     new Vector3(Mathf.Cos(a) * dist, h * 0.5f - 2f, Mathf.Sin(a) * dist);
                 slab.transform.localScale = new Vector3(w, h, w);
-                SafeDestroy(slab.GetComponent<Collider>());
                 var r = slab.GetComponent<Renderer>();
                 r.sharedMaterial = far;
                 r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -343,7 +338,7 @@ namespace DreamCodeVRPlus
                 float dist = 12f + (float)rng.NextDouble() * 16f;
                 float y = 9f + (float)rng.NextDouble() * 11f;
 
-                var s = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                var s = DcvrPrim.Create(PrimitiveType.Quad);
                 s.name = $"DCVR_Shard{i}";
                 s.transform.SetParent(_shardRoot, false);
                 s.transform.localPosition = new Vector3(Mathf.Cos(a) * dist, y, Mathf.Sin(a) * dist);
@@ -353,7 +348,6 @@ namespace DreamCodeVRPlus
                     (float)rng.NextDouble() * 360f);
                 float sc = 1.2f + (float)rng.NextDouble() * 3.4f;
                 s.transform.localScale = new Vector3(sc, sc * 0.35f, 1f);
-                SafeDestroy(s.GetComponent<Collider>());
                 var r = s.GetComponent<Renderer>();
                 r.sharedMaterial = shard;
                 r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -422,14 +416,13 @@ namespace DreamCodeVRPlus
             // an EMPTY GameObject as scene root and null as the selected object, so every
             // plan targeting "selected_object" was refused before it could do anything —
             // correct fail-closed behaviour reacting to a wiring bug, not a policy one.
-            _target = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _target = DcvrPrim.Create(PrimitiveType.Cube);
             _target.name = "DCVR_Target";
             _target.transform.SetParent(anchor.transform, false);
             _target.transform.localScale = Vector3.one * 0.55f;
 
             Material m = MakeUnlit("DCVR_TargetMat", new Color(0.62f, 0.72f, 0.85f));
             _target.GetComponent<Renderer>().sharedMaterial = m;
-            SafeDestroy(_target.GetComponent<BoxCollider>());
         }
 
         // ---- state feedback ------------------------------------------------------

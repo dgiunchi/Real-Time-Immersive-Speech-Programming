@@ -40,6 +40,8 @@ public static class DcvrBuild
         {
             bool dev = HasArg("-dcvrDevelopment");
             ConfigureAndroidPlayer(dev);
+            AssertXrConfigured();
+            EnsureShadersIncluded();
             string scene = EnsureMainScene();
 
             Directory.CreateDirectory(OutputDir);
@@ -77,6 +79,134 @@ public static class DcvrBuild
             Debug.LogError($"[DcvrBuild] EXCEPTION {e}");
             EditorApplication.Exit(1);
         }
+    }
+
+    /// <summary>Force every DreamCodeVR+ shader into the build.
+    ///
+    /// The environment is generated at runtime, so its materials are created with
+    /// Shader.Find and no material ASSET ever references them. Unity's build-time shader
+    /// stripping only keeps shaders it can see referenced, so ours were dropped — and the
+    /// failure is quiet: Shader.Find returns null on device and the surface renders as
+    /// magenta or, worse, the feature disables itself. The comfort vignette shipped
+    /// missing for exactly this reason and only a logcat warning revealed it.
+    ///
+    /// Registering them in Always Included Shaders makes the runtime lookup reliable.</summary>
+    public static void EnsureShadersIncluded()
+    {
+        string[] wanted =
+        {
+            "DreamCodeVRPlus/Holo",
+            "DreamCodeVRPlus/Grid",
+            "DreamCodeVRPlus/SkyGradient",
+            "DreamCodeVRPlus/Vignette",
+        };
+
+        var graphics = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset");
+        if (graphics == null || graphics.Length == 0)
+        {
+            Debug.LogWarning("[DcvrBuild] cannot open GraphicsSettings; shaders not pinned");
+            return;
+        }
+
+        var so = new UnityEditor.SerializedObject(graphics[0]);
+        UnityEditor.SerializedProperty list = so.FindProperty("m_AlwaysIncludedShaders");
+        if (list == null)
+        {
+            Debug.LogWarning("[DcvrBuild] m_AlwaysIncludedShaders not found; shaders not pinned");
+            return;
+        }
+
+        int added = 0;
+        foreach (string name in wanted)
+        {
+            Shader shader = Shader.Find(name);
+            if (shader == null)
+            {
+                throw new Exception($"[DcvrBuild] shader '{name}' does not compile or is missing — " +
+                                    "refusing to build a player whose visuals would be broken.");
+            }
+
+            bool present = false;
+            for (int i = 0; i < list.arraySize; i++)
+            {
+                if (list.GetArrayElementAtIndex(i).objectReferenceValue == shader)
+                {
+                    present = true;
+                    break;
+                }
+            }
+            if (present) { continue; }
+
+            list.InsertArrayElementAtIndex(list.arraySize);
+            list.GetArrayElementAtIndex(list.arraySize - 1).objectReferenceValue = shader;
+            added++;
+        }
+
+        if (added > 0)
+        {
+            so.ApplyModifiedProperties();
+            AssetDatabase.SaveAssets();
+        }
+        Debug.Log($"[DcvrBuild] shaders pinned into the build (+{added} newly added)");
+    }
+
+    /// <summary>Refuse to build a Quest APK that has no XR provider.
+    ///
+    /// This exists because the project already shipped one silently-flat build. Everything
+    /// downstream still "succeeds" — the APK compiles, installs, launches, and even carries
+    /// the correct VR manifest entries — so nothing fails until a human puts the headset on
+    /// and finds a 2D panel. That is the most expensive possible place to discover it.
+    /// Failing the build here converts an hour of headset debugging into one line of log.</summary>
+    public static void AssertXrConfigured()
+    {
+        UnityEngine.Object obj = null;
+        UnityEditor.EditorBuildSettings.TryGetConfigObject(
+            "com.unity.xr.management.loader_settings", out obj);
+
+        if (obj == null)
+        {
+            throw new Exception(
+                "[DcvrBuild] XR Plug-in Management has no loader settings registered — " +
+                "this would build a FLAT Android app, not a VR app. Configure XR for Android.");
+        }
+
+        var so = new UnityEditor.SerializedObject(obj);
+        UnityEditor.SerializedProperty keys = so.FindProperty("Keys");
+        UnityEditor.SerializedProperty values = so.FindProperty("Values");
+        bool androidHasLoader = false;
+
+        if (keys != null && values != null)
+        {
+            for (int i = 0; i < keys.arraySize && i < values.arraySize; i++)
+            {
+                // BuildTargetGroup.Android == 7
+                if (keys.GetArrayElementAtIndex(i).intValue != 7) { continue; }
+                var entry = values.GetArrayElementAtIndex(i).objectReferenceValue;
+                if (entry == null) { continue; }
+                var entrySo = new UnityEditor.SerializedObject(entry);
+                var mgr = entrySo.FindProperty("m_LoaderManagerInstance");
+                if (mgr?.objectReferenceValue == null) { continue; }
+                var mgrSo = new UnityEditor.SerializedObject(mgr.objectReferenceValue);
+                var loaders = mgrSo.FindProperty("m_Loaders");
+                androidHasLoader = loaders != null && loaders.arraySize > 0;
+                var initOnStart = entrySo.FindProperty("m_InitManagerOnStart");
+                if (initOnStart != null && !initOnStart.boolValue)
+                {
+                    throw new Exception(
+                        "[DcvrBuild] XR 'Initialize XR on Startup' is OFF for Android — " +
+                        "the app would launch flat.");
+                }
+            }
+        }
+
+        if (!androidHasLoader)
+        {
+            throw new Exception(
+                "[DcvrBuild] no XR loader assigned for Android (OpenXR missing) — " +
+                "this would build a FLAT Android app, not a VR app.");
+        }
+
+        Debug.Log("[DcvrBuild] XR check OK — Android has an XR loader and initialises on startup");
     }
 
     /// <summary>Player settings for a standalone Quest 3 (Horizon OS / Android 14, arm64).</summary>

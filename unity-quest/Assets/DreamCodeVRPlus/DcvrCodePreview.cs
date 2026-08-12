@@ -69,7 +69,7 @@ namespace DreamCodeVRPlus
                     float w = 0.045f + (float)rng.NextDouble() * 0.16f;
                     if (x + w > PanelWidth * 0.5f) { break; }
 
-                    var q = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                    var q = DcvrPrim.Create(PrimitiveType.Quad);
                     q.name = $"DCVR_Glyph{r}_{b}";
                     q.transform.SetParent(transform, false);
                     q.transform.localPosition = new Vector3(
@@ -77,7 +77,6 @@ namespace DreamCodeVRPlus
                         (Rows * 0.5f - r) * RowHeight - RowHeight * 0.5f,
                         0f);
                     q.transform.localScale = new Vector3(w, RowHeight * 0.42f, 1f);
-                    Destroy(q.GetComponent<Collider>());
 
                     Material m = Holo(DcvrWorld.Cyan, 0f);
                     if (m != null)
@@ -102,23 +101,21 @@ namespace DreamCodeVRPlus
         {
             float y = -(Rows * 0.5f) * RowHeight - 0.075f;
 
-            var track = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var track = DcvrPrim.Create(PrimitiveType.Quad);
             track.name = "DCVR_BarTrack";
             track.transform.SetParent(transform, false);
             track.transform.localPosition = new Vector3(0f, y, 0.002f);
             track.transform.localScale = new Vector3(PanelWidth, 0.012f, 1f);
-            Destroy(track.GetComponent<Collider>());
             Material tm = Holo(DcvrWorld.Dim, 0.09f);
             if (tm != null) { track.GetComponent<Renderer>().sharedMaterial = tm; }
 
-            var fill = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var fill = DcvrPrim.Create(PrimitiveType.Quad);
             fill.name = "DCVR_BarFill";
             fill.transform.SetParent(transform, false);
             // Anchored left: scale grows rightward from a fixed origin, which is why the
             // pivot is offset rather than the quad simply being scaled about its centre.
             fill.transform.localPosition = new Vector3(-PanelWidth * 0.5f, y, 0f);
             fill.transform.localScale = new Vector3(0f, 0.012f, 1f);
-            Destroy(fill.GetComponent<Collider>());
             _barMat = Holo(DcvrWorld.Cyan, 0.75f);
             if (_barMat != null) { fill.GetComponent<Renderer>().sharedMaterial = _barMat; }
             _barFill = fill.transform;

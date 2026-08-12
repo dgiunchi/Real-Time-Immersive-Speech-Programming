@@ -47,11 +47,10 @@ namespace DreamCodeVRPlus
         {
             // Backing plate — dark, slightly transparent, so text stays legible against
             // a bright horizon without becoming an opaque slab floating in the world.
-            var plate = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var plate = DcvrPrim.Create(PrimitiveType.Quad);
             plate.name = "DCVR_HudPlate";
             plate.transform.SetParent(transform, false);
             plate.transform.localScale = new Vector3(PanelWidth, 1.15f, 1f);
-            Destroy(plate.GetComponent<Collider>());
             var plateMat = new Material(Shader.Find("Universal Render Pipeline/Unlit")
                                         ?? Shader.Find("Unlit/Color"))
             { name = "DCVR_HudPlateMat" };
@@ -59,12 +58,11 @@ namespace DreamCodeVRPlus
             EnableTransparency(plateMat);
             plate.GetComponent<Renderer>().sharedMaterial = plateMat;
 
-            var border = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var border = DcvrPrim.Create(PrimitiveType.Quad);
             border.name = "DCVR_HudBorder";
             border.transform.SetParent(transform, false);
             border.transform.localPosition = new Vector3(0f, 0f, 0.005f);
             border.transform.localScale = new Vector3(PanelWidth + 0.03f, 1.18f, 1f);
-            Destroy(border.GetComponent<Collider>());
             Material borderMat = MakeHolo("DCVR_HudBorderMat", DcvrWorld.Cyan, 0.12f);
             if (borderMat != null) { border.GetComponent<Renderer>().sharedMaterial = borderMat; }
 
@@ -84,12 +82,11 @@ namespace DreamCodeVRPlus
             float x0 = -spacing * 1.5f;
             for (int i = 0; i < 4; i++)
             {
-                var pill = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                var pill = DcvrPrim.Create(PrimitiveType.Quad);
                 pill.name = "DCVR_Stage" + StageNames[i];
                 pill.transform.SetParent(transform, false);
                 pill.transform.localPosition = new Vector3(x0 + spacing * i, -0.10f, -0.01f);
                 pill.transform.localScale = new Vector3(0.50f, 0.075f, 1f);
-                Destroy(pill.GetComponent<Collider>());
 
                 Material m = MakeHolo("DCVR_StageMat" + i, DcvrWorld.Dim, 0.10f);
                 if (m != null)

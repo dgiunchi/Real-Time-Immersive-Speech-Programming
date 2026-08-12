@@ -74,7 +74,7 @@ namespace DreamCodeVRPlus
                 float t = col / (float)(ShieldPanels / 2 - 1);
                 float ang = Mathf.Lerp(-38f, 38f, t) * Mathf.Deg2Rad;
 
-                var panel = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                var panel = DcvrPrim.Create(PrimitiveType.Quad);
                 panel.name = $"DCVR_ShieldPanel{i}";
                 panel.transform.SetParent(_shieldRoot, false);
                 panel.transform.localPosition = new Vector3(
@@ -83,7 +83,6 @@ namespace DreamCodeVRPlus
                     Mathf.Cos(ang) * ShieldRadius - ShieldRadius);
                 panel.transform.localRotation = Quaternion.Euler(0f, -Mathf.Rad2Deg * ang, 0f);
                 panel.transform.localScale = Vector3.zero;
-                DestroySafe(panel.GetComponent<Collider>());
 
                 Material m = MakeHolo("DCVR_ShieldMat" + i, DcvrWorld.Red, 0.0f);
                 if (m != null)
@@ -167,13 +166,12 @@ namespace DreamCodeVRPlus
         /// in the wearer's view for the whole session.</summary>
         private void BuildPersonalSpace()
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            var go = DcvrPrim.Create(PrimitiveType.Sphere);
             go.name = "DCVR_PersonalSpace";
             go.transform.SetParent(transform, false);
             // Centred on the wearer, not the world: this is THEIR frame.
             go.transform.localPosition = new Vector3(0f, 1.2f, 0f);
             go.transform.localScale = Vector3.one * 2.0f;
-            DestroySafe(go.GetComponent<Collider>());
 
             _sphereMat = MakeHolo("DCVR_PersonalSpaceMat", DcvrWorld.Cyan, 0f);
             if (_sphereMat != null)
@@ -226,13 +224,12 @@ namespace DreamCodeVRPlus
         // ---- shockwave --------------------------------------------------------------
         private void BuildShockwave()
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var go = DcvrPrim.Create(PrimitiveType.Quad);
             go.name = "DCVR_Shockwave";
             go.transform.SetParent(transform, false);
             go.transform.localPosition = DcvrWorld.PlatformCenter + new Vector3(0f, 0.14f, 0f);
             go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             go.transform.localScale = Vector3.zero;
-            DestroySafe(go.GetComponent<Collider>());
             _shockMat = MakeHolo("DCVR_ShockMat", DcvrWorld.Cyan, 0f);
             if (_shockMat != null)
             {
@@ -279,11 +276,10 @@ namespace DreamCodeVRPlus
         {
             Vector3 finalScale = target.transform.localScale;
 
-            var shell = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            var shell = DcvrPrim.Create(PrimitiveType.Sphere);
             shell.name = "DCVR_MaterializeShell";
             shell.transform.SetParent(target.transform.parent, false);
             shell.transform.position = target.transform.position;
-            DestroySafe(shell.GetComponent<Collider>());
             Material sm = MakeHolo("DCVR_MatShell", DcvrWorld.Cyan, 0.5f);
             if (sm != null) { shell.GetComponent<Renderer>().sharedMaterial = sm; }
             var sr = shell.GetComponent<Renderer>();

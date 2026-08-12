@@ -23,8 +23,9 @@ namespace DreamCodeVRPlus
         /// Under XR the runtime supplies the real value from the wearer's setup.</summary>
         private const float FallbackEyeHeight = 1.6f;
 
-        public static bool XrActive =>
-            XRSettings.enabled && !string.IsNullOrEmpty(XRSettings.loadedDeviceName);
+        /// <summary>Live XR state. Do NOT sample this once at Start() to decide the rig —
+        /// the runtime is not up yet at that point. DcvrXr owns that decision.</summary>
+        public static bool XrActive => DcvrXr.DeviceActive;
 
         public static void Configure(Camera cam, DcvrWorld world)
         {
@@ -46,22 +47,32 @@ namespace DreamCodeVRPlus
             EnablePostProcessing(cam);
             EnsureBloom();
 
-            if (XrActive)
+            // XR bring-up is ASYNCHRONOUS. Deciding here, synchronously, is exactly the
+            // bug that produced a flat build: the loader had not finished, so this took
+            // the fallback branch and then wrote the camera transform, fighting head
+            // tracking every frame. Hand the decision to DcvrXr, which waits for the
+            // runtime and reports honestly either way.
+            DcvrXr.Boot(xrOk =>
             {
-                Transform rig = EnsureRigRoot(cam);
-                // Locomotion moves the RIG, never the camera — see DcvrLocomotion.
-                DcvrLocomotion.Attach(rig, cam);
-                Debug.Log($"[DcvrRig] XR active ({XRSettings.loadedDeviceName}) — " +
-                          "head tracking owns the camera pose; locomotion drives the rig");
-                return;
-            }
-
-            // Flat / editor: place a fixed viewpoint looking at the platform so the same
-            // scene is inspectable without a headset (this is what the offscreen
-            // look-dev renders capture).
-            cam.transform.position = new Vector3(0f, FallbackEyeHeight, -5.2f);
-            cam.transform.rotation = Quaternion.Euler(6f, 0f, 0f);
-            Debug.Log("[DcvrRig] XR inactive — flat fallback viewpoint");
+                if (xrOk)
+                {
+                    Transform origin = DcvrXr.BuildOrigin(cam);
+                    // Locomotion moves the ORIGIN, never the camera. Room-scale walking is
+                    // the runtime's job; the sticks only carry the wearer further than
+                    // their physical guardian allows.
+                    DcvrLocomotion.Attach(origin, cam);
+                    DcvrControllers.Attach(origin);
+                    Debug.Log("[DcvrRig] immersive: XR origin built, camera is runtime-driven");
+                }
+                else
+                {
+                    // Flat / editor only. Writing the camera transform is safe HERE
+                    // precisely because no XR runtime is presenting.
+                    cam.transform.position = new Vector3(0f, DcvrXr.FallbackEyeHeight, -5.2f);
+                    cam.transform.rotation = Quaternion.Euler(6f, 0f, 0f);
+                    Debug.Log("[DcvrRig] no XR runtime — flat fallback viewpoint");
+                }
+            });
         }
 
         /// <summary>Bloom is what turns flat emissive geometry into something that reads as
@@ -110,16 +121,5 @@ namespace DreamCodeVRPlus
             data.antialiasing = AntialiasingMode.None;
         }
 
-        /// <summary>Give the camera a rig root if it has none, so later work can displace
-        /// the user's frame without ever touching the tracked camera transform.</summary>
-        private static Transform EnsureRigRoot(Camera cam)
-        {
-            if (cam.transform.parent != null) { return cam.transform.parent; }
-            var root = new GameObject("DCVR_RigRoot");
-            root.transform.position = Vector3.zero;
-            root.transform.rotation = Quaternion.identity;
-            cam.transform.SetParent(root.transform, worldPositionStays: true);
-            return root.transform;
-        }
     }
 }

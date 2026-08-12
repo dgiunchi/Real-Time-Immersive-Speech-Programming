@@ -68,14 +68,13 @@ namespace DreamCodeVRPlus
                 Debug.LogWarning("[DcvrLocomotion] vignette shader missing; comfort tunnel disabled");
                 return;
             }
-            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var quad = DcvrPrim.Create(PrimitiveType.Quad);
             quad.name = "DCVR_ComfortVignette";
             quad.transform.SetParent(head.transform, false);
             // Just beyond the near plane, sized to over-cover the field of view so the
             // edges never peel away from the periphery when the head rolls.
             quad.transform.localPosition = new Vector3(0f, 0f, 0.12f);
             quad.transform.localScale = new Vector3(0.42f, 0.42f, 1f);
-            Destroy(quad.GetComponent<Collider>());
             _vignetteMat = new Material(s) { name = "DCVR_VignetteMat" };
             _vignetteMat.SetFloat("_Amount", 0f);
             quad.GetComponent<Renderer>().sharedMaterial = _vignetteMat;

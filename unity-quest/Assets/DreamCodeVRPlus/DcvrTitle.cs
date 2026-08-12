@@ -50,12 +50,11 @@ namespace DreamCodeVRPlus
 
             // A single hairline rule. One accent, doing the job that a box and a
             // background gradient would otherwise be asked to do badly.
-            var rule = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var rule = DcvrPrim.Create(PrimitiveType.Quad);
             rule.name = "DCVR_TitleRule";
             rule.transform.SetParent(transform, false);
             rule.transform.localPosition = new Vector3(0f, 0.40f, 0f);
             rule.transform.localScale = new Vector3(2.1f, 0.005f, 1f);
-            Destroy(rule.GetComponent<Collider>());
             Shader holo = Shader.Find("DreamCodeVRPlus/Holo");
             if (holo != null)
             {
