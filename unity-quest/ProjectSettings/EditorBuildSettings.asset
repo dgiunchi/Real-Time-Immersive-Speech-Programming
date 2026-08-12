@@ -6,8 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/DcvrMain.unity
-    guid: 0af95cd03cf3140209e27a114fec6bb9
+    path: Assets/Scenes/DreamCodeVRQuest.unity
+    guid: 57d524bca71944051bf56b6e7c17a9a7
   m_configObjects:
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 23f226ca87a6c45a1a7578be8e135841, type: 2}
     com.unity.xr.openxr.settings4: {fileID: 11400000, guid: aa9361693e34f455293c35f74607faa0, type: 2}

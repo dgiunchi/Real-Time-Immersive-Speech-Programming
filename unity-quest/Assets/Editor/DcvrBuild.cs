@@ -28,7 +28,10 @@ public static class DcvrBuild
     public const string ApplicationId = "com.bham.dreamcodevrplus";
     public const string ProductName = "DreamCodeVR+";
     public const string CompanyName = "University of Birmingham";
-    public const string MainScenePath = "Assets/Scenes/DcvrMain.unity";
+    // The saved, inspectable diagnostic scene is the build scene. It is authored on
+    // disk rather than conjured at runtime, so its hierarchy and transforms can be read
+    // in the Editor — which is what made the flat-rig bug findable at all.
+    public const string MainScenePath = "Assets/Scenes/DreamCodeVRQuest.unity";
     private const string OutputDir = "Builds";
     private const string ApkName = "DreamCodeVRPlus.apk";
 
