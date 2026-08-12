@@ -30,10 +30,11 @@ menu() {
 
   DreamCodeVR+ — how do you want to run it?
 
-    ./run.sh console    security benchmark console (no Quest, no key) — the demo
+    ./run.sh demo       THE INSTRUCTOR DEMO — Quest 3 + backend + admin, one command
+    ./run.sh console    security benchmark console (no Quest, no key)
     ./run.sh local      full pipeline on this laptop, no Quest (admin panel :7878)
     ./run.sh embedded   ONE binary, no Node.js (Rust RoomServer built in, :8009)
-    ./run.sh quest      full pipeline with a real Meta Quest 3 headset
+    ./run.sh quest      full pipeline against an external Node.js Ubiq RoomServer
     ./run.sh stop       stop the local/quest stack
 
   Tip: start with  ./run.sh console  — it always works, offline, in the browser.
@@ -42,8 +43,14 @@ EOF
 }
 
 case "${1:-}" in
-  console|demo|benchmark)
+  console|benchmark)
     exec "$ROOT/apps/xr-security-eval/present.sh"
+    ;;
+
+  demo|quest3)
+    # The instructor demo: one binary + embedded RoomServer + admin + USB tunnel,
+    # with a status board that only reports what it actually probed.
+    exec "$ROOT/scripts/demo-quest.sh" "${@:2}"
     ;;
 
   local|laptop|offline)
