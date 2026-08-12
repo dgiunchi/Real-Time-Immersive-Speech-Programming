@@ -24,6 +24,7 @@ using UnityEngine.Rendering.Universal;
 public static class DcvrQuestScene
 {
     public const string ScenePath = "Assets/Scenes/DreamCodeVRQuest.unity";
+    public const string DiagnosticScenePath = "Assets/Scenes/DreamCodeVRDiagnostic.unity";
     private const string OutDir = "LookDev/spatial";
     private const int Width = 1100;
     private const int Height = 620;
@@ -41,6 +42,62 @@ public static class DcvrQuestScene
             Debug.LogError("[DcvrScene] " + e);
             EditorApplication.Exit(1);
         }
+    }
+
+    /// <summary>The PRODUCTION world. Uses the identical hierarchy the diagnostic scene
+    /// proved correct — world root at the scene root, camera a sibling, XR rig built at
+    /// runtime — and swaps only the contents. The hierarchy is the part that was hard to
+    /// get right, so it is deliberately not re-derived here.</summary>
+    public static void GenerateProductionAndVerify()
+    {
+        try
+        {
+            GenerateProduction();
+            bool ok = VerifyParallax(requireRatio: 2f);
+            EditorApplication.Exit(ok ? 0 : 2);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("[DcvrScene] " + e);
+            EditorApplication.Exit(1);
+        }
+    }
+
+    [MenuItem("DreamCodeVR+/Generate PRODUCTION Quest scene")]
+    public static void GenerateProduction()
+    {
+        Directory.CreateDirectory("Assets/Scenes");
+        Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+        // WORLD — one root, at the scene root. Never under the rig.
+        var worldRoot = new GameObject("DreamCodeVR_World").transform;
+        worldRoot.position = Vector3.zero;
+
+        DreamCodeVRPlus.DcvrWorld world = DreamCodeVRPlus.DcvrWorld.Build();
+        world.transform.SetParent(worldRoot, worldPositionStays: false);
+
+        DreamCodeVRPlus.DcvrNearLayer.Build(worldRoot);
+        DreamCodeVRPlus.DcvrDepthLayers.Build(worldRoot);
+
+        // PLAYER — plain camera; the XR rig is assembled at runtime by DcvrXrRig.
+        var camGo = new GameObject("Main Camera") { tag = "MainCamera" };
+        var cam = camGo.AddComponent<Camera>();
+        cam.clearFlags = CameraClearFlags.Skybox;
+        cam.backgroundColor = new Color(0.01f, 0.02f, 0.04f);
+        cam.nearClipPlane = 0.05f;
+        cam.farClipPlane = 400f;      // the far layer and sky ring live out at 95-270 m
+        camGo.transform.position = new Vector3(0f, 1.7f, 0f);
+
+        var managers = new GameObject("Managers");
+        var boot = managers.AddComponent<DreamCodeVRPlus.DcvrBootstrap>();
+        boot.showDiagnostics = false;   // production: no debug panel
+        boot.production = true;
+
+        EditorSceneManager.SaveScene(scene, ScenePath);
+        AssetDatabase.Refresh();
+        EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+        Debug.Log("[DcvrScene] saved PRODUCTION " + ScenePath);
+        DumpHierarchy(scene);
     }
 
     [MenuItem("DreamCodeVR+/Generate diagnostic Quest scene")]
@@ -91,13 +148,30 @@ public static class DcvrQuestScene
 
     /// <summary>Render from three positions and MEASURE whether a near object moves more on
     /// screen than a far one. That ratio is what separates a 3D scene from a backdrop.</summary>
-    public static bool VerifyParallax()
+    public static bool VerifyParallax(string near = "NearCube_Yellow",
+                                      string far = "Tower_Blue",
+                                      float requireRatio = 2f)
     {
         Directory.CreateDirectory(OutDir);
         Camera cam = Object.FindAnyObjectByType<Camera>();
-        Transform near = GameObject.Find("NearCube_Yellow")?.transform;
-        Transform far = GameObject.Find("Tower_Blue")?.transform;
-        if (cam == null || near == null || far == null)
+        Transform nearT = null, farT = null;
+        if (!string.IsNullOrEmpty(near)) { nearT = GameObject.Find(near)?.transform; }
+        if (!string.IsNullOrEmpty(far)) { farT = GameObject.Find(far)?.transform; }
+
+        if (nearT == null || farT == null)
+        {
+            // Pick renderers that lie near the forward axis, so a sideways step measures
+            // DEPTH rather than the swing of something off to one side.
+            float bestNear = float.MaxValue, bestFar = float.MinValue;
+            foreach (Renderer r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                Vector3 p = r.transform.position;
+                if (p.z < 1f || Mathf.Abs(p.x) > Mathf.Max(3f, p.z * 0.25f)) { continue; }
+                if (p.z < bestNear) { bestNear = p.z; nearT = r.transform; }
+                if (p.z > bestFar) { bestFar = p.z; farT = r.transform; }
+            }
+        }
+        if (cam == null || nearT == null || farT == null)
         {
             Debug.LogError("[DcvrScene] camera or parallax reference objects missing");
             return false;
@@ -110,6 +184,14 @@ public static class DcvrQuestScene
             ("C-fwd2m-right1m", new Vector3(1f, 1.7f, 2f)),
         };
 
+        // Extra look-dev angles that are NOT part of the parallax maths — they exist to
+        // check composition, especially the platform underfoot which a level shot misses.
+        var extra = new (string name, Vector3 pos, Vector3 look)[]
+        {
+            ("D-platform-down", new Vector3(0f, 1.75f, -1.2f), new Vector3(0f, 0.2f, 2.4f)),
+            ("E-turn-around", new Vector3(0f, 1.7f, 0f), new Vector3(0f, 1.6f, -8f)),
+        };
+
         var nearS = new Vector3[shots.Length];
         var farS = new Vector3[shots.Length];
 
@@ -117,8 +199,8 @@ public static class DcvrQuestScene
         {
             cam.transform.position = shots[i].pos;
             cam.transform.rotation = Quaternion.identity;
-            nearS[i] = cam.WorldToScreenPoint(near.position);
-            farS[i] = cam.WorldToScreenPoint(far.position);
+            nearS[i] = cam.WorldToScreenPoint(nearT.position);
+            farS[i] = cam.WorldToScreenPoint(farT.position);
             Capture(cam, Path.Combine(OutDir, shots[i].name + ".png"));
             Debug.Log($"[DcvrScene] {shots[i].name}: nearX={nearS[i].x:F0} farX={farS[i].x:F0}");
         }
@@ -129,24 +211,31 @@ public static class DcvrQuestScene
         {
             var go = GameObject.Find(n);
             var r = go != null ? go.GetComponent<Renderer>() : null;
-            if (r == null) { Debug.Log($"[DcvrScene] colour {n}: NO RENDERER"); continue; }
+            if (r == null) { continue; }   // diagnostic-scene objects; absent in production
             Material m = r.sharedMaterial;
             Debug.Log($"[DcvrScene] colour {n}: mat={(m != null ? m.name : "NULL")} " +
                       $"shader={(m != null && m.shader != null ? m.shader.name : "NULL")} " +
                       $"baseColor={(m != null && m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor").ToString() : "n/a")}");
         }
 
+        foreach (var e in extra)
+        {
+            cam.transform.position = e.pos;
+            cam.transform.LookAt(e.look);
+            Capture(cam, Path.Combine(OutDir, e.name + ".png"));
+        }
+
         float nearShift = Mathf.Abs(nearS[1].x - nearS[0].x);
         float farShift = Mathf.Abs(farS[1].x - farS[0].x);
-        Debug.Log($"[DcvrScene] PARALLAX over a 1 m sidestep: near(z={near.position.z:F1}) " +
-                  $"moved {nearShift:F0}px, far(z={far.position.z:F1}) moved {farShift:F0}px");
+        Debug.Log($"[DcvrScene] PARALLAX over a 1 m sidestep: near={nearT.name}(z={nearT.position.z:F1}) " +
+                  $"moved {nearShift:F0}px, far={farT.name}(z={farT.position.z:F1}) moved {farShift:F0}px");
 
         if (nearShift < 20f)
         {
             Debug.LogError("[DcvrScene] FAIL: near object barely moved — camera is not translating.");
             return false;
         }
-        if (nearShift <= farShift * 2f)
+        if (nearShift <= farShift * requireRatio)
         {
             Debug.LogError($"[DcvrScene] FAIL: near/far ratio {nearShift / Mathf.Max(farShift, 1f):F2} " +
                            "— everything moves together like a flat backdrop.");

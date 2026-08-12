@@ -726,6 +726,38 @@ impl dcvr_admin::AdminHooks for ServerHooks {
         };
         publish_pipeline_events(&self.services.bus, &outcome);
         if let Some(reason) = &outcome.caught_reason {
+            // TELL THE HEADSET. Returning here without dispatching left the wearer with no
+            // indication that anything happened: the block was visible only in the admin
+            // panel on the laptop, so in the headset a refused attack and an ignored
+            // command looked identical. The decision carries `caught_reason`, which the
+            // client uses to raise the security barrier and name the stage that stopped it.
+            //
+            // Note this sends the NEUTRALIZED decision, not the attack: no generated code
+            // is dispatched, which is exactly the property being demonstrated.
+            if let Some(sender) = self.services.ubiq_sender.read().await.clone() {
+                if let Ok(json) = crate::app::backend_decision_json(&outcome) {
+                    let target = self
+                        .services
+                        .last_client_peer
+                        .read()
+                        .await
+                        .clone()
+                        .unwrap_or_default();
+                    match self.services.auth.sign_nid94(
+                        json.as_bytes(),
+                        &target,
+                        &outcome.request_id,
+                        crate::auth_gate::now_unix(),
+                    ) {
+                        Ok(bytes) => {
+                            let _ = sender.send(NID_BACKEND_OUTPUT, &bytes).await;
+                        }
+                        Err(e) => {
+                            eprintln!("[manual-cmd] refusing to send unsigned NID-94: {e}");
+                        }
+                    }
+                }
+            }
             return format!(
                 "🛡️ MALICIOUS INTENT CAUGHT & NEUTRALIZED — {reason}. \
                  No code was generated for the request; a harmless placeholder was sent instead."

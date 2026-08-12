@@ -18,6 +18,9 @@ namespace DreamCodeVRPlus
         [Tooltip("Show the 6DoF diagnostic panel. Turn off for the polished build.")]
         public bool showDiagnostics = true;
 
+        [Tooltip("Production scene: wire the HUD, effects and networked client.")]
+        public bool production = false;
+
         private DcvrXrRig.Rig _rig;
 
         private IEnumerator Start()
@@ -51,6 +54,25 @@ namespace DreamCodeVRPlus
                 cam.transform.position = new Vector3(0f, 1.7f, 0f);
                 cam.transform.rotation = Quaternion.identity;
                 Debug.LogWarning("[DcvrBootstrap] no XR runtime — flat fallback");
+            }
+
+            if (production)
+            {
+                // HUD and effects live in WORLD space, parented to nothing. They must stay
+                // where they are placed so the wearer can walk up to, past and behind them.
+                DcvrWorld world = FindAnyObjectByType<DcvrWorld>();
+                var hud = DcvrHud.Build(null, new Vector3(0f, 1.72f, 3.4f));
+                var fx = DcvrEffects.Attach(null);
+                var preview = DcvrCodePreview.Build(null, new Vector3(1.9f, 1.55f, 3.1f));
+                DcvrTitle.Build(new Vector3(-4.6f, 2.3f, 4.6f), -34f);
+
+                // The networked Mode-C client drives all of the above from real backend
+                // decisions. It is created last so the visuals exist before the first
+                // message can arrive.
+                var client = new GameObject("ModeCNetworkedDemo")
+                    .AddComponent<ModeCNetworkedDemo>();
+                client.AttachPresentation(world, hud, fx, preview);
+                Debug.Log("[DcvrBootstrap] production presentation wired");
             }
 
             if (showDiagnostics)

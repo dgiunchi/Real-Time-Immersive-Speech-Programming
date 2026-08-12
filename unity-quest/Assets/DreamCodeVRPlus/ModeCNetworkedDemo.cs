@@ -106,13 +106,30 @@ namespace DreamCodeVRPlus
         private volatile bool _micRecording;
         private readonly ConcurrentQueue<byte[]> _audioOut = new ConcurrentQueue<byte[]>(); // raw NID 98 bodies
 
+        /// <summary>Injected by DcvrBootstrap in the production scene. Without this the
+        /// client builds its own world at Start(), which would duplicate the saved scene's
+        /// environment and put a second one at the origin.</summary>
+        public void AttachPresentation(DcvrWorld world, DcvrHud hud, DcvrEffects fx,
+                                       DcvrCodePreview preview)
+        {
+            _world = world;
+            _hud = hud;
+            _fx = fx;
+            _preview = preview;
+            _presentationInjected = true;
+            if (_world != null) { _cube = _world.Target; }
+        }
+
+        private bool _presentationInjected;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoBoot()
         {
-            if (UnityEngine.Object.FindAnyObjectByType<ModeCNetworkedDemo>() == null)
-            {
-                new GameObject("ModeCNetworkedDemo").AddComponent<ModeCNetworkedDemo>();
-            }
+            // Only self-instantiate when nothing else has. The production scene's
+            // bootstrap creates and configures this component itself.
+            if (UnityEngine.Object.FindAnyObjectByType<ModeCNetworkedDemo>() != null) { return; }
+            if (UnityEngine.Object.FindAnyObjectByType<DcvrBootstrap>() != null) { return; }
+            new GameObject("ModeCNetworkedDemo").AddComponent<ModeCNetworkedDemo>();
         }
 
         private void Start()
@@ -129,24 +146,32 @@ namespace DreamCodeVRPlus
             // executor was handed null as the selection and correctly failed closed. The
             // world's target is a real, renderable object, so set_color/scale/move act on
             // something the wearer can actually see.
-            _world = DcvrWorld.Build();
-            _cube = _world.Target;
+            if (!_presentationInjected)
+            {
+                _world = DcvrWorld.Build();
+                _cube = _world.Target;
+            }
 
             // The panel floats above the creation platform, facing the wearer. It is NOT
             // rotated 180 degrees to "face back": a Unity quad already faces -Z, and
             // yaw-flipping the root mirrors every glyph on it — which is exactly what the
             // first look-dev render showed.
-            _hud = DcvrHud.Build(null, DcvrWorld.PlatformCenter + new Vector3(0f, 2.05f, 0f));
-            _fx = DcvrEffects.Attach(null);
+            if (!_presentationInjected) { _hud = DcvrHud.Build(null, new Vector3(0f, 1.72f, 3.4f)); }
+            if (!_presentationInjected) { _fx = DcvrEffects.Attach(null); }
 
             // Generation preview sits beside the panel. It shows the SHAPE of generation
             // and never its content — see DcvrCodePreview for why displaying the real
             // output on a cast headset would leak the wearer's utterance to the room.
-            _preview = DcvrCodePreview.Build(
-                null, DcvrWorld.PlatformCenter + new Vector3(3.3f, 1.7f, -0.4f));
+            if (!_presentationInjected)
+            {
+                _preview = DcvrCodePreview.Build(null, new Vector3(1.9f, 1.55f, 3.1f));
+            }
 
             // Standing title piece, off to the side so it never competes with the work.
-            DcvrTitle.Build(DcvrWorld.PlatformCenter + new Vector3(-6.4f, 2.5f, 2.2f), -38f);
+            if (!_presentationInjected)
+            {
+                DcvrTitle.Build(new Vector3(-4.6f, 2.3f, 4.6f), -34f);
+            }
 
             // In a stereo XR build the HMD drives the camera, so DO NOT reposition it —
             // moving the camera transform under a tracked pose fights head tracking and
@@ -159,7 +184,14 @@ namespace DreamCodeVRPlus
             // and DISCLOSES concerns. Stays silent unless armed in the Inspector
             // (discloseEnabled), so it never restricts free creation.
             _monitor = gameObject.AddComponent<GeneratedContentMonitor>();
-            _monitor.confinementRoot = _cube.transform;
+            if (_cube == null && _world != null) { _cube = _world.Target; }
+            if (_cube == null)
+            {
+                // Nothing to act on yet. The pipeline still runs; commands simply have no
+                // target until the world provides one.
+                Debug.LogWarning("[ModeC-Net] no target object available at Start()");
+            }
+            _monitor.confinementRoot = _cube != null ? _cube.transform : transform;
             _monitor.drift = gameObject.AddComponent<UserDisplacementTracker>();
             // Phase 6/7 security components, present but DISARMED by default so runtime
             // behaviour is unchanged until a deploy flips their flags in the Inspector.
@@ -338,13 +370,16 @@ namespace DreamCodeVRPlus
                 }
                 else
                 {
-                    // The spawn anchor is the scene root (new content parents to it) and
-                    // the world's target is the SELECTED object. Passing null as the
-                    // selection is what made every "selected_object" plan fail closed.
+                    // Argument ORDER matters and was wrong: the signature is
+                    // Execute(json, selectedObject, sceneRoot), and this passed the scene
+                    // root as the selection. Every "selected_object" plan therefore
+                    // resolved its target to the spawn anchor — or, when that was null, to
+                    // nothing at all, and the executor correctly refused. The executor was
+                    // never the problem; the caller was.
                     GameObject sceneRoot = _world != null && _world.SpawnAnchor != null
                         ? _world.SpawnAnchor.gameObject
                         : _cube;
-                    bool ok = _exec.Execute(json, sceneRoot, _cube);
+                    bool ok = _exec.Execute(json, selectedObject: _cube, sceneRoot: sceneRoot);
                     Debug.Log($"[ModeC-Net] applied backend NID 94 -> {(ok ? "applied" : "rejected")}");
                     if (ok)
                     {

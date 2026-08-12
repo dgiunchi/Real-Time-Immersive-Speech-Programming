@@ -33,12 +33,17 @@ namespace DreamCodeVRPlus
         public static readonly Color Red = new Color(1.00f, 0.26f, 0.30f);
         public static readonly Color Dim = new Color(0.30f, 0.42f, 0.52f);
 
-        public const float PlatformRadius = 2.1f;
+        public const float PlatformRadius = 4.0f;   // 8 m across — room to walk on
 
         /// <summary>Centre of the creation area, in front of the wearer. The rig origin is
         /// where the person physically stands, so the platform must be offset forward or
         /// they end up standing inside it.</summary>
-        public static readonly Vector3 PlatformCenter = new Vector3(0f, 0f, 4.2f);
+        public static readonly Vector3 PlatformCenter = Vector3.zero;
+
+        /// <summary>Where generated content appears: ahead of the wearer, on the platform,
+        /// at comfortable focal distance. Separate from the platform centre because the
+        /// wearer now stands ON the platform rather than looking at it from outside.</summary>
+        public static readonly Vector3 CreationZone = new Vector3(0f, 1.15f, 2.6f);
         private const float RingHeight = 0.035f;
 
         private Transform _platform;
@@ -60,6 +65,56 @@ namespace DreamCodeVRPlus
         public GameObject Target => _target;
 
         public Transform SpawnAnchor => _spawnAnchor;
+
+        /// <summary>Re-bind the runtime references after the SAVED scene loads.
+        ///
+        /// The world is generated at edit time and serialised as GameObjects, but these
+        /// fields are plain private references — Unity does not serialise them, so on load
+        /// they come back null while the objects themselves are present. Everything then
+        /// looks correct in the hierarchy and fails at the first dereference. Re-resolve by
+        /// name instead of marking them [SerializeField], because the objects are the
+        /// authority and a stale serialised link would be worse than none.</summary>
+        private void Awake()
+        {
+            // Recursive: Find() only searches DIRECT children, and the target sits under
+            // the spawn anchor rather than at the top level.
+            if (_target == null)
+            {
+                Transform t = FindDeep("DCVR_Target");
+                if (t != null) { _target = t.gameObject; }
+            }
+            if (_spawnAnchor == null) { _spawnAnchor = FindDeep("DCVR_SpawnAnchor"); }
+            if (_platform == null) { _platform = FindDeep("DCVR_Platform"); }
+
+            if (_ringMats.Count == 0)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    Transform r = FindDeep($"DCVR_Ring{i}");
+                    if (r == null) { continue; }
+                    _rings.Add(r);
+                    var rend = r.GetComponentInChildren<Renderer>();
+                    if (rend != null) { _ringMats.Add(rend.sharedMaterial); }
+                }
+            }
+            if (_gridMat == null)
+            {
+                Transform g = FindDeep("DCVR_Ground");
+                var gr = g != null ? g.GetComponent<Renderer>() : null;
+                if (gr != null) { _gridMat = gr.sharedMaterial; }
+            }
+            Debug.Log($"[DcvrWorld] awake: target={(_target != null ? _target.name : "NULL")} " +
+                      $"rings={_ringMats.Count} grid={(_gridMat != null)}");
+        }
+
+        private Transform FindDeep(string name)
+        {
+            foreach (Transform t in GetComponentsInChildren<Transform>(includeInactive: true))
+            {
+                if (t.name == name) { return t; }
+            }
+            return null;
+        }
 
         public static DcvrWorld Build()
         {
@@ -118,7 +173,7 @@ namespace DreamCodeVRPlus
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogColor = new Color(0.02f, 0.05f, 0.09f);
-            RenderSettings.fogDensity = 0.019f;
+            RenderSettings.fogDensity = 0.0075f;
         }
 
         // ---- ground --------------------------------------------------------------
@@ -130,13 +185,14 @@ namespace DreamCodeVRPlus
             ground.transform.localScale = new Vector3(12f, 1f, 12f);   // 120 m
 
             _gridMat = MakeMaterial("DreamCodeVRPlus/Grid", "DCVR_GridMat");
+            Debug.Log("[DcvrWorld] grid shader " + (_gridMat != null ? "OK" : "MISSING"));
             if (_gridMat != null)
             {
                 _gridMat.SetColor("_BaseColor", new Color(0.012f, 0.017f, 0.028f));
-                _gridMat.SetColor("_LineColor", new Color(0.05f, 0.30f, 0.42f));
+                _gridMat.SetColor("_LineColor", new Color(0.08f, 0.42f, 0.58f));
                 _gridMat.SetFloat("_Spacing", 1.0f);
                 _gridMat.SetFloat("_FadeStart", 8f);
-                _gridMat.SetFloat("_FadeEnd", 34f);
+                _gridMat.SetFloat("_FadeEnd", 60f);
                 ground.GetComponent<Renderer>().sharedMaterial = _gridMat;
             }
         }
@@ -151,7 +207,7 @@ namespace DreamCodeVRPlus
             disc.transform.localScale = new Vector3(PlatformRadius * 2f, 0.06f, PlatformRadius * 2f);
             _platform = disc.transform;
 
-            Material m = MakeUnlit("DCVR_PlatformMat", new Color(0.055f, 0.075f, 0.105f));
+            Material m = MakeUnlit("DCVR_PlatformMat", new Color(0.085f, 0.105f, 0.145f));
             disc.GetComponent<Renderer>().sharedMaterial = m;
         }
 
@@ -166,7 +222,7 @@ namespace DreamCodeVRPlus
                 GameObject ring = BuildRingMesh($"DCVR_Ring{i}", radii[i], widths[i], 96);
                 ring.transform.SetParent(transform, false);
                 ring.transform.localPosition =
-                    PlatformCenter + new Vector3(0f, RingHeight + i * 0.012f, 0f);
+                    PlatformCenter + new Vector3(0f, 0.135f + i * 0.014f, 0f);
 
                 Material mat = MakeMaterial("DreamCodeVRPlus/Holo", $"DCVR_RingMat{i}");
                 if (mat != null)
@@ -248,11 +304,11 @@ namespace DreamCodeVRPlus
             // 28 monoliths, evenly distributed over the FULL 360 degrees. A headset wearer
             // turns around; anything staged only in front of them collapses the moment
             // they look over their shoulder and the world reads as a stage flat.
-            const int count = 28;
+            const int count = 10;
             for (int i = 0; i < count; i++)
             {
                 float a = (i / (float)count) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.16f;
-                float dist = 26f + (float)rng.NextDouble() * 16f;
+                float dist = 34f + (float)rng.NextDouble() * 22f;
                 float h = 8f + (float)rng.NextDouble() * 20f;
                 float w = 1.1f + (float)rng.NextDouble() * 2.2f;
 
@@ -409,7 +465,7 @@ namespace DreamCodeVRPlus
         {
             var anchor = new GameObject("DCVR_SpawnAnchor");
             anchor.transform.SetParent(transform, false);
-            anchor.transform.localPosition = PlatformCenter + new Vector3(0f, 1.15f, 0f);
+            anchor.transform.localPosition = CreationZone;
             _spawnAnchor = anchor.transform;
 
             // A real, visible, renderable object. The previous build handed the executor
