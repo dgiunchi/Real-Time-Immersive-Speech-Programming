@@ -768,19 +768,47 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                         };
                     }
                 }
+                // MODE C dispatch. Without this a typed command was validated and then
+                // dropped whenever Mode A was off — which is the DEFAULT and the only
+                // configuration a Quest 3 can run, since IL2CPP has no runtime compiler.
+                // The effect was that the safest, deployable path was the one that could
+                // not be driven from the admin panel at all: the demo validated the
+                // command and the headset never moved. Send the bounded action plan on
+                // the same NID-94 route the audio flow uses.
+                if !delivered && !self.services.mode_a_live() {
+                    if let Some(sender) = self.services.ubiq_sender.read().await.clone() {
+                        if let Ok(json) = crate::app::backend_decision_json(&outcome) {
+                            let target = self
+                                .services
+                                .last_client_peer
+                                .read()
+                                .await
+                                .clone()
+                                .unwrap_or_default();
+                            delivered = match self.services.auth.sign_nid94(
+                                json.as_bytes(),
+                                &target,
+                                &outcome.request_id,
+                                crate::auth_gate::now_unix(),
+                            ) {
+                                Ok(bytes) => sender.send(NID_BACKEND_OUTPUT, &bytes).await.is_ok(),
+                                Err(e) => {
+                                    eprintln!("[manual-cmd] refusing to send unsigned NID-94: {e}");
+                                    false
+                                }
+                            };
+                        }
+                    }
+                }
+
                 if delivered {
+                    let how = if self.services.mode_a_live() {
+                        "validated C#"
+                    } else {
+                        "bounded action plan (Mode C)"
+                    };
                     format!(
-                        "{:?} — C# approved ({} chars) → SENT to the headset to build ✓",
-                        outcome.decision,
-                        cs.candidate.len()
-                    )
-                } else if !self.services.mode_a_live() {
-                    // Distinguish "you switched dispatch off" from "nothing is
-                    // listening" — reporting the wrong one sends an operator hunting
-                    // a connection problem that does not exist.
-                    format!(
-                        "{:?} — C# approved ({} chars); validated OK, NOT dispatched \
-                         (Mode A is off)",
+                        "{:?} — approved ({} chars) → SENT to the headset as {how} ✓",
                         outcome.decision,
                         cs.candidate.len()
                     )
