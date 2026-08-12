@@ -126,10 +126,11 @@ namespace DreamCodeVRPlus
             _world = DcvrWorld.Build();
             _cube = _world.Target;
 
-            // The panel sits ahead and slightly below eye height, angled up — reading
-            // straight ahead at eye level is tiring in a headset.
-            _hud = DcvrHud.Build(null, new Vector3(0f, 1.45f, 2.6f));
-            _hud.transform.localRotation = Quaternion.Euler(8f, 180f, 0f);
+            // The panel floats above the creation platform, facing the wearer. It is NOT
+            // rotated 180 degrees to "face back": a Unity quad already faces -Z, and
+            // yaw-flipping the root mirrors every glyph on it — which is exactly what the
+            // first look-dev render showed.
+            _hud = DcvrHud.Build(null, DcvrWorld.PlatformCenter + new Vector3(0f, 2.05f, 0f));
 
             // In a stereo XR build the HMD drives the camera, so DO NOT reposition it —
             // moving the camera transform under a tracked pose fights head tracking and

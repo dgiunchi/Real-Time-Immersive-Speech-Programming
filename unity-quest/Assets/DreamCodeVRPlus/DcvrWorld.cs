@@ -33,7 +33,12 @@ namespace DreamCodeVRPlus
         public static readonly Color Red = new Color(1.00f, 0.26f, 0.30f);
         public static readonly Color Dim = new Color(0.30f, 0.42f, 0.52f);
 
-        public const float PlatformRadius = 3.0f;
+        public const float PlatformRadius = 2.1f;
+
+        /// <summary>Centre of the creation area, in front of the wearer. The rig origin is
+        /// where the person physically stands, so the platform must be offset forward or
+        /// they end up standing inside it.</summary>
+        public static readonly Vector3 PlatformCenter = new Vector3(0f, 0f, 4.2f);
         private const float RingHeight = 0.035f;
 
         private Transform _platform;
@@ -47,6 +52,8 @@ namespace DreamCodeVRPlus
         private float _gridPulse = -1f;   // <0 = idle
         private Color _ringColor = Cyan;
         private float _ringPulse;
+        private Transform _shardRoot;
+        private ParticleSystem _motes;
 
         /// <summary>Where generated content is parented and what the action plan's
         /// "selected_object" resolves to.</summary>
@@ -69,6 +76,9 @@ namespace DreamCodeVRPlus
             BuildPlatform();
             BuildRings();
             BuildDistantStructures();
+            BuildFarSilhouettes();
+            BuildSkyShards();
+            BuildMotes();
             BuildTarget();
         }
 
@@ -118,16 +128,16 @@ namespace DreamCodeVRPlus
             ground.name = "DCVR_Ground";
             ground.transform.SetParent(transform, false);
             ground.transform.localScale = new Vector3(12f, 1f, 12f);   // 120 m
-            Destroy(ground.GetComponent<Collider>());
+            SafeDestroy(ground.GetComponent<Collider>());
 
             _gridMat = MakeMaterial("DreamCodeVRPlus/Grid", "DCVR_GridMat");
             if (_gridMat != null)
             {
                 _gridMat.SetColor("_BaseColor", new Color(0.012f, 0.017f, 0.028f));
-                _gridMat.SetColor("_LineColor", new Color(0.07f, 0.38f, 0.50f));
+                _gridMat.SetColor("_LineColor", new Color(0.05f, 0.30f, 0.42f));
                 _gridMat.SetFloat("_Spacing", 1.0f);
-                _gridMat.SetFloat("_FadeStart", 10f);
-                _gridMat.SetFloat("_FadeEnd", 44f);
+                _gridMat.SetFloat("_FadeStart", 8f);
+                _gridMat.SetFloat("_FadeEnd", 34f);
                 ground.GetComponent<Renderer>().sharedMaterial = _gridMat;
             }
         }
@@ -138,12 +148,12 @@ namespace DreamCodeVRPlus
             var disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             disc.name = "DCVR_Platform";
             disc.transform.SetParent(transform, false);
-            disc.transform.localPosition = new Vector3(0f, 0.06f, 0f);
+            disc.transform.localPosition = PlatformCenter + new Vector3(0f, 0.06f, 0f);
             disc.transform.localScale = new Vector3(PlatformRadius * 2f, 0.06f, PlatformRadius * 2f);
-            Destroy(disc.GetComponent<Collider>());
+            SafeDestroy(disc.GetComponent<Collider>());
             _platform = disc.transform;
 
-            Material m = MakeUnlit("DCVR_PlatformMat", new Color(0.035f, 0.045f, 0.062f));
+            Material m = MakeUnlit("DCVR_PlatformMat", new Color(0.055f, 0.075f, 0.105f));
             disc.GetComponent<Renderer>().sharedMaterial = m;
         }
 
@@ -157,7 +167,8 @@ namespace DreamCodeVRPlus
             {
                 GameObject ring = BuildRingMesh($"DCVR_Ring{i}", radii[i], widths[i], 96);
                 ring.transform.SetParent(transform, false);
-                ring.transform.localPosition = new Vector3(0f, RingHeight + i * 0.012f, 0f);
+                ring.transform.localPosition =
+                    PlatformCenter + new Vector3(0f, RingHeight + i * 0.012f, 0f);
 
                 Material mat = MakeMaterial("DreamCodeVRPlus/Holo", $"DCVR_RingMat{i}");
                 if (mat != null)
@@ -226,22 +237,25 @@ namespace DreamCodeVRPlus
             var root = new GameObject("DCVR_Structures");
             root.transform.SetParent(transform, false);
 
-            Material body = MakeUnlit("DCVR_MonolithMat", new Color(0.020f, 0.030f, 0.045f));
+            Material body = MakeUnlit("DCVR_MonolithMat", new Color(0.045f, 0.065f, 0.095f));
             Material edge = MakeMaterial("DreamCodeVRPlus/Holo", "DCVR_MonolithEdgeMat");
             if (edge != null)
             {
                 edge.SetColor("_Color", Cyan);
-                edge.SetFloat("_Alpha", 0.10f);
+                edge.SetFloat("_Alpha", 0.22f);
                 edge.SetFloat("_ScanSpeed", 0.18f);
                 edge.SetFloat("_ScanDensity", 3.5f);
             }
 
-            const int count = 16;
+            // 28 monoliths, evenly distributed over the FULL 360 degrees. A headset wearer
+            // turns around; anything staged only in front of them collapses the moment
+            // they look over their shoulder and the world reads as a stage flat.
+            const int count = 28;
             for (int i = 0; i < count; i++)
             {
                 float a = (i / (float)count) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.16f;
-                float dist = 15f + (float)rng.NextDouble() * 13f;
-                float h = 5f + (float)rng.NextDouble() * 14f;
+                float dist = 26f + (float)rng.NextDouble() * 16f;
+                float h = 8f + (float)rng.NextDouble() * 20f;
                 float w = 1.1f + (float)rng.NextDouble() * 2.2f;
 
                 var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -250,7 +264,7 @@ namespace DreamCodeVRPlus
                 slab.transform.localPosition = new Vector3(Mathf.Cos(a) * dist, h * 0.5f, Mathf.Sin(a) * dist);
                 slab.transform.localScale = new Vector3(w, h, w);
                 slab.transform.localRotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 60f, 0f);
-                Destroy(slab.GetComponent<Collider>());
+                SafeDestroy(slab.GetComponent<Collider>());
                 var r = slab.GetComponent<Renderer>();
                 r.sharedMaterial = body;
                 r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -265,7 +279,7 @@ namespace DreamCodeVRPlus
                     seam.transform.SetParent(slab.transform, false);
                     seam.transform.localScale = new Vector3(0.06f, 0.86f, 0.06f);
                     seam.transform.localPosition = new Vector3(0.52f, 0f, 0.52f);
-                    Destroy(seam.GetComponent<Collider>());
+                    SafeDestroy(seam.GetComponent<Collider>());
                     var sr = seam.GetComponent<Renderer>();
                     sr.sharedMaterial = edge;
                     sr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -274,12 +288,134 @@ namespace DreamCodeVRPlus
             }
         }
 
+        /// <summary>A far band of low, flat silhouettes right around the horizon. Two
+        /// tones only and no detail — at 70-95 m they are read as distance, not as shape,
+        /// so they buy depth for almost no triangles and never intersect the play area.</summary>
+        private void BuildFarSilhouettes()
+        {
+            var rng = new System.Random(88104);
+            var root = new GameObject("DCVR_FarSilhouettes");
+            root.transform.SetParent(transform, false);
+            Material far = MakeUnlit("DCVR_FarMat", new Color(0.020f, 0.036f, 0.058f));
+
+            const int count = 40;
+            for (int i = 0; i < count; i++)
+            {
+                float a = (i / (float)count) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.1f;
+                float dist = 70f + (float)rng.NextDouble() * 25f;
+                float h = 6f + (float)rng.NextDouble() * 26f;
+                float w = 6f + (float)rng.NextDouble() * 12f;
+
+                var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                slab.name = $"DCVR_Far{i}";
+                slab.transform.SetParent(root.transform, false);
+                slab.transform.localPosition =
+                    new Vector3(Mathf.Cos(a) * dist, h * 0.5f - 2f, Mathf.Sin(a) * dist);
+                slab.transform.localScale = new Vector3(w, h, w);
+                SafeDestroy(slab.GetComponent<Collider>());
+                var r = slab.GetComponent<Renderer>();
+                r.sharedMaterial = far;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
+            }
+        }
+
+        /// <summary>Slowly drifting shards overhead. Their only job is to make the space
+        /// above the wearer worth looking at — without them, tilting the head up shows an
+        /// empty gradient and the world stops feeling like a place.</summary>
+        private void BuildSkyShards()
+        {
+            var rng = new System.Random(41277);
+            _shardRoot = new GameObject("DCVR_SkyShards").transform;
+            _shardRoot.SetParent(transform, false);
+
+            Material shard = MakeMaterial("DreamCodeVRPlus/Holo", "DCVR_ShardMat");
+            if (shard == null) { return; }
+            shard.SetColor("_Color", Cyan);
+            shard.SetFloat("_Alpha", 0.14f);
+            shard.SetFloat("_ScanSpeed", 0.25f);
+            shard.SetFloat("_ScanDensity", 6f);
+
+            const int count = 14;
+            for (int i = 0; i < count; i++)
+            {
+                float a = (i / (float)count) * Mathf.PI * 2f;
+                float dist = 12f + (float)rng.NextDouble() * 16f;
+                float y = 9f + (float)rng.NextDouble() * 11f;
+
+                var s = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                s.name = $"DCVR_Shard{i}";
+                s.transform.SetParent(_shardRoot, false);
+                s.transform.localPosition = new Vector3(Mathf.Cos(a) * dist, y, Mathf.Sin(a) * dist);
+                s.transform.localRotation = Quaternion.Euler(
+                    (float)rng.NextDouble() * 360f,
+                    (float)rng.NextDouble() * 360f,
+                    (float)rng.NextDouble() * 360f);
+                float sc = 1.2f + (float)rng.NextDouble() * 3.4f;
+                s.transform.localScale = new Vector3(sc, sc * 0.35f, 1f);
+                SafeDestroy(s.GetComponent<Collider>());
+                var r = s.GetComponent<Renderer>();
+                r.sharedMaterial = shard;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
+            }
+        }
+
+        /// <summary>Ambient motes drifting through the middle distance. This is the cheapest
+        /// possible cure for a static-feeling scene: a few hundred slow-moving points give
+        /// the air texture and, in stereo, read strongly as depth.</summary>
+        private void BuildMotes()
+        {
+            var go = new GameObject("DCVR_Motes");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(0f, 3.0f, 0f);
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var main = ps.main;
+            main.loop = true;
+            main.startLifetime = 22f;
+            main.startSpeed = 0.12f;
+            main.startSize = 0.045f;
+            main.startColor = new Color(0.35f, 0.85f, 1f, 0.5f);
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.gravityModifier = -0.004f;      // drift gently upward
+            main.maxParticles = 180;             // stays well inside the mobile budget
+
+            var emission = ps.emission;
+            emission.rateOverTime = 8f;
+
+            var shape = ps.shape;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = new Vector3(38f, 9f, 38f);
+
+            // No collision, no sub-emitters, no lights: all of those are what make
+            // particles expensive on a standalone headset.
+            var col = ps.collision; col.enabled = false;
+            var noise = ps.noise;
+            noise.enabled = true;
+            noise.strength = 0.16f;
+            noise.frequency = 0.12f;
+
+            var renderer = go.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            Material m = MakeMaterial("DreamCodeVRPlus/Holo", "DCVR_MoteMat");
+            if (m != null)
+            {
+                m.SetColor("_Color", Cyan);
+                m.SetFloat("_Alpha", 0.5f);
+                renderer.sharedMaterial = m;
+            }
+            _motes = ps;
+        }
+
         // ---- the object commands act on -----------------------------------------
         private void BuildTarget()
         {
             var anchor = new GameObject("DCVR_SpawnAnchor");
             anchor.transform.SetParent(transform, false);
-            anchor.transform.localPosition = new Vector3(0f, 1.1f, 0f);
+            anchor.transform.localPosition = PlatformCenter + new Vector3(0f, 1.15f, 0f);
             _spawnAnchor = anchor.transform;
 
             // A real, visible, renderable object. The previous build handed the executor
@@ -291,9 +427,9 @@ namespace DreamCodeVRPlus
             _target.transform.SetParent(anchor.transform, false);
             _target.transform.localScale = Vector3.one * 0.55f;
 
-            Material m = MakeUnlit("DCVR_TargetMat", new Color(0.55f, 0.60f, 0.68f));
+            Material m = MakeUnlit("DCVR_TargetMat", new Color(0.62f, 0.72f, 0.85f));
             _target.GetComponent<Renderer>().sharedMaterial = m;
-            Destroy(_target.GetComponent<BoxCollider>());
+            SafeDestroy(_target.GetComponent<BoxCollider>());
         }
 
         // ---- state feedback ------------------------------------------------------
@@ -322,6 +458,14 @@ namespace DreamCodeVRPlus
                 _rings[i].Rotate(Vector3.up, dir * (3.5f + i * 1.5f) * dt, Space.Self);
             }
 
+            // Overhead shards drift very slowly. Rotation in the periphery is the classic
+            // vection trigger, so this is deliberately near the threshold of perception:
+            // enough that the world is never frozen, slow enough to be comfortable.
+            if (_shardRoot != null)
+            {
+                _shardRoot.Rotate(Vector3.up, 0.6f * dt, Space.Self);
+            }
+
             _ringPulse = Mathf.Max(0f, _ringPulse - dt * 1.6f);
             for (int i = 0; i < _ringMats.Count; i++)
             {
@@ -336,6 +480,16 @@ namespace DreamCodeVRPlus
                 _gridMat.SetFloat("_Pulse", _gridPulse);
                 if (_gridPulse > 3f) { _gridPulse = -1f; _gridMat.SetFloat("_Pulse", 0f); }
             }
+        }
+
+
+        /// <summary>Destroy that also works outside play mode. The scene builder is run
+        /// by the offscreen look-dev renderer in the Editor, where Destroy() is deferred
+        /// to the end of a frame that never comes and the object survives.</summary>
+        private static void SafeDestroy(Object o)
+        {
+            if (o == null) { return; }
+            if (Application.isPlaying) { Destroy(o); } else { DestroyImmediate(o); }
         }
 
         // ---- helpers -------------------------------------------------------------

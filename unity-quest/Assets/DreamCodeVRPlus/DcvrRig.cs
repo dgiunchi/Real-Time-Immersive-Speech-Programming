@@ -11,6 +11,8 @@
 // reasons about displacement of the user's frame, which is the rig root.
 
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.XR;
 
 namespace DreamCodeVRPlus
@@ -41,6 +43,9 @@ namespace DreamCodeVRPlus
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = 120f;
 
+            EnablePostProcessing(cam);
+            EnsureBloom();
+
             if (XrActive)
             {
                 EnsureRigRoot(cam);
@@ -55,6 +60,52 @@ namespace DreamCodeVRPlus
             cam.transform.position = new Vector3(0f, FallbackEyeHeight, -5.2f);
             cam.transform.rotation = Quaternion.Euler(6f, 0f, 0f);
             Debug.Log("[DcvrRig] XR inactive — flat fallback viewpoint");
+        }
+
+        /// <summary>Bloom is what turns flat emissive geometry into something that reads as
+        /// light. It is the one post-process worth its cost here; SSAO, depth of field and
+        /// motion blur are all either expensive on a mobile GPU or actively uncomfortable
+        /// in a headset, so none of them are enabled.</summary>
+        private static void EnsureBloom()
+        {
+            if (Object.FindAnyObjectByType<Volume>() != null) { return; }
+
+            var go = new GameObject("DCVR_PostVolume");
+            var volume = go.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.priority = 10f;
+
+            var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            profile.name = "DCVR_PostProfile";
+
+            var bloom = profile.Add<Bloom>(overrides: true);
+            // Threshold below 1 so the cyan emissives bloom without HDR enabled — the
+            // scene is deliberately LDR to save bandwidth on a standalone headset.
+            bloom.threshold.Override(0.62f);
+            bloom.intensity.Override(1.15f);
+            bloom.scatter.Override(0.62f);
+            bloom.tint.Override(new Color(0.75f, 0.92f, 1f));
+            // High quality filtering costs extra samples; the look does not need it and
+            // fill rate is the scarce resource here.
+            bloom.highQualityFiltering.Override(false);
+            bloom.downscale.Override(BloomDownscaleMode.Half);
+
+            var grading = profile.Add<ColorAdjustments>(overrides: true);
+            grading.postExposure.Override(0.15f);
+            grading.contrast.Override(12f);
+            grading.saturation.Override(6f);
+
+            volume.profile = profile;
+        }
+
+        private static void EnablePostProcessing(Camera cam)
+        {
+            var data = cam.GetComponent<UniversalAdditionalCameraData>();
+            if (data == null) { data = cam.gameObject.AddComponent<UniversalAdditionalCameraData>(); }
+            data.renderPostProcessing = true;
+            // MSAA does the anti-aliasing (cheap on tile-based mobile GPUs); a post AA
+            // pass on top would cost fill rate and soften the thin grid lines.
+            data.antialiasing = AntialiasingMode.None;
         }
 
         /// <summary>Give the camera a rig root if it has none, so later work can displace

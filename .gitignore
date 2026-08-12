@@ -98,3 +98,5 @@ _original-dreamcodevr-daniel/
 vendor/
 services/roslyn-analyzer/bin/
 services/roslyn-analyzer/obj/
+# Look-dev stills (regenerate with DcvrLookDev.RenderAndExit)
+unity-quest/LookDev/
