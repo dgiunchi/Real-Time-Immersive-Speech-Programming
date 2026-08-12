@@ -176,7 +176,10 @@ namespace DreamCodeVRPlus
             // In a stereo XR build the HMD drives the camera, so DO NOT reposition it —
             // moving the camera transform under a tracked pose fights head tracking and
             // is a classic source of discomfort. Only place it for the flat/editor case.
-            DcvrRig.Configure(Camera.main, _world);
+            // In the production scene DcvrBootstrap has already built the rig and
+            // configured the camera. Running it again would stand up a SECOND XR origin
+            // and a second pair of hands on top of the first.
+            if (!_presentationInjected) { DcvrRig.Configure(Camera.main, _world); }
             _tracker = gameObject.AddComponent<GeneratedObjectTracker>();
             _exec = gameObject.AddComponent<ActionPlanExecutor>();
             _exec.tracker = _tracker;

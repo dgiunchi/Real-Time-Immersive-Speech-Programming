@@ -18,6 +18,10 @@ namespace DreamCodeVRPlus
         private readonly List<Material> _pylonMats = new List<Material>();
         private readonly List<Transform> _emitters = new List<Transform>();
         private Material _guardrailMat;
+        private readonly List<Material> _emissiveMats = new List<Material>();
+
+        /// <summary>Every emissive the power-on sequence fades up.</summary>
+        public List<Material> EmissiveMaterials => _emissiveMats;
         private float _phase;
 
         public static DcvrNearLayer Build(Transform worldRoot)
@@ -50,6 +54,7 @@ namespace DreamCodeVRPlus
             rim.SetParent(transform, false);
 
             Material m = Holo(DcvrWorld.Cyan, 0.85f);
+            _emissiveMats.Add(m);
             for (int i = 0; i < segments; i++)
             {
                 float a = (i / (float)segments) * Mathf.PI * 2f;
@@ -102,6 +107,7 @@ namespace DreamCodeVRPlus
                 Material sm = Holo(DcvrWorld.Cyan, 0.55f);
                 strip.GetComponent<Renderer>().sharedMaterial = sm;
                 _pylonMats.Add(sm);
+                _emissiveMats.Add(sm);
 
                 var cap = DcvrPrim.Create(PrimitiveType.Cube, "cap");
                 cap.transform.SetParent(p, false);
@@ -125,6 +131,7 @@ namespace DreamCodeVRPlus
             var ring = new GameObject("GuardrailRing").transform;
             ring.SetParent(transform, false);
             _guardrailMat = Holo(DcvrWorld.Cyan, 0.5f);
+            _emissiveMats.Add(_guardrailMat);
 
             for (int i = 0; i < segments; i++)
             {

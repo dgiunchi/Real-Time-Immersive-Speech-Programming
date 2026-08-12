@@ -101,6 +101,13 @@ namespace DreamCodeVRPlus
             }
         }
 
+        /// <summary>Master visibility, 0..1, used by the power-on sequence. Scaling the
+        /// panel rather than fading twenty materials keeps this to one transform write.</summary>
+        public void SetPresentation(float k)
+        {
+            transform.localScale = Vector3.one * Mathf.Clamp01(k);
+        }
+
         // ---- public state API ----------------------------------------------------
         public void SetHeard(string transcript)
         {

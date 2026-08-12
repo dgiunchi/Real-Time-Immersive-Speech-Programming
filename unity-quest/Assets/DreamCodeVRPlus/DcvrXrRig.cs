@@ -71,6 +71,12 @@ namespace DreamCodeVRPlus
             Transform right = BuildHand(offsetGo.transform, "RightHand Controller",
                                         TrackedPoseDriver.TrackedPose.RightPose);
 
+            // An untracked controller leaves its transform at the rig origin — i.e. inside
+            // the wearer's head — so the model must follow the TRACKING state, not merely
+            // exist. See DcvrHandVisibility.
+            DcvrHandVisibility.Attach(left, UnityEngine.XR.XRNode.LeftHand);
+            DcvrHandVisibility.Attach(right, UnityEngine.XR.XRNode.RightHand);
+
             // XROrigin owns the tracking-origin mode. Floor means the runtime reports poses
             // relative to the physical floor of the guardian, so the wearer's real standing
             // height becomes their eye height — no Y offset of our own, and none wanted:

@@ -12,6 +12,7 @@
 //
 // One line every two seconds — enough to see, not enough to bury the log.
 
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.XR;
@@ -77,6 +78,45 @@ namespace DreamCodeVRPlus
             _line5 = DcvrText.Make(panel.transform, "", new Vector3(0f, -0.19f, 0f), 0.038f, DcvrWorld.Dim);
         }
 
+        /// <summary>Report every renderer close enough to dominate the wearer's view, with
+        /// its distance and on-screen size. Written because a large unexplained shape was
+        /// filling a third of the field of view and guessing at candidates from the scene
+        /// description was not converging — this names the object directly.</summary>
+        private void ProbeNearGeometry(Camera cam)
+        {
+            if (cam == null) { return; }
+            var hits = new List<(float dist, string name, float coverage, string path)>();
+
+            foreach (Renderer r in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                if (!r.enabled || !r.gameObject.activeInHierarchy) { continue; }
+                Bounds b = r.bounds;
+                float d = Vector3.Distance(cam.transform.position, b.center);
+                if (d > 8f) { continue; }
+
+                // Rough screen coverage: project the bounds extents and compare with the
+                // viewport. Anything over ~15% is dominating the view.
+                Vector3 c = cam.WorldToViewportPoint(b.center);
+                if (c.z <= 0f) { continue; }
+                Vector3 e = cam.WorldToViewportPoint(b.center + new Vector3(b.extents.x, b.extents.y, 0f));
+                float cov = Mathf.Abs(e.x - c.x) * Mathf.Abs(e.y - c.y) * 4f;
+
+                string path = r.name;
+                Transform t = r.transform.parent;
+                int guard = 0;
+                while (t != null && guard++ < 4) { path = t.name + "/" + path; t = t.parent; }
+                hits.Add((d, r.name, cov, path));
+            }
+
+            hits.Sort((a, b2) => b2.coverage.CompareTo(a.coverage));
+            int n = Mathf.Min(8, hits.Count);
+            Debug.Log($"[DcvrProbe] {hits.Count} renderers within 8 m; top {n} by screen coverage:");
+            for (int i = 0; i < n; i++)
+            {
+                Debug.Log($"[DcvrProbe]   cov={hits[i].coverage * 100f:F1}%  d={hits[i].dist:F2}m  {hits[i].path}");
+            }
+        }
+
         private void Update()
         {
             if (_head == null) { return; }
@@ -109,6 +149,7 @@ namespace DreamCodeVRPlus
             {
                 _logTimer = 0f;
                 LogState(hl, hw, range);
+                ProbeNearGeometry(Camera.main);
             }
         }
 

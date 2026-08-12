@@ -56,13 +56,11 @@ namespace DreamCodeVRPlus
             {
                 if (xrOk)
                 {
-                    Transform origin = DcvrXr.BuildOrigin(cam);
-                    // Locomotion moves the ORIGIN, never the camera. Room-scale walking is
-                    // the runtime's job; the sticks only carry the wearer further than
-                    // their physical guardian allows.
-                    DcvrLocomotion.Attach(origin, cam);
-                    DcvrControllers.Attach(origin);
-                    Debug.Log("[DcvrRig] immersive: XR origin built, camera is runtime-driven");
+                    // DcvrXrRig owns the rig (XROrigin + TrackedPoseDriver + hands). This
+                    // path exists only for scenes that have no bootstrap of their own.
+                    DcvrXrRig.Rig rig = DcvrXrRig.Build(cam);
+                    DcvrLocomotion.Attach(rig.OriginTransform, cam);
+                    Debug.Log("[DcvrRig] immersive: XR rig built, camera is runtime-driven");
                 }
                 else
                 {

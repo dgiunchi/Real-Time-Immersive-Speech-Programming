@@ -64,14 +64,20 @@ namespace DreamCodeVRPlus
                 var hud = DcvrHud.Build(null, new Vector3(0f, 1.72f, 3.4f));
                 var fx = DcvrEffects.Attach(null);
                 var preview = DcvrCodePreview.Build(null, new Vector3(1.9f, 1.55f, 3.1f));
-                DcvrTitle.Build(new Vector3(-4.6f, 2.3f, 4.6f), -34f);
+                DcvrTitle title = DcvrTitle.Build(new Vector3(-4.6f, 2.3f, 4.6f), -34f);
 
                 // The networked Mode-C client drives all of the above from real backend
                 // decisions. It is created last so the visuals exist before the first
                 // message can arrive.
+                // Guardrail ring mirrors the security state, so the platform itself
+                // reacts to decisions rather than only the panel.
+                fx.NearLayer = FindAnyObjectByType<DcvrNearLayer>();
+
                 var client = new GameObject("ModeCNetworkedDemo")
                     .AddComponent<ModeCNetworkedDemo>();
                 client.AttachPresentation(world, hud, fx, preview);
+
+                DcvrStartup.Run(fx.NearLayer, hud, title.transform);
                 Debug.Log("[DcvrBootstrap] production presentation wired");
             }
 

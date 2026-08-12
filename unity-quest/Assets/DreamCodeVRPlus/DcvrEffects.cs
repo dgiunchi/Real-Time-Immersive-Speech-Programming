@@ -39,6 +39,10 @@ namespace DreamCodeVRPlus
         private Coroutine _shieldRoutine;
         private Coroutine _sphereRoutine;
 
+        /// <summary>Optional near layer whose guardrail ring mirrors the security state.
+        /// Set by the bootstrap; the effects work without it.</summary>
+        public DcvrNearLayer NearLayer { get; set; }
+
         public static DcvrEffects Attach(Transform parent)
         {
             var go = new GameObject("DCVR_Effects");
@@ -103,6 +107,7 @@ namespace DreamCodeVRPlus
         /// <summary>Raise the barrier. Colour carries the meaning: red for a refusal.</summary>
         public void ShowShield(Color color, float hold = 2.6f)
         {
+            NearLayer?.SetGuardrailState(color);
             if (_shieldRoot == null) { return; }
             if (_shieldRoutine != null) { StopCoroutine(_shieldRoutine); }
             _shieldRoutine = StartCoroutine(ShieldRoutine(color, hold));
@@ -243,7 +248,11 @@ namespace DreamCodeVRPlus
             go.SetActive(false);
         }
 
-        public void Shockwave(Color color) => StartCoroutine(ShockRoutine(color));
+        public void Shockwave(Color color)
+        {
+            NearLayer?.SetGuardrailState(color);
+            StartCoroutine(ShockRoutine(color));
+        }
 
         private IEnumerator ShockRoutine(Color color)
         {
