@@ -79,6 +79,7 @@ namespace DreamCodeVRPlus
 
                 DcvrStartup.Run(fx.NearLayer, hud, title.transform);
                 Debug.Log("[DcvrBootstrap] production presentation wired");
+
             }
 
             if (showDiagnostics)

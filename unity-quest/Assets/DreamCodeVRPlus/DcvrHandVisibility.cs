@@ -1,16 +1,20 @@
-// DreamCodeVR+ — hide controller models that are not actually being tracked.
+// DreamCodeVR+ — hide controller models that have no real pose.
 //
-// TrackedPoseDriver writes a pose only while the device reports one. When a controller is
-// asleep, put down, or absent, the driver leaves the transform at IDENTITY — which, under
-// an XR rig, is the Camera Offset origin: the wearer's own head. The controller mesh then
-// renders a centimetre from the eye, where even a 3 cm pointer fills a large part of the
-// field of view as an unidentifiable slab.
+// TrackedPoseDriver writes a pose only while the runtime supplies one. When it does not,
+// the transform is left at IDENTITY — which under an XR rig is the Camera Offset origin,
+// i.e. inside the wearer's head. The model then renders a centimetre from the eye, where
+// a 3 cm slab covers a large part of the field of view and is unrecognisable as anything.
 //
-// That is exactly what happened here: a bright cyan wedge covering a third of the view,
-// which the diagnostic had already hinted at by reporting both hand positions as identical
-// to the head position.
+// A first attempt gated on CommonUsages.isTracked. That correctly hid a sleeping
+// controller, but an on-device probe showed the right hand still sitting at exactly
+// distance 0.00 m from the eye and covering 23% of the view: the device was reporting
+// tracked while no pose was reaching the transform.
 //
-// So visibility follows the tracking state rather than the component's existence.
+// So the test is now GEOMETRIC rather than advisory. A controller cannot physically be
+// inside the wearer's skull, so a pose within a few centimetres of the rig origin is not
+// a pose — it is the absence of one. That holds regardless of what any device flag claims,
+// and it is the condition that actually matters: is this thing about to be drawn on the
+// wearer's eye?
 
 using System.Collections.Generic;
 using UnityEngine;
@@ -20,9 +24,14 @@ namespace DreamCodeVRPlus
 {
     public sealed class DcvrHandVisibility : MonoBehaviour
     {
+        /// <summary>Any reported pose closer than this to the rig origin is treated as "no
+        /// pose". Real controllers are held well beyond arm-to-head distance even when
+        /// resting against the chest.</summary>
+        private const float MinPoseDistance = 0.12f;
+
         private XRNode _node;
         private Renderer[] _renderers;
-        private bool _visible = true;
+        private bool _visible;
         private static readonly List<InputDevice> Devices = new List<InputDevice>();
 
         public static void Attach(Transform hand, XRNode node)
@@ -31,20 +40,22 @@ namespace DreamCodeVRPlus
             var v = hand.gameObject.AddComponent<DcvrHandVisibility>();
             v._node = node;
             v._renderers = hand.GetComponentsInChildren<Renderer>(includeInactive: true);
-            v.SetVisible(false);   // start hidden; nothing is tracked before the first poll
+            v._visible = true;
+            v.SetVisible(false);   // start hidden; nothing has a pose before the first poll
         }
 
         private void Update()
         {
-            SetVisible(IsTracked(_node));
+            SetVisible(HasRealPose());
         }
 
-        /// <summary>Tracked means the runtime is actively reporting a pose — not merely that
-        /// a device object exists. A paired-but-idle controller still enumerates.</summary>
-        private static bool IsTracked(XRNode node)
+        private bool HasRealPose()
         {
+            // Degenerate transform: whatever the device claims, nothing is being written.
+            if (transform.localPosition.magnitude < MinPoseDistance) { return false; }
+
             Devices.Clear();
-            InputDevices.GetDevicesAtXRNode(node, Devices);
+            InputDevices.GetDevicesAtXRNode(_node, Devices);
             for (int i = 0; i < Devices.Count; i++)
             {
                 if (!Devices[i].isValid) { continue; }

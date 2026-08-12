@@ -68,7 +68,11 @@ namespace DreamCodeVRPlus
             _shieldRoot = new GameObject("DCVR_Shield").transform;
             _shieldRoot.SetParent(transform, false);
             // Sits just in front of the platform, facing the wearer.
-            _shieldRoot.localPosition = DcvrWorld.PlatformCenter + new Vector3(0f, 1.25f, -1.6f);
+            // Between the wearer and the creation zone, facing them. Anchored to the
+            // creation zone rather than the platform centre: the wearer now stands ON the
+            // platform, so an offset from its centre put the barrier behind their back.
+            _shieldRoot.localPosition = new Vector3(DcvrWorld.CreationZone.x, 1.3f,
+                                                    DcvrWorld.CreationZone.z - 1.1f);
 
             for (int i = 0; i < ShieldPanels; i++)
             {
@@ -175,6 +179,8 @@ namespace DreamCodeVRPlus
             go.name = "DCVR_PersonalSpace";
             go.transform.SetParent(transform, false);
             // Centred on the wearer, not the world: this is THEIR frame.
+            // Centred on the wearer's head, updated each frame in Update — this is THEIR
+            // frame, and the rig moves under locomotion.
             go.transform.localPosition = new Vector3(0f, 1.2f, 0f);
             go.transform.localScale = Vector3.one * 2.0f;
 
