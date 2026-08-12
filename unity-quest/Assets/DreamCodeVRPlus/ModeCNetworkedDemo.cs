@@ -59,6 +59,7 @@ namespace DreamCodeVRPlus
         private GameObject _cube;
         private DcvrWorld _world;
         private DcvrHud _hud;
+        private DcvrEffects _fx;
         private ActionPlanExecutor _exec;
         private GeneratedObjectTracker _tracker;
         // Mode-agnostic perceptual monitor (TRACK U2). Monitor-only: disclosures only,
@@ -131,6 +132,7 @@ namespace DreamCodeVRPlus
             // yaw-flipping the root mirrors every glyph on it — which is exactly what the
             // first look-dev render showed.
             _hud = DcvrHud.Build(null, DcvrWorld.PlatformCenter + new Vector3(0f, 2.05f, 0f));
+            _fx = DcvrEffects.Attach(null);
 
             // In a stereo XR build the HMD drives the camera, so DO NOT reposition it —
             // moving the camera transform under a tracked pose fights head tracking and
@@ -293,6 +295,20 @@ namespace DreamCodeVRPlus
                     ResetTarget();
                     _status = "reset by admin panel";
                 }
+                else if (TryGetCaughtReason(json) is string caught)
+                {
+                    // Layer-1 refused this before any code was generated. The backend
+                    // answers with a harmless placeholder plan, so WITHOUT this branch the
+                    // headset would show a blocked attack as a successful build — the
+                    // single most misleading thing this demo could do. Show the barrier
+                    // and the reason instead, and do not apply the placeholder.
+                    Debug.Log($"[ModeC-Net] backend BLOCKED the request: {caught}");
+                    _hud?.SetBlocked(caught, DcvrStage.Intent);
+                    _world?.SetState(DcvrWorld.Red, pulse: true);
+                    _fx?.ShowShield(DcvrWorld.Red);
+                    _fx?.PulsePersonalSpace(DcvrWorld.Red);
+                    _hasResult = true;
+                }
                 else
                 {
                     // The spawn anchor is the scene root (new content parents to it) and
@@ -303,22 +319,24 @@ namespace DreamCodeVRPlus
                         : _cube;
                     bool ok = _exec.Execute(json, sceneRoot, _cube);
                     Debug.Log($"[ModeC-Net] applied backend NID 94 -> {(ok ? "applied" : "rejected")}");
-                    if (_hud != null)
+                    if (ok)
                     {
-                        if (ok)
-                        {
-                            _hud.SetAccepted("action plan applied on device");
-                            _world?.SetState(DcvrWorld.Green, pulse: true);
-                        }
-                        else
-                        {
-                            // The device refused a plan the backend approved — the
-                            // client-side bounds re-check firing. Report it as such
-                            // rather than dressing it up as a backend block.
-                            _hud.SetBlocked("refused on device by the client bounds check",
-                                            DcvrStage.Execute);
-                            _world?.SetState(DcvrWorld.Red, pulse: true);
-                        }
+                        _hud?.SetAccepted("action plan applied on device");
+                        _world?.SetState(DcvrWorld.Green, pulse: true);
+                        _fx?.Shockwave(DcvrWorld.Green);
+                        _fx?.Materialize(_cube);
+                    }
+                    else
+                    {
+                        // The device refused a plan the backend had approved — the
+                        // client-side bounds re-check firing. Report it as exactly that
+                        // rather than dressing it up as a backend security block: it is
+                        // defence in depth, and the distinction matters to the claim.
+                        _hud?.SetBlocked("refused on device by the client bounds check",
+                                         DcvrStage.Execute);
+                        _world?.SetState(DcvrWorld.Red, pulse: true);
+                        _fx?.ShowShield(DcvrWorld.Red);
+                        _fx?.PulsePersonalSpace(DcvrWorld.Red);
                     }
                     if (ok)
                     {
@@ -440,6 +458,19 @@ namespace DreamCodeVRPlus
         private static string TryGetData(string json)
         {
             try { return (string)JObject.Parse(json)["data"]; } catch { return null; }
+        }
+
+        /// <summary>Layer-1's refusal reason, present only when the backend neutralized
+        /// the request. Optional on the wire, so an older backend that never sends it
+        /// simply falls through to the normal action-plan path.</summary>
+        private static string TryGetCaughtReason(string json)
+        {
+            try
+            {
+                string r = (string)JObject.Parse(json)["caught_reason"];
+                return string.IsNullOrEmpty(r) ? null : r;
+            }
+            catch { return null; }
         }
 
         private static string JsonEscape(string s)

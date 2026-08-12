@@ -50,6 +50,17 @@ struct BackendResponse<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     csharp_decision: Option<&'static str>,
     errors: Vec<String>,
+    /// Why Layer-1 refused this request, when it did. Present ONLY on a neutralized
+    /// request; absent on every normal decision, so nothing on the existing wire
+    /// changes and an older client simply ignores it.
+    ///
+    /// This exists because a neutralized request is otherwise indistinguishable from
+    /// an approval at the client: the backend answers a malicious command with a
+    /// harmless placeholder plan, which is exactly the right SECURITY behaviour and
+    /// exactly the wrong thing to show the wearer. Without this the headset would
+    /// display a blocked attack as a successful build.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    caught_reason: Option<&'a str>,
 }
 
 /// Shared, cheaply-clonable STT/LLM clients + timeouts. Built once and shared
@@ -220,6 +231,7 @@ pub fn backend_decision_json(outcome: &AudioOutcome) -> Result<String, AppError>
         csharp_candidate,
         csharp_decision,
         errors,
+        caught_reason: outcome.caught_reason.as_deref(),
     };
     serde_json::to_string(&resp).map_err(|e| AppError::Serialize(e.to_string()))
 }
