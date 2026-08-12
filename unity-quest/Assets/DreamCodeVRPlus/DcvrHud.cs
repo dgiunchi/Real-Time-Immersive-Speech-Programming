@@ -28,7 +28,7 @@ namespace DreamCodeVRPlus
 
         private readonly Renderer[] _stageLamps = new Renderer[4];
         private readonly Material[] _stageMats = new Material[4];
-        private object _titleText, _statusText, _transcriptText, _verdictText, _reasonText;
+        private object _statusText, _transcriptText, _verdictText, _reasonText;
 
         private DcvrStage _stage = DcvrStage.Idle;
         private float _verdictHold;
@@ -68,11 +68,10 @@ namespace DreamCodeVRPlus
             Material borderMat = MakeHolo("DCVR_HudBorderMat", DcvrWorld.Cyan, 0.12f);
             if (borderMat != null) { border.GetComponent<Renderer>().sharedMaterial = borderMat; }
 
-            _titleText = MakeText("DREAMCODEVR+", new Vector3(0f, 0.45f, -0.01f), 0.115f, DcvrWorld.Cyan);
-            _statusText = MakeText("SPEAK TO CREATE", new Vector3(0f, 0.30f, -0.01f), 0.062f, DcvrWorld.Dim);
-            _transcriptText = MakeText("", new Vector3(0f, 0.10f, -0.01f), 0.070f, Color.white);
-            _verdictText = MakeText("", new Vector3(0f, -0.28f, -0.01f), 0.085f, DcvrWorld.Dim);
-            _reasonText = MakeText("", new Vector3(0f, -0.42f, -0.01f), 0.048f, DcvrWorld.Dim);
+            _statusText = DcvrText.Make(transform, "SPEAK TO CREATE", new Vector3(0f, 0.38f, -0.01f), 0.058f, DcvrWorld.Dim);
+            _transcriptText = DcvrText.Make(transform, "", new Vector3(0f, 0.10f, -0.01f), 0.070f, Color.white);
+            _verdictText = DcvrText.Make(transform, "", new Vector3(0f, -0.28f, -0.01f), 0.085f, DcvrWorld.Dim);
+            _reasonText = DcvrText.Make(transform, "", new Vector3(0f, -0.42f, -0.01f), 0.048f, DcvrWorld.Dim);
 
             BuildStageLamps();
         }
@@ -100,7 +99,7 @@ namespace DreamCodeVRPlus
                 }
                 _stageLamps[i] = pill.GetComponent<Renderer>();
 
-                MakeText(StageNames[i], new Vector3(x0 + spacing * i, -0.10f, -0.02f),
+                DcvrText.Make(transform, StageNames[i], new Vector3(x0 + spacing * i, -0.10f, -0.02f),
                          0.037f, Color.white);
             }
         }
@@ -184,80 +183,9 @@ namespace DreamCodeVRPlus
             }
         }
 
-        // ---- text helpers (TMP with a legacy fallback) ---------------------------
-        private object MakeText(string content, Vector3 localPos, float size, Color color)
-        {
-            var go = new GameObject("DCVR_Text");
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = localPos;
+        private static void SetText(object handle, string value) => DcvrText.SetText(handle, value);
 
-            System.Type tmpType = System.Type.GetType("TMPro.TextMeshPro, Unity.TextMeshPro");
-            if (tmpType != null)
-            {
-                var comp = go.AddComponent(tmpType);
-                if (comp != null && TrySetupTmp(comp, tmpType, content, size, color)) { return comp; }
-                Destroy(comp);
-            }
-
-            var tm = go.AddComponent<TextMesh>();
-            tm.text = content;
-            tm.color = color;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.alignment = TextAlignment.Center;
-            // Legacy TextMesh is raster: author at a large point size and scale down, or
-            // it is unreadably blurry at VR viewing distance.
-            tm.fontSize = 90;
-            tm.characterSize = size * 0.30f;
-            var mr = go.GetComponent<MeshRenderer>();
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = false;
-            return tm;
-        }
-
-        private static bool TrySetupTmp(Component comp, System.Type t, string content,
-                                        float size, Color color)
-        {
-            try
-            {
-                t.GetProperty("text")?.SetValue(comp, content);
-                t.GetProperty("fontSize")?.SetValue(comp, size * 40f);
-                t.GetProperty("color")?.SetValue(comp, color);
-                var align = System.Type.GetType("TMPro.TextAlignmentOptions, Unity.TextMeshPro");
-                if (align != null)
-                {
-                    t.GetProperty("alignment")?.SetValue(comp, System.Enum.Parse(align, "Center"));
-                }
-                var rect = comp.GetComponent<RectTransform>();
-                if (rect != null) { rect.sizeDelta = new Vector2(PanelWidth, 0.3f); }
-                // A TMP component with no font asset renders nothing at all; treat that
-                // as failure so the caller falls back rather than shipping blank text.
-                object font = t.GetProperty("font")?.GetValue(comp);
-                return font != null;
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning("[DcvrHud] TMP unavailable, using TextMesh: " + e.Message);
-                return false;
-            }
-        }
-
-        private static void SetText(object handle, string value)
-        {
-            if (handle is TextMesh tm) { tm.text = value; return; }
-            if (handle is Component c)
-            {
-                c.GetType().GetProperty("text")?.SetValue(c, value);
-            }
-        }
-
-        private static void SetTextColor(object handle, Color value)
-        {
-            if (handle is TextMesh tm) { tm.color = value; return; }
-            if (handle is Component c)
-            {
-                c.GetType().GetProperty("color")?.SetValue(c, value);
-            }
-        }
+        private static void SetTextColor(object handle, Color value) => DcvrText.SetColor(handle, value);
 
         private static Material MakeHolo(string name, Color color, float alpha)
         {

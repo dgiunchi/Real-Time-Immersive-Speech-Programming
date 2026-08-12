@@ -60,6 +60,11 @@ namespace DreamCodeVRPlus
         private DcvrWorld _world;
         private DcvrHud _hud;
         private DcvrEffects _fx;
+        private DcvrCodePreview _preview;
+        // Set on the NETWORK thread when a command goes out, consumed on the main thread
+        // in Update(). Unity APIs are main-thread only, so the HUD and the generation
+        // preview cannot be driven directly from the send loop.
+        private volatile string _sentCommand;
         private ActionPlanExecutor _exec;
         private GeneratedObjectTracker _tracker;
         // Mode-agnostic perceptual monitor (TRACK U2). Monitor-only: disclosures only,
@@ -133,6 +138,15 @@ namespace DreamCodeVRPlus
             // first look-dev render showed.
             _hud = DcvrHud.Build(null, DcvrWorld.PlatformCenter + new Vector3(0f, 2.05f, 0f));
             _fx = DcvrEffects.Attach(null);
+
+            // Generation preview sits beside the panel. It shows the SHAPE of generation
+            // and never its content — see DcvrCodePreview for why displaying the real
+            // output on a cast headset would leak the wearer's utterance to the room.
+            _preview = DcvrCodePreview.Build(
+                null, DcvrWorld.PlatformCenter + new Vector3(3.3f, 1.7f, -0.4f));
+
+            // Standing title piece, off to the side so it never competes with the work.
+            DcvrTitle.Build(DcvrWorld.PlatformCenter + new Vector3(-6.4f, 2.5f, 2.2f), -38f);
 
             // In a stereo XR build the HMD drives the camera, so DO NOT reposition it —
             // moving the camera transform under a tracked pose fights head tracking and
@@ -254,6 +268,18 @@ namespace DreamCodeVRPlus
                 }
             }
 
+            // A command just went out: show what was heard and start the generation
+            // preview. Consumed here because the send loop runs off the main thread.
+            string justSent = _sentCommand;
+            if (!string.IsNullOrEmpty(justSent))
+            {
+                _sentCommand = null;
+                _hud?.SetHeard(justSent);
+                _preview?.Begin(justSent);
+                _preview?.SetStageProgress(DcvrStage.Generate);
+                _world?.SetState(DcvrWorld.Amber, pulse: false);
+            }
+
             // Apply backend replies on the MAIN thread (Unity API is main-thread only).
             while (_inbound.TryDequeue(out string json))
             {
@@ -303,6 +329,7 @@ namespace DreamCodeVRPlus
                     // single most misleading thing this demo could do. Show the barrier
                     // and the reason instead, and do not apply the placeholder.
                     Debug.Log($"[ModeC-Net] backend BLOCKED the request: {caught}");
+                    _preview?.Finish();
                     _hud?.SetBlocked(caught, DcvrStage.Intent);
                     _world?.SetState(DcvrWorld.Red, pulse: true);
                     _fx?.ShowShield(DcvrWorld.Red);
@@ -321,6 +348,8 @@ namespace DreamCodeVRPlus
                     Debug.Log($"[ModeC-Net] applied backend NID 94 -> {(ok ? "applied" : "rejected")}");
                     if (ok)
                     {
+                        _preview?.SetStageProgress(DcvrStage.Execute);
+                        _preview?.Finish();
                         _hud?.SetAccepted("action plan applied on device");
                         _world?.SetState(DcvrWorld.Green, pulse: true);
                         _fx?.Shockwave(DcvrWorld.Green);
@@ -332,6 +361,7 @@ namespace DreamCodeVRPlus
                         // client-side bounds re-check firing. Report it as exactly that
                         // rather than dressing it up as a backend security block: it is
                         // defence in depth, and the distinction matters to the claim.
+                        _preview?.Finish();
                         _hud?.SetBlocked("refused on device by the client bounds check",
                                          DcvrStage.Execute);
                         _world?.SetState(DcvrWorld.Red, pulse: true);
@@ -548,6 +578,7 @@ namespace DreamCodeVRPlus
                     SendApp(NID_AUDIO_B, text);
                     SendApp(NID_AUDIO_B, "__STT_CONTROL__:stop");
                     _status = $"sent: \"{text}\" — waiting for backend…";
+                    _sentCommand = text;
                 }
 
                 // 1b) flush recorded mic audio (already framed: start / PCM chunks / stop)

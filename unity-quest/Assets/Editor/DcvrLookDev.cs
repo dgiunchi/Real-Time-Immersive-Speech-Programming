@@ -58,6 +58,9 @@ public static class DcvrLookDev
         // Straight up: is there anything worth seeing overhead?
         new Shot { Name = "07-up", Pos = new Vector3(0f, 1.6f, 0f),
                    LookAt = new Vector3(0.5f, 9f, 2f), Fov = 85f },
+        // The whole composition: title, platform, panel and generation preview together.
+        new Shot { Name = "08-composition", Pos = new Vector3(-0.6f, 1.7f, -1.4f),
+                   LookAt = new Vector3(0f, 1.7f, 4.2f), Fov = 88f },
     };
 
     public static void RenderAndExit()
@@ -92,6 +95,15 @@ public static class DcvrLookDev
         // stills exercise the stage lamps and verdict typography too.
         hud.SetHeard("make it bright green and spin it");
         hud.SetStage(DreamCodeVRPlus.DcvrStage.Validate);
+
+        // Title piece and the privacy-preserving generation preview, so the stills show
+        // the full composition rather than the platform alone.
+        DreamCodeVRPlus.DcvrTitle.Build(
+            DreamCodeVRPlus.DcvrWorld.PlatformCenter + new Vector3(-6.4f, 2.5f, 2.2f), -38f);
+        var preview = DreamCodeVRPlus.DcvrCodePreview.Build(
+            null, DreamCodeVRPlus.DcvrWorld.PlatformCenter + new Vector3(3.3f, 1.7f, -0.4f));
+        preview.gameObject.SetActive(true);
+        preview.SetStageProgress(DreamCodeVRPlus.DcvrStage.Validate);
 
         var camGo = new GameObject("DCVR_LookDevCam");
         var cam = camGo.AddComponent<Camera>();

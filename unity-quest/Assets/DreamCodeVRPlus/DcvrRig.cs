@@ -48,9 +48,11 @@ namespace DreamCodeVRPlus
 
             if (XrActive)
             {
-                EnsureRigRoot(cam);
+                Transform rig = EnsureRigRoot(cam);
+                // Locomotion moves the RIG, never the camera — see DcvrLocomotion.
+                DcvrLocomotion.Attach(rig, cam);
                 Debug.Log($"[DcvrRig] XR active ({XRSettings.loadedDeviceName}) — " +
-                          "head tracking owns the camera pose");
+                          "head tracking owns the camera pose; locomotion drives the rig");
                 return;
             }
 
@@ -110,13 +112,14 @@ namespace DreamCodeVRPlus
 
         /// <summary>Give the camera a rig root if it has none, so later work can displace
         /// the user's frame without ever touching the tracked camera transform.</summary>
-        private static void EnsureRigRoot(Camera cam)
+        private static Transform EnsureRigRoot(Camera cam)
         {
-            if (cam.transform.parent != null) { return; }
+            if (cam.transform.parent != null) { return cam.transform.parent; }
             var root = new GameObject("DCVR_RigRoot");
             root.transform.position = Vector3.zero;
             root.transform.rotation = Quaternion.identity;
             cam.transform.SetParent(root.transform, worldPositionStays: true);
+            return root.transform;
         }
     }
 }
