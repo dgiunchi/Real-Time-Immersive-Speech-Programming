@@ -1,0 +1,13 @@
+<!--
+  IL2CPP managed-code stripping preservation.
+
+  Newtonsoft.Json resolves types and members reflectively, which the IL2CPP stripper
+  cannot see. Without these entries the build succeeds and then fails only on device,
+  when an action plan arrives and JObject parsing throws. Preserve the JSON assemblies
+  and the DreamCodeVR+ runtime types the executor reflects over.
+-->
+<linker>
+  <assembly fullname="Newtonsoft.Json" preserve="all"/>
+  <assembly fullname="Unity.Nuget.Newtonsoft-Json" preserve="all"/>
+  <assembly fullname="Assembly-CSharp" preserve="all"/>
+</linker>
