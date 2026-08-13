@@ -35,6 +35,7 @@ namespace DreamCodeVRPlus
         private LineRenderer _line;
         private Transform _dot;
         private GameObject _hit;
+        private Renderer _highlighted;
 
         // Re-cast a few times a second, not every frame: this drives a selection, and a
         // 10 Hz selection is indistinguishable from a 72 Hz one to a person holding a
@@ -159,6 +160,16 @@ namespace DreamCodeVRPlus
 
             DcvrGeneratedContent content = DcvrGeneratedContent.Instance;
             if (content != null) { content.PointedObject = found; }
+
+            // Highlight what is under the ray, so "delete this" is aimed rather than
+            // guessed. Only fires on CHANGE — repainting the same object at 10 Hz would be
+            // pointless work, and the property-block path costs nothing when idle.
+            Renderer nowRend = found != null ? found.GetComponent<Renderer>() : null;
+            if (nowRend != _highlighted)
+            {
+                DcvrCreationFx.Instance?.SetHighlight(_highlighted, nowRend);
+                _highlighted = nowRend;
+            }
         }
 
         private void SetVisible(bool on)
@@ -167,6 +178,11 @@ namespace DreamCodeVRPlus
             if (!on)
             {
                 if (_dot != null) { _dot.gameObject.SetActive(false); }
+                if (_highlighted != null)
+                {
+                    DcvrCreationFx.Instance?.SetHighlight(_highlighted, null);
+                    _highlighted = null;
+                }
                 if (_hit != null)
                 {
                     _hit = null;

@@ -152,6 +152,10 @@ namespace DreamCodeVRPlus
             bool floating = DcvrSpatialCompositor.IsFloatingRole(floatingHint);
             DcvrSpatialCompositor.Ensure().Place(group, floating);
 
+            // Play the arrival AFTER placement, so the effect animates appearance and never
+            // position — a creation must still be exactly where the compositor put it.
+            DcvrCreationFx.Ensure().PlayArrival(group);
+
             // Log the NAMES, not just the count. "Adopted 37 objects" says the capture
             // worked; it says nothing about whether the user can address any of them, and
             // those are the two different failures this path produces. Naming is the one

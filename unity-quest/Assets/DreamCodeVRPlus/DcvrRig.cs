@@ -77,7 +77,7 @@ namespace DreamCodeVRPlus
         /// light. It is the one post-process worth its cost here; SSAO, depth of field and
         /// motion blur are all either expensive on a mobile GPU or actively uncomfortable
         /// in a headset, so none of them are enabled.</summary>
-        private static void EnsureBloom()
+        public static void EnsureBloom()
         {
             if (Object.FindAnyObjectByType<Volume>() != null) { return; }
 
@@ -95,7 +95,11 @@ namespace DreamCodeVRPlus
             bloom.threshold.Override(0.62f);
             bloom.intensity.Override(1.15f);
             bloom.scatter.Override(0.62f);
-            bloom.tint.Override(new Color(0.75f, 0.92f, 1f));
+            // Near-neutral. The cyan tint suited a world that was entirely holographic, but
+            // generated content now carries real material colours — a coloured bloom would
+            // drag a gold lamp toward cyan and undo the semantic palette. A trace of warmth
+            // keeps it from looking clinical.
+            bloom.tint.Override(new Color(1.00f, 0.97f, 0.94f));
             // High quality filtering costs extra samples; the look does not need it and
             // fill rate is the scarce resource here.
             bloom.highQualityFiltering.Override(false);
@@ -104,7 +108,9 @@ namespace DreamCodeVRPlus
             var grading = profile.Add<ColorAdjustments>(overrides: true);
             grading.postExposure.Override(0.15f);
             grading.contrast.Override(12f);
-            grading.saturation.Override(6f);
+            // A little more saturation than before: the point of the material system is
+            // that a red roof reads as red, and mobile LDR output flattens hues.
+            grading.saturation.Override(14f);
 
             volume.profile = profile;
         }

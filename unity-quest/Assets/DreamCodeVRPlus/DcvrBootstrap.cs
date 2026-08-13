@@ -74,6 +74,15 @@ namespace DreamCodeVRPlus
                 DcvrSpatialCompositor.Ensure();
                 DcvrGenerationCapture.Ensure();
                 DcvrLocalCommands.Ensure();
+                DcvrCreationFx.Ensure();
+
+                // BLOOM WAS WRITTEN AND NEVER SWITCHED ON. It lives in DcvrRig, which the
+                // diagnostic scene uses; the production path builds its rig through
+                // DcvrXrRig and so never reached it. Bloom is what turns an emissive
+                // surface into something that reads as a light source rather than as a
+                // pale patch, which matters far more now that materials carry real
+                // emission — a lamp, a sun, a robot's eyes.
+                DcvrRig.EnsureBloom();
                 // The voice/status readout. Head-relative BY DESIGN — it is UI, and a
                 // status panel you have to go and find is not a status panel. Created
                 // content may never do this; the two live in separate classes so the

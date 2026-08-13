@@ -463,6 +463,9 @@ namespace DreamCodeVRPlus
             // too — otherwise a long session accumulates materials for content that no
             // longer exists.
             DcvrMaterialSystem.ClearCache();
+            // The effects layer holds renderer references for the breathing pulse; a
+            // cleared scene must not leave it animating objects that no longer exist.
+            DcvrCreationFx.Instance?.Reset();
             return n;
         }
 
