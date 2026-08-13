@@ -82,6 +82,8 @@ namespace DreamCodeVRPlus
                 // surface into something that reads as a light source rather than as a
                 // pale patch, which matters far more now that materials carry real
                 // emission — a lamp, a sun, a robot's eyes.
+                DcvrRig.BloomEnabled =
+                    System.Environment.GetEnvironmentVariable("DCVR_NO_BLOOM") != "1";
                 DcvrRig.EnsureBloom();
                 // The voice/status readout. Head-relative BY DESIGN — it is UI, and a
                 // status panel you have to go and find is not a status panel. Created
@@ -111,11 +113,17 @@ namespace DreamCodeVRPlus
                 var signature = DcvrAttackSignature.Attach(fx);
                 client.AttachPresentation(world, hud, fx, preview, signature);
 
-                // Onboarding hint, separate from the status panel so it can leave when the
-                // user starts building for real (§32, §33).
-                DcvrTutorial tutorial = DcvrTutorial.Build(DcvrWorld.CreationZone,
-                                                           world != null ? world.Target : null);
-                client.AttachTutorial(tutorial);
+                // NO ONBOARDING PANEL. The "try saying: make this cube red" hint earned its
+                // place when the system could only recolour a cube; now that any spoken
+                // request builds a world, a permanent instruction panel floating in the
+                // creation area is the single most dated thing in view. The voice overlay
+                // already tells the wearer what is happening, and a demo should open on an
+                // empty stage rather than on a tutorial.
+                //
+                // The starter cube stays as the fallback target for a deictic edit made
+                // before anything exists, but it is hidden the moment the first real
+                // creation lands (see DcvrStarterTarget).
+                DcvrStarterTarget.Attach(world != null ? world.Target : null, client);
 
                 DcvrStartup.Run(fx.NearLayer, hud, title.transform);
                 Debug.Log("[DcvrBootstrap] production presentation wired");

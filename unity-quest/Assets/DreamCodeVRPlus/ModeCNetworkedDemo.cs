@@ -71,7 +71,7 @@ namespace DreamCodeVRPlus
         // The last thing the user asked for, kept so a creation can be given a name they
         // would recognise ("small castle") and later addressed by it.
         private string _lastPrompt = "";
-        private DcvrTutorial _tutorial;
+        private DcvrStarterTarget _starter;
         // Push-to-talk edge detection (main thread only).
         private bool _triggerHeld;
         private float _recordStartedAt;
@@ -138,8 +138,8 @@ namespace DreamCodeVRPlus
             if (_world != null) { _cube = _world.Target; }
         }
 
-        /// <summary>The onboarding hint, retired on the first real creation (§32).</summary>
-        public void AttachTutorial(DcvrTutorial tutorial) => _tutorial = tutorial;
+        /// <summary>The starter cube, hidden once real creation begins.</summary>
+        public void AttachStarterTarget(DcvrStarterTarget t) => _starter = t;
 
         private bool _presentationInjected;
 
@@ -461,7 +461,7 @@ namespace DreamCodeVRPlus
                     Debug.Log($"[ModeC-Net] applied backend NID 94 -> {(ok ? "applied" : "rejected")}");
                     if (ok)
                     {
-                        _tutorial?.RetireOnFirstCreation();
+                        _starter?.RetireOnFirstCreation();
                         StartCoroutine(capture.CaptureAfterExecution(group, ""));
                         _preview?.SetStageProgress(DcvrStage.Execute);
                         _preview?.Finish();
@@ -616,7 +616,7 @@ namespace DreamCodeVRPlus
 
             if (ok)
             {
-                _tutorial?.RetireOnFirstCreation();
+                _starter?.RetireOnFirstCreation();
                 StartCoroutine(capture.CaptureAfterExecution(group, FloatingHint(source)));
             }
             else

@@ -77,8 +77,20 @@ namespace DreamCodeVRPlus
         /// light. It is the one post-process worth its cost here; SSAO, depth of field and
         /// motion blur are all either expensive on a mobile GPU or actively uncomfortable
         /// in a headset, so none of them are enabled.</summary>
+        /// <summary>Set false to measure the post-processing stack's cost. Bloom and colour
+        /// grading are each a full-screen pass at 1680x1760 per eye, so their cost is FIXED
+        /// — it does not scale with scene content, which is exactly the signature observed
+        /// when the frame rate halved with an empty scene.</summary>
+        public static bool BloomEnabled = true;
+
         public static void EnsureBloom()
         {
+            if (!BloomEnabled)
+            {
+                Debug.Log("[DcvrRig] post-processing DISABLED (measuring its cost)");
+                return;
+            }
+
             if (Object.FindAnyObjectByType<Volume>() != null) { return; }
 
             var go = new GameObject("DCVR_PostVolume");
