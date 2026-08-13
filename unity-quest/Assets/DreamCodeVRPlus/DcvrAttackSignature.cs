@@ -32,6 +32,7 @@ namespace DreamCodeVRPlus
     public sealed class DcvrAttackSignature : MonoBehaviour
     {
         private DcvrEffects _fx;
+        private DcvrOcclusionZone _zone;
         private Transform _streamRoot;
         private Material _streamMat;
 
@@ -40,6 +41,7 @@ namespace DreamCodeVRPlus
             var go = new GameObject("DCVR_AttackSignature");
             var a = go.AddComponent<DcvrAttackSignature>();
             a._fx = fx;
+            a._zone = DcvrOcclusionZone.Build();
             a.BuildStream();
             return a;
         }
@@ -86,11 +88,14 @@ namespace DreamCodeVRPlus
                     break;
                 case DcvrAttackClass.Sensor:
                     _fx?.PulsePersonalSpace(DcvrWorld.Red, 2.0f);
+                    _zone?.Reveal(DcvrWorld.Red, 1.2f);
                     break;
                 case DcvrAttackClass.Perceptual:
-                    // The one case where the wearer's own frame is the target, so the
-                    // shell is the point rather than a garnish.
+                    // The one case where the wearer's own frame is the target, so both
+                    // halves of the user-frame invariant are shown: the personal-space
+                    // shell AND the protected forward view.
                     _fx?.PulsePersonalSpace(DcvrWorld.Red, 2.6f);
+                    _zone?.Reveal(DcvrWorld.Red, 1.8f);
                     break;
                 case DcvrAttackClass.SpawnAbuse:
                     _fx?.Shockwave(DcvrWorld.Red);

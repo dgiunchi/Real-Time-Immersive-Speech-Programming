@@ -296,8 +296,13 @@ namespace DreamCodeVRPlus
         }
 
         // ---- materialization --------------------------------------------------------
-        /// <summary>Bring a newly created object into existence: a bright shell collapses
-        /// onto it while the object itself scales up with a small overshoot.</summary>
+        /// <summary>Assemble a newly created object rather than switching it on: the surface
+        /// resolves out of a noise field behind a bright travelling edge, while a shell
+        /// collapses onto it and a ring expands underneath.
+        ///
+        /// The object's own material is swapped for the dissolve for the duration and
+        /// restored afterwards, so this composes with whatever colour a set_color action
+        /// applied — the base colour is read off the real material rather than assumed.</summary>
         public void Materialize(GameObject target)
         {
             if (target != null) { StartCoroutine(MaterializeRoutine(target)); }
@@ -305,7 +310,14 @@ namespace DreamCodeVRPlus
 
         private IEnumerator MaterializeRoutine(GameObject target)
         {
+            var rend = target.GetComponent<Renderer>();
+            Material original = rend != null ? rend.sharedMaterial : null;
+            Material dissolve = MakeDissolve(original);
+
+            if (rend != null && dissolve != null) { rend.sharedMaterial = dissolve; }
+
             Vector3 finalScale = target.transform.localScale;
+            float maxDim = Mathf.Max(finalScale.x, Mathf.Max(finalScale.y, finalScale.z));
 
             var shell = DcvrPrim.Create(PrimitiveType.Sphere);
             shell.name = "DCVR_MaterializeShell";
@@ -313,27 +325,58 @@ namespace DreamCodeVRPlus
             shell.transform.position = target.transform.position;
             Material sm = MakeHolo("DCVR_MatShell", DcvrWorld.Cyan, 0.5f);
             if (sm != null) { shell.GetComponent<Renderer>().sharedMaterial = sm; }
-            var sr = shell.GetComponent<Renderer>();
-            sr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            sr.receiveShadows = false;
 
-            const float dur = 0.55f;
+            const float dur = 0.85f;
             float t = 0f;
-            float maxDim = Mathf.Max(finalScale.x, Mathf.Max(finalScale.y, finalScale.z));
             while (t < dur)
             {
                 t += Time.deltaTime;
                 float k = Mathf.Clamp01(t / dur);
-                // Object grows with a slight overshoot; shell collapses onto it.
-                float grow = Mathf.Sin(k * Mathf.PI * 0.5f) * 1.08f;
-                target.transform.localScale = finalScale * Mathf.Min(grow, 1.08f);
-                float shellSize = Mathf.Lerp(maxDim * 3.4f, maxDim * 1.02f, k);
-                shell.transform.localScale = Vector3.one * shellSize;
-                if (sm != null) { sm.SetFloat("_Alpha", Mathf.Lerp(0.55f, 0f, k)); }
+
+                // Dissolve retreats from fully-cut to solid.
+                dissolve?.SetFloat("_Cutoff", Mathf.Lerp(1.05f, -0.05f, k));
+
+                // A small overshoot on scale so it lands with weight.
+                float grow = Mathf.Sin(k * Mathf.PI * 0.5f) * 1.06f;
+                target.transform.localScale = finalScale * Mathf.Min(grow, 1.06f);
+
+                shell.transform.localScale = Vector3.one * Mathf.Lerp(maxDim * 3.2f, maxDim * 1.02f, k);
+                sm?.SetFloat("_Alpha", Mathf.Lerp(0.5f, 0f, k));
                 yield return null;
             }
+
             target.transform.localScale = finalScale;
             DestroySafe(shell);
+
+            // Hand the object back exactly as it was found.
+            if (rend != null && original != null) { rend.sharedMaterial = original; }
+        }
+
+        /// <summary>Dissolve material seeded from the object's real colour, so an object the
+        /// wearer asked to be green assembles green rather than in a stand-in colour.</summary>
+        private static Material MakeDissolve(Material source)
+        {
+            Shader s = Shader.Find("DreamCodeVRPlus/Dissolve");
+            if (s == null)
+            {
+                Debug.LogWarning("[DcvrEffects] Dissolve shader missing; falling back to scale-in");
+                return null;
+            }
+
+            Color baseColor = new Color(0.6f, 0.7f, 0.85f);
+            if (source != null)
+            {
+                if (source.HasProperty("_BaseColor")) { baseColor = source.GetColor("_BaseColor"); }
+                else if (source.HasProperty("_Color")) { baseColor = source.GetColor("_Color"); }
+            }
+
+            var m = new Material(s) { name = "DCVR_DissolveMat" };
+            m.SetColor("_BaseColor", baseColor);
+            m.SetColor("_EdgeColor", DcvrWorld.Cyan);
+            m.SetFloat("_Cutoff", 1.05f);
+            m.SetFloat("_EdgeWidth", 0.14f);
+            m.SetFloat("_NoiseScale", 7f);
+            return m;
         }
 
         // ---- helpers -----------------------------------------------------------------

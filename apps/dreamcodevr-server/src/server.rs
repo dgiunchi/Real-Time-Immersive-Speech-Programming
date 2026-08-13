@@ -698,6 +698,44 @@ pub struct ServerHooks {
 }
 
 impl ServerHooks {
+    /// Tell the headset a request was refused, and why.
+    ///
+    /// Both block paths need this. The intent screen and the validator are different
+    /// layers reaching the same verdict, and a wearer cannot distinguish "refused" from
+    /// "nothing arrived" unless the refusal is delivered. No generated code is sent —
+    /// that is the property being demonstrated — only the decision and its reason.
+    async fn notify_headset_blocked(&self, outcome: &AudioOutcome, reason: &str) {
+        let Some(sender) = self.services.ubiq_sender.read().await.clone() else {
+            return;
+        };
+        let target = self
+            .services
+            .last_client_peer
+            .read()
+            .await
+            .clone()
+            .unwrap_or_default();
+        let msg = serde_json::json!({
+            "type": "BackendDecision",
+            "request_id": outcome.request_id,
+            "decision": format!("{:?}", outcome.decision),
+            "errors": [],
+            "caught_reason": reason,
+        })
+        .to_string();
+        match self.services.auth.sign_nid94(
+            msg.as_bytes(),
+            &target,
+            &outcome.request_id,
+            crate::auth_gate::now_unix(),
+        ) {
+            Ok(bytes) => {
+                let _ = sender.send(NID_BACKEND_OUTPUT, &bytes).await;
+            }
+            Err(e) => eprintln!("[manual-cmd] refusing to send unsigned NID-94: {e}"),
+        }
+    }
+
     pub fn new(services: Services) -> Self {
         let mut router = Router::new().with_bus(services.bus.clone());
         if let Some(p) = &services.personalizer {
@@ -853,12 +891,25 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                     )
                 }
             }
-            Some(cs) => format!(
-                "{:?} — C# REJECTED: {}",
-                outcome.decision,
-                cs.violations.join("; ")
-            ),
-            None => format!("{:?} — no C# generated", outcome.decision),
+            Some(cs) => {
+                // A VALIDATOR rejection is a block too, and it also has to reach the
+                // headset. Only the Layer-1 intent-screen path carried a reason to the
+                // device, so a request refused by the guardrail rather than the screen
+                // produced no on-device feedback at all — the wearer saw nothing happen
+                // and could not tell refusal from a lost message.
+                self.notify_headset_blocked(&outcome, &cs.violations.join("; "))
+                    .await;
+                format!(
+                    "{:?} — C# REJECTED: {}",
+                    outcome.decision,
+                    cs.violations.join("; ")
+                )
+            }
+            None => {
+                self.notify_headset_blocked(&outcome, "request refused before generation")
+                    .await;
+                format!("{:?} — no C# generated", outcome.decision)
+            }
         }
     }
 
