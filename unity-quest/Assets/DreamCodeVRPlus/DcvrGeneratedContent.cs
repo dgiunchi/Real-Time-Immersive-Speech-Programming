@@ -459,6 +459,10 @@ namespace DreamCodeVRPlus
             SelectedObject = null;
             PointedObject = null;
             DcvrSpatialCompositor.Instance?.ReleaseAllSlots();
+            // Materials are cached across creations, so a cleared scene should release them
+            // too — otherwise a long session accumulates materials for content that no
+            // longer exists.
+            DcvrMaterialSystem.ClearCache();
             return n;
         }
 

@@ -75,6 +75,9 @@ namespace DreamCodeVRPlus
         // Push-to-talk edge detection (main thread only).
         private bool _triggerHeld;
         private float _recordStartedAt;
+        // Seconds of audio actually captured for the last utterance, so the hold duration
+        // and the recording duration can be compared rather than assumed equal.
+        private float _lastCapturedSeconds;
         private ActionPlanExecutor _exec;
         private GeneratedObjectTracker _tracker;
         // Mode-agnostic perceptual monitor (TRACK U2). Monitor-only: disclosures only,
@@ -528,6 +531,7 @@ namespace DreamCodeVRPlus
                 case "set_scale": op = DcvrOp.SetScale; break;
                 case "move": op = DcvrOp.Move; break;
                 case "rotate": op = DcvrOp.Rotate; break;
+                case "set_material": op = DcvrOp.SetMaterial; break;
                 default:
                     Debug.LogWarning($"[ModeC-Net] unknown device op '{opName}'; ignoring.");
                     return;
@@ -798,7 +802,10 @@ namespace DreamCodeVRPlus
             {
                 _triggerHeld = true;
                 _recordStartedAt = Time.unscaledTime;
+                float t0 = Time.realtimeSinceStartup;
                 StartMic();
+                Debug.Log($"[DcvrVoice] PTT DOWN hand=Right control=triggerButton "
+                          + $"start-latency={(Time.realtimeSinceStartup - t0) * 1000f:F1}ms");
                 // Shown BEFORE anything else happens. The wearer must learn that the
                 // press registered from the headset, not from whether a cube eventually
                 // appears — a confirmation that waits for the backend is not confirmation.
@@ -809,7 +816,16 @@ namespace DreamCodeVRPlus
             else if (!held && _triggerHeld)
             {
                 _triggerHeld = false;
+                float heldFor = Time.unscaledTime - _recordStartedAt;
+                float t0 = Time.realtimeSinceStartup;
                 StopMic();
+                // §43/§44: the captured audio must match how long the trigger was actually
+                // held. If these diverge, the microphone kept running past the release and
+                // that is a privacy problem as much as a UX one.
+                Debug.Log($"[DcvrVoice] PTT UP held={heldFor:F2}s "
+                          + $"stop-latency={(Time.realtimeSinceStartup - t0) * 1000f:F1}ms "
+                          + $"captured={_lastCapturedSeconds:F2}s "
+                          + $"delta={(_lastCapturedSeconds - heldFor):F2}s");
                 _hud?.SetListening(false);
             }
             else if (_triggerHeld && Time.unscaledTime - _recordStartedAt > MicSeconds)
@@ -1116,6 +1132,9 @@ namespace DreamCodeVRPlus
             int channels = _micClip.channels;
             int srcRate = _micClip.frequency;
             if (pos <= 0) { pos = _micClip.samples; }
+            // Recorded BEFORE the empty check so a zero-length capture still reports 0.00s
+            // rather than leaving the previous utterance's figure in the log.
+            _lastCapturedSeconds = srcRate > 0 ? (float)pos / srcRate : 0f;
             if (pos <= 0)
             {
                 _status = "no audio captured";

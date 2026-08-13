@@ -35,6 +35,7 @@ namespace DreamCodeVRPlus
         SetScale,      // relative: bigger / smaller
         Move,
         Rotate,
+        SetMaterial,
     }
 
     public sealed class DcvrLocalCommands : MonoBehaviour
@@ -120,6 +121,9 @@ namespace DreamCodeVRPlus
                 case DcvrOp.Rotate:
                     return ApplyRotate(content, target, amount);
 
+                case DcvrOp.SetMaterial:
+                    return ApplyMaterial(content, target, value);
+
                 default:
                     return Result.Fail("unrecognised operation");
             }
@@ -154,6 +158,45 @@ namespace DreamCodeVRPlus
             return targets.Count == 1
                 ? Result.Good($"{LabelOf(targets[0], target)} is now {colorText}")
                 : Result.Good($"{targets.Count} '{target}' parts are now {colorText}");
+        }
+
+        /// <summary>Change what a part is made of, keeping the colour it already has.
+        ///
+        /// "Make the roof gold" changes BOTH — gold is a colour as much as a surface — but
+        /// "make this metallic" must not repaint anything: the user asked about the finish,
+        /// not the hue. The role vocabulary decides which, and the runtime owns the PBR
+        /// values, so no shader name ever crosses the wire.</summary>
+        private static Result ApplyMaterial(DcvrGeneratedContent content, string target, string role)
+        {
+            List<GameObject> targets = content.ResolveAll(target);
+            if (targets.Count == 0) { return NotFound(target); }
+
+            DcvrMaterialRole parsed = DcvrMaterialSystem.ParseRole(role);
+            // Roles that ARE a colour bring their own; the rest keep what the object has.
+            bool recolours = parsed == DcvrMaterialRole.Gold || parsed == DcvrMaterialRole.Silver;
+
+            int n = 0;
+            foreach (GameObject go in targets)
+            {
+                foreach (Renderer r in go.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r == null || r.sharedMaterial == null) { continue; }
+                    Color keep = r.sharedMaterial.HasProperty("_BaseColor")
+                        ? r.sharedMaterial.GetColor("_BaseColor")
+                        : r.sharedMaterial.color;
+                    r.sharedMaterial = DcvrMaterialSystem.Resolve(new DcvrMaterialDescriptor
+                    {
+                        Role = parsed,
+                        BaseColor = keep,
+                        HasColor = !recolours,
+                    });
+                    n++;
+                }
+                content.NoteReference(go);
+            }
+            return n > 0
+                ? Result.Good($"{(targets.Count == 1 ? LabelOf(targets[0], target) : targets.Count + " parts")} is now {role}")
+                : Result.Fail("that object has no surface to change");
         }
 
         private static Result ApplyScale(DcvrGeneratedContent content, string target, float factor)

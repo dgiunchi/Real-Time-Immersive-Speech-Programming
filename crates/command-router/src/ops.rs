@@ -67,6 +67,7 @@ impl DeviceOp {
             "set_scale" => format!("scale '{}' by {:.2}", self.subject(), self.amount),
             "move" => format!("move '{}' {:.2} m", self.subject(), self.amount),
             "rotate" => format!("rotate '{}'", self.subject()),
+            "set_material" => format!("make '{}' {}", self.subject(), self.value),
             other => other.to_string(),
         }
     }
@@ -193,10 +194,48 @@ pub fn parse(transcript: &str) -> Option<DeviceOp> {
     if let Some(op) = parse_move(&t) {
         return Some(op);
     }
+    if let Some(op) = parse_material(&t) {
+        return Some(op);
+    }
     if let Some(op) = parse_rotate(&t) {
         return Some(op);
     }
     None
+}
+
+/// Surface-material edits: "make this metallic", "make the roof gold".
+///
+/// A material role is as bounded and as unambiguous as a colour, so it belongs on the fast
+/// path for the same reason: the runtime already owns the mapping from role to PBR values,
+/// and asking a model to restate "metallic" costs a round trip to learn nothing.
+fn parse_material(t: &str) -> Option<DeviceOp> {
+    const ROLES: [&str; 12] = [
+        "metallic", "metal", "gold", "golden", "silver", "wooden", "wood", "stone", "glass",
+        "shiny", "matte", "glowing",
+    ];
+    let rest = ["make ", "turn ", "set "]
+        .iter()
+        .find_map(|v| t.strip_prefix(v))?;
+
+    let last = rest.split_whitespace().last()?;
+    let role = ROLES.iter().find(|r| *r == &last)?;
+
+    let head = rest[..rest.len() - last.len()].trim();
+    let head = head
+        .trim_end_matches(" look")
+        .trim_end_matches(" more")
+        .trim();
+    if head.is_empty() {
+        return None;
+    }
+
+    Some(DeviceOp {
+        op: "set_material",
+        target: clean_target(head),
+        value: (*role).to_string(),
+        axis: [0.0, 0.0, 0.0],
+        amount: 0.0,
+    })
 }
 
 fn parse_delete(t: &str) -> Option<DeviceOp> {
@@ -590,6 +629,20 @@ mod tests {
     /// Regression: the fast path claimed "make this cube red and bigger" and produced
     /// `set_scale` on a target called "cube red and", silently dropping the colour half.
     /// One bounded operation or none — compounds belong to the model.
+    #[test]
+    fn material_edits_take_the_fast_path() {
+        let o = op("make the roof gold").expect("a material edit");
+        assert_eq!(
+            (o.op, o.target.as_str(), o.value.as_str()),
+            ("set_material", "roof", "gold")
+        );
+        assert_eq!(op("make this metallic").unwrap().value, "metallic");
+        // A colour still parses as a colour, not as a material.
+        assert_eq!(op("make the roof red").unwrap().op, "set_color");
+        // And creation is still creation.
+        assert!(op("make a gold statue").is_none());
+    }
+
     #[test]
     fn compound_edits_go_to_the_model() {
         for t in [

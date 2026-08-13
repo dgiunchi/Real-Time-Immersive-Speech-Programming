@@ -130,7 +130,24 @@ namespace DreamCodeVRPlus
             // what made one creation look like two, and what made it appear to follow the
             // wearer's head. Every generated object passes through here, so this is the
             // one place the guarantee can actually be made.
-            int repaired = DcvrMaterials.RepairSubtree(group.Root.gameObject);
+            // Roles are inferred from the SEMANTIC name the model gave each part ("Gate
+            // Arch", "Lamp Housing"), not from the user's prompt — so a subject nobody
+            // anticipated gets sensible materials for free, and nothing here is a
+            // per-subject special case.
+            DcvrGeneratedContent reg = content;
+            int repaired = DcvrMaterials.RepairSubtree(group.Root.gameObject, go =>
+            {
+                var m = go.GetComponent<GeneratedMarker>();
+                string s = m != null && !string.IsNullOrEmpty(m.SemanticName) ? m.SemanticName : go.name;
+                return s;
+            });
+            _ = reg;
+
+            // Generated content is lit by its own neutral rig, so its hues survive the
+            // environment's deliberately blue key. Layer assignment must happen before the
+            // first frame it is visible, or it flashes dark for a frame.
+            DcvrGeneratedLighting.Ensure();
+            DcvrGeneratedLighting.ApplyLayer(group.Root.gameObject);
 
             bool floating = DcvrSpatialCompositor.IsFloatingRole(floatingHint);
             DcvrSpatialCompositor.Ensure().Place(group, floating);
@@ -149,9 +166,32 @@ namespace DreamCodeVRPlus
                 if (m != null && !string.IsNullOrEmpty(m.SemanticName)) { names.Add(m.SemanticName); }
                 if (names.Count >= 12) { break; }
             }
+            // Visual-diversity telemetry (§31): how many distinct colours and roles a
+            // creation actually ended up with. A complex object that comes out 90% one
+            // appearance is the failure this pass exists to catch, and it is only visible
+            // if it is counted.
+            var roles = new HashSet<string>();
+            var colours = new HashSet<int>();
+            foreach (GameObject go in group.Objects)
+            {
+                if (go == null) { continue; }
+                var rend = go.GetComponent<Renderer>();
+                if (rend == null || rend.sharedMaterial == null) { continue; }
+                roles.Add(rend.sharedMaterial.name);
+                Color c = rend.sharedMaterial.HasProperty("_BaseColor")
+                    ? rend.sharedMaterial.GetColor("_BaseColor")
+                    : rend.sharedMaterial.color;
+                colours.Add((Mathf.RoundToInt(c.r * 12) << 8) | (Mathf.RoundToInt(c.g * 12) << 4)
+                            | Mathf.RoundToInt(c.b * 12));
+            }
+
             Debug.Log($"[DcvrCapture] gen={group.Id} adopted={adopted} rescued-from-rig={rescued} "
                       + $"materials-repaired={repaired} floating={floating} "
                       + $"named={names.Count}/{group.Objects.Count} [{string.Join(", ", names)}]");
+            Debug.Log($"[DcvrVisual] gen={group.Id} parts={group.Objects.Count} "
+                      + $"distinct-roles={roles.Count} distinct-colours={colours.Count} "
+                      + $"cached-materials={DcvrMaterialSystem.CachedMaterialCount} "
+                      + $"[{string.Join(", ", roles)}]");
         }
 
         private static int RescueFromRig(DcvrGeneratedContent content, GenerationGroup group)

@@ -97,6 +97,25 @@ namespace DreamCodeVRPlus
         /// that means something rather than a reassuring message.</summary>
         public static int RepairSubtree(GameObject root)
         {
+            return RepairSubtree(root, null);
+        }
+
+        /// <summary>Normalise every renderer in the subtree so it is drawable in stereo AND
+        /// looks like what it is meant to be made of.
+        ///
+        /// Two jobs, deliberately in one pass, because they need the same information at the
+        /// same moment: the colour the generator chose is only readable BEFORE the material
+        /// is replaced, and the role is only inferable from the object's semantic name.
+        ///
+        /// The colour is authoritative and is never overridden — the model's semantic hues
+        /// were measured to be correct, so this supplies only the properties it did not: how
+        /// metallic, how smooth, whether it glows. Splitting these into two passes would mean
+        /// reading the old material twice or caching it, for no benefit.
+        ///
+        /// `nameOf` maps a renderer to its semantic name; null falls back to the GameObject
+        /// name, which is what generated code sets and is usually meaningful.</summary>
+        public static int RepairSubtree(GameObject root, System.Func<GameObject, string> nameOf)
+        {
             if (root == null) { return 0; }
             int repaired = 0;
 
@@ -104,20 +123,32 @@ namespace DreamCodeVRPlus
             {
                 if (r == null) { continue; }
                 Material current = r.sharedMaterial;
-                if (IsStereoSafe(current)) { continue; }
 
-                // Recover the intended colour before discarding the material. A
-                // substituted error shader still carries whatever properties were set on
-                // it, so this usually succeeds.
-                Color wanted = new Color(0.72f, 0.74f, 0.78f);
+                // RECOVER THE INTENT FIRST. This is measured, not assumed: the substituted
+                // error shader has no `_BaseColor` but DOES carry `_Color`, so the colour
+                // the generator set is still readable here. Losing it would turn every
+                // creation grey, which is the failure this whole pass exists to avoid.
+                bool haveColor = false;
+                Color wanted = Color.white;
                 if (current != null)
                 {
-                    if (current.HasProperty("_BaseColor")) { wanted = current.GetColor("_BaseColor"); }
-                    else if (current.HasProperty("_Color")) { wanted = current.GetColor("_Color"); }
+                    if (current.HasProperty("_BaseColor")) { wanted = current.GetColor("_BaseColor"); haveColor = true; }
+                    else if (current.HasProperty("_Color")) { wanted = current.GetColor("_Color"); haveColor = true; }
                 }
 
-                r.sharedMaterial = Make(wanted);
-                repaired++;
+                string semantic = nameOf != null ? nameOf(r.gameObject) : r.gameObject.name;
+                DcvrMaterialRole role = DcvrMaterialSystem.InferRole(semantic);
+
+                // Already-safe materials still get their ROLE applied — a URP material with
+                // the right colour but plastic-flat shading is exactly the "everything looks
+                // the same" complaint, and Mode C produces those.
+                r.sharedMaterial = DcvrMaterialSystem.Resolve(new DcvrMaterialDescriptor
+                {
+                    Role = role,
+                    BaseColor = wanted,
+                    HasColor = haveColor,
+                });
+                if (!IsStereoSafe(current)) { repaired++; }
             }
             return repaired;
         }

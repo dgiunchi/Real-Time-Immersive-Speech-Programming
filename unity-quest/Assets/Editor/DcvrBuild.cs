@@ -45,6 +45,9 @@ public static class DcvrBuild
             ConfigureAndroidPlayer(dev);
             AssertXrConfigured();
             EnsureShadersIncluded();
+            // Generated content is lit separately from the environment, which needs a
+            // layer that exists in the build rather than only on one developer's machine.
+            DcvrLayers.EnsureGeneratedLayer();
             string scene = EnsureMainScene();
 
             Directory.CreateDirectory(OutputDir);
