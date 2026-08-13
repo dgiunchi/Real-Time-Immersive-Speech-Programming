@@ -85,7 +85,7 @@ public static class DcvrQuestScene
         cam.clearFlags = CameraClearFlags.Skybox;
         cam.backgroundColor = new Color(0.01f, 0.02f, 0.04f);
         cam.nearClipPlane = 0.05f;
-        cam.farClipPlane = 400f;      // the far layer and sky ring live out at 95-270 m
+        cam.farClipPlane = 700f;      // the far layer and sky ring live out at 95-270 m
         camGo.transform.position = new Vector3(0f, 1.7f, 0f);
 
         var managers = new GameObject("Managers");
@@ -97,6 +97,7 @@ public static class DcvrQuestScene
         AssetDatabase.Refresh();
         EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
         Debug.Log("[DcvrScene] saved PRODUCTION " + ScenePath);
+        AuditMaterials();
         DumpHierarchy(scene);
     }
 
@@ -128,6 +129,27 @@ public static class DcvrQuestScene
 
         Debug.Log("[DcvrScene] saved " + ScenePath);
         DumpHierarchy(scene);
+    }
+
+    /// <summary>Report which shader each group of world geometry actually ended up with.
+    /// Written because towers kept rendering black and inspecting the code that assigns
+    /// the material was not converging — this reports what the renderers hold.</summary>
+    private static void AuditMaterials()
+    {
+        var byShader = new System.Collections.Generic.Dictionary<string, int>();
+        var samples = new System.Collections.Generic.Dictionary<string, string>();
+        foreach (Renderer r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+        {
+            string sh = r.sharedMaterial != null && r.sharedMaterial.shader != null
+                ? r.sharedMaterial.shader.name : "NULL";
+            byShader.TryGetValue(sh, out int n);
+            byShader[sh] = n + 1;
+            if (!samples.ContainsKey(sh)) { samples[sh] = r.name; }
+        }
+        foreach (var kv in byShader)
+        {
+            Debug.Log($"[DcvrScene] shader {kv.Key} -> {kv.Value} renderer(s), e.g. {samples[kv.Key]}");
+        }
     }
 
     private static void DumpHierarchy(Scene scene)

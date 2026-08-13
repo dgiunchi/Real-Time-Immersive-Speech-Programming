@@ -131,7 +131,6 @@ namespace DreamCodeVRPlus
             BuildPlatform();
             BuildRings();
             BuildDistantStructures();
-            BuildFarSilhouettes();
             BuildSkyShards();
             BuildMotes();
             BuildTarget();
@@ -298,9 +297,10 @@ namespace DreamCodeVRPlus
                 body.SetColor("_BaseColor", new Color(0.028f, 0.042f, 0.062f));
                 body.SetColor("_TopColor", new Color(0.090f, 0.160f, 0.220f));
                 body.SetColor("_WindowColor", Cyan);
-                body.SetFloat("_LitFraction", 0.38f);
+                body.SetFloat("_LitFraction", 0.46f);
                 body.SetFloat("_Emission", 2.7f);
-                body.SetFloat("_WindowDensity", 12f);
+                body.SetFloat("_WindowWidth", 0.6f);
+                body.SetFloat("_WindowHeight", 0.9f);
             }
             Material edge = MakeMaterial("DreamCodeVRPlus/Holo", "DCVR_MonolithEdgeMat");
             if (edge != null)
@@ -350,36 +350,6 @@ namespace DreamCodeVRPlus
             }
         }
 
-        /// <summary>A far band of low, flat silhouettes right around the horizon. Two
-        /// tones only and no detail — at 70-95 m they are read as distance, not as shape,
-        /// so they buy depth for almost no triangles and never intersect the play area.</summary>
-        private void BuildFarSilhouettes()
-        {
-            var rng = new System.Random(88104);
-            var root = new GameObject("DCVR_FarSilhouettes");
-            root.transform.SetParent(transform, false);
-            Material far = MakeUnlit("DCVR_FarMat", new Color(0.020f, 0.036f, 0.058f));
-
-            const int count = 40;
-            for (int i = 0; i < count; i++)
-            {
-                float a = (i / (float)count) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.1f;
-                float dist = 70f + (float)rng.NextDouble() * 25f;
-                float h = 6f + (float)rng.NextDouble() * 26f;
-                float w = 6f + (float)rng.NextDouble() * 12f;
-
-                var slab = DcvrPrim.Create(PrimitiveType.Cube);
-                slab.name = $"DCVR_Far{i}";
-                slab.transform.SetParent(root.transform, false);
-                slab.transform.localPosition =
-                    new Vector3(Mathf.Cos(a) * dist, h * 0.5f - 2f, Mathf.Sin(a) * dist);
-                slab.transform.localScale = new Vector3(w, h, w);
-                var r = slab.GetComponent<Renderer>();
-                r.sharedMaterial = far;
-                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                r.receiveShadows = false;
-            }
-        }
 
         /// <summary>Slowly drifting shards overhead. Their only job is to make the space
         /// above the wearer worth looking at — without them, tilting the head up shows an

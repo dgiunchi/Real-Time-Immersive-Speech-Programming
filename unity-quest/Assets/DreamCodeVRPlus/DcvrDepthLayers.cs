@@ -45,7 +45,7 @@ namespace DreamCodeVRPlus
 
             // Mid monoliths use the same family, denser windows since they are closer.
             Material body = Building(new Color(0.030f, 0.044f, 0.066f),
-                                     new Color(0.090f, 0.160f, 0.220f), 0.38f, 2.7f);
+                                     new Color(0.090f, 0.160f, 0.220f), 0.48f, 2.7f, winW: 0.55f, winH: 0.85f);
             const int count = 11;
 
             for (int i = 0; i < count; i++)
@@ -102,30 +102,64 @@ namespace DreamCodeVRPlus
             root.SetParent(transform, false);
             var rng = new System.Random(3345);
 
-            // Themed tower surface: vertical gradient into the scene's teal plus a
-            // procedural lit-window grid. Two materials only — near and far — so the whole
-            // band is still two draw batches, but it no longer reads as black cut-outs.
             Material near = Building(new Color(0.022f, 0.034f, 0.052f),
                                      new Color(0.075f, 0.140f, 0.200f), 0.42f, 2.9f);
             Material far = Building(new Color(0.016f, 0.026f, 0.042f),
-                                    new Color(0.040f, 0.080f, 0.120f), 0.24f, 1.7f);
+                                    new Color(0.040f, 0.080f, 0.120f), 0.26f, 1.9f);
 
-            const int count = 26;
+            // Three sub-bands rather than one ring. A single ring of towers reads as a
+            // fence around the platform; layered depths read as a city that continues past
+            // the horizon. Heights peak in the middle band so there is a downtown to look
+            // at instead of an even wall.
+            BuildTowerBand(root, rng, near, count: 30, minDist: 80f, spread: 55f,
+                           minH: 26f, spreadH: 55f, minW: 7f, spreadW: 12f, name: "Inner");
+            BuildTowerBand(root, rng, near, count: 34, minDist: 140f, spread: 90f,
+                           minH: 45f, spreadH: 85f, minW: 10f, spreadW: 18f, name: "Mid");
+            BuildTowerBand(root, rng, far, count: 30, minDist: 235f, spread: 130f,
+                           minH: 30f, spreadH: 70f, minW: 12f, spreadW: 22f, name: "Outer");
+        }
+
+        /// <summary>One ring of towers. Angles are jittered off a regular division so the
+        /// skyline is irregular without leaving gaps, and each tower is yawed to its own
+        /// heading so faces are not all parallel.</summary>
+        private static void BuildTowerBand(Transform root, System.Random rng, Material mat,
+                                           int count, float minDist, float spread,
+                                           float minH, float spreadH,
+                                           float minW, float spreadW, string name)
+        {
+            var band = new GameObject(name).transform;
+            band.SetParent(root, false);
+
             for (int i = 0; i < count; i++)
             {
-                float a = (i / (float)count) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.1f;
-                float dist = 85f + (float)rng.NextDouble() * 95f;
-                float h = 22f + (float)rng.NextDouble() * 60f;
-                float w = 7f + (float)rng.NextDouble() * 14f;
+                float a = (i / (float)count) * Mathf.PI * 2f
+                          + (float)(rng.NextDouble() - 0.5) * (Mathf.PI * 2f / count) * 0.8f;
+                float dist = minDist + (float)rng.NextDouble() * spread;
+                float h = minH + (float)rng.NextDouble() * spreadH;
+                float w = minW + (float)rng.NextDouble() * spreadW;
+                float d = w * (0.7f + (float)rng.NextDouble() * 0.5f);
 
-                var tower = DcvrPrim.Create(PrimitiveType.Cube, $"FarTower{i}");
-                tower.transform.SetParent(root, false);
-                tower.transform.localPosition = new Vector3(Mathf.Cos(a) * dist, h * 0.5f - 3f,
-                                                            Mathf.Sin(a) * dist);
-                tower.transform.localRotation = Quaternion.Euler(0f, -a * Mathf.Rad2Deg, 0f);
-                tower.transform.localScale = new Vector3(w, h, w);
-                tower.GetComponent<Renderer>().sharedMaterial = dist < 125f ? near : far;
+                var tower = DcvrPrim.Create(PrimitiveType.Cube, $"{name}Tower{i}");
+                tower.transform.SetParent(band, false);
+                tower.transform.localPosition =
+                    new Vector3(Mathf.Cos(a) * dist, h * 0.5f - 3f, Mathf.Sin(a) * dist);
+                tower.transform.localRotation =
+                    Quaternion.Euler(0f, -a * Mathf.Rad2Deg + (float)rng.NextDouble() * 30f, 0f);
+                tower.transform.localScale = new Vector3(w, h, d);
+                tower.GetComponent<Renderer>().sharedMaterial = mat;
                 tower.isStatic = true;
+
+                // A slim setback on some towers: two boxes read as far more architecture
+                // than one, for one extra draw in a statically batched band.
+                if (rng.NextDouble() < 0.45)
+                {
+                    var cap = DcvrPrim.Create(PrimitiveType.Cube, "setback");
+                    cap.transform.SetParent(tower.transform, false);
+                    cap.transform.localPosition = new Vector3(0f, 0.62f, 0f);
+                    cap.transform.localScale = new Vector3(0.55f, 0.35f, 0.55f);
+                    cap.GetComponent<Renderer>().sharedMaterial = mat;
+                    cap.isStatic = true;
+                }
             }
         }
 
@@ -134,9 +168,9 @@ namespace DreamCodeVRPlus
         /// costs one mesh.</summary>
         private void BuildSkyRing()
         {
-            Transform ring = BuildRing("SkyRing", 190f, 7f, 128);
+            Transform ring = BuildRing("SkyRing", 300f, 10f, 128);
             ring.SetParent(transform, false);
-            ring.localPosition = new Vector3(0f, 78f, 210f);
+            ring.localPosition = new Vector3(0f, 120f, 330f);
             ring.localRotation = Quaternion.Euler(18f, 0f, 8f);
             foreach (Renderer r in ring.GetComponentsInChildren<Renderer>())
             {
@@ -212,7 +246,8 @@ namespace DreamCodeVRPlus
         /// <summary>Themed tower material. One per band, shared across every tower in it;
         /// the shader varies windows per object from world position, so a shared material
         /// still produces a skyline where no two towers look alike.</summary>
-        private static Material Building(Color bottom, Color top, float litFraction, float emission)
+        private static Material Building(Color bottom, Color top, float litFraction,
+                                         float emission, float winW = 1.5f, float winH = 2.0f)
         {
             Shader s = Shader.Find("DreamCodeVRPlus/Building");
             if (s == null) { return Unlit(bottom); }
@@ -222,7 +257,8 @@ namespace DreamCodeVRPlus
             m.SetColor("_WindowColor", DcvrWorld.Cyan);
             m.SetFloat("_LitFraction", litFraction);
             m.SetFloat("_Emission", emission);
-            m.SetFloat("_WindowDensity", 13f);
+            m.SetFloat("_WindowWidth", winW);
+            m.SetFloat("_WindowHeight", winH);
             m.SetFloat("_Twinkle", 0.30f);
             m.enableInstancing = true;
             return m;

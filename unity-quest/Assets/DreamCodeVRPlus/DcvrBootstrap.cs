@@ -32,7 +32,7 @@ namespace DreamCodeVRPlus
                 cam = go.AddComponent<Camera>();
             }
             cam.nearClipPlane = 0.05f;
-            cam.farClipPlane = 200f;
+            cam.farClipPlane = 700f;
 
             // Wait for the XR runtime BEFORE building the rig. Sampling XR state
             // synchronously in Start() is what produced a flat build previously.

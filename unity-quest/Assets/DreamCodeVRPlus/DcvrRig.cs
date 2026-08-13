@@ -42,7 +42,7 @@ namespace DreamCodeVRPlus
             // Near plane tight enough to lean into the platform; far plane only as far as
             // the fog, since anything beyond it is invisible and would just cost fill.
             cam.nearClipPlane = 0.05f;
-            cam.farClipPlane = 120f;
+            cam.farClipPlane = 700f;
 
             EnablePostProcessing(cam);
             EnsureBloom();
