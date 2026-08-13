@@ -27,6 +27,15 @@ namespace DreamCodeVR2.Quest
         public QuestPlan ActiveQuestPlan { get; private set; }
         public int CurrentTaskIndex { get; private set; } = -1;
         public string LastTaskResult { get; private set; }
+        public float CurrentTaskStartTime { get; private set; }
+        public int IncorrectAttempts { get; private set; }
+        public int HintCount { get; private set; }
+        public string LastIncorrectAttempt { get; private set; }
+        private readonly HashSet<string> discoveredClues = new HashSet<string>();
+        private readonly List<string> recentlyInteractedObjectIds = new List<string>();
+        public IReadOnlyCollection<string> DiscoveredClues => discoveredClues;
+        public IReadOnlyList<string> RecentlyInteractedObjectIds => recentlyInteractedObjectIds;
+        public QuestEventBus eventBus;
 
         public event Action<QuestTaskSpec> TaskCompleted;
         public event Action<string> ObjectInspected;
@@ -74,6 +83,8 @@ namespace DreamCodeVR2.Quest
 
             CurrentTaskIndex = 0;
             taskEntries[CurrentTaskIndex].status = QuestTaskStatus.Active;
+            CurrentTaskStartTime = Time.unscaledTime;
+            EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskStarted, taskEntries[CurrentTaskIndex].task.target);
             LastTaskResult = $"Started quest: {GetObjectiveLabel(taskEntries[CurrentTaskIndex].task)}";
         }
 
@@ -98,6 +109,7 @@ namespace DreamCodeVR2.Quest
             entry.lastReason = reason;
             LastTaskResult = BuildTaskResultLabel(entry.task, "completed", reason);
             TaskCompleted?.Invoke(entry.task);
+            EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskCompleted, entry.task.target);
             return true;
         }
 
@@ -129,6 +141,8 @@ namespace DreamCodeVR2.Quest
                 {
                     CurrentTaskIndex = nextIndex;
                     taskEntries[CurrentTaskIndex].status = QuestTaskStatus.Active;
+                    CurrentTaskStartTime = Time.unscaledTime;
+                    EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskStarted, taskEntries[CurrentTaskIndex].task.target);
                     LastTaskResult = $"Current objective: {GetObjectiveLabel(taskEntries[CurrentTaskIndex].task)}";
                     return true;
                 }
@@ -147,6 +161,7 @@ namespace DreamCodeVR2.Quest
             CurrentTaskIndex = -1;
             LastTaskResult = null;
             taskEntries.Clear();
+            IncorrectAttempts = 0; HintCount = 0; LastIncorrectAttempt = null; discoveredClues.Clear(); recentlyInteractedObjectIds.Clear();
         }
 
         public string GetProgressSummary()
@@ -168,21 +183,25 @@ namespace DreamCodeVR2.Quest
 
         public void OnObjectInspected(string objectId)
         {
+            RegisterInteraction(objectId); discoveredClues.Add(objectId);
             ObjectInspected?.Invoke(objectId);
         }
 
         public void OnObjectCreated(string objectId)
         {
+            RegisterInteraction(objectId); EnsureEventBus(); eventBus?.Publish(QuestEventType.ObjectCreated, objectId);
             ObjectCreated?.Invoke(objectId);
         }
 
         public void OnObjectPlaced(string objectId, string anchorId)
         {
+            RegisterInteraction(objectId); EnsureEventBus(); eventBus?.Publish(QuestEventType.ObjectPlacedInZone, objectId, anchorId);
             ObjectPlaced?.Invoke(objectId, anchorId);
         }
 
         public void OnObjectUnlocked(string targetId, string keyId)
         {
+            RegisterInteraction(targetId); EnsureEventBus(); eventBus?.Publish(QuestEventType.LockOpened, targetId, keyId);
             ObjectUnlocked?.Invoke(targetId, keyId);
         }
 
@@ -203,6 +222,21 @@ namespace DreamCodeVR2.Quest
             var currentTask = GetCurrentTask();
             return currentTask == null ? "No active objective." : GetObjectiveLabel(currentTask);
         }
+
+        public void ActivateDynamicTask(QuestTaskSpec task)
+        {
+            if (task == null) return;
+            ActiveQuestPlan ??= new QuestPlan { quest_id = "dynamic_story" };
+            taskEntries.Clear(); taskEntries.Add(new QuestTaskRuntimeEntry { task = task, status = QuestTaskStatus.Active });
+            CurrentTaskIndex = 0; CurrentTaskStartTime = Time.unscaledTime;
+            EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskStarted, task.target);
+            LastTaskResult = $"Current objective: {GetObjectiveLabel(task)}";
+        }
+
+        public void RecordIncorrectAttempt(string objectId, string reason) { IncorrectAttempts++; LastIncorrectAttempt = reason; RegisterInteraction(objectId); EnsureEventBus(); eventBus?.Publish(QuestEventType.IncorrectAttempt, objectId, null, reason); }
+        public void RecordHintRequested() { HintCount++; EnsureEventBus(); eventBus?.Publish(QuestEventType.HintRequested); }
+        private void RegisterInteraction(string objectId) { if (string.IsNullOrWhiteSpace(objectId)) return; recentlyInteractedObjectIds.Remove(objectId); recentlyInteractedObjectIds.Insert(0, objectId); if (recentlyInteractedObjectIds.Count > 8) recentlyInteractedObjectIds.RemoveAt(recentlyInteractedObjectIds.Count - 1); }
+        private void EnsureEventBus() { if (!eventBus) eventBus = QuestEventBus.Instance ? QuestEventBus.Instance : FindFirstObjectByType<QuestEventBus>(); }
 
         private bool TryGetCurrentEntry(out QuestTaskRuntimeEntry entry)
         {

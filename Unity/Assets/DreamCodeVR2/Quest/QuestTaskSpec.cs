@@ -17,5 +17,12 @@ namespace DreamCodeVR2.Quest
         public bool requires_planning;
         public bool has_error_risk;
         public string description;
+        public bool questCritical;
+        public string[] protectedDuringTask;
+        public string[] protectedProperties;
+        public string[] forbiddenAffordanceChanges;
+        public string successState;
+        public bool directCompletionForbidden = true;
+        public string[] allowedAuthoringOperations;
     }
 }

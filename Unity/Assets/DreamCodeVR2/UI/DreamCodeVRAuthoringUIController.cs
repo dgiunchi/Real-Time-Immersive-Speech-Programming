@@ -38,6 +38,13 @@ namespace DreamCodeVR2.UI
         public TMP_Text statusText;
         public TMP_Text undoHintText;
 
+        [Header("Experimental proposal")]
+        public CanvasGroup proposalCardGroup;
+        public TMP_Text proposalText;
+        public TMP_Text proposalTargetText;
+        public TMP_Text proposalReasonText;
+        public bool experimentalAuthoringVisible = true;
+
         [Header("Data Sources")]
         public InteractionContextProvider interactionContextProvider;
         public SelectObjectRay selectObjectRay;
@@ -123,6 +130,24 @@ namespace DreamCodeVR2.UI
                 lastPointedObject = obj;
             }
         }
+
+        public void SetExperimentalAuthoringVisible(bool visible)
+        {
+            experimentalAuthoringVisible = visible;
+            if (!visible) HideProposal();
+        }
+
+        public void ShowProposal(string interpretation, string targetName, string reason)
+        {
+            if (!experimentalAuthoringVisible) return;
+            if (proposalText) proposalText.text = interpretation;
+            if (proposalTargetText) proposalTargetText.text = string.IsNullOrWhiteSpace(targetName) ? string.Empty : targetName;
+            if (proposalReasonText) proposalReasonText.text = string.IsNullOrWhiteSpace(reason) ? string.Empty : reason;
+            SetCanvasGroupVisible(proposalCardGroup, true);
+        }
+
+        public void HideProposal() => SetCanvasGroupVisible(proposalCardGroup, false);
+
 
         public void SetSelectedObject(AIEditableObject obj)
         {

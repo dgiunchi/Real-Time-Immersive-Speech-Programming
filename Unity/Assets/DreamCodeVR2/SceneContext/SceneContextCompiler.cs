@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using DreamCodeVR2.ContextBridge;
+using DreamCodeVR2.ExperimentalAuthoring;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -84,6 +85,20 @@ namespace DreamCodeVR2.SceneContext
                 materials = BuildMaterials(editableObject),
                 components = BuildComponents(editableObject),
                 available_operations = BuildAvailableOperations(editableObject)
+                ,allowed_editable_properties = editableObject.GetComponent<AuthoringCapabilities>()?.editableProperties
+                ,allowed_behaviors = editableObject.GetComponent<AuthoringCapabilities>()?.allowedBehaviors
+                ,quest_critical = editableObject.GetComponent<AuthoringCapabilities>() && editableObject.GetComponent<AuthoringCapabilities>().questCritical
+                ,semantic_state = editableObject.GetComponent<AuthoringSemanticState>()?.state
+                ,runtime_created = editableObject.labels != null && Array.Exists(editableObject.labels, label => label == "runtime_created")
+                ,active_authoring_behaviors = BuildActiveBehaviors(editableObject)
+                ,parent_anchor = editableObject.GetComponentInParent<AuthoringAnchor>()?.anchorId
+                ,currently_held = editableObject.GetComponent<ExperimentalGrabbableAdapter>()?.IsHeld ?? false
+                ,player_authored_affordances = BuildAffordances(editableObject)
+                ,created_by_action_id = editableObject.GetComponent<RuntimeAuthoringMetadata>()?.createdByActionId
+                ,created_during_task_id = editableObject.GetComponent<RuntimeAuthoringMetadata>()?.createdDuringTaskId
+                ,predefined_voice_commands = editableObject.GetComponent<VoiceCommandCapabilities>()?.predefinedVoiceActions
+                ,editable_affordances = new[] { "grabbable", "movable", "interactable", "gravity_enabled", "kinematic", "collision_enabled" }
+                ,protected_for_current_task = IsProtectedForCurrentTask(editableObject)
             };
         }
 
@@ -217,7 +232,29 @@ namespace DreamCodeVR2.SceneContext
 
         private static string[] BuildAvailableOperations(AIEditableObject editableObject)
         {
-            return editableObject.editable ? new[] { "edit" } : null;
+            var capabilities = editableObject.GetComponent<AuthoringCapabilities>();
+            return capabilities ? capabilities.allowedOperations : editableObject.editable ? new[] { "edit" } : null;
+        }
+
+        private static string[] BuildActiveBehaviors(AIEditableObject editableObject)
+        {
+            var behaviors = editableObject.GetComponents<AuthoringRuntimeBehavior>();
+            if (behaviors == null || behaviors.Length == 0) return null;
+            return behaviors.Where(behavior => behavior && behavior.enabled).Select(behavior => behavior.GetType().Name).ToArray();
+        }
+
+        private static string[] BuildAffordances(AIEditableObject editableObject)
+        {
+            var state=editableObject.GetComponent<AuthoringAffordanceState>();
+            if(!state)return null;
+            var values=new List<string>(); if(state.grabbable)values.Add("grabbable");if(state.movable)values.Add("movable");if(state.interactable)values.Add("interactable");return values.ToArray();
+        }
+
+        private static bool IsProtectedForCurrentTask(AIEditableObject editableObject)
+        {
+            var task=FindFirstObjectByType<DreamCodeVR2.Quest.QuestRuntimeState>()?.GetCurrentTask();
+            if(task?.protectedDuringTask==null)return false;
+            return Array.Exists(task.protectedDuringTask,id=>id==editableObject.objectId);
         }
 
         private static int CompareObjects(SceneObjectSummary left, SceneObjectSummary right)

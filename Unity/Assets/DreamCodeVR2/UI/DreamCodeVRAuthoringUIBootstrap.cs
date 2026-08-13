@@ -179,6 +179,16 @@ namespace DreamCodeVR2.UI
             controller.statusText = CreateText("StatusText", feedbackCard, "Status: Ready.", 14f, FontStyles.Normal, TextAlignmentOptions.Left, 2, TextOverflowModes.Ellipsis);
             controller.undoHintText = CreateText("UndoHintText", feedbackCard, "Undo: No undoable action yet.", 14f, FontStyles.Normal, TextAlignmentOptions.Left, 2, TextOverflowModes.Ellipsis);
 
+            var proposalCard = CreateCard("ProposalCard", layoutRoot, new Color(0.12f, 0.16f, 0.22f, 0.98f));
+            SetPreferredWidth(proposalCard.gameObject, 430f);
+            ConfigureCardLayout(proposalCard.gameObject, 18, 18, 12, 12, 5f);
+            controller.proposalCardGroup = proposalCard.gameObject.AddComponent<CanvasGroup>();
+            CreateText("ProposalHeader", proposalCard, "Change proposal", 17f, FontStyles.Bold, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
+            controller.proposalText = CreateText("ProposalText", proposalCard, string.Empty, 15f, FontStyles.Normal, TextAlignmentOptions.TopLeft, 3, TextOverflowModes.Ellipsis);
+            controller.proposalTargetText = CreateText("ProposalTargetText", proposalCard, string.Empty, 14f, FontStyles.Italic, TextAlignmentOptions.Left, 1, TextOverflowModes.Ellipsis);
+            controller.proposalReasonText = CreateText("ProposalReasonText", proposalCard, string.Empty, 13f, FontStyles.Normal, TextAlignmentOptions.TopLeft, 2, TextOverflowModes.Ellipsis);
+            proposalCard.gameObject.SetActive(false);
+
             controller.enabled = true;
             return controller;
         }

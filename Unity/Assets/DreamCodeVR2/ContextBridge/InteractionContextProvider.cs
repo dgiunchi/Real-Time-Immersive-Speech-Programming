@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
 using UnityEngine;
+using DreamCodeVR2.ExperimentalAuthoring;
+using DreamCodeVR2.Quest;
 
 namespace DreamCodeVR2.ContextBridge
 {
@@ -18,6 +20,8 @@ namespace DreamCodeVR2.ContextBridge
         private bool hasCachedPointing;
         private ObjectSummary cachedPointedObject;
         private SerializableVector3 cachedPointedWorldPosition;
+        public QuestRuntimeState questRuntimeState;
+        public AuthoringProposalPresenter proposalPresenter;
 
         public InteractionContextSnapshot CaptureSnapshot(string peer)
         {
@@ -30,7 +34,12 @@ namespace DreamCodeVR2.ContextBridge
                 scene_version = sceneRegistry ? sceneRegistry.CurrentSceneVersion : 0,
                 active_selection = ResolveActiveSelection(),
                 last_action = null,
-                pending_confirmation = null
+                pending_confirmation = proposalPresenter && proposalPresenter.HasPendingProposal ? proposalPresenter.PendingProposal.actionId : null,
+                current_task_id = questRuntimeState && questRuntimeState.GetCurrentTask() != null ? questRuntimeState.GetCurrentTask().step.ToString() : null,
+                recently_interacted_object_ids = questRuntimeState ? questRuntimeState.RecentlyInteractedObjectIds.ToArray() : Array.Empty<string>(),
+                object_currently_held = false,
+                last_incorrect_attempt = questRuntimeState ? questRuntimeState.LastIncorrectAttempt : null,
+                hint_count = questRuntimeState ? questRuntimeState.HintCount : 0
             };
 
             if (raycastEverySnapshot || !hasCachedPointing)

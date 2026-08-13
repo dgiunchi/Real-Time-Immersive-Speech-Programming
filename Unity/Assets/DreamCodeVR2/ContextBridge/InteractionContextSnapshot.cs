@@ -15,5 +15,10 @@ namespace DreamCodeVR2.ContextBridge
         public SerializableVector3 pointed_world_position;
         public object last_action;
         public object pending_confirmation;
+        public string current_task_id;
+        public string[] recently_interacted_object_ids;
+        public bool object_currently_held;
+        public string last_incorrect_attempt;
+        public int hint_count;
     }
 }
