@@ -128,15 +128,17 @@ namespace DreamCodeVRPlus
         }
 
         // Resolve a usable scene root for CREATE commands when the host supplies none,
-        // so creation works rather than being refused. Reused across the session.
-        private GameObject _generatedRoot;
+        // so creation works rather than being refused.
+        //
+        // This used to make its OWN root, `DCVR_GeneratedRoot`, which meant the project had
+        // two places generated content could live. In practice the live caller always
+        // passed a scene root so the second one stayed empty — but anything that did land
+        // in it would have been invisible to naming, deletion and clearing, which is the
+        // worst kind of duplicate: one that looks unused right up until it is not.
+        // There is one authoritative root, and this returns it.
         private GameObject EnsureGeneratedRoot()
         {
-            if (_generatedRoot == null)
-            {
-                _generatedRoot = GameObject.Find("DCVR_GeneratedRoot") ?? new GameObject("DCVR_GeneratedRoot");
-            }
-            return _generatedRoot;
+            return DcvrGeneratedContent.Ensure().gameObject;
         }
 
         /// <summary>
