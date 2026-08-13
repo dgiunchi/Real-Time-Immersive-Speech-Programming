@@ -66,6 +66,8 @@ namespace DreamCodeVRPlus
         // in Update(). Unity APIs are main-thread only, so the HUD and the generation
         // preview cannot be driven directly from the send loop.
         private volatile string _sentCommand;
+        // Push-to-talk edge detection (main thread only).
+        private bool _triggerHeld;
         private ActionPlanExecutor _exec;
         private GeneratedObjectTracker _tracker;
         // Mode-agnostic perceptual monitor (TRACK U2). Monitor-only: disclosures only,
@@ -305,6 +307,8 @@ namespace DreamCodeVRPlus
                 }
             }
 
+            PollPushToTalk();
+
             // A command just went out: show what was heard and start the generation
             // preview. Consumed here because the send loop runs off the main thread.
             string justSent = _sentCommand;
@@ -523,6 +527,46 @@ namespace DreamCodeVRPlus
 
             if (string.IsNullOrEmpty(targetPeer)) { return true; } // broadcast-to-all.
             return targetPeer == PeerUuid;                         // targeted: only for us.
+        }
+
+        /// <summary>Right trigger = push to talk. HOLD to record, RELEASE to send.
+        ///
+        /// Hold rather than click-toggle deliberately: a toggle whose state the wearer
+        /// cannot see is how you end up recording fifteen seconds of silence without
+        /// realising. Holding is self-evident and self-limiting.
+        ///
+        /// This is the only controller BUTTON the app reads. Until it existed there was no
+        /// way to speak to the system from inside the headset at all — the mic was wired
+        /// only to the desktop OnGUI panel, which renders nothing in stereo.</summary>
+        private void PollPushToTalk()
+        {
+            bool held = false;
+            var devices = new List<UnityEngine.XR.InputDevice>();
+            UnityEngine.XR.InputDevices.GetDevicesAtXRNode(
+                UnityEngine.XR.XRNode.RightHand, devices);
+            for (int i = 0; i < devices.Count; i++)
+            {
+                if (devices[i].TryGetFeatureValue(
+                        UnityEngine.XR.CommonUsages.triggerButton, out bool t) && t)
+                {
+                    held = true;
+                    break;
+                }
+            }
+
+            if (held && !_triggerHeld)
+            {
+                _triggerHeld = true;
+                StartMic();
+                _hud?.SetListening(true);
+                DcvrAudio.Instance?.Listening();
+            }
+            else if (!held && _triggerHeld)
+            {
+                _triggerHeld = false;
+                StopMic();
+                _hud?.SetListening(false);
+            }
         }
 
         private static string TryGetType(string json)
