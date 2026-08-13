@@ -248,10 +248,73 @@ public class StudyOutcomes : MonoBehaviour
     }
 
     // ── Origin helpers ────────────────────────────────────────────────────────
-    private Vector3 OriginPos => spawnOrigin ? spawnOrigin.position
-        : (Camera.main ? Camera.main.transform.position : Vector3.zero);
-    private Vector3 OriginFwd => spawnOrigin ? spawnOrigin.forward
-        : (Camera.main ? Camera.main.transform.forward : Vector3.forward);
+    //
+    // THE SCENE IS ANCHORED. IT DOES NOT FOLLOW THE PARTICIPANT.
+    //
+    // These used to fall back to Camera.main — the live headset — whenever
+    // spawnOrigin was unset, which is always, because spawnOrigin is only
+    // assigned from the legacy CodeGenerationManager and the study disables that
+    // system at startup. So every position was computed from wherever the
+    // participant happened to be standing at that instant, and the scene was
+    // rebuilt around them each time they moved. Objects appeared in a different
+    // place every trial, which is the "created at random places where I go"
+    // report, and it quietly broke task 4 as well: "behind" was measured from a
+    // forward vector that had already turned with them.
+    //
+    // The anchor is captured once, when the scene is first built or explicitly
+    // re-anchored, and everything is placed relative to that. A participant can
+    // then walk around the scene rather than dragging it with them.
+    private Transform studyAnchor;
+
+    private Vector3 OriginPos =>
+        spawnOrigin ? spawnOrigin.position :
+        studyAnchor ? studyAnchor.position :
+        (Camera.main ? Flatten(Camera.main.transform.position) : Vector3.zero);
+
+    private Vector3 OriginFwd =>
+        spawnOrigin ? FlattenDir(spawnOrigin.forward) :
+        studyAnchor ? studyAnchor.forward :
+        (Camera.main ? FlattenDir(Camera.main.transform.forward) : Vector3.forward);
+
+    /// Horizontal only. A head that is tilted down should not tip the whole
+    /// scene into the floor, and "2.5 m behind" should mean behind, not behind
+    /// and below.
+    private static Vector3 FlattenDir(Vector3 v)
+    {
+        v.y = 0f;
+        return v.sqrMagnitude < 1e-6f ? Vector3.forward : v.normalized;
+    }
+
+    private static Vector3 Flatten(Vector3 p) => new Vector3(p.x, 0f, p.z);
+
+    /// <summary>
+    /// Pins the scene to where the participant is standing and facing now.
+    ///
+    /// Called when the scene is built and again from ResetScene, so each trial
+    /// opens with the arrangement in front of the participant wherever they have
+    /// ended up — and then stays put for the whole trial. Re-anchoring between
+    /// trials rather than never is deliberate: a participant who has drifted
+    /// should not have to walk back to find the campfire the briefing describes,
+    /// but nothing should move underneath them mid-trial.
+    /// </summary>
+    private void AnchorSceneToParticipant()
+    {
+        if (!studyAnchor)
+        {
+            var go = new GameObject("StudyAnchor");
+            go.transform.SetParent(CreatedRoot, false);
+            studyAnchor = go.transform;
+        }
+        var cam = Camera.main;
+        if (!cam) return;
+        studyAnchor.position = Flatten(cam.transform.position);
+        studyAnchor.rotation = Quaternion.LookRotation(FlattenDir(cam.transform.forward));
+    }
+
+    /// Where the participant is RIGHT NOW, flattened. Used only by "behind",
+    /// which is about the current field of view rather than the scene layout.
+    private Vector3 LivePos => Camera.main ? Flatten(Camera.main.transform.position) : OriginPos;
+    private Vector3 LiveFwd => Camera.main ? FlattenDir(Camera.main.transform.forward) : OriginFwd;
 
     private Vector3 ResolvePosition(string pos)
     {
@@ -266,7 +329,13 @@ public class StudyOutcomes : MonoBehaviour
             // Task 4 (system behaviour): the object is created correctly but
             // lands outside the field of view. Placed well behind and slightly
             // up so it is unmistakable once they turn, but invisible until then.
-            case "behind": return OriginPos - OriginFwd * 2.5f + Vector3.up * 1.2f;
+            //
+            // The ONLY position measured from the participant's live pose rather
+            // than the anchor, and deliberately so: the manipulation is "outside
+            // your field of view right now". Anchored, it would appear behind
+            // where the scene was built — which, if they had turned, could be
+            // directly in front of them, and the task would measure nothing.
+            case "behind": return LivePos - LiveFwd * 2.5f + Vector3.up * 1.2f;
             // Its success counterpart: clearly in front and above, where they
             // would actually look for something "above the campfire".
             case "front":  return OriginPos + OriginFwd * 2.0f + Vector3.up * 1.4f;
@@ -430,24 +499,88 @@ public class StudyOutcomes : MonoBehaviour
     /// Creates the sphere, cube and campfire if they are missing. Idempotent.
     private void EnsureSceneObjects()
     {
+        // Anchor before anything is placed. Without this the sphere, cube and
+        // campfire are rebuilt at the participant's current position every time
+        // the scene resets, so they arrive somewhere new each trial.
+        if (!studyAnchor) AnchorSceneToParticipant();
+
+        EnsureGround();
+
         Vector3 basePos = OriginPos + OriginFwd * 1.6f;
         Vector3 right = Vector3.Cross(Vector3.up, OriginFwd).normalized;
 
-        if (!FindNamed(SphereName))
-        {
-            var go = Primitive(PrimitiveType.Sphere, basePos - right * 0.5f + Vector3.up * 0.1f,
-                Vector3.one * 0.22f, null);
-            go.name = SphereName;
-            SafeTag(go, "Interactable");
-        }
-        if (!FindNamed(CubeName))
-        {
-            var go = Primitive(PrimitiveType.Cube, basePos + right * 0.5f + Vector3.up * 0.1f,
-                Vector3.one * 0.22f, null);
-            go.name = CubeName;
-            SafeTag(go, "Interactable");
-        }
+        // Created if missing, MOVED if they already exist.
+        //
+        // These persist between trials, so a create-only check meant the objects
+        // stayed wherever they were first built and re-anchoring did nothing.
+        // A participant who had drifted got a briefing describing a scene behind
+        // them. Placing them every time is idempotent and costs nothing.
+        PlaceSceneObject(SphereName, PrimitiveType.Sphere,
+                         basePos - right * 0.5f + Vector3.up * 0.1f);
+        PlaceSceneObject(CubeName, PrimitiveType.Cube,
+                         basePos + right * 0.5f + Vector3.up * 0.1f);
         EnsureCampfire();
+    }
+
+    /// Creates the named scene object if it is missing, or moves it back into
+    /// place if it is not. Physics is cleared on the way, since a participant
+    /// may have knocked it and a rolling sphere should not carry momentum from
+    /// the previous trial into the next briefing.
+    private void PlaceSceneObject(string name, PrimitiveType shape, Vector3 pos)
+    {
+        var existing = FindNamed(name);
+        if (existing)
+        {
+            var rb = existing.GetComponent<Rigidbody>();
+            if (rb)
+            {
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+            existing.transform.position = pos;
+            existing.transform.rotation = Quaternion.identity;
+            return;
+        }
+
+        var go = Primitive(shape, pos, Vector3.one * 0.22f, null);
+        go.name = name;
+        SafeTag(go, "Interactable");
+    }
+
+    private const string GroundName = "StudyGround";
+
+    /// <summary>
+    /// A floor large enough that the participant cannot walk off it.
+    ///
+    /// The authored scene's green ground is a fixed, fairly small plane centred
+    /// on the scene's own origin. Because the study anchors itself to wherever
+    /// the participant is standing, they were routinely placed near its edge or
+    /// past it — walking "outside the ground" into a void, which breaks presence
+    /// far more than a plain floor ever would.
+    ///
+    /// 40 m square, centred on the anchor and sunk fractionally below y=0 so it
+    /// never z-fights with the authored ground where the two overlap. Only built
+    /// once, and only if the scene has no large ground of its own.
+    /// </summary>
+    private void EnsureGround()
+    {
+        if (FindNamed(GroundName)) return;
+
+        var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        go.name = GroundName;
+        go.transform.SetParent(CreatedRoot, false);
+        // Unity's plane primitive is 10 units across at scale 1, so 4 gives 40 m.
+        go.transform.position = new Vector3(OriginPos.x, -0.02f, OriginPos.z);
+        go.transform.localScale = new Vector3(4f, 1f, 4f);
+
+        var r = go.GetComponent<Renderer>();
+        if (r)
+        {
+            // Muted green, matching the authored ground closely enough that the
+            // join is not a visible seam, and dark enough that a grey object on
+            // it still reads as grey — task 5 depends on that contrast.
+            r.material.color = new Color(0.22f, 0.34f, 0.20f);
+        }
     }
 
     /// <summary>
@@ -928,6 +1061,14 @@ public class StudyOutcomes : MonoBehaviour
         // not still be up when the next trial's briefing is read.
         var questions = FindObjectOfType<QuestionPanelController>(true);
         if (questions) questions.Hide();
+
+        // Re-anchor between trials, not during one.
+        //
+        // Scene setup is the wizard pressing "Set up the scene" before reading
+        // the briefing, so this is the moment to put the arrangement back in
+        // front of wherever the participant has ended up. Within a trial the
+        // anchor is fixed, so nothing shifts under them while they are working.
+        AnchorSceneToParticipant();
 
         // The sphere and cube are the scene, not trial debris — put them back so
         // every trial opens on the same arrangement the briefing describes.
