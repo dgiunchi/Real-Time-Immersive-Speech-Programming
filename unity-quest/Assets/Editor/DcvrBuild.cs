@@ -103,6 +103,7 @@ public static class DcvrBuild
             "DreamCodeVRPlus/SkyGradient",
             "DreamCodeVRPlus/Vignette",
             "DreamCodeVRPlus/Dissolve",
+            "DreamCodeVRPlus/Building",
         };
 
         var graphics = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/GraphicsSettings.asset");

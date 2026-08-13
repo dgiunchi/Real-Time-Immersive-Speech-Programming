@@ -311,6 +311,7 @@ namespace DreamCodeVRPlus
             if (!string.IsNullOrEmpty(justSent))
             {
                 _sentCommand = null;
+                DcvrAudio.Instance?.Listening();
                 _hud?.SetHeard(justSent);
                 _preview?.Begin(justSent);
                 _preview?.SetStageProgress(DcvrStage.Generate);
@@ -371,6 +372,7 @@ namespace DreamCodeVRPlus
                     _world?.SetState(DcvrWorld.Red, pulse: true);
                     // Per-class signature when available: the visual is chosen from the
                     // reason the backend actually gave, not from a generic "refused".
+                    DcvrAudio.Instance?.Blocked();
                     if (_signature != null) { _signature.Play(caught); }
                     else { _fx?.ShowShield(DcvrWorld.Red); _fx?.PulsePersonalSpace(DcvrWorld.Red); }
                     _hasResult = true;
@@ -392,6 +394,7 @@ namespace DreamCodeVRPlus
                     {
                         _preview?.SetStageProgress(DcvrStage.Execute);
                         _preview?.Finish();
+                        DcvrAudio.Instance?.Accepted();
                         _hud?.SetAccepted("action plan applied on device");
                         _world?.SetState(DcvrWorld.Green, pulse: true);
                         _fx?.Shockwave(DcvrWorld.Green);

@@ -45,6 +45,10 @@ namespace DreamCodeVRPlus
             {
                 _rig = DcvrXrRig.Build(cam);
                 DcvrLocomotion.Attach(_rig.OriginTransform, cam);
+                // Hands are additive: controllers stay primary, but when they are put down
+                // the runtime switches to hand tracking and the wearer must not lose their
+                // hands — in VR that reads as the system having stopped.
+                DcvrHands.Attach(_rig.OriginTransform);
                 Debug.Log("[DcvrBootstrap] immersive rig ready");
             }
             else
@@ -75,6 +79,8 @@ namespace DreamCodeVRPlus
 
                 var client = new GameObject("ModeCNetworkedDemo")
                     .AddComponent<ModeCNetworkedDemo>();
+                // Audio is synthesised at startup — no assets to license or ship.
+                DcvrAudio.Build(DcvrWorld.CreationZone);
                 var signature = DcvrAttackSignature.Attach(fx);
                 client.AttachPresentation(world, hud, fx, preview, signature);
 

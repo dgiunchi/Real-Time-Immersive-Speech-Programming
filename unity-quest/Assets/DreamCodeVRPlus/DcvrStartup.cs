@@ -41,6 +41,7 @@ namespace DreamCodeVRPlus
 
             if (hud != null) { hud.SetPresentation(0f); }
 
+            DcvrAudio.Instance?.PowerOn();
             yield return new WaitForSeconds(0.35f);
 
             // 1. The rim lights, segment by segment, from the front around both sides.

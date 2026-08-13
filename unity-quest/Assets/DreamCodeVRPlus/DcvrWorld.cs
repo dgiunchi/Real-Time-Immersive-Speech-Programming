@@ -291,7 +291,17 @@ namespace DreamCodeVRPlus
             var root = new GameObject("DCVR_Structures");
             root.transform.SetParent(transform, false);
 
-            Material body = MakeUnlit("DCVR_MonolithMat", new Color(0.045f, 0.065f, 0.095f));
+            Material body = MakeMaterial("DreamCodeVRPlus/Building", "DCVR_MonolithMat")
+                           ?? MakeUnlit("DCVR_MonolithMatFallback", new Color(0.045f, 0.065f, 0.095f));
+            if (body != null && body.HasProperty("_TopColor"))
+            {
+                body.SetColor("_BaseColor", new Color(0.028f, 0.042f, 0.062f));
+                body.SetColor("_TopColor", new Color(0.090f, 0.160f, 0.220f));
+                body.SetColor("_WindowColor", Cyan);
+                body.SetFloat("_LitFraction", 0.38f);
+                body.SetFloat("_Emission", 2.7f);
+                body.SetFloat("_WindowDensity", 12f);
+            }
             Material edge = MakeMaterial("DreamCodeVRPlus/Holo", "DCVR_MonolithEdgeMat");
             if (edge != null)
             {

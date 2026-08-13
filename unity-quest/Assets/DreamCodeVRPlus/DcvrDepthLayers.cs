@@ -43,7 +43,9 @@ namespace DreamCodeVRPlus
             root.SetParent(transform, false);
             var rng = new System.Random(9091);
 
-            Material body = Unlit(new Color(0.055f, 0.078f, 0.115f));
+            // Mid monoliths use the same family, denser windows since they are closer.
+            Material body = Building(new Color(0.030f, 0.044f, 0.066f),
+                                     new Color(0.090f, 0.160f, 0.220f), 0.38f, 2.7f);
             const int count = 11;
 
             for (int i = 0; i < count; i++)
@@ -100,10 +102,13 @@ namespace DreamCodeVRPlus
             root.SetParent(transform, false);
             var rng = new System.Random(3345);
 
-            // Two tones only. At this distance shape and silhouette carry everything, and
-            // extra material variety just costs draw calls.
-            Material near = Unlit(new Color(0.028f, 0.042f, 0.065f));
-            Material far = Unlit(new Color(0.018f, 0.028f, 0.045f));
+            // Themed tower surface: vertical gradient into the scene's teal plus a
+            // procedural lit-window grid. Two materials only — near and far — so the whole
+            // band is still two draw batches, but it no longer reads as black cut-outs.
+            Material near = Building(new Color(0.022f, 0.034f, 0.052f),
+                                     new Color(0.075f, 0.140f, 0.200f), 0.42f, 2.9f);
+            Material far = Building(new Color(0.016f, 0.026f, 0.042f),
+                                    new Color(0.040f, 0.080f, 0.120f), 0.24f, 1.7f);
 
             const int count = 26;
             for (int i = 0; i < count; i++)
@@ -201,6 +206,25 @@ namespace DreamCodeVRPlus
             m.SetColor("_Color", c);
             m.SetFloat("_Alpha", alpha);
             m.SetFloat("_ScanSpeed", 0.12f);
+            return m;
+        }
+
+        /// <summary>Themed tower material. One per band, shared across every tower in it;
+        /// the shader varies windows per object from world position, so a shared material
+        /// still produces a skyline where no two towers look alike.</summary>
+        private static Material Building(Color bottom, Color top, float litFraction, float emission)
+        {
+            Shader s = Shader.Find("DreamCodeVRPlus/Building");
+            if (s == null) { return Unlit(bottom); }
+            var m = new Material(s) { name = "DCVR_BuildingMat" };
+            m.SetColor("_BaseColor", bottom);
+            m.SetColor("_TopColor", top);
+            m.SetColor("_WindowColor", DcvrWorld.Cyan);
+            m.SetFloat("_LitFraction", litFraction);
+            m.SetFloat("_Emission", emission);
+            m.SetFloat("_WindowDensity", 13f);
+            m.SetFloat("_Twinkle", 0.30f);
+            m.enableInstancing = true;
             return m;
         }
 
