@@ -21,6 +21,12 @@ namespace DreamCodeVRPlus
             var mf = go.AddComponent<MeshFilter>();
             mf.sharedMesh = MeshFor(type);
             var mr = go.AddComponent<MeshRenderer>();
+            // A renderer with NO material gets the same treatment as one carrying a legacy
+            // material: Unity substitutes Hidden/InternalErrorShader, which is not
+            // stereo-aware and draws at the same screen position in both eyes. Callers
+            // almost always assign a material immediately, but "almost always" is how the
+            // P0 doubling shipped, so the default is a valid one.
+            mr.sharedMaterial = DcvrMaterials.Make(new Color(0.72f, 0.74f, 0.78f));
             // Nothing here casts or receives shadows: the scene is lit by emission and a
             // single shadowless directional, so shadow work would be pure cost.
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

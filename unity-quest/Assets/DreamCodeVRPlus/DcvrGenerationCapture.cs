@@ -122,6 +122,16 @@ namespace DreamCodeVRPlus
                 yield break;
             }
 
+            // P0: give everything a material that can be drawn in stereo, BEFORE it is
+            // placed and shown. `GameObject.CreatePrimitive` attaches a legacy-pipeline
+            // material that does not exist in this URP build, so Unity substitutes
+            // `Hidden/InternalErrorShader` — which ignores the per-eye view matrix and
+            // therefore draws the object at the same screen position in both eyes. That is
+            // what made one creation look like two, and what made it appear to follow the
+            // wearer's head. Every generated object passes through here, so this is the
+            // one place the guarantee can actually be made.
+            int repaired = DcvrMaterials.RepairSubtree(group.Root.gameObject);
+
             bool floating = DcvrSpatialCompositor.IsFloatingRole(floatingHint);
             DcvrSpatialCompositor.Ensure().Place(group, floating);
 
@@ -140,8 +150,8 @@ namespace DreamCodeVRPlus
                 if (names.Count >= 12) { break; }
             }
             Debug.Log($"[DcvrCapture] gen={group.Id} adopted={adopted} rescued-from-rig={rescued} "
-                      + $"floating={floating} named={names.Count}/{group.Objects.Count} "
-                      + $"[{string.Join(", ", names)}]");
+                      + $"materials-repaired={repaired} floating={floating} "
+                      + $"named={names.Count}/{group.Objects.Count} [{string.Join(", ", names)}]");
         }
 
         private static int RescueFromRig(DcvrGeneratedContent content, GenerationGroup group)

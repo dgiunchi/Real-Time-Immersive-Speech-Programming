@@ -111,6 +111,14 @@ namespace DreamCodeVRPlus
                 DcvrNearCameraAudit.Run();
                 DcvrPerf.Run();
 
+                // P0 stereo isolation. Three cubes built by three different layers, so the
+                // wearer can say WHICH layer doubles instead of "the app looks wrong".
+                // Removed once the defect is fixed and confirmed in the headset.
+                if (System.Environment.GetEnvironmentVariable("DCVR_STEREO_FIXTURE") != "0")
+                {
+                    DcvrStereoFixture.Build();
+                }
+
             }
 
             if (showDiagnostics)

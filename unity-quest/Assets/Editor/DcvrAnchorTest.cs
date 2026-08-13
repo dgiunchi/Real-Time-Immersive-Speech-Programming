@@ -101,6 +101,9 @@ public static class DcvrAnchorTest
         // --- parallax: near content must shift more across the view than far content ---
         CheckParallax(cam, rig);
 
+        // --- THE ACTUAL P0 BUG: stereo-drawable materials -----------------------------
+        CheckStereoSafeMaterials();
+
         // --- deletion and clearing leave no stale state (§54, §55) -------------------
         GameObject victim = null;
         foreach (GameObject go in content.AllObjects) { victim = go; break; }
@@ -126,6 +129,83 @@ public static class DcvrAnchorTest
         }
         Debug.Log("[AnchorTest] PASS — creations and environment stay put while the player moves");
         EditorApplication.Exit(0);
+    }
+
+    /// <summary>Every generated renderer must carry a material this build can draw in
+    /// single-pass stereo.
+    ///
+    /// THIS TEST EXISTS BECAUSE THE REST OF THIS FILE PASSED WHILE THE HEADSET WAS WRONG.
+    /// The wearer saw one object as two, and saw it track their head. The transform
+    /// assertions above were all green and all correct — the transforms were never the
+    /// problem. `GameObject.CreatePrimitive` attaches a legacy-pipeline material that is
+    /// not in this URP build, so Unity substitutes `Hidden/InternalErrorShader`, which does
+    /// not participate in stereo and therefore draws to the same screen position in BOTH
+    /// eyes: no disparity to fuse, and an image that follows the view by construction.
+    ///
+    /// A test that only checks where objects ARE cannot see a fault in how they are DRAWN,
+    /// which is why this asserts the material rather than the position.</summary>
+    private static void CheckStereoSafeMaterials()
+    {
+        // Exactly the two construction routes generated content uses.
+        var viaPrim = DcvrPrim.Create(PrimitiveType.Cube, "StereoCheck_Prim");
+        var viaPrimitive = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        viaPrimitive.name = "StereoCheck_CreatePrimitive";
+
+        Check(DcvrMaterials.IsStereoSafe(viaPrim.GetComponent<Renderer>().sharedMaterial),
+              "DcvrPrim must produce a stereo-drawable material by default, got "
+              + ShaderNameOf(viaPrim));
+
+        // NOTE ON WHAT THIS CAN AND CANNOT PROVE. In the EDITOR, `CreatePrimitive` finds
+        // URP's default material and is already safe, so the raw defect does not reproduce
+        // here — it appears only in the stripped IL2CPP build, where the legacy shader is
+        // absent and Unity substitutes the error shader. That asymmetry is exactly why the
+        // bug reached a wearer. So this asserts the GUARANTEE the runtime makes (whatever
+        // came in, what goes out is drawable in stereo) rather than the platform-specific
+        // substitution, and `DcvrStereoProbe` reports the real shader from the device.
+        bool rawWasUnsafe = !DcvrMaterials.IsStereoSafe(viaPrimitive.GetComponent<Renderer>().sharedMaterial);
+        int repaired = DcvrMaterials.RepairSubtree(viaPrimitive);
+        Check(DcvrMaterials.IsStereoSafe(viaPrimitive.GetComponent<Renderer>().sharedMaterial),
+              "RepairSubtree must make a CreatePrimitive object stereo-drawable, got "
+              + ShaderNameOf(viaPrimitive));
+        Debug.Log($"[AnchorTest] CreatePrimitive default was {(rawWasUnsafe ? "UNSAFE (as expected)" : "already safe")}; "
+                  + $"repaired {repaired} renderer(s) -> {ShaderNameOf(viaPrimitive)}");
+
+        // Colour intent must survive the repair, or fixing stereo would silently grey out
+        // every creation the model designed.
+        var coloured = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        coloured.name = "StereoCheck_Colour";
+        coloured.GetComponent<Renderer>().material.color = new Color(0.9f, 0.1f, 0.1f);
+        DcvrMaterials.RepairSubtree(coloured);
+        Material after = coloured.GetComponent<Renderer>().sharedMaterial;
+        Color got = after.HasProperty("_BaseColor") ? after.GetColor("_BaseColor") : after.color;
+        Check(got.r > got.g && got.r > got.b,
+              $"the repair must preserve the generated colour; red became {got}");
+
+        // And nothing already in the registry may be unsafe.
+        DcvrGeneratedContent content = DcvrGeneratedContent.Instance;
+        if (content != null)
+        {
+            foreach (GameObject go in content.AllObjects)
+            {
+                foreach (Renderer r in go.GetComponentsInChildren<Renderer>(true))
+                {
+                    Check(DcvrMaterials.IsStereoSafe(r.sharedMaterial),
+                          $"registered object '{go.name}' has a non-stereo material "
+                          + $"({(r.sharedMaterial == null ? "<none>" : r.sharedMaterial.shader.name)})");
+                }
+            }
+        }
+
+        Object.DestroyImmediate(viaPrim);
+        Object.DestroyImmediate(viaPrimitive);
+        Object.DestroyImmediate(coloured);
+    }
+
+    private static string ShaderNameOf(GameObject go)
+    {
+        var r = go.GetComponent<Renderer>();
+        if (r == null || r.sharedMaterial == null || r.sharedMaterial.shader == null) { return "<none>"; }
+        return r.sharedMaterial.shader.name;
     }
 
     /// <summary>Near things sweep across the view faster than far things when you step

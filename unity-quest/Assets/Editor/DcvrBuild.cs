@@ -98,6 +98,15 @@ public static class DcvrBuild
     {
         string[] wanted =
         {
+            // URP's own shaders must be pinned too. Generated content is created at
+            // runtime, so NOTHING in the scene references these at build time and the
+            // stripper removes them — measured on device, where "Universal Render
+            // Pipeline/Lit" resolved to null and generated objects fell back to Unlit.
+            // The same class of stripping is what left CreatePrimitive with the internal
+            // error shader and produced the binocular doubling.
+            "Universal Render Pipeline/Lit",
+            "Universal Render Pipeline/Unlit",
+            "Universal Render Pipeline/Simple Lit",
             "DreamCodeVRPlus/Holo",
             "DreamCodeVRPlus/Grid",
             "DreamCodeVRPlus/SkyGradient",
