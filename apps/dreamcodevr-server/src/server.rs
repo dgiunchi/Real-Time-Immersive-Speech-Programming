@@ -698,6 +698,35 @@ pub struct ServerHooks {
 }
 
 impl ServerHooks {
+    /// Send an approved bounded action plan to the headset. Returns whether it went.
+    async fn dispatch_plan(&self, outcome: &AudioOutcome) -> bool {
+        let Some(sender) = self.services.ubiq_sender.read().await.clone() else {
+            return false;
+        };
+        let Ok(json) = crate::app::backend_decision_json(outcome) else {
+            return false;
+        };
+        let target = self
+            .services
+            .last_client_peer
+            .read()
+            .await
+            .clone()
+            .unwrap_or_default();
+        match self.services.auth.sign_nid94(
+            json.as_bytes(),
+            &target,
+            &outcome.request_id,
+            crate::auth_gate::now_unix(),
+        ) {
+            Ok(bytes) => sender.send(NID_BACKEND_OUTPUT, &bytes).await.is_ok(),
+            Err(e) => {
+                eprintln!("[manual-cmd] refusing to send unsigned NID-94: {e}");
+                false
+            }
+        }
+    }
+
     /// Tell the headset a request was refused, and why.
     ///
     /// Both block paths need this. The intent screen and the validator are different
@@ -801,6 +830,48 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                  No code was generated for the request; a harmless placeholder was sent instead."
             );
         }
+        // MODE C IS THE DELIVERABLE when Mode A is off — which is the default, and the
+        // only configuration a Quest 3 can run. The pipeline generates BOTH an action plan
+        // and a C# candidate; the plan is what ships to the headset, the candidate exists
+        // so Mode B can be compared against it.
+        //
+        // Judging the whole request by the C# candidate therefore reports the wrong thing:
+        // a live model produces a malformed or banned candidate for roughly one benign
+        // build in three, and the request was being reported as REJECTED — and the headset
+        // told it was blocked — while a perfectly good bounded plan had already been
+        // dispatched and applied. The mock never showed this because it returns one fixed,
+        // always-valid candidate.
+        //
+        // Nothing is weakened. The candidate is still validated, still rejected, and still
+        // never dispatched; Mode A dispatch remains gated on `cs.approved` below. Only the
+        // reported verdict changes, so it reflects the path that actually ran.
+        if !self.services.mode_a_live() {
+            if let Some(plan) = &outcome.plan {
+                let delivered = self.dispatch_plan(&outcome).await;
+                let note = match &outcome.csharp {
+                    Some(cs) if !cs.approved => format!(
+                        "  (Mode-B C# candidate rejected by the guardrail and NOT sent: {})",
+                        cs.violations.join("; ")
+                    ),
+                    _ => String::new(),
+                };
+                return if delivered {
+                    format!(
+                        "{:?} — {} action(s) → SENT to the headset as a bounded action plan \
+                         (Mode C) ✓{note}",
+                        outcome.decision,
+                        plan.actions.len()
+                    )
+                } else {
+                    format!(
+                        "{:?} — {} action(s) validated OK, but no headset is connected{note}",
+                        outcome.decision,
+                        plan.actions.len()
+                    )
+                };
+            }
+        }
+
         match &outcome.csharp {
             Some(cs) if cs.approved => {
                 // DISPATCH to the headset (Mode A): send the validated C# to the Quest
