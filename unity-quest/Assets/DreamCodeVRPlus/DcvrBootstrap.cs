@@ -75,7 +75,8 @@ namespace DreamCodeVRPlus
 
                 var client = new GameObject("ModeCNetworkedDemo")
                     .AddComponent<ModeCNetworkedDemo>();
-                client.AttachPresentation(world, hud, fx, preview);
+                var signature = DcvrAttackSignature.Attach(fx);
+                client.AttachPresentation(world, hud, fx, preview, signature);
 
                 DcvrStartup.Run(fx.NearLayer, hud, title.transform);
                 Debug.Log("[DcvrBootstrap] production presentation wired");
@@ -83,6 +84,7 @@ namespace DreamCodeVRPlus
                 // One-shot audit of anything drawn near the eye. Kept in the build: this
                 // class of bug shipped three times and is invisible from the desk.
                 DcvrNearCameraAudit.Run();
+                DcvrPerf.Run();
 
             }
 

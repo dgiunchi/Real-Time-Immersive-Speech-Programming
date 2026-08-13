@@ -61,6 +61,7 @@ namespace DreamCodeVRPlus
         private DcvrHud _hud;
         private DcvrEffects _fx;
         private DcvrCodePreview _preview;
+        private DcvrAttackSignature _signature;
         // Set on the NETWORK thread when a command goes out, consumed on the main thread
         // in Update(). Unity APIs are main-thread only, so the HUD and the generation
         // preview cannot be driven directly from the send loop.
@@ -110,8 +111,9 @@ namespace DreamCodeVRPlus
         /// client builds its own world at Start(), which would duplicate the saved scene's
         /// environment and put a second one at the origin.</summary>
         public void AttachPresentation(DcvrWorld world, DcvrHud hud, DcvrEffects fx,
-                                       DcvrCodePreview preview)
+                                       DcvrCodePreview preview, DcvrAttackSignature signature = null)
         {
+            _signature = signature;
             _world = world;
             _hud = hud;
             _fx = fx;
@@ -367,8 +369,10 @@ namespace DreamCodeVRPlus
                     _preview?.Finish();
                     _hud?.SetBlocked(caught, DcvrStage.Intent);
                     _world?.SetState(DcvrWorld.Red, pulse: true);
-                    _fx?.ShowShield(DcvrWorld.Red);
-                    _fx?.PulsePersonalSpace(DcvrWorld.Red);
+                    // Per-class signature when available: the visual is chosen from the
+                    // reason the backend actually gave, not from a generic "refused".
+                    if (_signature != null) { _signature.Play(caught); }
+                    else { _fx?.ShowShield(DcvrWorld.Red); _fx?.PulsePersonalSpace(DcvrWorld.Red); }
                     _hasResult = true;
                 }
                 else

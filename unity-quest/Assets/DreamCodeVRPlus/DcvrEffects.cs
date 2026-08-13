@@ -199,6 +199,22 @@ namespace DreamCodeVRPlus
             go.SetActive(false);
         }
 
+        /// <summary>Keep the personal-space shell on the wearer. It IS the user frame, so
+        /// it must ride the head rather than sit at the world origin — otherwise it
+        /// visualises a boundary around a point in space nobody is standing at.
+        ///
+        /// LateUpdate, so the tracked pose has already been applied this frame. Position
+        /// only, never rotation: a shell that pitches and rolls with the head reads as
+        /// something stuck to the face instead of a boundary around a person.</summary>
+        private void LateUpdate()
+        {
+            if (_sphere == null || !_sphere.gameObject.activeSelf) { return; }
+            Camera cam = Camera.main;
+            if (cam == null) { return; }
+            Vector3 p = cam.transform.position;
+            _sphere.position = new Vector3(p.x, p.y - 0.35f, p.z);
+        }
+
         public void PulsePersonalSpace(Color color, float hold = 1.5f)
         {
             if (_sphere == null || _sphereMat == null) { return; }
