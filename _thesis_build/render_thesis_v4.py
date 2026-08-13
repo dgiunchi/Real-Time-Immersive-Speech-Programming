@@ -6,11 +6,11 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = "/Users/m/Downloads/DreamCodeVRPlus/_deliverables/thesis_v6.md"
+SRC = "/Users/m/Downloads/DreamCodeVRPlus/_deliverables/thesis_condensed.md"
 CREST = os.path.join(HERE, "birmingham-crest.png")
-OUT_HTML = os.path.join(HERE, "thesis_v6.html")
-RAW_PDF = os.path.join(HERE, "thesis_v6_raw.pdf")
-OUT_PDF = "/Users/m/Downloads/DreamCodeVR+_Dissertation_v6.pdf"
+OUT_HTML = os.path.join(HERE, "thesis_v4.html")
+RAW_PDF = os.path.join(HERE, "thesis_v4_raw.pdf")
+OUT_PDF = "/Users/m/Downloads/DreamCodeVR+_Dissertation_v4.pdf"
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 md = open(SRC).read()
@@ -32,7 +32,7 @@ title_page = f"""
   <div class="author">Sandeep Rai</div>
   <div class="meta">Student ID: sxr1156</div>
   <div class="meta">Supervisors: Dr Daniele Giunchi and Dr Eyal Ofek</div>
-  <div class="submit">A dissertation submitted to the University of Birmingham<br/>for the degree of <b>Master of Data Science</b></div>
+  <div class="submit">A dissertation submitted to the University of Birmingham<br/>for the degree of <b>MSc in Cyber Security</b></div>
   <div class="meta">Word count: ~10,000 (main body, Chapters&nbsp;1&ndash;6)</div>
   <div class="school">School of Computer Science<br/>University of Birmingham</div>
   <div class="year">2026</div>
