@@ -20,6 +20,9 @@ namespace DreamCodeVRPlus
     public sealed class DcvrDepthLayers : MonoBehaviour
     {
         private readonly List<Transform> _rings = new List<Transform>();
+        private readonly List<Transform> _monoliths = new List<Transform>();
+        private readonly List<Material> _seamMats = new List<Material>();
+        private readonly List<float> _phases = new List<float>();
         private readonly List<Material> _streamMats = new List<Material>();
         private float _phase;
 
@@ -41,12 +44,12 @@ namespace DreamCodeVRPlus
             var rng = new System.Random(9091);
 
             Material body = Unlit(new Color(0.055f, 0.078f, 0.115f));
-            const int count = 14;
+            const int count = 11;
 
             for (int i = 0; i < count; i++)
             {
                 float a = (i / (float)count) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.12f;
-                float dist = 22f + (float)rng.NextDouble() * 24f;
+                float dist = 30f + (float)rng.NextDouble() * 26f;
                 float h = 6f + (float)rng.NextDouble() * 16f;
                 float w = 1.6f + (float)rng.NextDouble() * 2.6f;
 
@@ -63,8 +66,15 @@ namespace DreamCodeVRPlus
                 seam.transform.SetParent(slab.transform, false);
                 seam.transform.localPosition = new Vector3(0f, 0f, -0.51f);
                 seam.transform.localScale = new Vector3(0.06f, 0.82f, 1f);
-                seam.GetComponent<Renderer>().sharedMaterial =
-                    Holo(DcvrWorld.Cyan, 0.18f + (float)rng.NextDouble() * 0.14f);
+                Material seamMat = Holo(DcvrWorld.Cyan, 0.18f + (float)rng.NextDouble() * 0.14f);
+                seam.GetComponent<Renderer>().sharedMaterial = seamMat;
+
+                // Registered for animation. Each monolith gets its own phase so the band
+                // breathes as a population rather than pulsing in unison, which reads as
+                // a working facility instead of a light show.
+                _monoliths.Add(slab.transform);
+                _seamMats.Add(seamMat);
+                _phases.Add((float)rng.NextDouble() * Mathf.PI * 2f);
             }
 
             // Suspended rings: large, slowly counter-rotating, at different heights. They
@@ -95,13 +105,13 @@ namespace DreamCodeVRPlus
             Material near = Unlit(new Color(0.028f, 0.042f, 0.065f));
             Material far = Unlit(new Color(0.018f, 0.028f, 0.045f));
 
-            const int count = 34;
+            const int count = 26;
             for (int i = 0; i < count; i++)
             {
                 float a = (i / (float)count) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.1f;
-                float dist = 58f + (float)rng.NextDouble() * 55f;
-                float h = 14f + (float)rng.NextDouble() * 42f;
-                float w = 5f + (float)rng.NextDouble() * 11f;
+                float dist = 85f + (float)rng.NextDouble() * 95f;
+                float h = 22f + (float)rng.NextDouble() * 60f;
+                float w = 7f + (float)rng.NextDouble() * 14f;
 
                 var tower = DcvrPrim.Create(PrimitiveType.Cube, $"FarTower{i}");
                 tower.transform.SetParent(root, false);
@@ -109,7 +119,7 @@ namespace DreamCodeVRPlus
                                                             Mathf.Sin(a) * dist);
                 tower.transform.localRotation = Quaternion.Euler(0f, -a * Mathf.Rad2Deg, 0f);
                 tower.transform.localScale = new Vector3(w, h, w);
-                tower.GetComponent<Renderer>().sharedMaterial = dist < 70f ? near : far;
+                tower.GetComponent<Renderer>().sharedMaterial = dist < 125f ? near : far;
                 tower.isStatic = true;
             }
         }
@@ -150,9 +160,24 @@ namespace DreamCodeVRPlus
 
         private void Update()
         {
-            // Very slow. These are large objects filling the periphery, and peripheral
-            // rotation is the classic vection trigger — a few degrees per second at most.
+            // Very slow throughout. These are large objects filling the periphery, and
+            // peripheral motion is the classic vection trigger — everything here is at or
+            // below the threshold where it registers as movement rather than as life.
             _phase += Time.deltaTime;
+
+            // Monoliths breathe: a few centimetres of vertical drift and a slow seam
+            // pulse, each on its own phase.
+            for (int i = 0; i < _monoliths.Count; i++)
+            {
+                if (_monoliths[i] == null) { continue; }
+                float ph = _phase * 0.35f + _phases[i];
+                Vector3 p = _monoliths[i].localPosition;
+                _monoliths[i].localPosition = new Vector3(p.x, p.y + Mathf.Sin(ph) * 0.0012f, p.z);
+                if (_seamMats[i] != null)
+                {
+                    _seamMats[i].SetFloat("_Alpha", 0.20f + Mathf.Sin(ph * 1.3f) * 0.10f);
+                }
+            }
             for (int i = 0; i < _rings.Count; i++)
             {
                 if (_rings[i] == null) { continue; }

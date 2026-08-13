@@ -38,7 +38,7 @@ namespace DreamCodeVRPlus
             foreach (Material m in rim) { targets.Add(m.GetFloat("_Alpha")); }
             foreach (Material m in rim) { m.SetFloat("_Alpha", 0f); }
 
-            if (title != null) { title.localScale = Vector3.zero; }
+
             if (hud != null) { hud.SetPresentation(0f); }
 
             yield return new WaitForSeconds(0.35f);
@@ -61,19 +61,11 @@ namespace DreamCodeVRPlus
             // 2. Rings spin up (their own Update drives rotation; this just reveals them).
             yield return new WaitForSeconds(RingTime * 0.35f);
 
-            // 3. Title resolves.
-            if (title != null)
-            {
-                t = 0f;
-                while (t < TitleTime)
-                {
-                    t += Time.deltaTime;
-                    float k = Mathf.SmoothStep(0f, 1f, t / TitleTime);
-                    title.localScale = Vector3.one * k;
-                    yield return null;
-                }
-                title.localScale = Vector3.one;
-            }
+            // 3. The name piece runs its own perpetual loop, so the sequence only waits
+            //    for it rather than driving it — two systems animating one object would
+            //    fight each other.
+            _ = title;
+            yield return new WaitForSeconds(TitleTime * 0.5f);
 
             // 4. HUD fades in and reports ready.
             if (hud != null)

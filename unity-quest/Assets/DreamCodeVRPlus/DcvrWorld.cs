@@ -173,7 +173,7 @@ namespace DreamCodeVRPlus
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogColor = new Color(0.02f, 0.05f, 0.09f);
-            RenderSettings.fogDensity = 0.0075f;
+            RenderSettings.fogDensity = 0.0062f;
         }
 
         // ---- ground --------------------------------------------------------------
@@ -182,7 +182,7 @@ namespace DreamCodeVRPlus
             var ground = DcvrPrim.Create(PrimitiveType.Plane);
             ground.name = "DCVR_Ground";
             ground.transform.SetParent(transform, false);
-            ground.transform.localScale = new Vector3(12f, 1f, 12f);   // 120 m
+            ground.transform.localScale = new Vector3(60f, 1f, 60f);   // 600 m — well past the far layer
 
             _gridMat = MakeMaterial("DreamCodeVRPlus/Grid", "DCVR_GridMat");
             Debug.Log("[DcvrWorld] grid shader " + (_gridMat != null ? "OK" : "MISSING"));
@@ -192,7 +192,7 @@ namespace DreamCodeVRPlus
                 _gridMat.SetColor("_LineColor", new Color(0.08f, 0.42f, 0.58f));
                 _gridMat.SetFloat("_Spacing", 1.0f);
                 _gridMat.SetFloat("_FadeStart", 8f);
-                _gridMat.SetFloat("_FadeEnd", 60f);
+                _gridMat.SetFloat("_FadeEnd", 85f);
                 ground.GetComponent<Renderer>().sharedMaterial = _gridMat;
             }
         }
@@ -304,11 +304,11 @@ namespace DreamCodeVRPlus
             // 28 monoliths, evenly distributed over the FULL 360 degrees. A headset wearer
             // turns around; anything staged only in front of them collapses the moment
             // they look over their shoulder and the world reads as a stage flat.
-            const int count = 10;
+            const int count = 7;
             for (int i = 0; i < count; i++)
             {
                 float a = (i / (float)count) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.16f;
-                float dist = 34f + (float)rng.NextDouble() * 22f;
+                float dist = 46f + (float)rng.NextDouble() * 26f;
                 float h = 8f + (float)rng.NextDouble() * 20f;
                 float w = 1.1f + (float)rng.NextDouble() * 2.2f;
 
