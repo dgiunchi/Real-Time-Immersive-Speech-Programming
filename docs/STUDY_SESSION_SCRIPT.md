@@ -1,0 +1,160 @@
+# AgenticXR study — session script (participant journey + experimenter script)
+
+Draft 2026-08-13, grounded in the paper's Study Design (tasks/conditions from
+`tab:pairing` and `tab:modes`, instruments from the Measures subsection). Task
+scenarios below are DRAFT instantiations consistent with the paper's mode table —
+finalize them (and the per-task success rubric) with Daniele before piloting.
+Nothing here may run with a real participant before ethics/IRB approval; use the
+approved consent wording, not the placeholder below.
+
+## 1. Session at a glance
+
+| Phase | Duration (est.) | What happens |
+|---|---|---|
+| Welcome + consent | 10 min | Information sheet, consent form, demographics |
+| Training | 10 min | Headset fit, controls practice on a sandbox object |
+| Task block A: L1–L2 (fixed order) | 15 min | Implicit tasks, 2 conditions each |
+| Task block B: L3–L5 (counterbalanced) | 25 min | Explicit speech tasks, 2 conditions each; H4 nested in L4/L5 |
+| Questionnaires | after EACH task | Trust scale, raw NASA-TLX, study-specific items |
+| Interview + debrief | 15 min | Semi-structured interview, condition reveal, thanks |
+
+Each participant × task × condition is ONE trial, registered before it starts and
+closed after it ends (commands in `EXPERIMENTER_BRIEFING.md` §4). Follow the
+counterbalancing sheet for: condition order within each task, L3–L5 task order,
+and the H4 single-vs-several order. L1 and L2 always run in that fixed order
+(implicit triggers need accumulated scene/memory context).
+
+## 2. What the participant experiences, task by task
+
+The scene is a workshop/training environment with manipulable objects, markers,
+doors, stations, and shared/persistent objects. The participant wears the
+headset, selects objects with the controller ray (ray turns red on a selected
+target), and speaks by HOLDING the left trigger while talking (push-to-talk).
+A world-space panel shows agent status and, when consent is required, a preview
+with Approve / Reject / Undo.
+
+- **L1 — Proactive (implicit).** The participant simply works in the scene,
+  which contains authored *inert anchors* (`AgenticInertAnchor` objects — e.g.
+  an unlit lamp, an empty pedestal) that visibly do nothing at session start.
+  When the participant's activity creates a low-risk opportunity, the agent
+  decides FROM CONTEXT what function the anchor should gain — a light turning
+  on, a helper object appearing on the pedestal — and applies it reversibly.
+  Nothing is scripted per anchor: the function is derived at runtime from the
+  anchor's role, region, neighbours, and activity, so different contexts yield
+  different behaviors. The participant may ignore, reject, or undo. *Scenario:
+  while the participant sorts tools near the unlit lamp, the lamp gains a
+  context-appropriate behavior (e.g. it lights the work area) without anyone
+  asking.*
+- **L2 — Context (implicit).** Walking toward a doorway/station region
+  (`AgenticRegionVolume`), or looking at / approaching an anchor, triggers the
+  agent to activate guidance derived from that place's context. When the
+  system has watched the participant's direction of attention, it may have
+  *anticipated* the engagement and prepared candidates before arrival — the
+  participant just experiences a near-immediate, context-fitting response. The
+  participant may ignore it, redirect, or undo. *Scenario: approaching the
+  assembly station makes a dormant guide marker come alive with an appropriate
+  cue for that station.*
+- **L3 — Clarify (explicit).** The participant gives a deliberately
+  underspecified spoken request (from a card, e.g. "Make this one move over
+  there"). The agent asks a clarification question; the participant answers,
+  can retarget, or cancel; the behavior then applies.
+- **L4 — Confirm (explicit).** The participant requests a change with a
+  persistent or shared effect (e.g. "Make this door open for everyone whenever
+  someone comes close"). The agent shows a preview proposal with evidence
+  (risk, permissions, expected effects); the participant accepts, rejects, or
+  asks for a revision. H4 nests here: one trial surfaces a single candidate,
+  the other the best of several — the participant is NOT told which is which.
+- **L5 — Converse (explicit).** The participant asks for a function in their
+  own words and iterates conversationally ("now slower", "also make it stop at
+  night") with preview + approval on each iteration.
+- **Baseline arm (for L3–L5 only).** Same tasks, but the original speech-to-code
+  system applies generated behavior immediately — no status, preview, memory,
+  or verification. Introduce it neutrally as "the other version of the system."
+
+Condition differences (verification on/off for L1–L2; AgenticXR vs. baseline
+for L3–L5; candidate count in L4/L5) are never announced — the spoken
+instructions are identical across the two arms of every task.
+
+## 3. Experimenter script (say-this text)
+
+**Welcome/consent (adapt to approved wording):**
+> "Thanks for taking part. You'll wear a VR headset and work with an AI
+> assistant that can add behaviors to objects in the scene. We record system
+> logs and anonymized transcripts of what you say to the system — never your
+> name. You can pause or stop at any time, for any reason, without penalty. If
+> you feel any discomfort or motion sickness, say so and we stop immediately."
+
+**Training (sandbox object, before any trial):**
+> "Point at an object with the ray — it turns red when selected. To talk to the
+> assistant, hold the left trigger, speak, and release. This panel shows what
+> the assistant is doing. When it proposes a change you'll see a preview with
+> Approve, Reject, and Undo — try each one now on this practice cube. You can
+> always undo anything the assistant does."
+
+**Before L1 (do not mention the agent acting on its own):**
+> "Your task is to [tidy the bench / complete the sorting task]. Work at your
+> own pace. You can use everything you practiced."
+
+**Before L2:**
+> "Please walk over to the [station/doorway] and carry out [task]. Anything
+> that appears in the scene you may use, ignore, or undo — your choice."
+
+**Before L3 (hand over the request card):**
+> "Ask the assistant for what's on this card, in your own words. If it asks
+> you something back, just answer naturally."
+
+**Before L4:**
+> "Ask the assistant to [make the door open for everyone when approached].
+> Look at what it shows you before deciding — approve it, reject it, or ask it
+> to change something, exactly as you prefer."
+
+**Before L5:**
+> "Describe a behavior you'd like this object to have — start with [card
+> prompt] — and keep refining it by talking until you're happy or want to stop."
+
+**Between the two conditions of a task (neutral, always the same):**
+> "We'll now do the same kind of task once more; the system may behave a bit
+> differently. Same rules as before."
+
+**If the system fails mid-trial (scripted recovery):**
+> "That's useful for us to see — it's the system, not you. Let's continue."
+Log `event --type=interruption` / `resumption`; if the trial is unrecoverable,
+close it with `--completed=false` and a reason code, and move on.
+
+**After each task:** administer the questionnaire block for that task (trust
+scale, raw NASA-TLX, and the study-specific items named in the paper's Measures:
+perceived synchronicity, temporal intelligibility, control, intrusiveness,
+predictability, validated-execution confidence, perceived latency; candidate
+quality/fit and the too-little/too-much appropriateness item where applicable —
+the H4 perceived-latency item is asked IMMEDIATELY after the proposal).
+
+**Interview (semi-structured, record with consent):**
+> "When did the assistant feel most like a collaborator? When did it feel
+> laggy, disruptive, or unsafe? Did the previews, status messages, and the
+> evidence it showed make the waiting understandable? Did it feel like the
+> system remembered and built on what happened earlier? Was there a moment you
+> didn't feel in control?"
+
+**Debrief:** reveal the two arms ("in some tasks the assistant's safety
+dry-run was switched off / you used the original direct system"), answer
+questions, thank the participant.
+
+## 4. Experimenter checklist per trial (condensed)
+
+1. Server running in the right mode (AgenticXR vs. baseline — see briefing §4).
+2. `study_trial.js start ...` with the correct participant/session/trial/
+   condition/task/mode/`--candidates` from the counterbalancing sheet.
+3. Deliver the scripted instruction for the task — identical across arms.
+4. Observe; log `interruption`/`resumption`/other non-inferable events live.
+5. `study_trial.js end ...` with completion/success and rubric signals.
+6. Questionnaire block; note-taking for the interview.
+7. After the last trial of the participant: export + archive (briefing §4).
+
+## 5. Safety protocol (from the paper, enforce always)
+
+Implicit automatic behavior is restricted to local, reversible, non-persistent
+changes; anything affecting locomotion, deletion, persistence, physics forces,
+or shared/multiple objects requires explicit confirmation. Visible status,
+preview, rejection, and undo are always available to the participant. Offer
+breaks between blocks; stop immediately on any discomfort; the participant can
+withdraw at any time and have their data deleted on request.

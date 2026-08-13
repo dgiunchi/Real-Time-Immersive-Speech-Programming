@@ -2,6 +2,8 @@
 
 const path = require("path");
 
+require("./load-local-env");
+
 const appDir = path.resolve(__dirname, "..", "samples", "apps", "code_runtime_generator");
 process.chdir(appDir);
 

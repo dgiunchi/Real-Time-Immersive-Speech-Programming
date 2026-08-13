@@ -3,6 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 
+require("./load-local-env");
+
 const serverRoot = path.resolve(__dirname, "..");
 const samplesRoot = path.join(serverRoot, "samples");
 const venvPython = process.platform === "win32"

@@ -25,6 +25,8 @@ temp/
 !.env.example
 config/local.json
 Server/config/local.json
+# Operator document pack - contains SECRETS.env, must never be committed
+agenticxr-operator-docs-*.zip
 
 # Node
 **/node_modules/
