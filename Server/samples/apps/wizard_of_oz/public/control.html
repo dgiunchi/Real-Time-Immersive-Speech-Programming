@@ -703,9 +703,27 @@ async function inject(outcome) {
   const res = await post("/inject",
     { task: activeTask, outcome, variant: activeVariant });
   if (res.ok) {
+    // Sent is not the same as received. Injection is fire-and-forget, so a
+    // disconnected headset produced a cheerful success line and no object in
+    // the scene — which reads as "spawning is broken" rather than "nothing is
+    // listening". Say it loudly: every later step of the trial is meaningless
+    // once this has happened, and the wizard has no other way to find out.
+    if (res.headsetConnected === false) {
+      addLog("t", "NOTHING RECEIVED THIS — no headset is connected. " +
+                  "The outcome was not shown to anyone.");
+      const st = document.getElementById("trialStatus");
+      if (st) {
+        st.style.borderColor = "#ff8a8a";
+        st.innerHTML = '<b style="color:#ff8a8a;">&#9888; No headset connected.</b> ' +
+          'That injection went nowhere. Plug the cable in and re-run ' +
+          '<code>./study</code>, or check the headset is on the same Wi-Fi ' +
+          'with the app open.';
+      }
+    }
     addLog("inject", `${res.task} ${outcome.toUpperCase()}` +
       (res.scenario ? ` / ${res.scenario}` : "") +
-      ` (attempts ${res.attempts}, injects ${res.injects})`);
+      ` (attempts ${res.attempts}, injects ${res.injects})` +
+      (res.headsetConnected === false ? " — NOT DELIVERED" : ""));
     // Clear every probe display on each new inject. A stale answer left over
     // from the previous failure is worse than a blank one — it reads as an
     // answer already given for a question not yet asked.

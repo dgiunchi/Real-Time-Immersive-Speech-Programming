@@ -2442,6 +2442,27 @@ class WizardOfOzApp extends ApplicationController {
         // them apart from the feedback text alone means string-matching prose.
         const wizardScriptId = `${taskKey}/${vKey}/${outcome}`;
 
+        // Is anything actually listening?
+        //
+        // Injection is fire-and-forget over the network, so this endpoint used
+        // to answer {ok:true} whether a headset was connected or not. The wizard
+        // presses INJECT ERROR, the panel confirms it, and nothing happens in
+        // the headset — which reads as "object creation is broken" rather than
+        // "nothing received this". That cost an evening: the spawn code was
+        // fine, the cable had been unplugged, and every control still reported
+        // success.
+        //
+        // The headset reports mic status once a second, so a report inside five
+        // seconds is the only evidence available that something is on the other
+        // end. Five rather than two because a frame hitch during a build or a
+        // scene load can delay one report without the connection being gone.
+        const headsetConnected = !!(this.micStatus &&
+                                    Date.now() - this.micStatus.at <= 5000);
+        if (!headsetConnected) {
+            console.log("\x1b[33m[WoZ Inject]\x1b[0m no headset is listening — " +
+                        "this outcome went nowhere.");
+        }
+
         this.logEvent("inject", outcome === "success" ? "success" : `error/${scenario}`, {
             task: taskKey, variant: vKey,
             scenario: outcome === "success" ? "" : scenario,
@@ -2516,7 +2537,9 @@ class WizardOfOzApp extends ApplicationController {
             ok: true, task: taskKey, variant: vKey, outcome,
             scenario: outcome === "success" ? "" : scenario,
             attempts: this.attemptCount(),
-            injects: this.trial ? this.trial.injects : 0
+            injects: this.trial ? this.trial.injects : 0,
+            // false means the outcome was sent and nothing received it.
+            headsetConnected
         };
     }
 
