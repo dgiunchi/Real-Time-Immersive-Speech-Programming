@@ -42,9 +42,15 @@ unity-quest/                                  the Unity project
   Assets/Scenes/DreamCodeVRQuest.unity        the SAVED production scene
   Assets/Scenes/DreamCodeVRDiagnostic.unity   the ugly 3D rig-verification scene
   Assets/DreamCodeVRPlus/                     runtime scripts; Art/ holds the shaders
+    DcvrHotAssembly.cs                        loads + runs server-compiled IL (Mode A)
+    DcvrMonoBehaviourAdapter.cs               lets interpreted types be MonoBehaviours
+  Assets/ILRuntime/                           vendored MIT C# interpreter + Mono.Cecil
+  Assets/link.xml                             what IL2CPP must NOT strip
   Assets/Editor/DcvrBuild.cs                  build entry point (-executeMethod)
   Assets/Editor/DcvrQuestScene.cs             scene generation + parallax assertion
   Assets/Editor/DcvrLookDev.cs                offscreen look-dev renders
+  Assets/Editor/DcvrHotAssemblyTest.cs        proves the interpreter works, without hardware
+services/roslyn-analyzer/                     /analyze (semantic gate) + /compile (IL)
   Builds/DreamCodeVRPlus.apk                  output (gitignored)
 scripts/build-quest.sh                        terminal wrapper for the build
 scripts/security-console.sh                   instructor-facing security demo
@@ -105,6 +111,27 @@ a material audit (shader usage per group) and the full saved hierarchy.
 The build refuses to produce an APK if XR is not configured for Android, or if a custom
 shader fails to compile. Both of those once shipped as silent failures.
 
+### Prove the interpreter works without a headset
+
+A successful APK build says nothing about whether generated code actually runs. Compile a
+real script through the analyzer and put the resulting assembly through the interpreter in
+the Editor:
+
+```bash
+dotnet run --project services/roslyn-analyzer/RoslynAnalyzer.csproj &
+curl -s http://127.0.0.1:5099/compile -H 'content-type: application/json' \
+  -d '{"csharp":"using UnityEngine;\npublic class Spinner : MonoBehaviour {\n void Start(){ transform.localScale = new Vector3(2f,2f,2f); }\n void Update(){ transform.Rotate(0f,5f,0f); }\n}"}' \
+  | python3 -c 'import json,sys;print(json.load(sys.stdin)["assembly"])' > /tmp/spinner.b64
+```
+
+```bash
+/Applications/Unity/Hub/Editor/6000.5.8f1/Unity.app/Contents/MacOS/Unity -batchmode -quit -projectPath unity-quest -executeMethod DcvrHotAssemblyTest.Run -dcvrAssembly /tmp/spinner.b64 -logFile -
+```
+
+It exits non-zero unless interpreted code actually moved a real GameObject. Use a rotation
+that does **not** scale by `Time.deltaTime` — outside play mode that is 0, and the test
+then cannot tell a broken interpreter from a stationary Editor.
+
 ---
 
 ## 4. Install and launch
@@ -134,6 +161,41 @@ adb shell am broadcast -a com.oculus.vrpowermanager.prox_close
 Starts the backend with the embedded Rust RoomServer, the admin panel, LAN discovery, and
 the USB tunnel, then prints a status board that only reports READY after a real probe.
 `Ctrl+C` tears down everything it started.
+
+### The two modes, and why both exist
+
+```bash
+bash scripts/demo-quest.sh --creative
+```
+
+| | default (Mode C) | `--creative` (Mode A) |
+|---|---|---|
+| What the model produces | a bounded **action plan** | arbitrary **C#** |
+| What reaches the headset | validated plan JSON | server-compiled **IL**, interpreted |
+| Safety posture | whole attack classes are **unrepresentable** | attacks must be **detected** by the guardrail |
+| Expressiveness | six action types | anything C# can do with the Unity API |
+
+This is the dissertation's central trade-off made runnable, so demonstrate both. Mode C is
+the deployable architecture and stays the default. Mode A is what the original DreamCodeVR
+did, and what the guardrail exists to make safe.
+
+`--creative` additionally starts the Roslyn analyzer on :5099, because Mode A needs
+something that can **compile**. Without it the backend fails closed and sends nothing.
+
+**Why an interpreter at all.** IL2CPP is ahead-of-time and ships no C# compiler, so a
+Quest 3 cannot compile what the model writes — the reason Mode A used to be Editor-and-
+Mono-sideload only. The compile moves to the laptop and the headset interprets the IL
+(ILRuntime), which is ordinary managed code and runs fine under AOT.
+
+The validation order does not change and is the thing to say out loud during the demo:
+
+```
+speech → LLM → C# → lexical guardrail → semantic analyzer → COMPILE → NID-94 → interpret
+                    └──────────── refusal happens here ────────────┘
+```
+
+Compilation is a delivery mechanism, never an approval. A refused request never reaches
+the compiler at all.
 
 Drive commands from <http://127.0.0.1:7878>, or:
 
@@ -179,9 +241,15 @@ Ports: RoomServer **8009**, admin **7878**, console **7979**, discovery UDP **89
    classified **Perceptual**; the personal-space shell and the forward-occlusion zone both
    reveal. This is the case a code-security filter structurally cannot catch, and it is
    the point of the dissertation.
-7. **Benchmark** — `scripts/security-console.sh` option 1: `0/40 → 15/40 → 38/40`,
+7. **Creative freedom** — restart with `--creative` and ask for something the six action
+   types cannot express: *"create a solar system with a sun and five planets orbiting it"*,
+   then *"build a haunted house with a roof, door, two windows and a floating ghost"*.
+   The model writes C#, the guardrail validates it, the laptop compiles it, and the headset
+   interprets the IL. Then repeat step 5's attack in this mode — it is refused in exactly
+   the same place, before any code is generated.
+8. **Benchmark** — `scripts/security-console.sh` option 1: `0/40 → 15/40 → 38/40`,
    12/12 benign, with `joy-05`/`joy-06` shown as the honest residual.
-8. **Reconnect** — kill and restart the backend; the client recovers, no reinstall.
+9. **Reconnect** — kill and restart the backend; the client recovers, no reinstall.
 
 Locomotion: **left stick** moves, **right stick** snap-turns 30°. Room-scale walking works
 inside the Guardian. Stepping outside it shows passthrough — that is Horizon OS, not the
@@ -197,7 +265,9 @@ app; redraw a larger boundary or travel with the stick.
 | Something drawn on your eye | A controller or hand joint with no pose sits at the rig origin. `[NearCameraRenderer]` logs everything within 2 m at startup — nothing should be under a metre. |
 | Magenta or unlit geometry | A `Shader.Find` shader was stripped. `DcvrBuild.EnsureShadersIncluded` pins them and fails the build if one does not compile. |
 | Buildings render black | A renderer is not on the Building shader. `DcvrQuestScene.AuditMaterials` reports shader usage per group at generation time. |
-| Command validates but nothing happens | Mode C dispatch. The reply should read `SENT to the headset as bounded action plan (Mode C)`. |
+| Command validates but nothing happens | Check what the reply says it sent. Mode C: `bounded action plan (Mode C)`. Mode A: `server-compiled IL`. If it says `the compiler rejected it`, the guardrail approved code that does not build — a model problem, not a security block. |
+| Mode A says "no compile service" | The analyzer is not running. `--creative` starts it; check `.run-logs/analyzer.log`. |
+| Generated code runs but calls nothing | IL2CPP stripped an engine method. Interpreted code has no static references, so only `Assets/link.xml` keeps those modules. Add the module there. |
 | App restarts repeatedly on the desk | Horizon OS kills unworn apps. Use the `prox_close` broadcast. |
 | Rapid commands refused | The anti-strobe limiter (`min_plan_interval`), not a security block. Space them out, or set `DCVR_MIN_PLAN_INTERVAL_MS=0` for corpus runs. |
 
@@ -217,6 +287,16 @@ as ours is how a build that was never immersive got recorded as verified.
 Three different kinds of claim, deliberately kept apart.
 
 **Verified on device, filtered to our own process:**
+
+- **Arbitrary generated C# executing on the headset** (`--creative`). "Build a haunted
+  house with a roof, door, two windows and a floating ghost" → 16 objects; "create a solar
+  system with a sun and five planets orbiting it" → sun, orbit pivots and planets, orbiting.
+  Assembly load 1–2 ms; **71.9 fps median held afterwards**. The generated program is
+  different every run, so the object counts are not fixed.
+- **The guardrail holding on that same path.** Four attack phrasings (camera exfiltration,
+  guardian disable + forward herding, microphone upload, filesystem read + POST) were all
+  refused before generation; the backend log shows the compiler was never reached, and the
+  refusal reason arrived in the headset and was classified.
 
 - IL2CPP / ARM64 build installs, launches, initialises OpenXR in stereo
   (`eyeTexture=1680x1760`, `SinglePassMultiview`), Floor tracking origin
