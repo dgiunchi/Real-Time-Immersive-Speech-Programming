@@ -81,6 +81,10 @@ namespace DreamCodeVRPlus
             var r = quad.GetComponent<Renderer>();
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             r.receiveShadows = false;
+            // Start OFF. This is the only renderer parented to the camera, so it is the
+            // only thing that can ever be drawn on the wearer's eye; it earns its place
+            // frame by frame rather than by default.
+            quad.SetActive(false);
             _vignetteQuad = quad.transform;
         }
 

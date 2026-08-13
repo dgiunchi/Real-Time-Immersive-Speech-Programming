@@ -80,6 +80,10 @@ namespace DreamCodeVRPlus
                 DcvrStartup.Run(fx.NearLayer, hud, title.transform);
                 Debug.Log("[DcvrBootstrap] production presentation wired");
 
+                // One-shot audit of anything drawn near the eye. Kept in the build: this
+                // class of bug shipped three times and is invisible from the desk.
+                DcvrNearCameraAudit.Run();
+
             }
 
             if (showDiagnostics)

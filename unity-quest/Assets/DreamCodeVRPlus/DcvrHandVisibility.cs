@@ -54,6 +54,16 @@ namespace DreamCodeVRPlus
             // Degenerate transform: whatever the device claims, nothing is being written.
             if (transform.localPosition.magnitude < MinPoseDistance) { return false; }
 
+            // Belt and braces in WORLD space. The local check assumes the hand's parent is
+            // the camera offset; this one holds however the rig is arranged, and it is the
+            // question that actually matters — is this about to be drawn on the eye?
+            Camera cam = Camera.main;
+            if (cam != null &&
+                Vector3.Distance(transform.position, cam.transform.position) < MinPoseDistance)
+            {
+                return false;
+            }
+
             Devices.Clear();
             InputDevices.GetDevicesAtXRNode(_node, Devices);
             for (int i = 0; i < Devices.Count; i++)
