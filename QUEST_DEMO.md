@@ -111,6 +111,27 @@ a material audit (shader usage per group) and the full saved hierarchy.
 The build refuses to produce an APK if XR is not configured for Android, or if a custom
 shader fails to compile. Both of those once shipped as silent failures.
 
+### Prove the invariants without a headset
+
+Two suites run in the Editor and exit non-zero on failure. Run both before building:
+
+```bash
+/Applications/Unity/Hub/Editor/6000.5.8f1/Unity.app/Contents/MacOS/Unity -batchmode -quit -projectPath unity-quest -executeMethod DcvrAnchorTest.Run -logFile -
+```
+
+Moves the rig and the camera, then asserts that creations and the environment have not
+moved, that `GeneratedContent` is under neither the rig nor the camera, that near objects
+parallax more than far ones, and that delete/clear leave the registry consistent.
+
+```bash
+/Applications/Unity/Hub/Editor/6000.5.8f1/Unity.app/Contents/MacOS/Unity -batchmode -quit -projectPath unity-quest -executeMethod DcvrCreativeRegression.Run -logFile -
+```
+
+Places seven structurally different compositions — single object, architectural,
+scattered, floating hierarchy, interior arrangement, oversized city, maze — and asserts
+each fits, sits on the floor (or deliberately floats), clears personal space, coexists
+with the others, and can be resolved and deleted by name.
+
 ### Prove the interpreter works without a headset
 
 A successful APK build says nothing about whether generated code actually runs. Compile a
@@ -161,6 +182,30 @@ adb shell am broadcast -a com.oculus.vrpowermanager.prox_close
 Starts the backend with the embedded Rust RoomServer, the admin panel, LAN discovery, and
 the USB tunnel, then prints a status board that only reports READY after a real probe.
 `Ctrl+C` tears down everything it started.
+
+### Speaking to it
+
+Creation goes to the model; editing does not.
+
+| Say | Route | Typical |
+|---|---|---|
+| "create a solar system with a sun and five planets" | model → guardrail → compile → interpret | 12–22 s |
+| "build a medieval village with houses and a well" | same | 12–22 s |
+| "make the gate red" | deterministic, on device | **2 ms** |
+| "make it bigger" / "move it left" | deterministic | **~1 ms** |
+| "remove the north west tower" | deterministic | **~2 ms** |
+| "delete the castle" | deterministic, whole group | **3 ms** |
+| "clear everything" | deterministic, hierarchy-scoped | **~1 ms** |
+
+Every creation becomes a **group** with a name taken from the request, and its parts
+carry names the model gave them ("Gate Arch", "South West Tower"). That is what makes
+"remove the north west tower" work. A word matching several parts is treated as a
+plural for non-destructive edits — "make the gate red" recoloured 6 gate parts —
+and deletion stays stricter, because it cannot be undone.
+
+**The world does not move with you.** A creation is placed once, using your pose to
+choose the spot, and is world-space content from then on. Walk around it, lean, crouch,
+stick-locomote: it stays. `DcvrAnchorTest` fails the build if that stops being true.
 
 ### The two modes, and why both exist
 
@@ -297,6 +342,12 @@ Three different kinds of claim, deliberately kept apart.
   guardian disable + forward herding, microphone upload, filesystem read + POST) were all
   refused before generation; the backend log shows the compiler was never reached, and the
   refusal reason arrived in the headset and was classified.
+- **The general authoring runtime.** Prompts nothing was coded for produced a medieval
+  village (59 objects), a chess set (36), a small airport (22, auto-scaled 0.316 to fit),
+  a castle (40, parts named "South West Tower" / "Gate Arch" / "Castle Keep Walls") and a
+  solar system — all coexisting, each fitted and grounded. Named part edits
+  (`make the gate red` → 6 parts, 2 ms), group deletion (`remove the chess set` → 36
+  objects, 3 ms) and `clear everything` all answered **without a model call**.
 
 - IL2CPP / ARM64 build installs, launches, initialises OpenXR in stereo
   (`eyeTexture=1680x1760`, `SinglePassMultiview`), Floor tracking origin
@@ -316,6 +367,14 @@ Three different kinds of claim, deliberately kept apart.
 - The world stays fixed in space; the camera-attached geometry is gone
 
 **NOT verified:**
+
+- **Whether individual part names are always useful.** They come from the model, and the
+  generation prompt now asks for them explicitly (the prompt's *example* had to be fixed
+  too — the model copied `"DCVRGEN_"+body.name` verbatim and every part was called
+  `DCVRGEN_Cube`). A castle produced 12 named parts out of 40. Unnamed parts remain
+  addressable by pointing, not by name.
+- **Sustained on-device use.** Verification came in bursts: Horizon OS suspends an unworn
+  app, so nothing here was exercised for longer than a few minutes at a time.
 
 - Whether the environment, typography and **audio** are subjectively good. The audio is
   synthesised in C# and has been confirmed to load without error, but nobody has listened
