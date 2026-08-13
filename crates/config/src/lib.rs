@@ -8,6 +8,7 @@
 
 pub mod age;
 mod errors;
+pub mod presets;
 mod settings;
 
 pub use age::{AgeBand, AgeSafetyPosture};

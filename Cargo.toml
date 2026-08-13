@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "apps/model-bench",
     "crates/protocol",
     "crates/behaviour-dsl",
     "crates/code-policy",

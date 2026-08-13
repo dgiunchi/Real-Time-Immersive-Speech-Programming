@@ -262,6 +262,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dcvr-model-bench"
+version = "0.1.0"
+dependencies = [
+ "dcvr-behaviour-dsl",
+ "dcvr-csharp-policy",
+ "dcvr-llm-client",
+ "dcvr-roslyn-client",
+ "secrecy",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "dcvr-observability"
 version = "0.1.0"
 dependencies = [

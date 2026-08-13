@@ -86,6 +86,9 @@ pub struct Settings {
     pub stt_http_url: Option<String>,
     pub openai_api_key: Option<SecretString>,
     pub openai_model: String,
+    /// Reasoning effort for generation — an API-accepted value (`none | low | medium |
+    /// high | xhigh`). Set from `DCVR_MODEL_PRESET`; empty leaves the client's own choice.
+    pub reasoning_effort: String,
     pub openai_base_url: Option<String>,
     /// Use OpenAI Whisper for STT (reuses `OPENAI_API_KEY`). Default false.
     pub stt_openai: bool,
@@ -186,7 +189,11 @@ impl Default for Settings {
             security_profile: SecurityProfile::Legacy,
             stt_http_url: None,
             openai_api_key: None,
-            openai_model: "gpt-4o-mini".to_string(),
+            // The measured winner (see `presets`): 100% first-pass compile and the best
+            // semantic naming of every candidate, at the lowest latency. The previous
+            // default compiled first time only 60% of the time.
+            openai_model: crate::presets::DEFAULT_PRESET.resolve().model.to_string(),
+            reasoning_effort: crate::presets::DEFAULT_PRESET.resolve().effort.to_string(),
             openai_base_url: None,
             stt_openai: false,
             openai_stt_model: "whisper-1".to_string(),
@@ -258,6 +265,15 @@ impl Settings {
         if let Ok(key) = env::var("OPENAI_API_KEY") {
             if !key.trim().is_empty() {
                 s.openai_api_key = Some(SecretString::from(key));
+            }
+        }
+        // A preset resolves to a MEASURED model+effort pair. An explicit OPENAI_MODEL
+        // still overrides it below, so pinning a specific model stays possible.
+        if let Ok(p) = env::var("DCVR_MODEL_PRESET") {
+            if let Some(preset) = crate::presets::Preset::parse(&p) {
+                let choice = preset.resolve();
+                s.openai_model = choice.model.to_string();
+                s.reasoning_effort = choice.effort.to_string();
             }
         }
         if let Ok(model) = env::var("OPENAI_MODEL") {

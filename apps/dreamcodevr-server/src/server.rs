@@ -32,6 +32,7 @@ pub fn services_from_settings(settings: Settings) -> Services {
     let auth = std::sync::Arc::new(crate::auth_gate::ServerAuth::from_settings(&settings));
     // Capture values needed AFTER `settings` fields are moved into clients below.
     let model = settings.openai_model.clone();
+    let effort = settings.reasoning_effort.clone();
     let perso_dir = settings.personalization_dir.clone();
     let profile_enc = settings.profile_enc_key_hex.clone();
     let embed_openai = settings.embed_openai;
@@ -86,6 +87,16 @@ pub fn services_from_settings(settings: Settings) -> Services {
         Some(url) => Arc::new(HttpRoslynAnalyzer::new(url)),
         None => Arc::new(MockRoslynAnalyzer),
     };
+    // The measured generation configuration, applied before the first request rather than
+    // waiting for the admin panel to push one. Printing it is useful; the key never is.
+    eprintln!("[model] creative model = {model}  effort = {effort}");
+    dcvr_llm_client::set_llm_tuning(dcvr_llm_client::LlmTuning {
+        model: model.clone(),
+        reasoning_effort: effort.clone(),
+        verbosity: "default".to_string(),
+        max_completion_tokens: 32000,
+    });
+
     let cfg = RuntimeConfig {
         model,
         enable_mode_a: settings.mode_a,

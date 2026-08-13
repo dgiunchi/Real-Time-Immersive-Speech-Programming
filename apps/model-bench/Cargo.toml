@@ -1,0 +1,18 @@
+[package]
+name = "dcvr-model-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license.workspace = true
+
+[dependencies]
+dcvr-llm-client = { workspace = true }
+dcvr-csharp-policy = { workspace = true }
+dcvr-roslyn-client = { workspace = true }
+dcvr-behaviour-dsl = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+secrecy = { workspace = true }
+
+[lints]
+workspace = true

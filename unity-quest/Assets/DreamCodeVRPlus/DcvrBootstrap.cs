@@ -74,6 +74,11 @@ namespace DreamCodeVRPlus
                 DcvrSpatialCompositor.Ensure();
                 DcvrGenerationCapture.Ensure();
                 DcvrLocalCommands.Ensure();
+                // The voice/status readout. Head-relative BY DESIGN — it is UI, and a
+                // status panel you have to go and find is not a status panel. Created
+                // content may never do this; the two live in separate classes so the
+                // distinction cannot quietly erode.
+                DcvrVoiceOverlay.Ensure();
 
                 // Status panel, moved off the centre line and further out. Straight ahead
                 // at 3.4 m is exactly where creations appear, so a panel there is a panel
@@ -111,13 +116,6 @@ namespace DreamCodeVRPlus
                 DcvrNearCameraAudit.Run();
                 DcvrPerf.Run();
 
-                // P0 stereo isolation. Three cubes built by three different layers, so the
-                // wearer can say WHICH layer doubles instead of "the app looks wrong".
-                // Removed once the defect is fixed and confirmed in the headset.
-                if (System.Environment.GetEnvironmentVariable("DCVR_STEREO_FIXTURE") != "0")
-                {
-                    DcvrStereoFixture.Build();
-                }
 
             }
 

@@ -74,6 +74,7 @@ namespace DreamCodeVRPlus
         private DcvrTutorial _tutorial;
         // Push-to-talk edge detection (main thread only).
         private bool _triggerHeld;
+        private float _recordStartedAt;
         private ActionPlanExecutor _exec;
         private GeneratedObjectTracker _tracker;
         // Mode-agnostic perceptual monitor (TRACK U2). Monitor-only: disclosures only,
@@ -329,6 +330,7 @@ namespace DreamCodeVRPlus
             {
                 _sentCommand = null;
                 _lastPrompt = justSent;
+                DcvrVoiceOverlay.Ensure().Set(DcvrVoiceState.Transcribing, justSent);
                 DcvrAudio.Instance?.Listening();
                 _hud?.SetHeard(justSent);
                 _preview?.Begin(justSent);
@@ -420,6 +422,7 @@ namespace DreamCodeVRPlus
                     Debug.Log($"[ModeC-Net] backend BLOCKED the request: {caught}");
                     _preview?.Finish();
                     _hud?.SetBlocked(caught, DcvrStage.Intent);
+                    DcvrVoiceOverlay.Ensure().Set(DcvrVoiceState.Blocked, caught);
                     _world?.SetState(DcvrWorld.Red, pulse: true);
                     // Per-class signature when available: the visual is chosen from the
                     // reason the backend actually gave, not from a generic "refused".
@@ -461,6 +464,7 @@ namespace DreamCodeVRPlus
                         _preview?.Finish();
                         DcvrAudio.Instance?.Accepted();
                         _hud?.SetAccepted("action plan applied on device");
+                        DcvrVoiceOverlay.Ensure().Set(DcvrVoiceState.Done, "created");
                         _world?.SetState(DcvrWorld.Green, pulse: true);
                         _fx?.Shockwave(DcvrWorld.Green);
                         _fx?.Materialize(_cube);
@@ -565,6 +569,8 @@ namespace DreamCodeVRPlus
                 _hud?.SetBlocked(r.Message, DcvrStage.Execute);
                 _world?.SetState(DcvrWorld.Amber, pulse: true);
             }
+            DcvrVoiceOverlay.Ensure().Set(r.Ok ? DcvrVoiceState.Done : DcvrVoiceState.Error,
+                                          r.Message);
             _status = r.Message;
             _hasResult = true;
             _ctrlOut.Enqueue((NID_COMPILE_B,
@@ -632,6 +638,8 @@ namespace DreamCodeVRPlus
                 _hud?.SetAccepted(string.IsNullOrEmpty(group.SemanticName)
                     ? "created"
                     : $"created '{group.SemanticName}'");
+                DcvrVoiceOverlay.Ensure().Set(DcvrVoiceState.Done,
+                    string.IsNullOrEmpty(group.SemanticName) ? "created" : group.SemanticName);
                 _world?.SetState(DcvrWorld.Green, pulse: true);
                 _fx?.Shockwave(DcvrWorld.Green);
             }
@@ -639,6 +647,7 @@ namespace DreamCodeVRPlus
             {
                 _preview?.Finish();
                 _hud?.SetBlocked("generated code could not be loaded: " + err, DcvrStage.Execute);
+                DcvrVoiceOverlay.Ensure().Set(DcvrVoiceState.Error, "could not build that");
                 _world?.SetState(DcvrWorld.Amber, pulse: true);
             }
             _hasResult = true;
@@ -788,7 +797,12 @@ namespace DreamCodeVRPlus
             if (held && !_triggerHeld)
             {
                 _triggerHeld = true;
+                _recordStartedAt = Time.unscaledTime;
                 StartMic();
+                // Shown BEFORE anything else happens. The wearer must learn that the
+                // press registered from the headset, not from whether a cube eventually
+                // appears — a confirmation that waits for the backend is not confirmation.
+                DcvrVoiceOverlay.Ensure().Recording();
                 _hud?.SetListening(true);
                 DcvrAudio.Instance?.Listening();
             }
@@ -797,6 +811,19 @@ namespace DreamCodeVRPlus
                 _triggerHeld = false;
                 StopMic();
                 _hud?.SetListening(false);
+            }
+            else if (_triggerHeld && Time.unscaledTime - _recordStartedAt > MicSeconds)
+            {
+                // FAIL-SAFE. A button-up can be lost to a dropped controller, a focus
+                // change, or Horizon suspending the app — and a microphone that never
+                // closes is both a privacy problem and a UI that is stuck saying
+                // RECORDING forever. The capture is bounded anyway; this makes the state
+                // machine agree with it.
+                _triggerHeld = false;
+                StopMic();
+                _hud?.SetListening(false);
+                DcvrVoiceOverlay.Instance?.Set(DcvrVoiceState.Error, "recording timed out");
+                Debug.LogWarning("[DcvrVoice] PTT release missed; recording auto-stopped");
             }
         }
 
@@ -1070,6 +1097,7 @@ namespace DreamCodeVRPlus
             if (string.IsNullOrEmpty(_micDevice))
             {
                 _status = "no microphone detected on this machine";
+                DcvrVoiceOverlay.Ensure().Set(DcvrVoiceState.Error, "no microphone / permission denied");
                 return;
             }
             _micClip = Microphone.Start(_micDevice, false, MicSeconds, TargetRate);
@@ -1088,7 +1116,12 @@ namespace DreamCodeVRPlus
             int channels = _micClip.channels;
             int srcRate = _micClip.frequency;
             if (pos <= 0) { pos = _micClip.samples; }
-            if (pos <= 0) { _status = "no audio captured"; return; }
+            if (pos <= 0)
+            {
+                _status = "no audio captured";
+                DcvrVoiceOverlay.Ensure().Set(DcvrVoiceState.Error, "no speech detected");
+                return;
+            }
 
             var raw = new float[pos * channels];
             _micClip.GetData(raw, 0);

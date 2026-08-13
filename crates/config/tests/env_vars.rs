@@ -37,6 +37,7 @@ const ALL_VARS: &[&str] = &[
     "DCVR_PER_PEER_ROUTING",
     "DCVR_CSHARP_RESEARCH",
     "DCVR_MODE_A",
+    "DCVR_MODEL_PRESET",
     "DCVR_UBIQ_ADDR",
     "DCVR_ROOM_GUID",
     "DCVR_EMBED_ROOMSERVER",
@@ -93,7 +94,16 @@ fn every_settings_env_var_reaches_its_field() {
         SecurityProfile::Legacy,
         "legacy is the default profile"
     );
-    assert_eq!(d.openai_model, "gpt-4o-mini", "the deployed default model");
+    // CHANGED DELIBERATELY, on measurement. `apps/model-bench` ran every candidate
+    // through the real pipeline on 30 creative prompts: the previous default compiled on
+    // the first attempt only 60% of the time, while this one managed 100% with the best
+    // semantic naming and the lowest latency of anything tested. See
+    // `dcvr_config::presets` and artifacts/model-benchmark-stage-b.json.
+    assert_eq!(
+        d.openai_model,
+        dcvr_config::presets::DEFAULT_PRESET.resolve().model,
+        "the default model must be the benchmark winner, from one central place"
+    );
     assert!(!d.mode_a, "Mode A off by default");
     assert!(!d.embed_roomserver, "embedded RoomServer off by default");
     assert_eq!(d.profile_ttl_secs, 0, "retention sweep disabled by default");

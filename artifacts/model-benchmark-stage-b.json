@@ -1,0 +1,61 @@
+{
+  "configs": [
+    {
+      "avg_chars": 2353,
+      "avg_repairs": 0.0,
+      "effort": "low",
+      "entry_point_pct": 100.0,
+      "errors": 0,
+      "fenced": 0,
+      "first_pass_compile_pct": 100.0,
+      "guardrail_violations": 0,
+      "model": "gpt-5.6-luna",
+      "n": 30,
+      "naming_pct": 91.13924050632912,
+      "p50_ms": 7788,
+      "p95_ms": 12571,
+      "post_repair_compile_pct": 100.0,
+      "schema_pct": 100.0,
+      "truncated": 0
+    },
+    {
+      "avg_chars": 2444,
+      "avg_repairs": 0.0,
+      "effort": "low",
+      "entry_point_pct": 100.0,
+      "errors": 0,
+      "fenced": 0,
+      "first_pass_compile_pct": 100.0,
+      "guardrail_violations": 0,
+      "model": "gpt-5.6-terra",
+      "n": 30,
+      "naming_pct": 63.04347826086956,
+      "p50_ms": 11573,
+      "p95_ms": 17461,
+      "post_repair_compile_pct": 100.0,
+      "schema_pct": 100.0,
+      "truncated": 0
+    },
+    {
+      "avg_chars": 4007,
+      "avg_repairs": 0.0,
+      "effort": "xhigh",
+      "entry_point_pct": 100.0,
+      "errors": 0,
+      "fenced": 0,
+      "first_pass_compile_pct": 100.0,
+      "guardrail_violations": 0,
+      "model": "gpt-5.6-luna",
+      "n": 30,
+      "naming_pct": 83.33333333333333,
+      "p50_ms": 43750,
+      "p95_ms": 76397,
+      "post_repair_compile_pct": 100.0,
+      "schema_pct": 100.0,
+      "truncated": 0
+    }
+  ],
+  "guardrail": "unchanged (dcvr-csharp-policy validate_csharp_freeform)",
+  "note": "engineering evaluation of live models; SEPARATE from the deterministic research benchmark in apps/xr-security-eval",
+  "stage": "b"
+}
