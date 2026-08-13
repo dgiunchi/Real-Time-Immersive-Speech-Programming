@@ -16,6 +16,8 @@ const { ExperienceContextStore } = require("../memory/experience_context");
 const { ArtifactLog, validateCandidateTarget } = require("../memory/artifact_log");
 const { CheckpointStore } = require("../memory/checkpoint_store");
 const { ActivityMonitor } = require("../memory/activity_monitor");
+const { SharedMemory } = require("../memory");
+const { FutureGoalPredictor } = require("../orchestrator/future_goal_predictor");
 const { TRIAL_COLUMNS, LONG_COLUMNS, buildStudyExports, writeCsv } = require("../evaluation/study_export");
 
 const root = path.resolve(__dirname, "..");
@@ -170,6 +172,51 @@ ok(activity.observeSceneDelta({
     },
 }), "a later assist-worthy activity can trigger after cooldown");
 
+// --- Anticipation: predicted engagement before the trigger (implicit showcase §1) ---
+let anticipationNow = 500000;
+const anticipating = new ActivityMonitor({
+    threshold: 1.1, windowMs: 5000, cooldownMs: 30000,
+    anticipationThreshold: 0.6, anticipationCooldownMs: 60000,
+    now: () => anticipationNow,
+});
+const predictions = [];
+anticipating.on("predicted_engagement", (prediction) => predictions.push(prediction));
+const directedDelta = (at) => ({
+    sessionId: "anticipation-session",
+    timestamp: at,
+    payload: {
+        focus: { id: "anchor-lamp" },
+        sensorEvents: [
+            { sensorType: "gaze", targetObjectId: "anchor-lamp", confidence: 0.8 },
+            { sensorType: "proximity", targetObjectId: "anchor-lamp", confidence: 0.9 },
+        ],
+    },
+});
+equal(anticipating.observeSceneDelta(directedDelta(anticipationNow)), null,
+    "directed attention below the assist threshold does not trigger assistance");
+equal(predictions.length, 1, "sustained directed attention predicts engagement before the trigger");
+equal(predictions[0].targetObjectId, "anchor-lamp", "prediction names the specific target");
+ok(predictions[0].speculative === true && predictions[0].triggerSource === "context",
+    "predicted engagement is speculative context, never a commitment");
+equal(anticipating.observeSceneDelta({
+    sessionId: "anticipation-session",
+    timestamp: anticipationNow + 1000,
+    payload: {
+        focus: { id: "anchor-lamp" },
+        sensorEvents: [{ sensorType: "gaze", targetObjectId: "anchor-lamp", confidence: 0.8 }],
+    },
+}), null, "continued sub-threshold attention still does not trigger assistance");
+equal(predictions.length, 1, "anticipation cooldown suppresses repeated predictions");
+const assistAfterPrediction = anticipating.observeSceneDelta({
+    sessionId: "anticipation-session",
+    timestamp: anticipationNow + 2000,
+    payload: {
+        focus: { id: "anchor-lamp" },
+        sensorEvents: [{ sensorType: "collision", targetObjectId: "anchor-lamp", confidence: 1 }],
+    },
+});
+ok(assistAfterPrediction, "a prediction never consumes the window - the real assist trigger still fires");
+
 ok(!validateLifecycle({ operation: "remove" }).accepted, "remove requires an existing artifact");
 ok(validateLifecycle({ operation: "remove", existingArtifactId: "artifact-1" }).accepted, "remove is a first-class no-code operation");
 ok(!validateLifecycle({ operation: "edit", existingArtifactId: "artifact-1" }).accepted, "edit requires replacement code");
@@ -254,6 +301,75 @@ checkpoints.save({ artifactLog: evolutionLog, personPolicy: people, experienceCo
 const resumed = checkpoints.load({ currentObjectIds: ["different-object"] });
 equal(resumed.orphaned.length, 1, "checkpoint explicitly classifies missing object references as orphaned");
 
+// --- Context-derived function choice (implicit showcase §2): the environmental
+// context supplied to implicit turns is assembled from Shared XR Memory and
+// differs per anchor - no trigger->function table exists anywhere in code. ---
+const contextMemory = new SharedMemory({
+    artifactLogPath: path.join(testDataDir, "context-artifacts.jsonl"),
+    personProfilePath: path.join(testDataDir, "context-profiles.json"),
+    experienceContextPath: path.join(testDataDir, "context-experience.json"),
+    checkpointPath: path.join(testDataDir, "context-checkpoint.json"),
+});
+contextMemory.region.ingestLocomotionEvent({
+    sourceObjectId: "ctx-session", value: { regionId: "assembly-station", entering: true }, timestamp: 1000,
+});
+contextMemory.experienceContext.set({ sessionId: "ctx-session", mode: "training" });
+const anchorDelta = (id, role, extraComponent) => ({
+    timestamp: 1000,
+    payload: {
+        focus: {
+            id, name: role, tag: "game",
+            components: [
+                { type: "MeshRenderer", fields: {} },
+                { type: "AgenticInertAnchor", fields: { anchorRole: role } },
+                ...(extraComponent ? [{ type: extraComponent, fields: {} }] : []),
+            ],
+        },
+        halo: [{ id: "bench-1", name: "Bench", tag: "game", type: "static" }],
+    },
+});
+contextMemory.visual.ingestSceneDelta(anchorDelta("anchor-lamp", "unlit-lamp", "Light"));
+contextMemory.sceneGraph.ingestSceneDelta(anchorDelta("anchor-lamp", "unlit-lamp", "Light"));
+contextMemory.visual.ingestSceneDelta(anchorDelta("anchor-pedestal", "empty-pedestal", null));
+const lampContext = contextMemory.describeContext({ sessionId: "ctx-session", targetObjectId: "anchor-lamp" });
+const pedestalContext = contextMemory.describeContext({ sessionId: "ctx-session", targetObjectId: "anchor-pedestal" });
+ok(lampContext.includes("assembly-station"), "context carries the region");
+ok(lampContext.includes("AgenticInertAnchor(unlit-lamp)"), "context carries the anchor role");
+ok(lampContext.includes("illuminates"), "context carries derived affordances");
+ok(lampContext.includes("near:bench-1"), "context carries nearby objects");
+ok(lampContext.includes("training"), "context carries the experience mode");
+ok(pedestalContext.includes("empty-pedestal") && lampContext !== pedestalContext,
+    "different anchors produce materially different contexts");
+
+// --- Anticipated preparation -> adoption lead time (implicit showcase §1) ---
+const speculativeLog = new ArtifactLog({ filePath: path.join(testDataDir, "speculative.jsonl") });
+const predictor = new FutureGoalPredictor({ artifactLog: speculativeLog });
+const speculativeGoal = {
+    goalId: "predicted-goal-1", objective: "prepare local guidance for anchor-lamp in assembly-station",
+    sessionId: "ctx-session", correlationId: "predicted-engagement-1", targetObjectId: "anchor-lamp",
+    status: "waiting_trigger", currentIteration: 0, verificationLevel: 1, speculative: true,
+    sceneEpoch: "epoch-ctx", snapshotId: "snap-ctx", objectRevision: 4, updatedAt: Date.now(),
+};
+predictor.memory.saveGoal(speculativeGoal, "goal_predicted");
+predictor.memory.saveSpeculativeCandidate(speculativeGoal, {
+    candidateId: "prepared-1", status: "prepared", validationState: "accepted",
+    simulationStatus: "simulated", riskScore: 0.1, preparedArtifact: { code: "class Prepared {}" },
+    preparedAt: Date.now() - 500,
+});
+const adoption = predictor.selectForActualGoal({
+    sessionId: "ctx-session", correlationId: "real-trigger-1",
+    actualObjective: "prepare local guidance for anchor-lamp",
+    targetObjectId: "anchor-lamp", sceneEpoch: "epoch-ctx", snapshotId: "snap-ctx", objectRevision: 4,
+});
+ok(adoption.selected && adoption.selected.candidateId === "prepared-1",
+    "a fresh, scene-pinned prepared candidate is adopted for the real trigger");
+ok(adoption.requiresNormalGates === true && adoption.mayCommitAutomatically === false,
+    "adoption never bypasses the normal pipeline and consent gates");
+const adoptionRecord = speculativeLog.records.findLast((entry) => entry.eventType === "speculative_candidate_adopted");
+ok(Number.isFinite(adoptionRecord.speculativePreparationLeadTimeMs) &&
+    adoptionRecord.speculativePreparationLeadTimeMs >= 400,
+"preparation-to-adoption lead time is recorded on the adoption event");
+
 const studyLogPath = path.join(testDataDir, "study-artifacts.jsonl");
 const studyLog = new ArtifactLog({ filePath: studyLogPath });
 assert.throws(() => studyLog.startStudyTrial({ sessionId: "study-session" }), /participantId/,
@@ -269,6 +385,16 @@ const studyContext = {
     correlationId: "trial-correlation",
 };
 studyLog.startStudyTrial({ ...studyContext, at: 1000 });
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "predicted_engagement", targetObjectId: "object-study",
+    status: "predicted_engagement", speculative: true, at: 1040,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "activity_assist_triggered", targetObjectId: "object-study",
+    status: "pending_policy_and_verification", at: 1060,
+});
 studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "intent_captured", at: 1100 });
 studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "agent_status_surfaced", status: "thinking", at: 1125 });
 studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "memory_retrieval", durationMs: 4.5, at: 1150 });
@@ -341,7 +467,8 @@ studyLog.appendStudyEvent({
 studyLog.appendStudyEvent({
     sessionId: studyContext.sessionId, correlationId: "turn-correlation",
     eventType: "speculative_candidate_adopted", candidateId: "future-1",
-    status: "selected_for_normal_pipeline", speculative: true, at: 1570,
+    status: "selected_for_normal_pipeline", speculative: true,
+    speculativePreparationLeadTimeMs: 300, at: 1570,
 });
 studyLog.endStudyTrial({
     sessionId: studyContext.sessionId, trialId: studyContext.trialId,
@@ -422,6 +549,12 @@ equal(verificationRow.goalCount, 1, "goal count is exported");
 equal(verificationRow.goalIterationsTotal, 1, "goal iterations are exported");
 equal(verificationRow.goalDelayedResolutionLatencyMsJson, "[250]", "delayed goal latency is exported");
 equal(verificationRow.speculativeCandidatesAdopted, 1, "speculative adoption is exported");
+equal(verificationRow.implicitTriggerCount, 1, "implicit context triggers are counted per trial");
+equal(verificationRow.predictedEngagementCount, 1, "predicted engagements are counted per trial");
+equal(verificationRow.implicitTriggerToVisibleChangeMsJson, "[440]",
+    "trigger-to-visible-change latency is derived from the trigger/result envelope pair");
+equal(verificationRow.speculativePreparationLeadTimeMsJson, "[300]",
+    "anticipated-preparation lead time is exported per trial");
 // The H2 contrast: identical pipeline shape, differing only in dry-run evidence and
 // validation-state marking, with the condition stamped on every event.
 equal(verificationRow.verificationBypassedCount, 0, "the verification arm has no bypassed dry-runs");
@@ -470,6 +603,14 @@ for (const required of ["AgenticRegionVolume", "PublishSensorEvent", "\\\"sensor
 }
 const bootstrap = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "AgenticXRBootstrap.cs"), "utf8");
 ok(bootstrap.includes("ImplicitTriggerSensors"), "bootstrap installs the implicit trigger emitters");
+const inertAnchor = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "AgenticInertAnchor.cs"), "utf8");
+for (const required of ["anchorRole", "StableObjectId", "\"game\""]) {
+    ok(inertAnchor.includes(required), `inert anchor contains ${required}`);
+}
+const monitorSource = fs.readFileSync(path.join(root, "orchestrator", "continuous_monitor.js"), "utf8");
+ok(monitorSource.includes("predicted_engagement"), "monitor reacts to predicted engagement");
+ok(monitorSource.includes("AGENTICXR_STUDY_ALLOW_SPECULATION"), "anticipated preparation respects study suppression");
+ok(monitorSource.includes("describeContext"), "implicit objectives are built from Shared XR Memory context");
 const roslynRuntime = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "Scenes", "Scripts", "TestRoslyn.cs"), "utf8");
 for (const deniedCapability of ["system.io", "system.net", "system.diagnostics", "system.reflection",
     "system.runtime.interopservices", "unityengine.networking", "dllimport", "stackalloc",
@@ -489,6 +630,11 @@ ok(runtimeGenerator.includes("AGENTICXR_TURN_TIMEOUT_MS"), "authoring turn watch
 ok(runtimeGenerator.includes("AGENTICXR_IDLE_PREDICTION_ENABLED"), "idle prediction requires an explicit opt-in");
 ok(runtimeGenerator.includes("continuous_assist_preempt_requested"),
     "explicit user activity preempts continuous assistance");
+ok(runtimeGenerator.includes("CodeAttachResult") && runtimeGenerator.includes("lastBaselineAttach"),
+    "baseline runtime logs Unity's direct-attach acknowledgement as validated execution");
+const legacyManager = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "CodeGenerationManager.cs"), "utf8");
+ok(legacyManager.includes("CodeAttachResult") && legacyManager.includes("TryCompileAndAttach"),
+    "legacy Unity attach path acknowledges success/failure instead of silently applying");
 const continuousMonitor = fs.readFileSync(path.join(root, "orchestrator", "continuous_monitor.js"), "utf8");
 ok(continuousMonitor.includes("AGENTICXR_CONTINUOUS_ASSIST_ENABLED"),
     "continuous assistance is an explicit opt-in over always-on monitoring");

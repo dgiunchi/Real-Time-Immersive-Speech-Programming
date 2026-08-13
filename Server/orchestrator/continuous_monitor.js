@@ -23,8 +23,13 @@ const bridge = new SceneBridgeClient(config);
 const memory = new SharedMemory({ artifactLogPath: process.env.AGENTICXR_ARTIFACT_LOG });
 memory.attach(bridge);
 const running = new Map();
+const speculativeRunning = new Map();
 const assistEnabled = String(process.env.AGENTICXR_CONTINUOUS_ASSIST_ENABLED || "false").toLowerCase() === "true";
+// Anticipation-driven preparation shares the speculation opt-in with idle
+// prediction - both generate candidates ahead of need and both spend API credit.
+const speculationEnabled = String(process.env.AGENTICXR_IDLE_PREDICTION_ENABLED || "false").toLowerCase() === "true";
 const allowDuringStudy = String(process.env.AGENTICXR_STUDY_ALLOW_CONTINUOUS_ASSIST || "false").toLowerCase() === "true";
+const allowSpeculationDuringStudy = String(process.env.AGENTICXR_STUDY_ALLOW_SPECULATION || "false").toLowerCase() === "true";
 const turnTimeoutMs = Math.max(30000, Number(process.env.AGENTICXR_CONTINUOUS_ASSIST_TIMEOUT_MS) || 120000);
 
 function appendSuppressed(opportunity, reason) {
@@ -59,9 +64,14 @@ memory.activity.on("assist_worthy", (opportunity) => {
     }
 
     const experience = memory.experienceContext.get(opportunity.sessionId);
-    const objective = `Assess whether the current ${experience && experience.mode || "unspecified"} activity ` +
-        `would benefit from a reversible, local assistance for ${opportunity.targetObjectId}. ` +
-        `Context signals: ${opportunity.signalTypes.join(", ")}. Do nothing if no useful low-risk assistance exists.`;
+    // The environmental context supplies raw ingredients only - the agents must
+    // derive WHAT function fits from it (the study's variability requirement;
+    // docs/code-implicit-proactive-showcase-2026-08-13.md §2). No trigger->
+    // function mapping exists here or anywhere else in code.
+    const objective = `Monitored activity crossed the assistance threshold for ${opportunity.targetObjectId} ` +
+        `(signals: ${opportunity.signalTypes.join(", ")}). Environmental context - ${memory.describeContext(opportunity)}. ` +
+        "Derive from this context what reversible, local, clearly VISIBLE assistance (light, motion, or a spawned " +
+        "child object) would genuinely help here, if any. Do nothing if no useful low-risk assistance exists.";
     bridge.sendAgentStatus({
         sessionId: opportunity.sessionId,
         correlationId: opportunity.triggerId,
@@ -114,6 +124,79 @@ memory.activity.on("assist_worthy", (opportunity) => {
     });
 });
 
+// Anticipation (docs/code-implicit-proactive-showcase-2026-08-13.md §1): sustained
+// directed attention toward a target predicts engagement BEFORE the assist
+// threshold fires. Start a speculative orchestrator run that generates,
+// validates, and dry-runs candidates and registers them pinned to the exact
+// scene tuple - preparation only, never a proposal or commit. When the real
+// trigger later fires, the normal turn consults select_speculative_candidate
+// and still passes every validation, mode-policy, and consent gate.
+memory.activity.on("predicted_engagement", (prediction) => {
+    if (!speculationEnabled || !process.env.ANTHROPIC_API_KEY) return;
+    if (!prediction.targetObjectId) return;
+    if (running.has(prediction.sessionId) || speculativeRunning.has(prediction.sessionId)) return;
+    if (!allowSpeculationDuringStudy && memory.artifactLog.getStudyContext({ sessionId: prediction.sessionId })) {
+        memory.artifactLog.append({
+            eventType: "idle_prediction_suppressed",
+            sessionId: prediction.sessionId,
+            correlationId: prediction.predictionId,
+            targetObjectId: prediction.targetObjectId,
+            reasonCode: "active_study_trial",
+            speculative: true,
+        });
+        return;
+    }
+    const objective = `Predicted upcoming engagement with ${prediction.targetObjectId} ` +
+        `(directed signals: ${prediction.signalTypes.join(", ")}). Environmental context - ` +
+        `${memory.describeContext(prediction)}. Prepare reversible, local, clearly visible candidates ` +
+        "this context would justify, for later adoption through the full normal pipeline.";
+    const child = spawn(process.execPath, [
+        path.join(__dirname, "app.js"),
+        objective,
+        prediction.targetObjectId,
+        prediction.sessionId,
+        prediction.predictionId,
+    ], {
+        cwd: path.join(__dirname, ".."),
+        env: {
+            ...process.env,
+            AGENTICXR_SPECULATIVE_ONLY: "true",
+            AGENTICXR_TRIGGER_SOURCE: "context",
+        },
+        stdio: "inherit",
+        windowsHide: true,
+    });
+    const watchdog = setTimeout(() => {
+        if (child.exitCode == null && !child.killed) child.kill();
+    }, Math.min(turnTimeoutMs, 120000));
+    speculativeRunning.set(prediction.sessionId, {
+        child,
+        watchdog,
+        correlationId: prediction.predictionId,
+        startedAt: Date.now(),
+    });
+    memory.artifactLog.append({
+        eventType: "idle_prediction_triggered",
+        sessionId: prediction.sessionId,
+        correlationId: prediction.predictionId,
+        targetObjectId: prediction.targetObjectId,
+        triggerSource: "predicted_engagement",
+        speculative: true,
+    });
+    child.once("exit", (code) => {
+        clearTimeout(watchdog);
+        speculativeRunning.delete(prediction.sessionId);
+        memory.artifactLog.append({
+            eventType: "idle_prediction_finished",
+            sessionId: prediction.sessionId,
+            correlationId: prediction.predictionId,
+            targetObjectId: prediction.targetObjectId,
+            status: code === 0 ? "prepared" : "failed",
+            speculative: true,
+        });
+    });
+});
+
 function readRecentControlEvents() {
     const filePath = memory.artifactLog.filePath;
     if (!fs.existsSync(filePath)) return [];
@@ -123,27 +206,34 @@ function readRecentControlEvents() {
 }
 
 setInterval(() => {
-    if (!running.size) return;
+    if (!running.size && !speculativeRunning.size) return;
     const events = readRecentControlEvents();
-    for (const [sessionId, run] of running) {
-        const preempt = [...events].reverse().find((entry) =>
-            entry.eventType === "continuous_assist_preempt_requested" &&
-            entry.sessionId === sessionId &&
-            (entry.loggedAt || entry.at || 0) > run.startedAt);
-        if (!preempt) continue;
-        clearTimeout(run.watchdog);
-        if (run.child.exitCode == null && !run.child.killed) run.child.kill();
-        memory.artifactLog.append({
-            eventType: "continuous_assist_preempted",
-            sessionId,
-            correlationId: run.correlationId,
-            reasonCode: "explicit_user_activity",
-        });
+    for (const [pool, preemptEventType] of [
+        [running, "continuous_assist_preempted"],
+        [speculativeRunning, "idle_prediction_preempted"],
+    ]) {
+        for (const [sessionId, run] of pool) {
+            const preempt = [...events].reverse().find((entry) =>
+                entry.eventType === "continuous_assist_preempt_requested" &&
+                entry.sessionId === sessionId &&
+                (entry.loggedAt || entry.at || 0) > run.startedAt);
+            if (!preempt) continue;
+            clearTimeout(run.watchdog);
+            if (run.child.exitCode == null && !run.child.killed) run.child.kill();
+            pool.delete(sessionId);
+            memory.artifactLog.append({
+                eventType: preemptEventType,
+                sessionId,
+                correlationId: run.correlationId,
+                reasonCode: "explicit_user_activity",
+                ...(pool === speculativeRunning ? { speculative: true } : {}),
+            });
+        }
     }
 }, 500).unref();
 
 function stop() {
-    for (const run of running.values()) {
+    for (const run of [...running.values(), ...speculativeRunning.values()]) {
         clearTimeout(run.watchdog);
         if (run.child.exitCode == null && !run.child.killed) run.child.kill();
     }

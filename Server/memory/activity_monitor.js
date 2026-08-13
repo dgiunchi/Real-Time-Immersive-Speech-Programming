@@ -12,20 +12,35 @@ const SENSOR_WEIGHTS = Object.freeze({
     handTracking: 0.45,
 });
 
+// Directed sensor types that indicate attention TOWARD a specific object -
+// the anticipation signal (docs/code-implicit-proactive-showcase-2026-08-13.md §1)
+// requires at least two of these inside the window before predicting engagement.
+const DIRECTED_SENSOR_TYPES = Object.freeze(["gaze", "proximity", "handTracking", "gesture"]);
+
 class ActivityMonitor extends EventEmitter {
     constructor({
         threshold = 1.1,
         windowMs = 5000,
         cooldownMs = 30000,
+        anticipationThreshold = 0.6,
+        anticipationCooldownMs = 60000,
         now = () => Date.now(),
     } = {}) {
         super();
         this.threshold = Math.max(0.5, Number(threshold) || 1.1);
         this.windowMs = Math.max(1000, Number(windowMs) || 5000);
         this.cooldownMs = Math.max(5000, Number(cooldownMs) || 30000);
+        // Anticipation fires BELOW the assist threshold - it predicts engagement
+        // from sustained directed attention so speculative preparation can start
+        // before the actual trigger. Clamped under the assist threshold so a
+        // prediction can never replace or outrank the real trigger.
+        this.anticipationThreshold = Math.min(this.threshold - 0.05,
+            Math.max(0.3, Number(anticipationThreshold) || 0.6));
+        this.anticipationCooldownMs = Math.max(10000, Number(anticipationCooldownMs) || 60000);
         this.now = now;
         this.windows = new Map();
         this.lastTriggeredAt = new Map();
+        this.lastAnticipatedAt = new Map();
         this.recent = [];
     }
 
@@ -70,7 +85,10 @@ class ActivityMonitor extends EventEmitter {
 
         const score = current.reduce((sum, item) => sum + item.score, 0);
         const lastTriggered = this.lastTriggeredAt.get(key) || 0;
-        if (score < this.threshold || at - lastTriggered < this.cooldownMs) return null;
+        if (score < this.threshold || at - lastTriggered < this.cooldownMs) {
+            this.#maybePredictEngagement({ key, sessionId, targetObjectId, current, at });
+            return null;
+        }
 
         const opportunity = {
             triggerId: `activity-${randomUUID()}`,
@@ -87,6 +105,36 @@ class ActivityMonitor extends EventEmitter {
         this.windows.set(key, []);
         this.emit("assist_worthy", opportunity);
         return opportunity;
+    }
+
+    // Predicted engagement: sustained directed attention (>=2 gaze/proximity/hand
+    // observations) toward a SPECIFIC object crossing the anticipation threshold,
+    // before the assist threshold fires. Consumers may start speculative
+    // preparation for this target - preparation only, never a commit, and the
+    // real trigger still runs the full normal pipeline. The window is NOT
+    // cleared, so the assist trigger is unaffected by a prediction.
+    #maybePredictEngagement({ key, sessionId, targetObjectId, current, at }) {
+        if (!targetObjectId) return null;
+        const directed = current.filter((item) => DIRECTED_SENSOR_TYPES.includes(item.type));
+        const directedScore = directed.reduce((sum, item) => sum + item.score, 0);
+        const lastAnticipated = this.lastAnticipatedAt.get(key) || 0;
+        if (directed.length < 2 || directedScore < this.anticipationThreshold ||
+            at - lastAnticipated < this.anticipationCooldownMs) return null;
+        const prediction = {
+            predictionId: `predicted-engagement-${randomUUID()}`,
+            triggerSource: "context",
+            sessionId,
+            targetObjectId,
+            score: Math.round(directedScore * 1000) / 1000,
+            threshold: this.anticipationThreshold,
+            signalTypes: [...new Set(directed.map((item) => item.type))],
+            observedAt: at,
+            speculative: true,
+            status: "predicted_engagement",
+        };
+        this.lastAnticipatedAt.set(key, at);
+        this.emit("predicted_engagement", prediction);
+        return prediction;
     }
 
     observeDecision(envelope = {}) {
@@ -110,4 +158,4 @@ class ActivityMonitor extends EventEmitter {
     }
 }
 
-module.exports = { ActivityMonitor, SENSOR_WEIGHTS };
+module.exports = { ActivityMonitor, SENSOR_WEIGHTS, DIRECTED_SENSOR_TYPES };

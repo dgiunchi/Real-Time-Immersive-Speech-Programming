@@ -22,6 +22,11 @@
 
 const path = require("path");
 const { randomUUID } = require("crypto");
+
+// Direct `node orchestrator/app.js` runs get the same gitignored Server/.env
+// secrets as the start scripts; a spawned turn inherits the parent env anyway.
+require("../scripts/load-local-env");
+
 const { appendEvaluationEvent } = require("../evaluation/event_logger");
 
 const BRIDGE_SERVER_PATH = path.join(__dirname, "..", "mcp", "unity_scene_bridge", "server.js");
@@ -183,6 +188,11 @@ BOUNDED GOALS AND LOOPS:
   configured threshold, not an explicit command. Preserve L2/context classification.
   First surface status, and stop without proposing anything when there is no useful,
   reversible, local assistance. Never reinterpret observation as consent.
+  The intent text supplies raw environmental context (region, anchor role/components,
+  affordances, nearby objects, experience mode) and never names a function - YOU
+  derive what fits from that context. Favor a clearly VISIBLE, reversible, local
+  effect (light, motion, or a spawned child object parented under the target) over
+  silent state changes, so the user can see what the system did and undo it.
 - If the intent asks for an ongoing objective ("until", "keep", "maintain", scheduled,
   or context-triggered work), call ${bridgeTool("create_bounded_goal")} before execution.
   Choose one explicit verification level (1 deterministic, 2 rule threshold, 3 delayed
@@ -206,7 +216,8 @@ BOUNDED GOALS AND LOOPS:
   ${bridgeTool("register_speculative_candidate")} for eligible drafts and stop. A later
   real request may call ${bridgeTool("select_speculative_candidate")}, but the selected
   draft must still pass the complete normal pipeline and consent gates.
-- For a real request, after scene grounding and before drafting, call
+- For ANY real (non-speculative) turn - explicit requests AND context-triggered
+  assistance alike - after scene grounding and before drafting, call
   ${bridgeTool("select_speculative_candidate")} with the exact current sceneEpoch,
   snapshotId, objectRevision, target, and actual objective. Reuse a returned draft only
   as one candidate: independently validate and simulate it again, then follow every

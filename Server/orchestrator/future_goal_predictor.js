@@ -129,6 +129,11 @@ class FutureGoalPredictor {
             .sort((a, b) => b.objectiveFit - a.objectiveFit || b.loggedAt - a.loggedAt);
         if (!candidates.length) return { selected: null, reason: "no_fresh_verified_prediction" };
         const selected = candidates[0];
+        // How far ahead of need the preparation ran - the study's anticipation
+        // payoff measure (docs/code-implicit-proactive-showcase-2026-08-13.md §1).
+        const preparedAt = Number.isFinite(selected.at) ? selected.at : selected.loggedAt;
+        const speculativePreparationLeadTimeMs = Number.isFinite(preparedAt)
+            ? Math.max(0, Date.now() - preparedAt) : null;
         this.memory.artifactLog.append({
             eventType: "speculative_candidate_adopted",
             sessionId,
@@ -137,6 +142,8 @@ class FutureGoalPredictor {
             goalId: selected.goalId,
             candidateId: selected.candidateId,
             objectiveFit: selected.objectiveFit,
+            speculativePreparationLeadTimeMs,
+            speculative: true,
             status: "selected_for_normal_pipeline",
         });
         return {

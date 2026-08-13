@@ -45,6 +45,8 @@ class SharedMemory {
             threshold: process.env.AGENTICXR_ACTIVITY_THRESHOLD,
             windowMs: process.env.AGENTICXR_ACTIVITY_WINDOW_MS,
             cooldownMs: process.env.AGENTICXR_ACTIVITY_COOLDOWN_MS,
+            anticipationThreshold: process.env.AGENTICXR_ANTICIPATION_THRESHOLD,
+            anticipationCooldownMs: process.env.AGENTICXR_ANTICIPATION_COOLDOWN_MS,
         });
         this.activity.on("assist_worthy", (opportunity) => {
             if (String(process.env.AGENTICXR_ACTIVITY_MONITOR_PRIMARY || "false").toLowerCase() !== "true") return;
@@ -56,8 +58,54 @@ class SharedMemory {
                 authoringMode: "semi_auto_confirm",
             });
         });
+        this.activity.on("predicted_engagement", (prediction) => {
+            if (String(process.env.AGENTICXR_ACTIVITY_MONITOR_PRIMARY || "false").toLowerCase() !== "true") return;
+            this.artifactLog.append({
+                eventType: "predicted_engagement",
+                ...prediction,
+                correlationId: prediction.predictionId,
+                interactionMode: "L2",
+            });
+        });
         this.proposalSentAt = new Map();
         this.sensors = new SensorRegistry({ visualStore: this.visual, sceneGraphStore: this.sceneGraph, regionStore: this.region });
+    }
+
+    // Compact one-line environmental context for implicit/proactive turns
+    // (docs/code-implicit-proactive-showcase-2026-08-13.md §2). Supplies the RAW
+    // ingredients - region, anchor role/components, affordances, neighbours,
+    // experience mode - and deliberately never names a function to apply: the
+    // agents must derive WHAT fits from this context, which is the study's
+    // variability requirement. Missing stores degrade gracefully to "unknown".
+    describeContext({ sessionId, targetObjectId } = {}) {
+        const parts = [];
+        const region = sessionId ? this.region.getCurrentRegion(sessionId) : null;
+        parts.push(`region: ${region && region.regionId || "unknown"}`);
+        const visualEntry = targetObjectId ? this.visual.byObjectId.get(targetObjectId) : null;
+        const focus = visualEntry && visualEntry.focus || null;
+        if (focus) {
+            const componentSummaries = (focus.components || []).map((component) => {
+                const fields = component.fields || {};
+                const role = fields.anchorRole || fields.description;
+                return role ? `${component.type}(${role})` : component.type;
+            }).filter((name) => name && name !== "Transform");
+            parts.push(`target: ${focus.name || targetObjectId} tag=${focus.tag || "untagged"}` +
+                (componentSummaries.length ? ` components=[${componentSummaries.join(", ")}]` : ""));
+        } else if (targetObjectId) {
+            parts.push(`target: ${targetObjectId} (no cached visual state)`);
+        }
+        if (targetObjectId) {
+            const affordances = this.sceneGraph.queryAffordances({ objectId: targetObjectId });
+            const names = Array.isArray(affordances && affordances.affordances)
+                ? affordances.affordances : Array.isArray(affordances) ? affordances : [];
+            if (names.length) parts.push(`affordances: ${names.join(", ")}`);
+            const relations = this.sceneGraph.queryGraph({ objectId: targetObjectId }).slice(-4)
+                .map((relation) => `${relation.relation}:${relation.from === targetObjectId ? relation.to : relation.from}`);
+            if (relations.length) parts.push(`nearby: ${[...new Set(relations)].join(", ")}`);
+        }
+        const experience = sessionId ? this.experienceContext.get(sessionId) : null;
+        parts.push(`experience mode: ${experience && experience.mode || "unspecified"}`);
+        return parts.join("; ");
     }
 
     // Subscribes to every envelope (inbound and outbound) a SceneBridgeClient sees.

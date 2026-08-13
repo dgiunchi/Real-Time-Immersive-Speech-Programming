@@ -51,6 +51,11 @@ class CodeGeneration extends ApplicationController {
         this.agenticTargets = new Map();
         this.agenticRuns = new Map();
         this.agenticCorrelations = new Map();
+        this.lastBaselineAttach = new Map(); // sessionId -> { correlationId, targetObjectId }
+        // Unity's legacy path replies CodeAttachResult on the same channel the
+        // CodeGenerated command goes out on - this is the baseline arm's
+        // validated-execution acknowledgement (docs/study-logging-schema.md).
+        this.components.legacyResultReader = new MessageReader(this.scene, 94);
         this.lastAgenticActivityAt = new Map();
         this.idlePredictionRuns = new Map();
         this.lastIdlePredictionAt = new Map();
@@ -67,6 +72,38 @@ class CodeGeneration extends ApplicationController {
     }
 
     definePipeline() {
+        // Baseline attach acknowledgement: Unity reports whether the direct-apply
+        // legacy attach compiled/attached and how long it took. Logged with the
+        // pending baseline trial identity so the exporter derives the baseline
+        // arm's validated-execution latency from the same envelope-pair rule as
+        // the agentic arm (eventType artifactresult, status committed).
+        this.components.legacyResultReader.on("data", (data) => {
+            let message;
+            try { message = JSON.parse(data.message.toString()); }
+            catch (_) { return; }
+            if (!message || message.type !== "CodeAttachResult") return;
+            const sessionId = message.peer;
+            const pending = this.lastBaselineAttach.get(sessionId);
+            if (!pending) return;
+            this.lastBaselineAttach.delete(sessionId);
+            let payload = {};
+            try { payload = JSON.parse(message.data || "{}"); }
+            catch (_) { /* status stays unknown; logged as error below */ }
+            const attached = payload.status === "attached";
+            this.logStudyEvent({
+                eventType: "artifactresult",
+                sessionId,
+                correlationId: pending.correlationId,
+                targetObjectId: pending.targetObjectId,
+                status: attached ? "committed" : "error",
+                commitAttachDurationMs: Number.isFinite(payload.commitAttachDurationMs)
+                    ? payload.commitAttachDurationMs : null,
+                failureStage: attached ? null : "compile",
+                reason: attached ? null : payload.error || "attach_failed",
+                studySource: "baseline_runtime",
+            });
+        });
+
         // Step 1: When we receive audio data from a peer, split it into a peer UUID and PCM audio, and send it to the transcription service
         this.components.audioReceiver.on("data", (data) => {
             // Split the data into a peer_uuid (36 bytes) and audio data (rest)
@@ -187,6 +224,12 @@ class CodeGeneration extends ApplicationController {
                         status: "sent_unvalidated",
                         operation: "create",
                         studySource: "baseline_runtime",
+                    });
+                    // Remember the trial identity so Unity's CodeAttachResult can
+                    // close this turn with a validated-execution event.
+                    this.lastBaselineAttach.set(this.baselinePending.sessionId, {
+                        correlationId: this.baselinePending.correlationId,
+                        targetObjectId: this.baselinePending.targetObjectId,
                     });
                     this.baselinePending = null;
                 }

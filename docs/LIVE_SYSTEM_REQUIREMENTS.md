@@ -143,9 +143,27 @@ For the L1/L2 study tasks, author the implicit triggers in the scene:
 - [ ] Add an `AgenticRegionVolume` component (with a `regionId`) to each doorway/
   station/target region the protocol references. Membership is polled against the
   head position; no Rigidbody or trigger-collider setup on the XR rig is needed.
+- [ ] Add an `AgenticInertAnchor` component (set `anchorRole`, e.g. `unlit-lamp`,
+  `empty-pedestal`, `dormant-guide-marker`; optional `description`) to 2–3
+  objects that should visibly do nothing until the agent acts. The role
+  describes what the object IS, never what function to add — the agents derive
+  the function from context at runtime.
 - [ ] Confirm proximity enter/exit and gaze dwell events appear in
   `get_activity_stream` when moving toward / looking at a `game`-tagged object.
   Gaze is a head-direction ray with dwell, not eye tracking.
+
+The L1/L2 study conditions that exercise implicit assistance and anticipation
+must explicitly enable (they stay off otherwise, and are suppressed during
+trials without the study-allow flags):
+
+```powershell
+$env:AGENTICXR_CONTINUOUS_ASSIST_ENABLED="true"
+$env:AGENTICXR_STUDY_ALLOW_CONTINUOUS_ASSIST="true"
+$env:AGENTICXR_IDLE_PREDICTION_ENABLED="true"      # also enables anticipation
+$env:AGENTICXR_STUDY_ALLOW_SPECULATION="true"      # only if the protocol includes it
+$env:AGENTICXR_ANTICIPATION_THRESHOLD="0.6"
+$env:AGENTICXR_ANTICIPATION_COOLDOWN_MS="60000"
+```
 
 ## 6. Quest requirements
 

@@ -32,8 +32,10 @@ const TRIAL_COLUMNS = Object.freeze([
     "firstAgentStatusAtUtc", "goalCount", "goalIterationsTotal",
     "goalIterationsToCompletionJson", "goalVerificationLevelsJson",
     "goalEscalationCount", "goalBoundExhaustionCount",
-    "goalDelayedResolutionLatencyMsJson", "idlePredictionCount",
-    "speculativeCandidatesPrepared", "speculativeCandidatesAdopted",
+    "goalDelayedResolutionLatencyMsJson", "implicitTriggerCount",
+    "predictedEngagementCount", "implicitTriggerToVisibleChangeMsJson",
+    "idlePredictionCount", "speculativeCandidatesPrepared",
+    "speculativeCandidatesAdopted", "speculativePreparationLeadTimeMsJson",
 ]);
 
 const LONG_COLUMNS = Object.freeze([
@@ -239,6 +241,17 @@ function aggregateTrial(events) {
         .filter((value) => Number.isInteger(value)))].sort((a, b) => a - b);
     const delayedResolutionLatencies = numericList(events.filter((event) =>
         event.eventType === "goal_delayed_evaluation_resolved"), ["resolutionLatencyMs"]);
+    // Implicit-trigger payoff (L1/L2 arms): time from each context trigger to the
+    // first committed visible change sharing that trigger's correlationId.
+    const implicitTriggerToVisibleChange = [];
+    for (const trigger of events.filter((event) => event.eventType === "activity_assist_triggered")) {
+        const visible = events.find((event) =>
+            event.correlationId === trigger.correlationId &&
+            ["artifactresult", "commitaccepted"].includes(String(event.eventType || "").toLowerCase()) &&
+            ["committed", "removed"].includes(String(event.status || "").toLowerCase()) &&
+            eventTime(event) >= eventTime(trigger));
+        if (visible) implicitTriggerToVisibleChange.push(eventTime(visible) - eventTime(trigger));
+    }
 
     return {
         participantId: started.participantId,
@@ -325,11 +338,17 @@ function aggregateTrial(events) {
         goalBoundExhaustionCount: count(events, (event) =>
             event.eventType === "goal_bound_exhausted" || event.boundExhausted === true),
         goalDelayedResolutionLatencyMsJson: JSON.stringify(delayedResolutionLatencies),
+        implicitTriggerCount: count(events, (event) => event.eventType === "activity_assist_triggered"),
+        predictedEngagementCount: count(events, (event) => event.eventType === "predicted_engagement"),
+        implicitTriggerToVisibleChangeMsJson: JSON.stringify(implicitTriggerToVisibleChange),
         idlePredictionCount: count(events, (event) => event.eventType === "idle_prediction_triggered"),
         speculativeCandidatesPrepared: count(events, (event) =>
             event.eventType === "speculative_candidate_prepared" && event.status === "prepared"),
         speculativeCandidatesAdopted: count(events, (event) =>
             event.eventType === "speculative_candidate_adopted"),
+        speculativePreparationLeadTimeMsJson: JSON.stringify(numericList(
+            events.filter((event) => event.eventType === "speculative_candidate_adopted"),
+            ["speculativePreparationLeadTimeMs"])),
     };
 }
 

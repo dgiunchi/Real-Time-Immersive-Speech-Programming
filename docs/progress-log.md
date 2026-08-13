@@ -814,3 +814,81 @@ semantics, candidateTarget, new columns, CLI flags).
   speak → generate → dry-run → preview → approve → commit → rollback has never
   been observed live, so nothing in this pass is labelled live-exercised, and the
   paper's Implementation Status section must not describe any of it as such.
+
+## 2026-08-12/13 — Study provisioning, operator docs, and the implicit/proactive showcase
+
+**2026-08-12 — provisioning and operator handoff (no pipeline code changes).**
+Live credentials configured: `Server/.env` (gitignored) now holds
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `STT_HTTP_URL`
+(lab faster-whisper endpoint, health-probed live: distil-large-v3 on CUDA), fed
+to every npm entry point by a new dependency-free loader
+(`Server/scripts/load-local-env.js`; shell-set values always win, values never
+printed). Legacy Python venv created (`Server/samples/venv`, `openai==0.28.1`).
+`npm run doctor` now ends `Setup looks complete.` in BOTH claude and legacy
+modes — a first for this machine. Wrote the operator document set:
+`docs/TESTER_QUICKSTART.md` (staged first-run validation),
+`docs/EXPERIMENTER_BRIEFING.md` (study-day routine),
+`docs/STUDY_SESSION_SCRIPT.md` (participant journey + experimenter verbal
+script, grounded in the paper's tab:pairing/tab:modes/Measures), bundled with
+the deep docs and a `SECRETS.env` into a gitignored operator zip. A
+cross-session file mailbox to the paper workspace was set up at
+`D:\Research_Activities\agenticXR\claude-mail\` (protocol in its README;
+wired into this repo's `CLAUDE.md`).
+
+**2026-08-13 — executed `docs/code-implicit-proactive-showcase-2026-08-13.md`.**
+Made the implicit/proactive arm visible, context-derived, and anticipatory, by
+extension only:
+
+- **Anticipation**: `ActivityMonitor` now emits `predicted_engagement` when ≥2
+  directed observations (gaze/proximity/hand) toward one target cross a
+  sub-assist threshold (clamped below the assist threshold; own cooldown; the
+  assist window is never consumed). `continuous_monitor.js` reacts — gated by
+  the existing `AGENTICXR_IDLE_PREDICTION_ENABLED` opt-in, the study
+  suppression flags, and key presence — by spawning a speculative-only
+  orchestrator run for the predicted target; prepared candidates stay pinned to
+  the scene tuple and adoption re-runs the full pipeline.
+  `selectForActualGoal` now stamps `speculativePreparationLeadTimeMs` on the
+  adoption event, and the orchestrator prompt consults
+  `select_speculative_candidate` on ANY real turn including context-triggered
+  ones. Explicit user activity preempts speculative runs like assist runs.
+- **Context-derived function choice**: new `SharedMemory.describeContext()`
+  assembles region, anchor role/components, affordances, neighbours, and
+  experience mode into the implicit turn's objective; the objective (and the
+  router prompt) now explicitly supplies raw context and requires the agents to
+  derive the function — no trigger→function table exists anywhere in code, and
+  the router is told to favor clearly visible, reversible, local effects.
+- **Visible payoff**: new `Unity/Assets/AgenticCache/AgenticInertAnchor.cs` —
+  an authorable anchor (role + description published into scene state via the
+  registry's public-field serialization) that self-registers (tag `game` +
+  StableObjectId) and visibly does nothing until the agent acts.
+- **Study wiring**: new `predicted_engagement` event; trial export grew 72→76
+  columns (`implicitTriggerCount`, `predictedEngagementCount`,
+  `implicitTriggerToVisibleChangeMsJson` — trigger→first-committed-result
+  envelope pairs — and `speculativePreparationLeadTimeMsJson`). Docs updated:
+  logging schema, session script L1/L2 scenarios, live-system requirements
+  (anchor authoring + the env flags the L1/L2 conditions must set).
+
+**Verification:** `npm test` PASS, 336 assertions (was 306) — anticipation
+threshold/cooldown/window-preservation, context assembly differing per anchor,
+adoption lead-time recording, gate non-bypass, export columns/derivations, and
+Unity/monitor contract markers. `npm run test:integration` PASS (76-column
+two-arm export; existing flows unchanged). Unity `6000.3.9f1` batch compile
+exit 0, no C# errors (`unity-implicit-showcase-compile.log`).
+
+**Boundary:** anticipation logic, context assembly, lead-time stamping, and
+export derivations are **deterministic-tested**; the monitor's speculative
+spawn path and the Unity anchor are **source-complete** (compiled, not
+live-observed); the full anticipate→trigger→adopt→visible-change chain has
+never run against a live model or in Play Mode and is not claimed beyond that.
+
+**2026-08-13 (later) — baseline attach acknowledgement (last known code gap).**
+The legacy direct-apply path now acknowledges: `CodeGenerationManager` filters
+channel-94 messages by type, attaches via `TryCompileAndAttach` instead of the
+throwing `RunCode`, and replies `CodeAttachResult` (status, attach duration,
+error) on the same channel; the baseline runtime remembers the pending trial
+identity at code delivery and logs the acknowledgement as an `artifactresult`
+study event (`committed`/`error`, `commitAttachDurationMs`, compile failure
+stage), so baseline trials derive validated-execution latency from the same
+envelope-pair rule as the agentic arm. Contract markers added; schema and
+operator docs updated. **Source-complete** and Unity-compiled; needs one live
+baseline Play Mode observation (tester quickstart lists it).

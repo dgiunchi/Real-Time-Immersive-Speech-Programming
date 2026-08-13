@@ -121,7 +121,8 @@ Common optional join/evidence fields are:
 | `agent_status_sent` | status sender | status | Delivery diagnostics, not visibility | Implemented and mock-tested |
 | `agent_status_surfaced` | Unity `AgentStatusVisible` acknowledgement | status | Immediate acknowledgement and status visibility; H1 | Source-complete and mock-tested; not live-observed |
 | `agent_acknowledgement_surfaced` | visible agent utterance path | timestamp | Immediate acknowledgement; H1 | Wired; no live observation |
-| `propose_artifact` | bridge/baseline runtime | candidate, risk, operation, outcome | Generated-artifact count, unsafe proposal, preview start; H1/H2/H4 | Agentic path mock-tested; baseline only records code sent |
+| `propose_artifact` | bridge/baseline runtime | candidate, risk, operation, outcome | Generated-artifact count, unsafe proposal, preview start; H1/H2/H4 | Agentic path mock-tested; baseline records code sent |
+| `artifactresult` (baseline) | Unity legacy `CodeAttachResult` acknowledgement via the runtime | status, `commitAttachDurationMs`, failure stage | Baseline validated execution and attach latency; H1 | Source-complete (2026-08-13); not live-observed |
 | `proposal_preview_surfaced` | outbound typed proposal | candidate/version | Preview-to-commit start | Mock-tested; live panel not observed |
 | `simulate_artifact` / `verification_outcome` | Verification Space | outcome, duration, candidate | Apply/clarify/repair/reject and verification time; H2/H4 | Apply/reject mock-tested; clarify/repair use structured event API until live flow emits them |
 | `simulate_artifact` with `status: skipped_no_verification` | condition-gated bridge bypass | `verificationBypassed`, `verificationOutcome: bypassed` | H2 no-verification arm: dry-run skipped, proposal marked unverified | Implemented, deterministic- and mock-integration-tested |
@@ -150,6 +151,8 @@ Common optional join/evidence fields are:
 | `idle_prediction_triggered` / `idle_prediction_finished` / `idle_prediction_preempted` | code runtime | speculative flag and status | Prediction frequency and preemption | Source-complete; deterministic predictor tested, real idle timer not live-observed |
 | `speculative_candidate_prepared` / `speculative_candidate_adopted` | future-goal predictor | pinned scene tuple and candidate | Prepared/reused prediction counts | Implemented and deterministic-tested |
 | `activity_assist_triggered` / `activity_assist_suppressed` | continuous activity monitor | threshold, structured signal types, L2 route | Continuous-assistance opportunities | Source-complete and deterministic-tested; not live-observed |
+| `predicted_engagement` | activity monitor anticipation (directed attention below the assist threshold) | target, directed signal types, speculative flag | Anticipated engagement before the trigger; starts speculative preparation | Deterministic-tested; monitor spawn path source-complete, not live-observed |
+| `speculative_candidate_adopted` with `speculativePreparationLeadTimeMs` | future-goal predictor at adoption | lead time from preparation to adoption | Anticipation payoff (how far ahead preparation ran) | Deterministic-tested |
 | `continuous_assist_started` / `continuous_assist_finished` / `continuous_assist_preempted` | continuous monitor | context trigger and bounded process status | Continuous assistance and interruption | Source-complete; mock stream tested, live agent/device unobserved |
 
 ## Per-trial CSV
@@ -181,7 +184,13 @@ Common optional join/evidence fields are:
 - Visibility: status count and `firstAgentStatusAtUtc`.
 - Goal loops: goal/iteration counts, iterations to completion, verifier levels,
   escalation/bound-exhaustion counts, and delayed-resolution latencies.
-- Speculation: idle prediction, prepared-candidate, and adopted-candidate counts.
+- Implicit triggers (L1/L2 arms): `implicitTriggerCount`,
+  `predictedEngagementCount`, and `implicitTriggerToVisibleChangeMsJson` — the
+  latency from each context trigger to the first committed visible change
+  sharing its correlation ID.
+- Speculation: idle prediction, prepared-candidate, and adopted-candidate
+  counts, plus `speculativePreparationLeadTimeMsJson` — how far ahead of the
+  real trigger each adopted candidate was prepared.
 
 JSON-list columns preserve per-candidate/per-application raw durations while scalar
 columns support immediate analysis. A zero count is a real observed zero; an empty
