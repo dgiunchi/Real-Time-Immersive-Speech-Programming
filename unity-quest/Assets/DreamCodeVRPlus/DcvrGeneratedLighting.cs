@@ -14,17 +14,32 @@
 // and blue by 1.00 and then the whole thing is scaled to about a fifth of its luminance.
 // The model's colours were right the whole time; they were simply never being shown.
 //
-// THE APPROACH: LIGHT THE CREATIONS, NOT THE WORLD (Strategy D)
-// A global lighting change would fix the hues and alter an environment that has already
-// been accepted. Instead, generated content goes on its own layer and gets its own neutral
-// rig, culled to that layer alone. The environment's lighting is not touched at all, and
-// creations are lit as what they are: real surfaces in a room.
+// STRATEGY D WAS TRIED AND MEASURED UNAFFORDABLE.
+// The first version of this file put generated content on its own layer and gave it a
+// dedicated neutral rig — a key and a fill, culled to that layer alone. It looked like the
+// right answer: correct hues, real shading, environment untouched.
 //
-// Two lights, not a dozen. A key for form and a fill so the shadow side stays readable —
-// the fill is what stops a rotated cube from having one face at pure black. Generated
-// "lights" in creative content (a lamp, a sun) stay EMISSIVE rather than becoming real
-// Unity lights, because a scene that spawns a realtime light per lamp is a scene that
-// stops holding 72 Hz.
+// It cost half the frame rate. Measured on device:
+//
+//     before                     72.0 fps   median 13.9 ms
+//     with two extra lights      36.0 fps   median 27.8 ms
+//     ...with the scene CLEARED  36.0 fps   median 27.8 ms   <- the giveaway
+//
+// The last row is the finding. With zero generated objects in the scene the cost was
+// unchanged, so it was never about what the lights illuminated. In URP's forward path an
+// additional directional light is evaluated per fragment across the frame; a culling mask
+// controls which objects it AFFECTS, not whether the additional-light loop runs. Two of
+// them over a 1680x1760 per-eye buffer is ~14 ms, and once a frame misses the 13.9 ms
+// budget the compositor halves the rate outright — hence exactly 36, not "somewhat less".
+//
+// So this class no longer creates lights. It keeps the LAYER, because that is free and
+// still useful (it documents what is generated, and leaves the door open for a future
+// single-light experiment), and the visibility problem is solved instead by a modest
+// emission floor on generated materials — Strategy C. That costs nothing per frame: it is
+// a term in a shader that already runs.
+//
+// Generated "lights" in creative content (a lamp, a sun) were always going to be emissive
+// rather than real Unity lights, for exactly the reason this measurement demonstrates.
 
 using UnityEngine;
 
@@ -48,8 +63,8 @@ namespace DreamCodeVRPlus
             }
         }
 
-        /// <summary>Build the neutral rig and stop the environment's blue key from also
-        /// lighting generated content — being lit twice would put the blue bias back.</summary>
+        /// <summary>Set up the generated-content layer. Creates NO lights — see the note
+        /// at the top of this file for the measurement that removed them.</summary>
         public static void Ensure()
         {
             if (_root != null) { return; }
@@ -57,7 +72,7 @@ namespace DreamCodeVRPlus
             if (layer < 0)
             {
                 Debug.LogWarning($"[DcvrGenLight] layer '{LayerName}' missing from the build; "
-                                 + "generated content will use the environment lighting");
+                                 + "generated content will still render, just untagged");
                 return;
             }
 
@@ -65,54 +80,9 @@ namespace DreamCodeVRPlus
             go.transform.SetParent(null, true);
             _root = go.transform;
 
-            int mask = 1 << layer;
-
-            // KEY — neutral white, from high and slightly to one side, so form reads. Angled
-            // differently from the environment key so creations are not lit edge-on.
-            var key = new GameObject("GenKey");
-            key.transform.SetParent(_root, false);
-            key.transform.rotation = Quaternion.Euler(52f, -28f, 0f);
-            Light kl = key.AddComponent<Light>();
-            kl.type = LightType.Directional;
-            kl.color = new Color(1.00f, 0.98f, 0.94f);   // very slightly warm; neutral reads clinical
-            kl.intensity = 1.45f;
-            kl.shadows = LightShadows.None;              // nothing here casts a shadow worth the cost
-            kl.cullingMask = mask;
-            kl.renderMode = LightRenderMode.ForcePixel;
-
-            // FILL — from below and behind, dim and cool. This is the light that keeps a
-            // shadowed face at a readable dark version of its own colour instead of black,
-            // which is exactly the failure the wearer described as "everything looks the same".
-            var fill = new GameObject("GenFill");
-            fill.transform.SetParent(_root, false);
-            fill.transform.rotation = Quaternion.Euler(-24f, 140f, 0f);
-            Light fl = fill.AddComponent<Light>();
-            fl.type = LightType.Directional;
-            fl.color = new Color(0.72f, 0.80f, 0.92f);
-            fl.intensity = 0.55f;
-            fl.shadows = LightShadows.None;
-            fl.cullingMask = mask;
-            fl.renderMode = LightRenderMode.ForcePixel;
-
-            ExcludeGeneratedFromEnvironmentLights(layer);
-
-            Debug.Log($"[DcvrGenLight] neutral rig on layer {layer} "
-                      + $"(key {kl.intensity:F2}, fill {fl.intensity:F2}); environment lighting untouched");
-        }
-
-        /// <summary>Remove the generated layer from every EXISTING light's culling mask.
-        ///
-        /// Without this a creation is lit by both rigs and the environment's blue bias comes
-        /// straight back, at higher total intensity. The environment's own lighting is not
-        /// otherwise modified — only which layers it reaches.</summary>
-        private static void ExcludeGeneratedFromEnvironmentLights(int layer)
-        {
-            int inverse = ~(1 << layer);
-            foreach (Light l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
-            {
-                if (l == null || (_root != null && l.transform.IsChildOf(_root))) { continue; }
-                l.cullingMask &= inverse;
-            }
+            Debug.Log($"[DcvrGenLight] generated layer {layer}; no extra realtime lights "
+                      + "(measured at half frame rate) — visibility comes from the material "
+                      + "emission floor instead");
         }
 
         /// <summary>Put an object and everything under it on the generated layer.

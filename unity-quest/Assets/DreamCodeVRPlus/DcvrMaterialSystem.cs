@@ -73,6 +73,19 @@ namespace DreamCodeVRPlus
             public Color Fallback;      // used ONLY when the model supplied no colour
         }
 
+        /// <summary>How much of its own colour an ordinary surface emits.
+        ///
+        /// This is a VISIBILITY FLOOR, not a look. The environment's key light is blue and
+        /// dim by design, so a lit-only surface arrives at roughly a fifth of its luminance
+        /// with its hue pulled toward blue; this term puts the object's actual colour back
+        /// without touching the environment and without a second realtime light — which was
+        /// measured at half the frame rate (see DcvrGeneratedLighting).
+        ///
+        /// Kept low deliberately. The lit contribution still provides the shading that makes
+        /// form readable; push this much higher and every creation reads as a glowing
+        /// hologram, which is both wrong for stone and uncomfortable to wear.</summary>
+        private const float VisibilityFloor = 0.55f;
+
         /// <summary>Tuned to be distinguishable under the generated-content rig, not to be
         /// physically correct. The two axes a Quest can actually show are how shiny and how
         /// metal a thing is, so those carry the difference between wood and iron.</summary>
@@ -220,7 +233,9 @@ namespace DreamCodeVRPlus
             // The model's colour wins. The role only supplies one when there is none.
             Color baseColor = d.HasColor ? Sanitize(d.BaseColor) : p.Fallback;
 
-            float emission = p.Emission;
+            // Ordinary surfaces get the visibility floor; roles that are genuinely light
+            // sources keep their own, higher value rather than being dimmed to it.
+            float emission = Mathf.Max(p.Emission, VisibilityFloor);
             if (d.EmissionBoost > 0f) { emission = Mathf.Clamp(emission + d.EmissionBoost, 0f, 1.6f); }
 
             long key = Key(d.Role, baseColor, p.Metallic, p.Smoothness, emission);
