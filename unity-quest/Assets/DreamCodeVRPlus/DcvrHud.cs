@@ -23,7 +23,11 @@ namespace DreamCodeVRPlus
 
     public sealed class DcvrHud : MonoBehaviour
     {
-        private const float PanelWidth = 2.4f;
+        // 1.30 m (§31, §34). At 2.4 m wide and 3.4 m away this subtended roughly 39
+        // degrees — it read as the application's main window rather than a status
+        // readout, and it sat across the area where creations appear. Status should be
+        // glanceable, not the thing you are looking at.
+        private const float PanelWidth = 1.30f;
         private static readonly string[] StageNames = { "INTENT", "GENERATE", "VALIDATE", "EXECUTE" };
 
         private readonly Renderer[] _stageLamps = new Renderer[4];
@@ -50,7 +54,7 @@ namespace DreamCodeVRPlus
             var plate = DcvrPrim.Create(PrimitiveType.Quad);
             plate.name = "DCVR_HudPlate";
             plate.transform.SetParent(transform, false);
-            plate.transform.localScale = new Vector3(PanelWidth, 1.15f, 1f);
+            plate.transform.localScale = new Vector3(PanelWidth, 0.62f, 1f);
             var plateMat = new Material(Shader.Find("Universal Render Pipeline/Unlit")
                                         ?? Shader.Find("Unlit/Color"))
             { name = "DCVR_HudPlateMat" };
@@ -62,14 +66,14 @@ namespace DreamCodeVRPlus
             border.name = "DCVR_HudBorder";
             border.transform.SetParent(transform, false);
             border.transform.localPosition = new Vector3(0f, 0f, 0.005f);
-            border.transform.localScale = new Vector3(PanelWidth + 0.03f, 1.18f, 1f);
+            border.transform.localScale = new Vector3(PanelWidth + 0.02f, 0.64f, 1f);
             Material borderMat = MakeHolo("DCVR_HudBorderMat", DcvrWorld.Cyan, 0.12f);
             if (borderMat != null) { border.GetComponent<Renderer>().sharedMaterial = borderMat; }
 
-            _statusText = DcvrText.Make(transform, "SPEAK TO CREATE", new Vector3(0f, 0.38f, -0.01f), 0.058f, DcvrWorld.Dim);
-            _transcriptText = DcvrText.Make(transform, "", new Vector3(0f, 0.10f, -0.01f), 0.070f, Color.white);
-            _verdictText = DcvrText.Make(transform, "", new Vector3(0f, -0.28f, -0.01f), 0.085f, DcvrWorld.Dim);
-            _reasonText = DcvrText.Make(transform, "", new Vector3(0f, -0.42f, -0.01f), 0.048f, DcvrWorld.Dim);
+            _statusText = DcvrText.Make(transform, "SPEAK TO CREATE", new Vector3(0f, 0.215f, -0.01f), 0.034f, DcvrWorld.Dim);
+            _transcriptText = DcvrText.Make(transform, "", new Vector3(0f, 0.105f, -0.01f), 0.040f, Color.white);
+            _verdictText = DcvrText.Make(transform, "", new Vector3(0f, -0.155f, -0.01f), 0.046f, DcvrWorld.Dim);
+            _reasonText = DcvrText.Make(transform, "", new Vector3(0f, -0.235f, -0.01f), 0.028f, DcvrWorld.Dim);
 
             BuildStageLamps();
         }
@@ -78,15 +82,15 @@ namespace DreamCodeVRPlus
         /// walk the pipeline and see exactly where a malicious one stops.</summary>
         private void BuildStageLamps()
         {
-            const float spacing = 0.56f;
+            const float spacing = 0.30f;
             float x0 = -spacing * 1.5f;
             for (int i = 0; i < 4; i++)
             {
                 var pill = DcvrPrim.Create(PrimitiveType.Quad);
                 pill.name = "DCVR_Stage" + StageNames[i];
                 pill.transform.SetParent(transform, false);
-                pill.transform.localPosition = new Vector3(x0 + spacing * i, -0.10f, -0.01f);
-                pill.transform.localScale = new Vector3(0.50f, 0.075f, 1f);
+                pill.transform.localPosition = new Vector3(x0 + spacing * i, -0.045f, -0.01f);
+                pill.transform.localScale = new Vector3(0.27f, 0.045f, 1f);
 
                 Material m = MakeHolo("DCVR_StageMat" + i, DcvrWorld.Dim, 0.10f);
                 if (m != null)
@@ -96,8 +100,8 @@ namespace DreamCodeVRPlus
                 }
                 _stageLamps[i] = pill.GetComponent<Renderer>();
 
-                DcvrText.Make(transform, StageNames[i], new Vector3(x0 + spacing * i, -0.10f, -0.02f),
-                         0.037f, Color.white);
+                DcvrText.Make(transform, StageNames[i], new Vector3(x0 + spacing * i, -0.045f, -0.02f),
+                         0.021f, Color.white);
             }
         }
 

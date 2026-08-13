@@ -68,6 +68,10 @@ pub struct AudioOutcome {
     /// all report the catch distinctly (a neutralized outcome otherwise looks like a
     /// normal `ApproveActionPlan` with an approved recolour). `None` = not neutralized.
     pub caught_reason: Option<String>,
+    /// Set when the command was a plain object operation answered WITHOUT the model
+    /// (§23). The server sends this to the device instead of a plan or an assembly, and
+    /// the admin panel reports `AI = NO` for it.
+    pub device_op: Option<crate::ops::DeviceOp>,
 }
 
 /// Owns per-peer sessions. No global lock: peers cannot block each other.
@@ -466,6 +470,67 @@ impl Router {
             target_peer: Some(peer_id.to_string()),
             timing,
             caught_reason: Some(reason),
+            device_op: None,
+        }
+    }
+
+    /// Answer a plain object operation directly — no model call (§23, §37).
+    ///
+    /// Reported as its own `device_op` mode rather than dressed up as a plan, so the
+    /// admin panel and the timing log can show which commands took the fast path. A
+    /// latency claim nobody can audit is not worth making.
+    fn device_op_outcome(
+        &mut self,
+        peer_id: &str,
+        rid: String,
+        t_received: u64,
+        transcript: String,
+        op: crate::ops::DeviceOp,
+    ) -> AudioOutcome {
+        self.emit(
+            &rid,
+            peer_id,
+            Stage::Info,
+            format!(
+                "deterministic object operation — {} (no AI call)",
+                op.describe()
+            ),
+        );
+        {
+            let s = self.session_mut(peer_id);
+            let _ = s.transition_to(SessionState::Validating);
+            let _ = s.transition_to(SessionState::Executing);
+            if op.op == "clear_all" {
+                s.spawned_count = 0; // scene cleared: refill the session spawn budget
+            }
+            let _ = s.transition_to(SessionState::Idle);
+        }
+        let t_done = epoch_millis(SystemTime::now());
+        let timing = TimingEvent {
+            request_id: rid.clone(),
+            peer_id: peer_id.to_string(),
+            mode: "device_op".to_string(),
+            decision: format!("{:?}", Decision::ApproveActionPlan),
+            t_received,
+            t_validated: t_done,
+            t_sent: t_done,
+            validation_ms: 0,
+            errors: Vec::new(),
+            action_count: 1,
+            spawned_count: 0,
+        };
+        self.emit_result(&rid, peer_id, 0, 0, &None, 0, true, &[]);
+        AudioOutcome {
+            request_id: rid,
+            decision: Decision::ApproveActionPlan,
+            plan: None,
+            csharp: None,
+            error: None,
+            transcript: Some(transcript),
+            target_peer: Some(peer_id.to_string()),
+            timing,
+            caught_reason: None,
+            device_op: Some(op),
         }
     }
 
@@ -486,6 +551,17 @@ impl Router {
             Stage::Info,
             "full-clear command — deterministic server reset (no AI call)",
         );
+        // The C# cleanup script is kept for hosts that only understand the legacy
+        // `{type:"code"}` route, but the DEVICE OP is what a current client uses and it is
+        // strictly better: the script had to FIND the user's content by scanning the scene
+        // for a name prefix and skipping a hand-maintained list of protected names, which
+        // is a deny-list that someone has to remember to update. The device clears by
+        // hierarchy instead — everything under `GeneratedContent`, which structurally
+        // cannot reach the rig, the environment or the backend client.
+        //
+        // It also stops "clear everything" spending a compile: the acceptance run showed
+        // this command taking the Mode-A route and shipping 3 kB of freshly compiled IL to
+        // delete things, which is an expensive way to say "remove the children of a node".
         let csharp = Some(CsharpResult {
             candidate: crate::reset::full_clear_csharp(&rid),
             approved: true,
@@ -539,6 +615,7 @@ impl Router {
             target_peer: Some(peer_id.to_string()),
             timing,
             caught_reason: None,
+            device_op: Some(crate::ops::clear_all_op()),
         }
     }
 
@@ -738,6 +815,7 @@ impl Router {
             target_peer: Some(peer_id.to_string()),
             timing,
             caught_reason: None,
+            device_op: None,
         }
     }
 
@@ -790,20 +868,42 @@ impl Router {
         // keywords miss (camera/mic/screen access, tap automation, memory reads,
         // exfiltration). Either flags -> the request is CAUGHT, counted, and answered
         // with a harmless visual; the malicious command never reaches the generator.
-        let screen_reason = match classify_intent(&transcript) {
-            Some(r) => Some(r),
-            // The LLM screen is fail-OPEN by design (the C# validator is the hard
-            // gate). Bound it with llm_timeout so a hung classifier cannot hold the
-            // router lock forever; a timeout maps to the SAME `None` as a screen
-            // error today — byte-identical behaviour, just no longer unbounded.
-            None => match timeout(llm_timeout, llm.screen_intent(&rid, &transcript)).await {
-                Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() {
-                    v.category
-                } else {
-                    v.reason
-                }),
-                _ => None,
-            },
+        // The local keyword screen ALWAYS runs, and it runs before anything else can
+        // claim the command. It costs nothing, so there is no reason to order it second.
+        if let Some(reason) = classify_intent(&transcript) {
+            return self.neutralized_outcome(peer_id, rid, t_received, transcript, reason);
+        }
+
+        // FAST PATH. An object edit is bookkeeping, not creativity: "delete Saturn" and
+        // "make this red" have exactly one meaning, and asking a model to restate it
+        // costs a round trip and a few cents per command.
+        //
+        // ORDERING IS DELIBERATE, and it is the one judgement call in this module. The
+        // local screen above has already run; what the fast path skips is the *LLM* intent
+        // screen, which is fail-open by design and is not the hard gate. It is safe to
+        // skip here because of what these operations can reach: the device resolves every
+        // target against its own generated-content registry, so the worst outcome of a
+        // mis-parse is that the user's own creation is edited or removed. There is no
+        // reachable capability — no sensor, no network, no filesystem — because none of
+        // those is expressible as an object operation at all.
+        //
+        // A phrasing that is NOT plainly one of these operations falls through to the
+        // full path unchanged, which is why `ops::parse` is written to decline when
+        // unsure rather than to guess.
+        if let Some(op) = crate::ops::parse(&transcript) {
+            return self.device_op_outcome(peer_id, rid, t_received, transcript, op);
+        }
+
+        // The LLM screen is fail-OPEN by design (the C# validator is the hard gate).
+        // Bound it with llm_timeout so a hung classifier cannot hold the router lock
+        // forever; a timeout maps to the SAME `None` as a screen error today.
+        let screen_reason = match timeout(llm_timeout, llm.screen_intent(&rid, &transcript)).await {
+            Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() {
+                v.category
+            } else {
+                v.reason
+            }),
+            _ => None,
         };
         if let Some(reason) = screen_reason {
             return self.neutralized_outcome(peer_id, rid, t_received, transcript, reason);
@@ -945,6 +1045,7 @@ impl Router {
             target_peer: Some(peer_id.to_string()),
             timing,
             caught_reason: None,
+            device_op: None,
         }
     }
 
@@ -979,19 +1080,30 @@ impl Router {
         if crate::reset::is_full_clear(transcript) {
             return self.full_clear_outcome(peer_id, rid, t_received, transcript.to_string());
         }
-        // Same LAYER 1 SECURITY SCREEN as the voice path: keyword pre-filter + LLM
-        // classifier -> caught commands are neutralized to a harmless visual.
-        let screen_reason = match classify_intent(transcript) {
-            Some(r) => Some(r),
-            // Fail-open + bounded, exactly as the voice path above.
-            None => match timeout(llm_timeout, llm.screen_intent(&rid, transcript)).await {
-                Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() {
-                    v.category
-                } else {
-                    v.reason
-                }),
-                _ => None,
-            },
+        // Same LAYER 1 SECURITY SCREEN as the voice path, in the same order: the free
+        // local keyword filter first, then the fast path, then the fail-open LLM screen.
+        // The two entry points must agree — a command typed into the admin panel and the
+        // same words spoken have to take the same route, or the demonstrated behaviour
+        // and the audited behaviour are different things.
+        if let Some(reason) = classify_intent(transcript) {
+            return self.neutralized_outcome(
+                peer_id,
+                rid,
+                t_received,
+                transcript.to_string(),
+                reason,
+            );
+        }
+        if let Some(op) = crate::ops::parse(transcript) {
+            return self.device_op_outcome(peer_id, rid, t_received, transcript.to_string(), op);
+        }
+        let screen_reason = match timeout(llm_timeout, llm.screen_intent(&rid, transcript)).await {
+            Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() {
+                v.category
+            } else {
+                v.reason
+            }),
+            _ => None,
         };
         if let Some(reason) = screen_reason {
             return self.neutralized_outcome(
@@ -1130,6 +1242,7 @@ impl Router {
             target_peer: Some(peer_id.to_string()),
             timing,
             caught_reason: None,
+            device_op: None,
         }
     }
 
@@ -1213,6 +1326,7 @@ impl Router {
             target_peer: Some(peer_id.to_string()),
             timing,
             caught_reason: None,
+            device_op: None,
         }
     }
 }

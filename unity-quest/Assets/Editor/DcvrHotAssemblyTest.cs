@@ -95,7 +95,19 @@ public static class DcvrHotAssemblyTest
         // "the Editor isn't running frames" — an assertion that can't fail meaningfully is
         // worse than no assertion.
         IMethod update = adaptor.ILInstance.Type.GetMethod("Update", 0, true);
-        if (update == null) { Fail("interpreted type has no Update()"); return; }
+        if (update == null)
+        {
+            // Not a failure. A scene-BUILDING script has no reason to run every frame — it
+            // creates its objects in Start and is done, which is the most common shape of
+            // generated program. Requiring Update made this test reject exactly the case
+            // it exists to protect. Start has already proved the interpreter reaches the
+            // engine; there is simply nothing further to drive.
+            Debug.Log("[HotTest] no Update() — build-only script, nothing further to drive");
+            loader.ClearAll();
+            Debug.Log("[HotTest] PASS — server-compiled C# was interpreted and drove the engine");
+            EditorApplication.Exit(0);
+            return;
+        }
 
         // Measure the whole subtree, for the same reason: a scene-building script animates
         // its children, not itself.

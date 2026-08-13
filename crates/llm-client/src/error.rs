@@ -10,4 +10,6 @@ pub enum LlmError {
     Parse(String),
     #[error("llm returned an empty response")]
     EmptyResponse,
+    #[error("this llm client does not support the operation: {0}")]
+    Unsupported(String),
 }

@@ -590,6 +590,29 @@ fn spawn_utterance(
             let _ = j.write_event(&outcome.timing);
         }
         publish_pipeline_events(&services.bus, &outcome);
+
+        // A deterministic object operation takes precedence over BOTH generation paths.
+        // It is not a plan and not an assembly; the device carries it out against its own
+        // registry. Checked first because a command that was answered without the model
+        // has no plan and no C# to fall back to, and treating it as "nothing to send"
+        // would make every fast-path command silently do nothing on the headset.
+        if let Some(op) = &outcome.device_op {
+            let msg = op.to_json(&peer_id);
+            match services.auth.sign_nid94(
+                msg.as_bytes(),
+                &peer_id,
+                &outcome.request_id,
+                crate::auth_gate::now_unix(),
+            ) {
+                Ok(bytes) => {
+                    let _ = sender.send(NID_BACKEND_OUTPUT, &bytes).await;
+                    eprintln!("[device-op] {} (no AI call)", op.describe());
+                }
+                Err(e) => eprintln!("[device-op] refusing to send unsigned NID-94: {e}"),
+            }
+            return;
+        }
+
         // Live toggle: the admin panel can disable dispatch without a restart.
         if services.mode_a_live() {
             // Mode A (original DreamCodeVR): hand the VALIDATED generated C# to the
@@ -608,8 +631,15 @@ fn spawn_utterance(
                     // The order matters and is deliberate: the source has ALREADY passed
                     // the lexical guardrail and the semantic analyzer at this point.
                     // Compilation is a delivery mechanism, never an approval.
-                    let Some(msg) =
-                        mode_a_payload(services.roslyn.as_ref(), &cs.candidate, &peer_id).await
+                    let Some(msg) = mode_a_payload_with_repair(
+                        services.roslyn.as_ref(),
+                        Some(services.llm.as_ref()),
+                        &outcome.request_id,
+                        &cs.candidate,
+                        &peer_id,
+                        outcome.transcript.as_deref().unwrap_or(""),
+                    )
+                    .await
                     else {
                         return;
                     };
@@ -659,51 +689,140 @@ fn spawn_utterance(
 ///
 /// `csharp` must already have passed the lexical guardrail and the semantic analyzer.
 /// Compiling here is a delivery mechanism and confers no approval of its own.
-async fn mode_a_payload(
+/// As [`mode_a_payload`], with ONE repair attempt when the compiler rejects the code.
+///
+/// # Why a repair pass exists
+///
+/// Generated code that does not compile is the common case, not the exception. In live
+/// use, roughly a third to a half of substantial creative programs failed to build first
+/// time — `CS0029: cannot convert GameObject to Transform` is representative. The system
+/// failed closed every time, which is correct, and also meant the user asked for a solar
+/// system and watched nothing happen. Broad creative freedom that only works half the
+/// time is not broad creative freedom.
+///
+/// # Why it does not weaken anything
+///
+/// The repaired source is treated as a fresh, untrusted generation. It goes back through
+/// the FULL lexical guardrail before it is compiled again — the compiler's diagnostics are
+/// a hint to the model, never a reason to skip a gate. If the repair introduces a banned
+/// API it is refused exactly as a first attempt would be, and if it still does not compile
+/// nothing is sent. The number of attempts is fixed at one: an unbounded repair loop is a
+/// way to spend money and to let a model wander somewhere the first validation would not
+/// have allowed.
+async fn mode_a_payload_with_repair(
     roslyn: &dyn RoslynAnalyzer,
+    llm: Option<&dyn LlmClient>,
+    request_id: &str,
     csharp: &str,
     peer_id: &str,
+    prompt: &str,
 ) -> Option<String> {
-    match roslyn.compile(csharp).await {
-        Ok(c) if c.approved && c.assembly.is_some() => {
-            eprintln!("[mode-a] compiled to assembly; sending IL to the headset");
-            Some(
-                serde_json::json!({
-                    "type": "assembly",
-                    "peer": peer_id,
-                    "data": c.assembly.unwrap_or_default(),
-                    // The source travels with the IL for two reasons that are not about
-                    // execution: the headset's disclosure panel shows the user what actually
-                    // ran (A093), and the client decides build-vs-modify from it, so "spin
-                    // this house" spins the house instead of replacing it with a fresh cube.
-                    // The device never compiles this string.
-                    "source": csharp,
-                })
-                .to_string(),
-            )
+    /// How many times the model may be asked to fix its own code.
+    ///
+    /// Two, from measurement rather than taste. In live use a single attempt took one
+    /// solar-system program from five compiler errors down to one — close enough that
+    /// stopping there threw away almost-working code, and the user saw nothing appear.
+    /// It stays small because each attempt is a paid round trip and because a model that
+    /// has not converged in two tries is usually rewriting rather than repairing.
+    const MAX_REPAIRS: usize = 2;
+
+    let mut source = csharp.to_string();
+
+    for attempt in 0..=MAX_REPAIRS {
+        let compiled = match roslyn.compile(&source).await {
+            Ok(c) => c,
+            Err(e) => {
+                // No compile service at all. Send source: a host that DOES have a runtime
+                // compiler (the Editor, a 32-bit Mono sideload) can still run it, and one
+                // that does not reports it cleanly rather than silently doing nothing.
+                eprintln!("[mode-a] no compile service ({e}); sending source instead");
+                return Some(
+                    serde_json::json!({
+                        "type": "code",
+                        "peer": peer_id,
+                        "data": source,
+                    })
+                    .to_string(),
+                );
+            }
+        };
+
+        if compiled.approved && compiled.assembly.is_some() {
+            if attempt > 0 {
+                eprintln!("[mode-a] repair #{attempt} compiled; sending IL to the headset");
+            } else {
+                eprintln!("[mode-a] compiled to assembly; sending IL to the headset");
+            }
+            return Some(assembly_message(
+                &compiled.assembly.unwrap_or_default(),
+                &source,
+                peer_id,
+                prompt,
+            ));
         }
-        Ok(c) => {
+
+        let diagnostics = compiled.diagnostics.join(" | ");
+        let Some(llm) = llm else {
+            eprintln!("[mode-a] compile refused ({diagnostics}); nothing sent");
+            return None;
+        };
+        if attempt == MAX_REPAIRS {
+            eprintln!("[mode-a] still does not compile after {MAX_REPAIRS} repair(s) ({diagnostics}); nothing sent");
+            return None;
+        }
+
+        eprintln!(
+            "[mode-a] compile refused ({diagnostics}); repair {}/{MAX_REPAIRS}",
+            attempt + 1
+        );
+        let fixed = match llm.repair_csharp(request_id, &source, &diagnostics).await {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("[mode-a] repair unavailable ({e}); nothing sent");
+                return None;
+            }
+        };
+
+        // THE GUARDRAIL RUNS AGAIN, on every attempt. This is the whole reason the repair
+        // loop is safe to have: a repaired program is a NEW program and is admitted on
+        // exactly the same terms as any other. Compiler diagnostics are a hint to the
+        // model, never a licence to skip a gate.
+        let verdict = dcvr_csharp_policy::validate_csharp_freeform(&fixed);
+        if !verdict.violations.is_empty() {
             eprintln!(
-                "[mode-a] compile refused ({}); nothing sent",
-                c.diagnostics.join(" | ")
+                "[mode-a] repaired C# REJECTED by the guardrail; nothing sent ({})",
+                verdict
+                    .violations
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ")
             );
-            None
+            return None;
         }
-        Err(e) => {
-            // No compile service. Send source: a host that DOES have a runtime compiler
-            // (the Editor, a 32-bit Mono sideload) can still run it, and a host that does
-            // not will report it cleanly rather than silently doing nothing.
-            eprintln!("[mode-a] no compile service ({e}); sending source instead");
-            Some(
-                serde_json::json!({
-                    "type": "code",
-                    "peer": peer_id,
-                    "data": csharp,
-                })
-                .to_string(),
-            )
-        }
+        source = fixed;
     }
+
+    None
+}
+
+fn assembly_message(assembly: &str, source: &str, peer_id: &str, prompt: &str) -> String {
+    serde_json::json!({
+        "type": "assembly",
+        "peer": peer_id,
+        "data": assembly,
+        // What the user actually asked for. The device names the creation from this so it
+        // can be addressed later ("delete the castle"); without it every group inherited
+        // whatever text the client happened to be holding, and on device that turned out
+        // to be the demo's default text box — so every creation was called "this cube red"
+        // and nothing could be deleted by name.
+        "prompt": prompt,
+        // The source travels with the IL for two reasons that are not about execution:
+        // the headset's disclosure panel shows the user what actually ran (A093), and the
+        // client reads a composition hint from it. The device never compiles this string.
+        "source": source,
+    })
+    .to_string()
 }
 
 /// Bump the lifetime stats for one processed utterance. The per-stage LIVE events
@@ -898,8 +1017,49 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                  No code was generated for the request; a harmless placeholder was sent instead."
             );
         }
-        // MODE C IS THE DELIVERABLE when Mode A is off — which is the default, and the
-        // only configuration a Quest 3 can run. The pipeline generates BOTH an action plan
+        // Deterministic object operation — answered without the model (§23). Same
+        // precedence as the audio path: the fast path produces no plan and no C#, so it
+        // has to be dispatched before either of the generation branches decides there is
+        // nothing to send.
+        if let Some(op) = &outcome.device_op {
+            let mut delivered = false;
+            if let Some(sender) = self.services.ubiq_sender.read().await.clone() {
+                let target = self
+                    .services
+                    .last_client_peer
+                    .read()
+                    .await
+                    .clone()
+                    .unwrap_or_default();
+                let msg = op.to_json(&target);
+                delivered = match self.services.auth.sign_nid94(
+                    msg.as_bytes(),
+                    &target,
+                    &outcome.request_id,
+                    crate::auth_gate::now_unix(),
+                ) {
+                    Ok(bytes) => sender.send(NID_BACKEND_OUTPUT, &bytes).await.is_ok(),
+                    Err(e) => {
+                        eprintln!("[device-op] refusing to send unsigned NID-94: {e}");
+                        false
+                    }
+                };
+            }
+            return if delivered {
+                format!(
+                    "{} → SENT to the headset (deterministic, no AI call) ✓",
+                    op.describe()
+                )
+            } else {
+                format!(
+                    "{} — resolved without the model, but no headset is connected",
+                    op.describe()
+                )
+            };
+        }
+
+        // MODE C IS THE DELIVERABLE when Mode A is off — which is the default. The
+        // pipeline generates BOTH an action plan
         // and a C# candidate; the plan is what ships to the headset, the candidate exists
         // so Mode B can be compared against it.
         //
@@ -965,10 +1125,13 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                         // Same builder as the audio path: on a Quest 3 this compiles here
                         // and ships IL, because IL2CPP has no runtime compiler. None means
                         // the compiler refused code the validator approved — fail closed.
-                        let msg = match mode_a_payload(
+                        let msg = match mode_a_payload_with_repair(
                             self.services.roslyn.as_ref(),
+                            Some(self.services.llm.as_ref()),
+                            &outcome.request_id,
                             &cs.candidate,
                             &target,
+                            outcome.transcript.as_deref().unwrap_or(""),
                         )
                         .await
                         {
@@ -1148,15 +1311,18 @@ mod tests {
             assembly: Some("TVqQAAM=".to_string()),
             diagnostics: vec![],
         }));
-        let msg = mode_a_payload(&stub, "class C {}", "peer-1")
-            .await
-            .expect("approved code should be delivered");
+        let msg =
+            mode_a_payload_with_repair(&stub, None, "r1", "class C {}", "peer-1", "build a castle")
+                .await
+                .expect("approved code should be delivered");
         let v: serde_json::Value = serde_json::from_str(&msg).unwrap();
         assert_eq!(v["type"], "assembly");
         assert_eq!(v["data"], "TVqQAAM=");
         assert_eq!(v["peer"], "peer-1");
         // The source rides along for the on-device disclosure panel.
         assert_eq!(v["source"], "class C {}");
+        // The device names the creation from this, so it must survive onto the wire.
+        assert_eq!(v["prompt"], "build a castle");
     }
 
     #[tokio::test]
@@ -1168,7 +1334,65 @@ mod tests {
             assembly: None,
             diagnostics: vec!["CS1002: ; expected".to_string()],
         }));
-        assert!(mode_a_payload(&stub, "class C {", "peer-1").await.is_none());
+        assert!(
+            mode_a_payload_with_repair(&stub, None, "r1", "class C {", "peer-1", "")
+                .await
+                .is_none()
+        );
+    }
+
+    /// A repair that the compiler accepts but the GUARDRAIL rejects must send nothing.
+    ///
+    /// This is the property that makes the repair pass safe to have at all. The model is
+    /// handed compiler diagnostics and asked to change its own code; if that were enough
+    /// to get onto the device, the repair prompt would be a way to introduce anything the
+    /// first validation would have refused. Repaired source is a new program and is
+    /// admitted on exactly the same terms.
+    #[tokio::test]
+    async fn a_repair_that_violates_the_guardrail_is_refused() {
+        struct RepairsIntoSomethingBanned;
+        #[async_trait::async_trait]
+        impl LlmClient for RepairsIntoSomethingBanned {
+            async fn generate_plan(
+                &self,
+                _r: &str,
+                _t: &str,
+            ) -> Result<dcvr_behaviour_dsl::ActionPlan, dcvr_llm_client::LlmError> {
+                Err(dcvr_llm_client::LlmError::EmptyResponse)
+            }
+            async fn repair_csharp(
+                &self,
+                _r: &str,
+                _s: &str,
+                _d: &str,
+            ) -> Result<String, dcvr_llm_client::LlmError> {
+                // Compiles fine. Reads the filesystem.
+                Ok(
+                    "using UnityEngine; using System.IO; public class GeneratedBehaviour : \
+                    MonoBehaviour { void Start(){ File.ReadAllText(\"/etc/passwd\"); } }"
+                        .to_string(),
+                )
+            }
+        }
+
+        let stub = StubCompiler(Ok(CompiledAssembly {
+            approved: false,
+            assembly: None,
+            diagnostics: vec!["CS0029: cannot convert".to_string()],
+        }));
+        let out = mode_a_payload_with_repair(
+            &stub,
+            Some(&RepairsIntoSomethingBanned),
+            "r1",
+            "class C {}",
+            "peer-1",
+            "",
+        )
+        .await;
+        assert!(
+            out.is_none(),
+            "a repaired program that violates the guardrail must never be sent"
+        );
     }
 
     #[tokio::test]
@@ -1176,9 +1400,10 @@ mod tests {
         // Distinct from a refusal: nothing has judged the code here, and a host that DOES
         // have a runtime compiler (the Editor, a Mono sideload) can still run it.
         let stub = StubCompiler(Err(()));
-        let msg = mode_a_payload(&stub, "class C {}", "peer-1")
-            .await
-            .expect("no compiler should fall back to source");
+        let msg =
+            mode_a_payload_with_repair(&stub, None, "r1", "class C {}", "peer-1", "build a castle")
+                .await
+                .expect("no compiler should fall back to source");
         let v: serde_json::Value = serde_json::from_str(&msg).unwrap();
         assert_eq!(v["type"], "code");
         assert_eq!(v["data"], "class C {}");

@@ -7,6 +7,7 @@
 
 mod errors;
 pub mod mock;
+pub mod ops;
 mod request;
 pub mod reset;
 mod router;

@@ -17,6 +17,7 @@ dcvr-llm-client = { workspace = true }
 dcvr-csharp-policy = { workspace = true }
 dcvr-roslyn-client = { workspace = true }
 tokio = { workspace = true }
+serde_json = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 

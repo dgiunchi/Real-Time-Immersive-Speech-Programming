@@ -67,6 +67,11 @@ namespace DreamCodeVRPlus
         // in Update(). Unity APIs are main-thread only, so the HUD and the generation
         // preview cannot be driven directly from the send loop.
         private volatile string _sentCommand;
+
+        // The last thing the user asked for, kept so a creation can be given a name they
+        // would recognise ("small castle") and later addressed by it.
+        private string _lastPrompt = "";
+        private DcvrTutorial _tutorial;
         // Push-to-talk edge detection (main thread only).
         private bool _triggerHeld;
         private ActionPlanExecutor _exec;
@@ -128,6 +133,9 @@ namespace DreamCodeVRPlus
             _presentationInjected = true;
             if (_world != null) { _cube = _world.Target; }
         }
+
+        /// <summary>The onboarding hint, retired on the first real creation (§32).</summary>
+        public void AttachTutorial(DcvrTutorial tutorial) => _tutorial = tutorial;
 
         private bool _presentationInjected;
 
@@ -320,6 +328,7 @@ namespace DreamCodeVRPlus
             if (!string.IsNullOrEmpty(justSent))
             {
                 _sentCommand = null;
+                _lastPrompt = justSent;
                 DcvrAudio.Instance?.Listening();
                 _hud?.SetHeard(justSent);
                 _preview?.Begin(justSent);
@@ -363,6 +372,13 @@ namespace DreamCodeVRPlus
                         _hasResult = true;
                     }
                 }
+                else if (mtype == "op")
+                {
+                    // A deterministic object operation the backend resolved without the
+                    // model. Executed against the local registry, and still bounds-checked
+                    // — the fast path skips the model, never the validator (§26).
+                    ApplyDeviceOp(json);
+                }
                 else if (mtype == "assembly")
                 {
                     // Mode A on hardware that cannot compile. The backend validated the C#,
@@ -371,6 +387,13 @@ namespace DreamCodeVRPlus
                     // generated behaviour", and that is identical either way.
                     string b64 = TryGetData(json);
                     string src = TryGetField(json, "source") ?? "";
+                    // The backend's copy of the request is authoritative: a command typed
+                    // into the admin panel never travels through this client's own send
+                    // path, so the locally-remembered prompt is only correct for
+                    // push-to-talk. On device that meant every creation was named after
+                    // the text box's default contents and nothing could be deleted by name.
+                    string prompt = TryGetField(json, "prompt");
+                    if (!string.IsNullOrWhiteSpace(prompt)) { _lastPrompt = prompt; }
                     if (_confirmGate == null || _confirmGate.SubmitOrPassthrough(src, NowMs()))
                     {
                         RunGeneratedAssembly(b64, src);
@@ -413,13 +436,27 @@ namespace DreamCodeVRPlus
                     // resolved its target to the spawn anchor — or, when that was null, to
                     // nothing at all, and the executor correctly refused. The executor was
                     // never the problem; the caller was.
-                    GameObject sceneRoot = _world != null && _world.SpawnAnchor != null
-                        ? _world.SpawnAnchor.gameObject
-                        : _cube;
-                    bool ok = _exec.Execute(json, selectedObject: _cube, sceneRoot: sceneRoot);
+                    // Mode C creates into a GROUP too, so a bounded plan and an interpreted
+                    // assembly produce content the authoring system treats identically —
+                    // same registry, same names, same spatial fitting, same deletion. Two
+                    // creative routes that produced two different kinds of object would
+                    // mean "delete the castle" working or not depending on which mode had
+                    // been running, which is not a distinction a user should have to hold.
+                    DcvrGeneratedContent content = DcvrGeneratedContent.Ensure();
+                    GenerationGroup group = content.BeginGroup(_lastPrompt);
+                    DcvrGenerationCapture capture = DcvrGenerationCapture.Ensure();
+                    capture.Snapshot();
+
+                    // The plan's "scene_root" is the group, so spawns land inside it. A
+                    // plan editing the SELECTED object still edits what is pointed at.
+                    GameObject selected = content.PointedObject != null ? content.PointedObject : _cube;
+                    bool ok = _exec.Execute(json, selectedObject: selected,
+                                            sceneRoot: group.Root.gameObject);
                     Debug.Log($"[ModeC-Net] applied backend NID 94 -> {(ok ? "applied" : "rejected")}");
                     if (ok)
                     {
+                        _tutorial?.RetireOnFirstCreation();
+                        StartCoroutine(capture.CaptureAfterExecution(group, ""));
                         _preview?.SetStageProgress(DcvrStage.Execute);
                         _preview?.Finish();
                         DcvrAudio.Instance?.Accepted();
@@ -434,6 +471,7 @@ namespace DreamCodeVRPlus
                         // client-side bounds re-check firing. Report it as exactly that
                         // rather than dressing it up as a backend security block: it is
                         // defence in depth, and the distinction matters to the claim.
+                        content.DeleteGroup(group);   // refused: leave no empty group behind
                         _preview?.Finish();
                         _hud?.SetBlocked("refused on device by the client bounds check",
                                          DcvrStage.Execute);
@@ -464,6 +502,76 @@ namespace DreamCodeVRPlus
 
         // Run the backend-approved generated C# at runtime (Mode A). Extracted so the
         // Phase-7 confirmation gate can defer it to an explicit user confirm.
+        /// <summary>Carry out a deterministic object operation.
+        ///
+        /// The backend recognised the intent; the DEVICE resolves the target, because the
+        /// objects and their names live here. That split is what keeps the backend
+        /// stateless about scene contents — a stale server-side idea of what exists could
+        /// otherwise drive a deletion.</summary>
+        private void ApplyDeviceOp(string json)
+        {
+            string opName = TryGetField(json, "op") ?? "";
+            string target = TryGetField(json, "target") ?? "";
+            string value = TryGetField(json, "value") ?? "";
+
+            DcvrOp op;
+            switch (opName)
+            {
+                case "delete": op = DcvrOp.Delete; break;
+                case "delete_group": op = DcvrOp.DeleteGroup; break;
+                case "clear_all": op = DcvrOp.ClearAll; break;
+                case "set_color": op = DcvrOp.SetColor; break;
+                case "set_scale": op = DcvrOp.SetScale; break;
+                case "move": op = DcvrOp.Move; break;
+                case "rotate": op = DcvrOp.Rotate; break;
+                default:
+                    Debug.LogWarning($"[ModeC-Net] unknown device op '{opName}'; ignoring.");
+                    return;
+            }
+
+            Vector3 axis = Vector3.zero;
+            float amount = 0f;
+            try
+            {
+                var o = JObject.Parse(json);
+                if (o["axis"] is JArray a && a.Count == 3)
+                {
+                    axis = new Vector3((float)a[0], (float)a[1], (float)a[2]);
+                }
+                amount = (float?)o["amount"] ?? 0f;
+            }
+            catch { /* defaults are safe: a zero axis moves nothing */ }
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            DcvrLocalCommands.Result r = DcvrLocalCommands.Ensure()
+                .Execute(op, target, value, axis, amount);
+            sw.Stop();
+
+            Debug.Log($"[device-op] {opName} target='{target}' -> "
+                      + $"{(r.Ok ? "ok" : "refused")}: {r.Message} ({sw.ElapsedMilliseconds} ms, no AI)");
+
+            _preview?.Finish();
+            if (r.Ok)
+            {
+                DcvrAudio.Instance?.Accepted();
+                _hud?.SetAccepted(r.Message);
+                _world?.SetState(DcvrWorld.Green, pulse: true);
+            }
+            else
+            {
+                // Not a security block — a target that could not be resolved, or a bound
+                // that refused the edit. Saying "blocked" here would teach the user to
+                // distrust the guardrail for what is usually a typo.
+                _hud?.SetBlocked(r.Message, DcvrStage.Execute);
+                _world?.SetState(DcvrWorld.Amber, pulse: true);
+            }
+            _status = r.Message;
+            _hasResult = true;
+            _ctrlOut.Enqueue((NID_COMPILE_B,
+                "{\"ok\":" + (r.Ok ? "true" : "false") + ",\"ms\":" + sw.ElapsedMilliseconds
+                + ",\"path\":\"device-op\",\"ai\":false}"));
+        }
+
         /// <summary>Run server-compiled IL through the interpreter.
         ///
         /// Deliberately mirrors <see cref="CompileGeneratedCode"/> step for step — same
@@ -473,18 +581,38 @@ namespace DreamCodeVRPlus
         /// which is the whole reason this works on a Quest 3 at all.</summary>
         private void RunGeneratedAssembly(string base64, string source)
         {
-            bool isBuild = !string.IsNullOrEmpty(source) && source.Contains("CreatePrimitive");
-            if (isBuild) { ResetTarget(); }
+            // Each creative request gets its own group, and groups COEXIST (§46). The old
+            // behaviour cleared the scene whenever a build arrived, so a castle vanished
+            // the moment a robot was asked for and no world could be assembled over time.
+            // Removal is now something the user asks for, not a side effect of creating.
+            DcvrGeneratedContent content = DcvrGeneratedContent.Ensure();
+            GenerationGroup group = content.BeginGroup(_lastPrompt);
 
+            DcvrGenerationCapture capture = DcvrGenerationCapture.Ensure();
+            capture.Snapshot();
+
+            // The script is hosted ON the group root, not on the tutorial cube. Anything
+            // it parents to its own `transform` therefore lands inside the group for free,
+            // and — the part that actually mattered — scaling or deleting the tutorial
+            // cube no longer scales or deletes everything the user has ever made.
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            bool ok = DcvrHotAssembly.Instance.LoadAndRun(base64, _cube, out string err);
+            bool ok = DcvrHotAssembly.Instance.LoadAndRun(base64, group.Root.gameObject, out string err);
             sw.Stop();
             long ms = sw.ElapsedMilliseconds;
 
             Debug.Log(ok
                 ? $"[Mode-A/IL] interpreted server-compiled assembly ✓ ({ms} ms)"
                 : "[Mode-A/IL] load FAILED: " + err);
-            if (ok) { StartCoroutine(ReportWhatWasBuilt(isBuild)); }
+
+            if (ok)
+            {
+                _tutorial?.RetireOnFirstCreation();
+                StartCoroutine(capture.CaptureAfterExecution(group, FloatingHint(source)));
+            }
+            else
+            {
+                content.DeleteGroup(group);   // no empty groups left behind
+            }
             _status = ok
                 ? "Mode A: server-compiled C# running on device (interpreted) ✓"
                 : "Mode A FAILED — " + err;
@@ -496,15 +624,16 @@ namespace DreamCodeVRPlus
 
             if (ok)
             {
-                SafeBehaviourRegistry.MarkGeneratedHierarchy(_cube);
-                _monitor.ScanGenerated(contentInMotion: !isBuild || source.Contains("Update"));
+                SafeBehaviourRegistry.MarkGeneratedHierarchy(group.Root.gameObject);
+                _monitor.ScanGenerated(contentInMotion: source != null && source.Contains("Update"));
                 _preview?.SetStageProgress(DcvrStage.Execute);
                 _preview?.Finish();
                 DcvrAudio.Instance?.Accepted();
-                _hud?.SetAccepted("generated behaviour running on device");
+                _hud?.SetAccepted(string.IsNullOrEmpty(group.SemanticName)
+                    ? "created"
+                    : $"created '{group.SemanticName}'");
                 _world?.SetState(DcvrWorld.Green, pulse: true);
                 _fx?.Shockwave(DcvrWorld.Green);
-                _fx?.Materialize(_cube);
             }
             else
             {
@@ -515,34 +644,26 @@ namespace DreamCodeVRPlus
             _hasResult = true;
         }
 
-        /// <summary>Report what the generated script actually built, one frame later.
+        /// <summary>Does this creation belong in the air?
         ///
-        /// "The assembly loaded" and "generated code built something in the headset" are
-        /// different claims, and only the second is worth making. A load that produces
-        /// nothing is also exactly what a silently-stripped engine method looks like under
-        /// IL2CPP, so the log has to be able to tell those apart.
-        ///
-        /// TWO PIECES OF UNITY TIMING MAKE THE OBVIOUS VERSION OF THIS WRONG, and the first
-        /// draft of it printed "built -15 object(s)":
-        ///
-        ///  - `AddComponent` runs Awake immediately, but Start is deferred to just before
-        ///    the next Update, and generated scene-building code builds in Start. Counting
-        ///    straight after the load reports zero every time.
-        ///  - `Destroy` is ALSO deferred to the end of the frame. A rebuild clears the
-        ///    previous creation first, so a "before" count taken during that frame still
-        ///    includes objects that are already scheduled to vanish — and subtracting it
-        ///    from a later count produces a nonsense negative delta.
-        ///
-        /// So it reports the ABSOLUTE count after everything has settled, which cannot be
-        /// skewed by either, and states whether a rebuild cleared first.</summary>
-        private IEnumerator ReportWhatWasBuilt(bool wasRebuild)
+        /// Read from the generated source's own words for what it built — a script that
+        /// names a variable `orbit` or `planet` is describing a composition role, and that
+        /// is a far better signal than anything derivable from the user's prompt. Wrong
+        /// answers cost a creation sitting on the floor that might have looked better
+        /// floating; nothing about safety depends on it.</summary>
+        private static string FloatingHint(string source)
         {
-            yield return null;   // Start() runs
-            yield return null;   // deferred Destroy() from a rebuild has been applied
-            if (_cube == null) { yield break; }
-            int built = _cube.GetComponentsInChildren<Transform>(true).Length - 1;  // minus the target
-            Debug.Log($"[Mode-A/IL] generated code built {built} object(s) under '{_cube.name}'"
-                      + (wasRebuild ? " (rebuild: the previous creation was cleared first)" : ""));
+            if (string.IsNullOrEmpty(source)) { return ""; }
+            string s = source.ToLowerInvariant();
+            // "float" is a C# KEYWORD. Every generated program declares one, so including
+            // it here matched literally everything — a camera prop and a castle wall were
+            // both placed in mid-air. Only words that describe the SUBJECT count, and they
+            // have to be specific enough not to appear incidentally.
+            foreach (string k in new[] { "orbit", "planet", "moon", "asteroid", "satellite" })
+            {
+                if (s.Contains(k)) { return "orbital"; }
+            }
+            return "";
         }
 
         private void CompileGeneratedCode(string code)

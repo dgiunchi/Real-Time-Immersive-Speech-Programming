@@ -56,10 +56,12 @@ rotate -> {\"type\":\"rotate\",\"axis\":\"x|y|z\",\"deg_per_sec\":0-360}; \
 spawn_primitive -> {\"type\":\"spawn_primitive\",\"shape\":\"cube|sphere|capsule|cylinder|plane|quad\",\"count\":1-8,\"parent\":\"target|scene_root\"}; \
 set_physics -> {\"type\":\"set_physics\",\"gravity\":true,\"mass\":0.1-100}. \
 \"csharp_candidate\" is ONE self-contained Unity MonoBehaviour class named GeneratedBehaviour, ATTACHED AT RUNTIME to the target via AddComponent. It has FULL CREATIVE FREEDOM to realise ANY command: recolour/reshape/animate the object, OR BUILD whole structures (a house, a tree, stairs, a snowman) out of primitives. \
+NAMING (important): give every object you create a MEANINGFUL name the user could say out loud, prefixed with DCVRGEN_ — e.g. DCVRGEN_Sun, DCVRGEN_Earth, DCVRGEN_NorthWestTower, DCVRGEN_Roof, DCVRGEN_LeftWing. NEVER leave the default primitive name (DCVRGEN_Cube, DCVRGEN_Sphere) when the part means something, because the user refers to parts by name later (\"remove Saturn\", \"make the roof blue\"). Use one word or CamelCase; do not number parts unless they are genuinely identical. \
+PLACEMENT: build around the LOCAL ORIGIN of the object you are attached to, at a natural size (roughly 0.2-6 units across for a whole composition). Do NOT try to position the creation relative to the player or the world origin, and do NOT pick large absolute world coordinates: the runtime places, grounds and scales the finished composition for you. \
 IMPORTANT — MODIFY vs BUILD: if the command transforms or restyles the CURRENT object (e.g. \"spin it\", \"spin this house\", \"make it bigger\", \"make it red\", \"bounce it\"), generate C# that ONLY animates/transforms/recolours the existing object via transform and material — do NOT call GameObject.CreatePrimitive, do NOT rebuild, and do NOT hide it; these run ON TOP of whatever is already in the scene (e.g. transform.Rotate spins the whole existing structure). ONLY call GameObject.CreatePrimitive when the user explicitly asks to CREATE / MAKE / BUILD a NEW structure. A bare 'spin/scale/colour/bounce' verb is a MODIFIER, never a rebuild. DISAMBIGUATION (decide by the OBJECT of the sentence, not just the verb): a request for a NOUN/THING — \"make me a spooky house\", \"build a snowman\", \"generate a solar system\", \"create a castle\", \"give me a tree\" — is ALWAYS a BUILD: you MUST construct it from SEVERAL positioned, coloured primitives via GameObject.CreatePrimitive (a house = a floor + four walls + a roof; a solar system = one central sphere plus several smaller spheres placed around it, optionally orbiting in Update(); a snowman = stacked spheres). NEVER satisfy a build request with only a recolour or resize of the existing object — that is a FAILURE; build the actual structure. Only \"make IT <adjective>\" or a bare verb acting on the existing object (\"red\", \"bigger\", \"spin\", \"bounce\") is a MODIFY. To build: call GameObject.CreatePrimitive(PrimitiveType.Cube/Sphere/Cylinder/Capsule/Quad/Plane), set each piece's transform.SetParent(transform, false), then set localPosition/localRotation/localScale and its GetComponent<Renderer>().material.color; assemble relative to the object so it appears where the target is. MANDATORY REMOVAL TAG: immediately after creating EACH new GameObject (every GameObject.CreatePrimitive or new GameObject), set its name to start with 'DCVRGEN_' — e.g. `var g = GameObject.CreatePrimitive(PrimitiveType.Cube); g.name = \"DCVRGEN_\" + g.name;`. This applies to EVERY piece you spawn (do it for each one). It lets 'remove everything' reliably delete exactly what you built, no matter how it is parented. Do NOT rename or retag existing/selected objects — only objects you newly create. You MAY gameObject.AddComponent<Rigidbody>() etc. Use Start() to build or apply one-off changes and Update() with Time.deltaTime for motion; prefer smooth eased motion (Mathf.Sin/SmoothStep/Lerp) and set material.color so colours show under URP and the built-in pipeline; null-check every GetComponent. When you build a whole replacement structure, you MAY hide the original object with GetComponent<Renderer>().enabled=false so it does not poke through. \
 REMOVE / CLEAR: when the command asks to REMOVE, DELETE, or CLEAR objects, ACTUALLY delete them with Destroy() — never just hide or move them. To remove the current/selected object (remove this, delete it, get rid of this), call Destroy(gameObject). To remove EVERYTHING (remove everything, clear the scene, reset, delete all, remove all we made/created), in Start() loop over FindObjectsOfType<Transform>() and call Destroy(t.gameObject) for EVERY ROOT object (t.parent==null) whose name does NOT contain any of: Camera, Light, Directional, Network, Ubiq, Room, Player, Hand, Controller, Canvas, EventSystem, Floor, Ground, Plane, Manager, System, Avatar, Environment, Terrain, Tree, Target, Training, Wrist, Menu, Readme, Invoker, DontDestroy, Scene (those are the core rig AND the fixed lab scenery/training objects — always protect them; only delete the objects the user actually built, e.g. the primitives and structures created by earlier commands). Skip this.gameObject during the loop, then Destroy(gameObject) last so nothing you built remains. Do it as ONE finite pass. \
 GUARDRAILS (mandatory): use ONLY UnityEngine APIs — NEVER System.IO/System.Net/System.Reflection/System.Diagnostics/System.Threading/System.Runtime.InteropServices/UnityEngine.Networking, and NEVER Process/Assembly/AppDomain/Environment/Activator/Marshal/DllImport/UnityWebRequest/Resources/PlayerPrefs/GetType/SendMessage/InvokeRepeating/unsafe/Application.Quit. Keep it BOUNDED: ONE class only, no public/serialized fields, no GameObject.Find by name (BUT FindObjectsOfType<Transform>() IS allowed, ONLY for the remove-everything pass above), create at most ~40 objects, FINITE loops only (never while(true) or unbounded loops), sensible sizes (~0.05-20 units). The action_plan may be a best-effort summary of the command (it still must be valid). \
-Example (build a small house): {\"action_plan\":{\"schema_version\":\"1.0\",\"request_id\":\"x\",\"target\":\"selected_object\",\"actions\":[{\"type\":\"spawn_primitive\",\"shape\":\"cube\",\"count\":2,\"parent\":\"target\"}]},\"csharp_candidate\":\"using UnityEngine; public class GeneratedBehaviour : MonoBehaviour { void Start(){ var body=GameObject.CreatePrimitive(PrimitiveType.Cube); body.name=\"DCVRGEN_\"+body.name; body.transform.SetParent(transform,false); body.transform.localScale=new Vector3(2f,1.5f,2f); var br=body.GetComponent<Renderer>(); if(br!=null) br.material.color=new Color(0.85f,0.8f,0.7f); var roof=GameObject.CreatePrimitive(PrimitiveType.Cube); roof.name=\"DCVRGEN_\"+roof.name; roof.transform.SetParent(transform,false); roof.transform.localPosition=new Vector3(0f,1.1f,0f); roof.transform.localScale=new Vector3(2.4f,0.6f,2.4f); roof.transform.localRotation=Quaternion.Euler(0f,45f,0f); var rr=roof.GetComponent<Renderer>(); if(rr!=null) rr.material.color=new Color(0.5f,0.15f,0.1f); } }\"}";
+Example (build a small house): {\"action_plan\":{\"schema_version\":\"1.0\",\"request_id\":\"x\",\"target\":\"selected_object\",\"actions\":[{\"type\":\"spawn_primitive\",\"shape\":\"cube\",\"count\":2,\"parent\":\"target\"}]},\"csharp_candidate\":\"using UnityEngine; public class GeneratedBehaviour : MonoBehaviour { void Start(){ var body=GameObject.CreatePrimitive(PrimitiveType.Cube); body.name=\"DCVRGEN_Walls\"; body.transform.SetParent(transform,false); body.transform.localScale=new Vector3(2f,1.5f,2f); var br=body.GetComponent<Renderer>(); if(br!=null) br.material.color=new Color(0.85f,0.8f,0.7f); var roof=GameObject.CreatePrimitive(PrimitiveType.Cube); roof.name=\"DCVRGEN_Roof\"; roof.transform.SetParent(transform,false); roof.transform.localPosition=new Vector3(0f,1.1f,0f); roof.transform.localScale=new Vector3(2.4f,0.6f,2.4f); roof.transform.localRotation=Quaternion.Euler(0f,45f,0f); var rr=roof.GetComponent<Renderer>(); if(rr!=null) rr.material.color=new Color(0.5f,0.15f,0.1f); } }\"}";
 
 /// OpenAI-compatible chat client that returns a structured [`ActionPlan`].
 ///
@@ -119,6 +121,25 @@ fn strip_code_fences(s: &str) -> &str {
     let t = s.trim();
     let t = t
         .strip_prefix("```json")
+        .or_else(|| t.strip_prefix("```"))
+        .unwrap_or(t);
+    t.strip_suffix("```").unwrap_or(t).trim()
+}
+
+/// Unwrap a C# payload that arrived wrapped in a markdown code block.
+///
+/// Separate from [`strip_code_fences`] because the language tag differs (```csharp / ```cs)
+/// and because this one must be conservative: it only strips when the text BEGINS with a
+/// fence, so a program that merely mentions backticks in a string literal is untouched.
+fn strip_csharp_fences(s: &str) -> &str {
+    let t = s.trim();
+    if !t.starts_with("```") {
+        return t;
+    }
+    let t = t
+        .strip_prefix("```csharp")
+        .or_else(|| t.strip_prefix("```cs"))
+        .or_else(|| t.strip_prefix("```c#"))
         .or_else(|| t.strip_prefix("```"))
         .unwrap_or(t);
     t.strip_suffix("```").unwrap_or(t).trim()
@@ -261,14 +282,99 @@ impl LlmClient for OpenAiLlmClient {
         let mut plan: ActionPlan =
             serde_json::from_value(plan_val.clone()).map_err(|e| LlmError::Parse(e.to_string()))?;
         plan.request_id = request_id.to_string();
+        // Strip fences from the CANDIDATE too, not just from the outer envelope.
+        //
+        // The model is asked for JSON and reliably gives JSON, but it intermittently wraps
+        // the C# *inside* the string in a markdown block anyway — ```csharp ... ```. The
+        // backticks are not C#, so tree-sitter finds no type at all and the guardrail
+        // refuses with "expected exactly one class, found 0; c# failed to parse". That is
+        // a correct refusal of a malformed candidate, and it was firing on perfectly good
+        // programs: on device roughly a third of creative requests failed this way and the
+        // headset showed a security-shaped block for what was really a formatting quirk.
         let csharp_candidate = outer
             .get("csharp_candidate")
             .and_then(|c| c.as_str())
-            .map(|s| s.to_string());
+            .map(|s| strip_csharp_fences(s).to_string());
         Ok(Generation {
             plan,
             csharp_candidate,
         })
+    }
+
+    /// One repair attempt on C# the compiler rejected.
+    ///
+    /// The model is given ONLY its own previous source and the compiler's diagnostics. It
+    /// is not told what the user asked for, and it is not asked to redesign anything —
+    /// the request is narrow on purpose, because a repair prompt that invites creativity
+    /// tends to produce a different program rather than a working version of this one.
+    ///
+    /// Whatever comes back is untrusted source, exactly like a first generation.
+    async fn repair_csharp(
+        &self,
+        request_id: &str,
+        source: &str,
+        diagnostics: &str,
+    ) -> Result<String, LlmError> {
+        const REPAIR_PROMPT: &str = "You fix Unity C# that failed to compile. \
+Return ONLY the corrected C#, no markdown fences and no commentary. \
+Keep it a SINGLE self-contained class named GeneratedBehaviour deriving from MonoBehaviour. \
+Change as little as possible: fix the reported errors and keep the same structure and intent. \
+Use only UnityEngine APIs. Do not add namespaces, usings beyond UnityEngine, file I/O, \
+reflection, or networking.";
+
+        let model = self.effective_model();
+        let mut body = serde_json::json!({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": REPAIR_PROMPT},
+                {"role": "user", "content": format!(
+                    "compiler errors:\n{diagnostics}\n\nsource:\n{source}")}
+            ]
+        });
+        let reasoning = model.starts_with("gpt-5")
+            || model.starts_with("o1")
+            || model.starts_with("o3")
+            || model.starts_with("o4");
+        if !reasoning {
+            body["temperature"] = serde_json::json!(0);
+        } else {
+            body["reasoning_effort"] = serde_json::json!("low");
+            body["max_completion_tokens"] = serde_json::json!(6000);
+        }
+        let _ = request_id;
+
+        let resp = self
+            .client
+            .post(format!("{}/chat/completions", self.base_url))
+            .bearer_auth(self.api_key.expose_secret())
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| LlmError::Request(e.to_string()))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(LlmError::Status {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        let v: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| LlmError::Parse(e.to_string()))?;
+        let content = v
+            .get("choices")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .ok_or(LlmError::EmptyResponse)?;
+        let fixed = strip_code_fences(content).trim().to_string();
+        if fixed.is_empty() {
+            return Err(LlmError::EmptyResponse);
+        }
+        Ok(fixed)
     }
 
     async fn screen_intent(
@@ -350,6 +456,32 @@ impl LlmClient for OpenAiLlmClient {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
+    use super::strip_csharp_fences;
+
+    /// Regression: a fenced candidate reached the guardrail with backticks in it, so
+    /// tree-sitter found no type and refused with "expected exactly one class, found 0".
+    /// The refusal was correct; the input should never have looked like that.
+    #[test]
+    fn a_fenced_csharp_candidate_is_unwrapped() {
+        let fenced = "```csharp\nusing UnityEngine;\npublic class GeneratedBehaviour : MonoBehaviour {}\n```";
+        let out = strip_csharp_fences(fenced);
+        assert!(out.starts_with("using UnityEngine;"), "got: {out}");
+        assert!(!out.contains("```"));
+
+        for tag in ["```cs", "```c#", "```"] {
+            let wrapped = format!("{tag}\npublic class GeneratedBehaviour {{}}\n```");
+            assert!(!strip_csharp_fences(&wrapped).contains("```"), "tag {tag}");
+        }
+    }
+
+    /// Conservative: only unwrap when the payload BEGINS with a fence, so a program that
+    /// merely contains backticks in a string literal is left exactly as written.
+    #[test]
+    fn backticks_inside_a_program_are_left_alone() {
+        let src = "public class GeneratedBehaviour { void Start(){ Debug.Log(\"``\"); } }";
+        assert_eq!(strip_csharp_fences(src), src);
+    }
+
     use super::*;
     use crate::{set_llm_tuning, LlmTuning};
 

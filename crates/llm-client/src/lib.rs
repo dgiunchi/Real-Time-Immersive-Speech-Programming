@@ -108,6 +108,33 @@ pub trait LlmClient: Send + Sync {
         })
     }
 
+    /// Ask the model to fix C# that the compiler rejected, given the diagnostics.
+    ///
+    /// Generated code that does not compile is the ordinary case, not the exceptional
+    /// one — the reliability ceiling for code-generating LLMs is well documented, and in
+    /// live use here roughly a third to a half of substantial creative programs failed to
+    /// build on the first attempt (`CS0029: cannot convert GameObject to Transform` being
+    /// a representative example). The system failed closed correctly every time, which is
+    /// right and also means the user simply saw nothing happen.
+    ///
+    /// **The repaired source is NOT trusted.** It re-enters the pipeline at the top: the
+    /// lexical guardrail, then the semantic analyzer, then the compiler. A compiler
+    /// diagnostic is a hint to the model, never a licence to skip validation — the whole
+    /// point is that nothing reaches the device without passing the same gate twice over.
+    ///
+    /// Default: refuse. A client that cannot repair should not silently pretend to.
+    async fn repair_csharp(
+        &self,
+        request_id: &str,
+        source: &str,
+        diagnostics: &str,
+    ) -> Result<String, LlmError> {
+        let _ = (request_id, source, diagnostics);
+        Err(LlmError::Unsupported(
+            "this client does not support repair".to_string(),
+        ))
+    }
+
     /// Layer-1 SECURITY SCREEN of the raw command, BEFORE generation. A real client
     /// overrides this with an LLM classification call; the default (offline/mock) is
     /// "safe" and relies on the keyword pre-filter + the downstream C# validator.

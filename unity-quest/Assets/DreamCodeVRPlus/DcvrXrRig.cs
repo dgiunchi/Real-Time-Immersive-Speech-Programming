@@ -77,6 +77,13 @@ namespace DreamCodeVRPlus
             DcvrHandVisibility.Attach(left, UnityEngine.XR.XRNode.LeftHand);
             DcvrHandVisibility.Attach(right, UnityEngine.XR.XRNode.RightHand);
 
+            // Selection ray, so "delete this" has something to refer to. On the RIGHT hand
+            // only: two rays give two candidate targets and no way to say which one you
+            // meant. It draws from the CONTROLLER and applies the same "is this pose real"
+            // test as the hand models — geometry drawn from an untracked pose is what put
+            // a block on the wearer's eye in an earlier build.
+            DcvrPointer.Attach(right, UnityEngine.XR.XRNode.RightHand);
+
             // XROrigin owns the tracking-origin mode. Floor means the runtime reports poses
             // relative to the physical floor of the guardian, so the wearer's real standing
             // height becomes their eye height — no Y offset of our own, and none wanted:

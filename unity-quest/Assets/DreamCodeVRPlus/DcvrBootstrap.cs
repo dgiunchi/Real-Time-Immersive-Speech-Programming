@@ -65,7 +65,20 @@ namespace DreamCodeVRPlus
                 // HUD and effects live in WORLD space, parented to nothing. They must stay
                 // where they are placed so the wearer can walk up to, past and behind them.
                 DcvrWorld world = FindAnyObjectByType<DcvrWorld>();
-                var hud = DcvrHud.Build(null, new Vector3(0f, 1.72f, 3.4f));
+
+                // The authoring runtime. All three are created at the SCENE ROOT — never
+                // under the rig — so nothing the user makes can inherit head or body
+                // movement. Built before the client so the first backend message already
+                // has somewhere to put its results.
+                DcvrGeneratedContent.Ensure();
+                DcvrSpatialCompositor.Ensure();
+                DcvrGenerationCapture.Ensure();
+                DcvrLocalCommands.Ensure();
+
+                // Status panel, moved off the centre line and further out. Straight ahead
+                // at 3.4 m is exactly where creations appear, so a panel there is a panel
+                // in front of the thing you just asked for.
+                var hud = DcvrHud.Build(null, new Vector3(1.25f, 1.62f, 3.9f));
                 var fx = DcvrEffects.Attach(null);
                 var preview = DcvrCodePreview.Build(null, new Vector3(1.9f, 1.55f, 3.1f));
                 DcvrNameShow title = DcvrNameShow.Build(new Vector3(-5.2f, 2.2f, 5.4f), -32f);
@@ -83,6 +96,12 @@ namespace DreamCodeVRPlus
                 DcvrAudio.Build(DcvrWorld.CreationZone);
                 var signature = DcvrAttackSignature.Attach(fx);
                 client.AttachPresentation(world, hud, fx, preview, signature);
+
+                // Onboarding hint, separate from the status panel so it can leave when the
+                // user starts building for real (§32, §33).
+                DcvrTutorial tutorial = DcvrTutorial.Build(DcvrWorld.CreationZone,
+                                                           world != null ? world.Target : null);
+                client.AttachTutorial(tutorial);
 
                 DcvrStartup.Run(fx.NearLayer, hud, title.transform);
                 Debug.Log("[DcvrBootstrap] production presentation wired");

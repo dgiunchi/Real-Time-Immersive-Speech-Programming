@@ -455,7 +455,9 @@ namespace DreamCodeVRPlus
             _target = DcvrPrim.Create(PrimitiveType.Cube);
             _target.name = "DCVR_Target";
             _target.transform.SetParent(anchor.transform, false);
-            _target.transform.localScale = Vector3.one * 0.55f;
+            // 0.30 m (§30). At 0.55 m the starter cube dominated the view from the
+            // platform and read as "the application" rather than "a thing to change".
+            _target.transform.localScale = Vector3.one * 0.30f;
 
             Material m = MakeUnlit("DCVR_TargetMat", new Color(0.62f, 0.72f, 0.85f));
             _target.GetComponent<Renderer>().sharedMaterial = m;

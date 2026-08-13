@@ -138,12 +138,19 @@ namespace DreamCodeVRPlus
             return _domain;
         }
 
-        /// <summary>The newest interpreted MonoBehaviour in the domain.
+        /// <summary>The ENTRY POINT of the newest assembly.
         ///
-        /// Newest, not first: the domain accumulates every assembly loaded this session,
-        /// so "first" would re-run the earliest generated script on every subsequent
-        /// command. Types come back in load order, so the last match is the one that
-        /// arrived with this assembly.</summary>
+        /// Choosing "the newest MonoBehaviour" is wrong as soon as a generated program
+        /// declares a helper. A solar system typically contains `GeneratedBehaviour` plus
+        /// a small `PlanetOrbit` component that gets attached to each planet — and
+        /// `PlanetOrbit` is declared last, so the naive rule ran the helper on the group
+        /// root and the entry point never executed. On device that looked like a
+        /// successful load that built nothing, which is the least debuggable failure this
+        /// path can produce.
+        ///
+        /// So the rule is, in order: the class the generation contract names
+        /// (`GeneratedBehaviour`), then any TOP-LEVEL type (nested types have `/` in their
+        /// full name and are helpers by construction), then whatever is newest.</summary>
         private static ILType FirstBehaviour(ILAppDomain domain)
         {
             // Snapshot first. Asking an ILType for its BaseType makes the interpreter
@@ -151,12 +158,26 @@ namespace DreamCodeVRPlus
             // inspecting the collection while enumerating it throws.
             var snapshot = new List<IType>(domain.LoadedTypes.Values);
 
+            ILType named = null;
+            ILType topLevel = null;
             ILType newest = null;
+
             foreach (IType t in snapshot)
             {
-                if (t is ILType ilt && InheritsMonoBehaviour(ilt)) { newest = ilt; }
+                if (!(t is ILType ilt) || !InheritsMonoBehaviour(ilt)) { continue; }
+                newest = ilt;
+
+                string full = ilt.FullName ?? "";
+                bool nested = full.Contains("/") || full.Contains("+");
+                if (!nested) { topLevel = ilt; }
+
+                string leaf = full;
+                int slash = leaf.LastIndexOfAny(new[] { '/', '+', '.' });
+                if (slash >= 0) { leaf = leaf.Substring(slash + 1); }
+                if (!nested && leaf == "GeneratedBehaviour") { named = ilt; }
             }
-            return newest;
+
+            return named ?? topLevel ?? newest;
         }
 
         private static bool InheritsMonoBehaviour(ILType t)
