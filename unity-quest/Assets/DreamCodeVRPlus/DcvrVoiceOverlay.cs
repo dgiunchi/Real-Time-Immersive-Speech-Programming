@@ -66,6 +66,20 @@ namespace DreamCodeVRPlus
         private float _recordStart;
         private float _hideAt;
 
+        /// <summary>Longest the overlay may claim to be recording before it stops believing
+        /// itself.
+        ///
+        /// The display previously depended on some LATER event to move it out of Recording,
+        /// and when that event did not arrive on the voice path it sat there indefinitely.
+        /// A recording indicator that can be wrong about recording is worse than none, so
+        /// the state now expires on its own. This is a backstop, not the mechanism — the
+        /// trigger release clears it directly — but a backstop is exactly what an indicator
+        /// with a privacy meaning should have.
+        ///
+        /// Comfortably longer than the capture cap, so it can never pre-empt a legitimate
+        /// long hold.</summary>
+        private const float RecordingWatchdogSeconds = 20f;
+
         // Rebuilt only when the displayed second actually changes. A string built every
         // frame is 72 allocations a second for a readout that ticks once (§73, §45).
         private int _lastShownTenth = -1;
@@ -210,6 +224,15 @@ namespace DreamCodeVRPlus
             {
                 _hideAt = 0f;
                 Set(DcvrVoiceState.Idle);
+            }
+
+            // Watchdog: nothing may leave the overlay asserting that the microphone is open.
+            if (_state == DcvrVoiceState.Recording
+                && Time.unscaledTime - _recordStart > RecordingWatchdogSeconds)
+            {
+                Debug.LogWarning("[DcvrVoiceOverlay] recording state expired without a "
+                                 + "release — clearing (the microphone is bounded separately)");
+                Set(DcvrVoiceState.Error, "recording ended");
             }
         }
 

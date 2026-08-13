@@ -81,10 +81,13 @@ namespace DreamCodeVRPlus
         /// without touching the environment and without a second realtime light — which was
         /// measured at half the frame rate (see DcvrGeneratedLighting).
         ///
-        /// Kept low deliberately. The lit contribution still provides the shading that makes
-        /// form readable; push this much higher and every creation reads as a glowing
-        /// hologram, which is both wrong for stone and uncomfortable to wear.</summary>
-        private const float VisibilityFloor = 0.55f;
+        /// Reduced from 0.55 once the ambient term was raised (see DcvrGeneratedLighting):
+        /// ambient does this job properly, with a hemisphere gradient that preserves form,
+        /// whereas emission is flat and washes shading out. What remains is a small guard
+        /// against pure black on a face that catches neither the key nor the sky — not a
+        /// look. Push it back up and every creation reads as a glowing hologram, which is
+        /// wrong for stone and uncomfortable to wear.</summary>
+        private const float VisibilityFloor = 0.18f;
 
         /// <summary>Tuned to be distinguishable under the generated-content rig, not to be
         /// physically correct. The two axes a Quest can actually show are how shiny and how

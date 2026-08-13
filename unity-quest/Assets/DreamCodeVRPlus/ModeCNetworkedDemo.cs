@@ -818,6 +818,22 @@ namespace DreamCodeVRPlus
                 _triggerHeld = false;
                 float heldFor = Time.unscaledTime - _recordStartedAt;
                 float t0 = Time.realtimeSinceStartup;
+
+                // LEAVE THE RECORDING STATE ON THE RELEASE ITSELF, before anything else.
+                //
+                // This was the bug: the transition out of Recording was driven by
+                // `_sentCommand`, which is only set on the TYPED command path — the
+                // recorded-audio path never sets it. So after releasing the trigger the
+                // overlay kept saying "RECORDING" until the backend's reply arrived,
+                // which for a creative request is 8-22 seconds. The microphone had
+                // genuinely stopped; the display was lying about it, which is the one
+                // thing a recording indicator must never do.
+                //
+                // StopMic can also return early (no device, no samples) and set its own
+                // error state, so this is deliberately the FIRST thing that happens: the
+                // release is acknowledged whatever follows.
+                DcvrVoiceOverlay.Ensure().Set(DcvrVoiceState.Transcribing);
+
                 StopMic();
                 // §43/§44: the captured audio must match how long the trigger was actually
                 // held. If these diverge, the microphone kept running past the release and

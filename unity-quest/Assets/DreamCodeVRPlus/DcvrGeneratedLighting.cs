@@ -80,9 +80,53 @@ namespace DreamCodeVRPlus
             go.transform.SetParent(null, true);
             _root = go.transform;
 
-            Debug.Log($"[DcvrGenLight] generated layer {layer}; no extra realtime lights "
-                      + "(measured at half frame rate) — visibility comes from the material "
-                      + "emission floor instead");
+            RaiseAmbientForLitContent();
+
+            Debug.Log($"[DcvrGenLight] generated layer {layer}; no realtime lights added "
+                      + "(measured at half frame rate). Ambient raised instead — free, and "
+                      + "it reaches ONLY lit geometry, which is exactly the generated content");
+        }
+
+        /// <summary>Raise the ambient light — which turns out to affect generated content
+        /// and nothing else.
+        ///
+        /// THE OBSERVATION THAT MAKES THIS SAFE. Every shader in the accepted environment is
+        /// Unlit or a custom effect shader (Holo, Grid, Building, SkyGradient, Dissolve);
+        /// there is not one URP/Lit surface in it. Unlit shading ignores ambient entirely.
+        /// Generated content is the ONLY lit geometry in the scene — so raising the ambient
+        /// term is, in practice, a generated-content-only lighting change. It reaches
+        /// exactly what needs it and leaves the signed-off environment pixel-identical.
+        ///
+        /// It is also free. Ambient is a term in a shader that already runs, not a light to
+        /// be culled and evaluated per fragment — which is what made the dedicated rig cost
+        /// half the frame rate.
+        ///
+        /// A GRADIENT rather than a flat colour, deliberately: sky above, dimmer and warmer
+        /// below, so an object's top catches a different tone from its underside. That is
+        /// what makes a cube read as a cube. A uniform ambient would restore the colours and
+        /// flatten the form at the same time, which is the failure mode of leaning on
+        /// emission alone.</summary>
+        private static void RaiseAmbientForLitContent()
+        {
+            Color prevSky = RenderSettings.ambientSkyColor;
+
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            // Cool from above, neutral at the horizon, warm and dim from the ground — the
+            // shape of daylight, at an intensity chosen so a mid-grey surface lands near
+            // mid-grey rather than at a fifth of it.
+            RenderSettings.ambientSkyColor = new Color(0.44f, 0.47f, 0.52f);
+            RenderSettings.ambientEquatorColor = new Color(0.34f, 0.34f, 0.35f);
+            RenderSettings.ambientGroundColor = new Color(0.17f, 0.15f, 0.13f);
+            RenderSettings.ambientIntensity = 1f;
+
+            // Metals reflect their surroundings or they read as dark plastic. The skybox is
+            // already the reflection source; this only makes sure it is actually applied.
+            RenderSettings.defaultReflectionMode =
+                UnityEngine.Rendering.DefaultReflectionMode.Skybox;
+            RenderSettings.reflectionIntensity = 1f;
+
+            Debug.Log($"[DcvrGenLight] ambient {prevSky} -> {RenderSettings.ambientSkyColor} "
+                      + "(gradient; affects lit geometry only — the environment is unlit)");
         }
 
         /// <summary>Put an object and everything under it on the generated layer.
