@@ -1,7 +1,9 @@
 use dcvr_behaviour_dsl::bounds::{
-    is_valid_hex_color, MAX_ACTIONS, MAX_PLAN_JSON_BYTES, MAX_SPAWN_COUNT,
-    MAX_TOTAL_SPAWNED_PER_SESSION, MOVE_AMPLITUDE_MAX, MOVE_SPEED_MAX, PHYSICS_MASS_MAX,
-    PHYSICS_MASS_MIN, ROTATE_DEG_PER_SEC_MAX, SCALE_MAX, SCALE_MIN, SUPPORTED_SCHEMA_VERSION,
+    is_valid_hex_color, EMISSION_MAX, LIGHT_INTENSITY_MAX, LIGHT_RANGE_MAX, MAX_ACTIONS,
+    MAX_PLAN_JSON_BYTES, MAX_SPAWN_COUNT, MAX_TEXT_LEN, MAX_TOTAL_SPAWNED_PER_SESSION,
+    MOVE_AMPLITUDE_MAX, MOVE_SPEED_MAX, PHYSICS_MASS_MAX, PHYSICS_MASS_MIN, POSITION_ABS_MAX,
+    ROTATE_DEG_PER_SEC_MAX, SCALE_MAX, SCALE_MIN, SIZE_MAX, SIZE_MIN, SUPPORTED_SCHEMA_VERSION,
+    TEXT_SIZE_MAX, TEXT_SIZE_MIN,
 };
 use dcvr_behaviour_dsl::{Action, ActionPlan};
 use serde::{Deserialize, Serialize};
@@ -169,6 +171,51 @@ fn push_range(
     }
 }
 
+/// Bounded 3-vector: every component finite and within `limit`.
+fn check_vec3(v: &mut Vec<ValidationError>, val: Option<&[f64; 3]>, limit: f64) {
+    let Some(a) = val else { return };
+    for c in a {
+        push_range(v, *c, c.abs() <= limit, |x| {
+            ValidationError::MoveAmplitudeOutOfRange {
+                value: x,
+                max: limit,
+            }
+        });
+    }
+}
+
+fn check_size(v: &mut Vec<ValidationError>, val: Option<&[f64; 3]>) {
+    let Some(a) = val else { return };
+    for c in a {
+        push_range(v, *c, *c >= SIZE_MIN && *c <= SIZE_MAX, |x| {
+            ValidationError::ScaleOutOfRange {
+                value: x,
+                min: SIZE_MIN,
+                max: SIZE_MAX,
+            }
+        });
+    }
+}
+
+fn check_unit(v: &mut Vec<ValidationError>, val: Option<&f64>, max: f64) {
+    let Some(x) = val else { return };
+    push_range(v, *x, *x >= 0.0 && *x <= max, |val| {
+        ValidationError::ScaleOutOfRange {
+            value: val,
+            min: 0.0,
+            max,
+        }
+    });
+}
+
+fn check_optional_color(v: &mut Vec<ValidationError>, c: Option<&String>) {
+    if let Some(c) = c {
+        if !is_valid_hex_color(c) {
+            v.push(ValidationError::InvalidColor { value: c.clone() });
+        }
+    }
+}
+
 fn check_action(action: &Action, v: &mut Vec<ValidationError>, spawned: &mut u32) {
     match action {
         Action::SetColor { color } => {
@@ -222,7 +269,15 @@ fn check_action(action: &Action, v: &mut Vec<ValidationError>, spawned: &mut u32
                 },
             );
         }
-        Action::SpawnPrimitive { count, .. } => {
+        Action::SpawnPrimitive {
+            count,
+            position,
+            rotation,
+            size,
+            color,
+            spacing,
+            ..
+        } => {
             if *count == 0 || *count > MAX_SPAWN_COUNT {
                 v.push(ValidationError::SpawnCountOutOfRange {
                     count: *count,
@@ -231,6 +286,126 @@ fn check_action(action: &Action, v: &mut Vec<ValidationError>, spawned: &mut u32
             } else {
                 *spawned = spawned.saturating_add(*count);
             }
+            // Every placement value is bounded. A plan may say WHERE, but only inside a
+            // fixed envelope around the creation zone — content cannot be staged behind
+            // the wearer, at the horizon, or at a coordinate large enough to be a
+            // numerical attack on the client.
+            check_vec3(v, position.as_ref(), POSITION_ABS_MAX);
+            check_vec3(v, rotation.as_ref(), 360.0);
+            check_size(v, size.as_ref());
+            check_optional_color(v, color.as_ref());
+            if let Some(sp) = spacing {
+                push_range(v, *sp, *sp >= 0.0 && *sp <= POSITION_ABS_MAX, |val| {
+                    ValidationError::MoveAmplitudeOutOfRange {
+                        value: val,
+                        max: POSITION_ABS_MAX,
+                    }
+                });
+            }
+        }
+        Action::SetMaterial {
+            emission,
+            metallic,
+            smoothness,
+            opacity,
+            color,
+            ..
+        } => {
+            check_unit(v, emission.as_ref(), EMISSION_MAX);
+            check_unit(v, metallic.as_ref(), 1.0);
+            check_unit(v, smoothness.as_ref(), 1.0);
+            check_unit(v, opacity.as_ref(), 1.0);
+            check_optional_color(v, color.as_ref());
+        }
+        Action::SpawnLight {
+            color,
+            intensity,
+            range,
+            position,
+            ..
+        } => {
+            if !is_valid_hex_color(color) {
+                v.push(ValidationError::InvalidColor {
+                    value: color.clone(),
+                });
+            }
+            push_range(
+                v,
+                *intensity,
+                *intensity >= 0.0 && *intensity <= LIGHT_INTENSITY_MAX,
+                |val| ValidationError::MoveSpeedOutOfRange {
+                    value: val,
+                    max: LIGHT_INTENSITY_MAX,
+                },
+            );
+            push_range(
+                v,
+                *range,
+                *range >= 0.0 && *range <= LIGHT_RANGE_MAX,
+                |val| ValidationError::MoveAmplitudeOutOfRange {
+                    value: val,
+                    max: LIGHT_RANGE_MAX,
+                },
+            );
+            check_vec3(v, position.as_ref(), POSITION_ABS_MAX);
+        }
+        Action::SpawnText {
+            text,
+            size,
+            color,
+            position,
+        } => {
+            // Bounded length, and no control characters: text is the one place a string
+            // reaches the client, so it is length-capped and character-filtered rather
+            // than trusted.
+            if text.is_empty() || text.chars().count() > MAX_TEXT_LEN {
+                v.push(ValidationError::InvalidColor {
+                    value: format!("text length {} (max {MAX_TEXT_LEN})", text.chars().count()),
+                });
+            }
+            if text.chars().any(|c| c.is_control()) {
+                v.push(ValidationError::InvalidColor {
+                    value: "text contains control characters".to_string(),
+                });
+            }
+            push_range(
+                v,
+                *size,
+                *size >= TEXT_SIZE_MIN && *size <= TEXT_SIZE_MAX,
+                |val| ValidationError::ScaleOutOfRange {
+                    value: val,
+                    min: TEXT_SIZE_MIN,
+                    max: TEXT_SIZE_MAX,
+                },
+            );
+            check_optional_color(v, color.as_ref());
+            check_vec3(v, position.as_ref(), POSITION_ABS_MAX);
+        }
+        Action::Orbit {
+            radius,
+            deg_per_sec,
+            ..
+        } => {
+            push_range(
+                v,
+                *radius,
+                *radius >= 0.0 && *radius <= POSITION_ABS_MAX,
+                |val| ValidationError::MoveAmplitudeOutOfRange {
+                    value: val,
+                    max: POSITION_ABS_MAX,
+                },
+            );
+            // Same anti-vection clamp as Rotate: an orbit is rotation of the wearer's
+            // surroundings, and the comfort limit does not care which action produced it.
+            push_range(
+                v,
+                *deg_per_sec,
+                deg_per_sec.abs() <= ROTATE_DEG_PER_SEC_MAX,
+                |val| ValidationError::RotateRateOutOfRange {
+                    value: val,
+                    max: ROTATE_DEG_PER_SEC_MAX,
+                },
+            );
         }
         Action::SetPhysics { mass, .. } => {
             if let Some(m) = mass {

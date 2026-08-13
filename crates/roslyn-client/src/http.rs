@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use crate::error::RoslynError;
+use crate::CompiledAssembly;
 use crate::{RoslynAnalyzer, RoslynVerdict};
 
 /// Calls the external .NET Roslyn analyzer microservice (see
@@ -37,6 +38,36 @@ impl HttpRoslynAnalyzer {
 
 #[async_trait]
 impl RoslynAnalyzer for HttpRoslynAnalyzer {
+    async fn compile(&self, csharp: &str) -> Result<CompiledAssembly, RoslynError> {
+        // /analyze and /compile sit on the same service; derive one URL from the other so
+        // a deployment configures a single endpoint.
+        let url = self.url.replace("/analyze", "/compile");
+        let resp = self
+            .client
+            .post(&url)
+            .json(&serde_json::json!({ "csharp": csharp }))
+            .send()
+            .await
+            .map_err(|e| RoslynError::Request(e.to_string()))?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(RoslynError::Status {
+                status: status.as_u16(),
+            });
+        }
+        let v: CompiledAssembly = resp
+            .json()
+            .await
+            .map_err(|e| RoslynError::Parse(e.to_string()))?;
+        // Fail-closed: an "approved" assembly with no bytes is not an assembly.
+        if v.approved && v.assembly.as_deref().unwrap_or("").is_empty() {
+            return Err(RoslynError::Parse(
+                "approved but empty assembly".to_string(),
+            ));
+        }
+        Ok(v)
+    }
+
     async fn analyze(&self, csharp: &str) -> Result<RoslynVerdict, RoslynError> {
         let body = serde_json::json!({ "csharp": csharp });
         let resp = self

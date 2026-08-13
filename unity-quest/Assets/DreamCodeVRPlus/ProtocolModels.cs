@@ -3,16 +3,22 @@ namespace DreamCodeVRPlus
     /// <summary>
     /// Mirrors <c>dcvr-behaviour-dsl/src/bounds.rs</c>. The Rust backend is the
     /// authoritative validator; these values let the Unity client re-clamp
-    /// defensively. KEEP IN SYNC with the Rust crate (a divergence test should be
-    /// added in Phase 2).
+    /// defensively.
+    ///
+    /// KEEP IN SYNC with the Rust crate. `tests/tests/bounds_parity.rs` parses this
+    /// file and fails the build on any divergence — which is how the numbers below were
+    /// caught after the plan vocabulary grew: the Rust budgets were raised so that a
+    /// scene could actually be described, and this file was not, so the client's
+    /// defence-in-depth re-check would have rejected plans the server had approved.
+    /// Defence in depth that disagrees with the layer above it is just a bug.
     /// </summary>
     public static class ProtocolModels
     {
         public const string SupportedSchemaVersion = "1.0";
 
-        public const int MaxActions = 16;
-        public const int MaxSpawnCount = 8;
-        public const int MaxTotalSpawnedPerSession = 64;
+        public const int MaxActions = 48;
+        public const int MaxSpawnCount = 32;
+        public const int MaxTotalSpawnedPerSession = 512;
         public const int MaxHierarchyDepth = 3;
 
         public const float ScaleMin = 0.1f;

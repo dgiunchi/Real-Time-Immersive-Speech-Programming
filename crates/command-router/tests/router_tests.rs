@@ -162,7 +162,13 @@ async fn stt_error_detail_does_not_leak_into_outcome_or_timing() {
     assert!(out.plan.is_none());
 }
 
-// Review fix: cumulative per-session spawn budget (64) is enforced across plans.
+// Review fix: the cumulative per-session spawn budget is enforced across plans.
+//
+// `spawns` is the TOTAL this client asks for in one plan; it packs them into as few
+// actions as the per-action cap allows, so the plan trips the SESSION budget rather than
+// the per-action or max-actions limit. Both caps are read from `bounds`, because the
+// budgets were raised once already and any hard-coded number here would quietly stop
+// testing the thing it names.
 struct SpawnyLlmClient {
     spawns: u32,
 }
@@ -173,12 +179,22 @@ impl dcvr_llm_client::LlmClient for SpawnyLlmClient {
         request_id: &str,
         _t: &str,
     ) -> Result<dcvr_behaviour_dsl::ActionPlan, dcvr_llm_client::LlmError> {
+        use dcvr_behaviour_dsl::bounds::MAX_SPAWN_COUNT;
         use dcvr_behaviour_dsl::{Action, ParentRef, Shape, Target};
-        let n = (self.spawns / 8) as usize;
+        let n = self.spawns.div_ceil(MAX_SPAWN_COUNT) as usize;
+        // This fixture exercises the spawn BUDGET, so only shape/count/parent matter;
+        // the placement and appearance fields default.
         let actions = std::iter::repeat_with(|| Action::SpawnPrimitive {
             shape: Shape::Cube,
-            count: 8,
+            count: MAX_SPAWN_COUNT,
             parent: ParentRef::Target,
+            position: None,
+            rotation: None,
+            size: None,
+            color: None,
+            pattern: None,
+            spacing: None,
+            group: None,
         })
         .take(n)
         .collect();
@@ -422,10 +438,13 @@ async fn perceptual_hardening_bus_flag_flips_deployhardened_at_the_csharp_gate()
 
 #[tokio::test]
 async fn session_spawn_budget_enforced_cumulatively() {
+    use dcvr_behaviour_dsl::bounds::MAX_TOTAL_SPAWNED_PER_SESSION;
     use dcvr_stt_client::{AudioUtterance, MockSttClient};
     use std::time::Duration;
     let mut router = Router::new();
-    let llm = SpawnyLlmClient { spawns: 40 };
+    // Two-thirds of the budget: one plan fits, two do not.
+    let per_plan = (MAX_TOTAL_SPAWNED_PER_SESSION * 2) / 3;
+    let llm = SpawnyLlmClient { spawns: per_plan };
     let a = || AudioUtterance::new_16k_mono(b"spawn".to_vec());
     let o1 = router
         .process_audio(
@@ -440,7 +459,7 @@ async fn session_spawn_budget_enforced_cumulatively() {
     assert_eq!(
         o1.decision,
         Decision::ApproveActionPlan,
-        "first 40 within budget"
+        "the first plan fits inside the session budget"
     );
     let o2 = router
         .process_audio(
@@ -455,7 +474,7 @@ async fn session_spawn_budget_enforced_cumulatively() {
     assert_eq!(
         o2.decision,
         Decision::RejectUnsafe,
-        "cumulative 80 > 64 rejected"
+        "the second plan takes the session over the budget"
     );
     assert!(o2
         .timing

@@ -8,6 +8,19 @@
 #
 #   scripts/demo-quest.sh              start everything, show status, hold
 #   scripts/demo-quest.sh --no-launch  do not launch the app on the headset
+#   scripts/demo-quest.sh --creative   Mode A: arbitrary validated C# on the headset
+#
+# The two modes are the dissertation's two answers to the same question, and the
+# difference is worth showing rather than hiding:
+#
+#   default    Mode C — the model's request becomes a BOUNDED ACTION PLAN. Whole
+#              classes of attack are unrepresentable because there is no way to
+#              express them in the plan vocabulary. Safe by construction, limited
+#              by construction.
+#   --creative Mode A — the model writes arbitrary C#, the guardrail validates it,
+#              the analyzer compiles it here, and the headset INTERPRETS the IL
+#              (IL2CPP cannot compile). Unlimited expressiveness; safety now rests
+#              entirely on the guardrail catching what it is shown.
 #
 # Ctrl+C tears down only what this script started.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -21,10 +34,18 @@ ADMIN_PORT=7878
 LOGDIR="$ROOT/.run-logs"; mkdir -p "$LOGDIR"
 BACKEND_LOG="$LOGDIR/backend.log"
 LAUNCH_APP=1
-[ "${1:-}" = "--no-launch" ] && LAUNCH_APP=0
+CREATIVE=0
+for a in "$@"; do
+  case "$a" in
+    --no-launch) LAUNCH_APP=0 ;;
+    --creative)  CREATIVE=1 ;;
+  esac
+done
 
 BACKEND_PID=""
+ANALYZER_PID=""
 REVERSE_SET=0
+ANALYZER_PORT=5099
 
 # ---- colours (plain if not a tty) -------------------------------------------
 if [ -t 1 ]; then
@@ -40,8 +61,10 @@ cleanup() {
   echo
   echo "[demo] stopping…"
   [ -n "$BACKEND_PID" ] && kill "$BACKEND_PID" 2>/dev/null
+  [ -n "$ANALYZER_PID" ] && kill "$ANALYZER_PID" 2>/dev/null
   [ "$REVERSE_SET" = "1" ] && adb reverse --remove tcp:$ROOM_PORT >/dev/null 2>&1
   wait "$BACKEND_PID" 2>/dev/null
+  wait "$ANALYZER_PID" 2>/dev/null
   echo "[demo] done."
 }
 trap cleanup EXIT INT TERM
@@ -68,12 +91,42 @@ fi
 echo "[demo] building backend…"
 cargo build -q -p dreamcodevr-server || { echo "backend build failed"; exit 1; }
 
+# ---- optional: the Roslyn analyzer, which Mode A needs to COMPILE ------------
+# Mode A used to be undemonstrable on a Quest 3 because IL2CPP is ahead-of-time and
+# ships no C# compiler. The compile now happens here instead, and the headset
+# interprets the IL — so Mode A needs this service running, and fails closed
+# (sends nothing) without it rather than sending source the device cannot run.
+ANALYZER_UP=0
+MODE_A_ENV=()
+if [ "$CREATIVE" = "1" ]; then
+  echo "[demo] starting the Roslyn analyzer (Mode A compiles here)…"
+  if command -v dotnet >/dev/null 2>&1; then
+    dotnet run --project services/roslyn-analyzer/RoslynAnalyzer.csproj \
+      > "$LOGDIR/analyzer.log" 2>&1 &
+    ANALYZER_PID=$!
+    for _ in $(seq 1 60); do
+      curl -sf -m 1 "http://127.0.0.1:$ANALYZER_PORT/analyze" -X POST \
+        -H 'content-type: application/json' -d '{"csharp":""}' >/dev/null 2>&1 \
+        && { ANALYZER_UP=1; break; }
+      kill -0 "$ANALYZER_PID" 2>/dev/null || break
+      sleep 1
+    done
+  fi
+  if [ "$ANALYZER_UP" = "1" ]; then
+    MODE_A_ENV=(DCVR_MODE_A=true DCVR_CSHARP_RESEARCH=true
+                "DCVR_ROSLYN_URL=http://127.0.0.1:$ANALYZER_PORT/analyze")
+  else
+    echo "[demo] analyzer did NOT start — staying in Mode C (see $LOGDIR/analyzer.log)"
+    CREATIVE=0
+  fi
+fi
+
 # ---- start the backend (one binary: RoomServer + pipeline + admin) -----------
-# No DCVR_MODE_A / DCVR_CSHARP_RESEARCH: those put the backend in the Mode A/B
-# research path, which sends C# the Quest cannot compile under IL2CPP. Mode C
-# (bounded action plans) is the deployable architecture and the default.
-DCVR_EMBED_ROOMSERVER=true \
-DCVR_ADMIN_PORT=$ADMIN_PORT DCVR_ADMIN_BIND=127.0.0.1 \
+# Mode C (bounded action plans) is the default: safe by construction, and the
+# architecture the dissertation argues for. --creative switches on the Mode A arm.
+env DCVR_EMBED_ROOMSERVER=true \
+    DCVR_ADMIN_PORT=$ADMIN_PORT DCVR_ADMIN_BIND=127.0.0.1 \
+    "${MODE_A_ENV[@]}" \
   ./target/debug/dreamcodevr-server > "$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 
@@ -133,7 +186,12 @@ case "$APK_STATE" in
   built)     warn "APK" "built, not installed (scripts/build-quest.sh --install)" ;;
   *)         bad  "APK" "not built (scripts/build-quest.sh)" ;;
 esac
-ok "Mode" "C  (bounded action plan, no runtime compilation)"
+if [ "$CREATIVE" = "1" ]; then
+  ok   "Mode" "A  (arbitrary validated C#, compiled here, interpreted on device)"
+  ok   "Compiler" "Roslyn analyzer :$ANALYZER_PORT  ->  IL over NID-94"
+else
+  ok   "Mode" "C  (bounded action plan, no runtime compilation)"
+fi
 ok "Guardrail" "DeployHardened"
 if [ -n "${OPENAI_API_KEY:-}" ]; then
   ok "LLM" "OpenAI (live generation)"

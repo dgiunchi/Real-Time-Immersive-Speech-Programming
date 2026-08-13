@@ -8,4 +8,6 @@ pub enum RoslynError {
     Status { status: u16 },
     #[error("could not parse roslyn analyzer response: {0}")]
     Parse(String),
+    #[error("roslyn analyzer capability unavailable: {0}")]
+    Unavailable(String),
 }

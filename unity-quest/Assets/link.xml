@@ -1,13 +1,38 @@
 <!--
   IL2CPP managed-code stripping preservation.
 
-  Newtonsoft.Json resolves types and members reflectively, which the IL2CPP stripper
-  cannot see. Without these entries the build succeeds and then fails only on device,
-  when an action plan arrives and JObject parsing throws. Preserve the JSON assemblies
-  and the DreamCodeVR+ runtime types the executor reflects over.
+  TWO SEPARATE REASONS, both of which fail only on device if they are wrong.
+
+  1. REFLECTION THE STRIPPER CANNOT SEE. Newtonsoft.Json resolves types and members
+     reflectively. Without these entries the build succeeds and then throws when the first
+     action plan arrives and JObject parsing runs.
+
+  2. INTERPRETED CODE HAS NO STATIC REFERENCES AT ALL. Generated C# is compiled on the
+     laptop and interpreted here, so from the stripper's point of view NOTHING in the app
+     calls UnityEngine — every call the generated script makes is resolved by name at
+     runtime. The stripper would happily remove methods that the whole creative-freedom
+     path depends on, and the failure would appear as "the model wrote correct code and
+     nothing happened".
+
+     This is the real cost of running arbitrary code on an AOT platform, and it is worth
+     stating plainly in the dissertation: the deployable Mode-A path trades APK size for
+     the ability to call an API surface that is not known until runtime. The modules below
+     are the ones generated scene-building code actually uses — geometry and transforms,
+     colliders and rigidbodies (GameObject.CreatePrimitive attaches one), particles, audio,
+     and animation. It is deliberately not the whole engine.
 -->
 <linker>
   <assembly fullname="Newtonsoft.Json" preserve="all"/>
   <assembly fullname="Unity.Nuget.Newtonsoft-Json" preserve="all"/>
   <assembly fullname="Assembly-CSharp" preserve="all"/>
+
+  <!-- Reachable by interpreted generated code. -->
+  <assembly fullname="UnityEngine.CoreModule" preserve="all"/>
+  <assembly fullname="UnityEngine.PhysicsModule" preserve="all"/>
+  <assembly fullname="UnityEngine.ParticleSystemModule" preserve="all"/>
+  <assembly fullname="UnityEngine.AudioModule" preserve="all"/>
+  <assembly fullname="UnityEngine.AnimationModule" preserve="all"/>
+
+  <!-- ILRuntime itself reflects heavily over its own types while binding to the CLR. -->
+  <assembly fullname="ILRuntime" preserve="all"/>
 </linker>

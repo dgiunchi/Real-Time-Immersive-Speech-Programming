@@ -149,7 +149,18 @@ namespace DreamCodeVRPlus
             };
         }
 
-        public void Finish() { StartCoroutine(FadeOut()); }
+        /// <summary>Fade the preview away.
+        ///
+        /// Guarded because Finish is reached on paths where the preview was never shown —
+        /// an admin-panel command with no preceding utterance, most obviously — and Unity
+        /// cannot start a coroutine on an inactive object. Unguarded, that logged an error
+        /// for every such generation: harmless, but it trains you to ignore the log, and
+        /// this project has already lost time to a real fault hiding in accepted noise.</summary>
+        public void Finish()
+        {
+            if (!gameObject.activeInHierarchy) { return; }
+            StartCoroutine(FadeOut());
+        }
 
         private IEnumerator Stream(string seed)
         {

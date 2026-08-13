@@ -9,6 +9,7 @@ description = "Client for the external .NET Roslyn semantic analyzer (deep allow
 [dependencies]
 async-trait = { workspace = true }
 reqwest = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 

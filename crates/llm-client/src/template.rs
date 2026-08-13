@@ -46,6 +46,15 @@ pub fn template_csharp(plan: &ActionPlan) -> String {
                 "        for (int __i = 0; __i < {count}; __i++) {{ GameObject.CreatePrimitive(PrimitiveType.{}); }}\n",
                 shape_name(*shape)
             )),
+            Action::SetMaterial { .. }
+            | Action::SpawnLight { .. }
+            | Action::SpawnText { .. }
+            | Action::Orbit { .. } => {
+                // Composition actions. The Mode-C executor builds these directly; there
+                // is no faithful single-MonoBehaviour C# rendering, so the template says
+                // so rather than emitting code that does not match the plan.
+                start.push_str("        // composition action executed by ActionPlanExecutor\n");
+            }
             Action::SetPhysics { gravity, mass } => {
                 let m = mass.unwrap_or(1.0);
                 start.push_str(&format!(

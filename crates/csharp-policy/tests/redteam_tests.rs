@@ -27,10 +27,19 @@ fn allow_all_plan() -> ActionPlan {
                 axis: Axis::Y,
                 deg_per_sec: 1.0,
             },
+            // The optional placement/appearance fields are what make a scene buildable
+            // from a plan; this fixture only needs the action to EXIST, so they default.
             Action::SpawnPrimitive {
                 shape: Shape::Cube,
                 count: 1,
                 parent: ParentRef::Target,
+                position: None,
+                rotation: None,
+                size: None,
+                color: None,
+                pattern: None,
+                spacing: None,
+                group: None,
             },
             Action::SetPhysics {
                 gravity: true,

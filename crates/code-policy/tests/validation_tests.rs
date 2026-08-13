@@ -130,15 +130,29 @@ fn approve_iff_no_violations() {
     );
 }
 
-// Review fix: a single plan may not exceed the session spawn budget (64).
+// Review fix: a single plan may not exceed the session spawn budget.
+//
+// Derived from the constants rather than hard-coded. The budget was raised (64 -> 512)
+// when the action vocabulary grew enough to build real structures, and this test silently
+// stopped testing anything: 128 spawns had been over the limit and were now comfortably
+// under it, so it passed while asserting nothing. A budget test has to move with the
+// budget or it is worse than absent.
 #[test]
 fn per_plan_spawn_budget_enforced() {
-    let one = r#"{"type":"spawn_primitive","shape":"cube","count":8,"parent":"target"}"#;
-    let actions = std::iter::repeat_n(one, 16).collect::<Vec<_>>().join(",");
+    use dcvr_behaviour_dsl::bounds::{MAX_SPAWN_COUNT, MAX_TOTAL_SPAWNED_PER_SESSION};
+
+    let one = format!(
+        r#"{{"type":"spawn_primitive","shape":"cube","count":{MAX_SPAWN_COUNT},"parent":"target"}}"#
+    );
+    // Enough actions to pass the session budget, +1 so it is strictly over.
+    let n = (MAX_TOTAL_SPAWNED_PER_SESSION / MAX_SPAWN_COUNT) as usize + 1;
+    let actions = std::iter::repeat_n(one.as_str(), n)
+        .collect::<Vec<_>>()
+        .join(",");
     let json = format!(
         r#"{{"schema_version":"1.0","request_id":"r","target":"scene_root","actions":[{actions}]}}"#
     );
-    let out = validate_json(&json); // 16 x 8 = 128 > 64
+    let out = validate_json(&json);
     assert_eq!(out.decision, Decision::RejectUnsafe);
     assert!(out
         .violations
@@ -147,11 +161,14 @@ fn per_plan_spawn_budget_enforced() {
 }
 
 // Review fix: oversized JSON is rejected BEFORE allocating/parsing.
+// Sized from the constant for the same reason as the spawn budget above.
 #[test]
 fn oversized_json_rejected_before_parse() {
+    use dcvr_behaviour_dsl::bounds::MAX_PLAN_JSON_BYTES;
+
     let big = format!(
         r#"{{"schema_version":"1.0","request_id":"r","target":"scene_root","actions":[{}]}}"#,
-        "0,".repeat(100_000)
+        "0,".repeat(MAX_PLAN_JSON_BYTES)
     );
     let out = validate_json(&big);
     assert_eq!(out.decision, Decision::RejectUnsafe);

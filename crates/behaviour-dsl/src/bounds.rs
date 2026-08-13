@@ -8,11 +8,11 @@
 pub const SUPPORTED_SCHEMA_VERSION: &str = "1.0";
 
 /// Maximum number of actions in a single plan.
-pub const MAX_ACTIONS: usize = 16;
+pub const MAX_ACTIONS: usize = 48;
 /// Maximum `count` for a single `spawn_primitive` action.
-pub const MAX_SPAWN_COUNT: u32 = 8;
+pub const MAX_SPAWN_COUNT: u32 = 32;
 /// Maximum primitives spawned across a whole session (enforced in router/Unity).
-pub const MAX_TOTAL_SPAWNED_PER_SESSION: u32 = 64;
+pub const MAX_TOTAL_SPAWNED_PER_SESSION: u32 = 512;
 /// Maximum generated hierarchy depth (placeholder; enforced when nesting lands).
 pub const MAX_HIERARCHY_DEPTH: u32 = 3;
 
@@ -55,7 +55,28 @@ pub const CONFINEMENT_REGION_RADIUS_M: f64 = 8.0;
 pub const FOCAL_DEPTH_MISMATCH_M: f64 = 0.25;
 
 /// Max accepted action-plan JSON size (anti-allocation-DoS; checked before parse).
-pub const MAX_PLAN_JSON_BYTES: usize = 64 * 1024;
+pub const MAX_PLAN_JSON_BYTES: usize = 256 * 1024;
+
+// --- Placement and appearance bounds (expressiveness, Phase 2) ---
+// These exist so a plan can BUILD something — place a block, tint a light — rather than
+// only mutate one object. Every one is a number with a hard range: there is still no field
+// anywhere in the grammar where a path, a socket or a namespace could be written, so the
+// "unsafe is unrepresentable" property is untouched by widening what is expressible.
+/// Placement envelope around the creation zone (metres, per axis).
+pub const POSITION_ABS_MAX: f64 = 20.0;
+/// Per-axis size of a spawned primitive (metres).
+pub const SIZE_MIN: f64 = 0.02;
+pub const SIZE_MAX: f64 = 10.0;
+/// Light intensity and range.
+pub const LIGHT_INTENSITY_MAX: f64 = 8.0;
+pub const LIGHT_RANGE_MAX: f64 = 30.0;
+/// Emissive strength, and how many lights one session may create (fill-rate guard).
+pub const EMISSION_MAX: f64 = 6.0;
+pub const MAX_LIGHTS_PER_SESSION: u32 = 12;
+/// World-space text: bounded length, and no control characters (checked separately).
+pub const MAX_TEXT_LEN: usize = 64;
+pub const TEXT_SIZE_MIN: f64 = 0.02;
+pub const TEXT_SIZE_MAX: f64 = 2.0;
 
 /// Returns true iff `s` is a `#RRGGBB` hex colour. Pure, allocation-free, and
 /// total (no panics): the `len == 7` check short-circuits before indexing.

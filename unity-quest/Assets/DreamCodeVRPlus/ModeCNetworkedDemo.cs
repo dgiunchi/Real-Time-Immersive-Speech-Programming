@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Net.Sockets;
@@ -78,6 +79,10 @@ namespace DreamCodeVRPlus
         // forwardToBackend=false), so the runtime path is byte-identical until a
         // deployment flips them on. See unity/Runtime/README-PHASE6-7-SECURITY.md.
         private VoiceCompileConfirmationGate _confirmGate;
+
+        // IL held while the confirmation gate waits for the user. Paired with the gate's
+        // pending SOURCE so that what is confirmed and what runs are the same generation.
+        private string _pendingAssembly;
         private DisclosureBackendForwarder _forwarder;
         // Phase-1: verifies the backend's Ed25519 signature on NID-94 before code reaches
         // the compile path. DISARMED by default (RequireSignature=false => byte-identical).
@@ -358,6 +363,25 @@ namespace DreamCodeVRPlus
                         _hasResult = true;
                     }
                 }
+                else if (mtype == "assembly")
+                {
+                    // Mode A on hardware that cannot compile. The backend validated the C#,
+                    // compiled it on the laptop, and sent IL; we interpret it. Same
+                    // confirmation gate as source — what is being confirmed is "run this
+                    // generated behaviour", and that is identical either way.
+                    string b64 = TryGetData(json);
+                    string src = TryGetField(json, "source") ?? "";
+                    if (_confirmGate == null || _confirmGate.SubmitOrPassthrough(src, NowMs()))
+                    {
+                        RunGeneratedAssembly(b64, src);
+                    }
+                    else
+                    {
+                        _pendingAssembly = b64;
+                        _status = "Generated behaviour received — press Confirm to run it.";
+                        _hasResult = true;
+                    }
+                }
                 else if (mtype == "undo")
                 {
                     ResetTarget();
@@ -440,6 +464,87 @@ namespace DreamCodeVRPlus
 
         // Run the backend-approved generated C# at runtime (Mode A). Extracted so the
         // Phase-7 confirmation gate can defer it to an explicit user confirm.
+        /// <summary>Run server-compiled IL through the interpreter.
+        ///
+        /// Deliberately mirrors <see cref="CompileGeneratedCode"/> step for step — same
+        /// build-vs-modify rule, same provenance marking, same runtime monitor, same NID-96
+        /// report — because to everything downstream of execution these are the same event.
+        /// Only the delivery differs: the compile happened on the laptop instead of here,
+        /// which is the whole reason this works on a Quest 3 at all.</summary>
+        private void RunGeneratedAssembly(string base64, string source)
+        {
+            bool isBuild = !string.IsNullOrEmpty(source) && source.Contains("CreatePrimitive");
+            if (isBuild) { ResetTarget(); }
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            bool ok = DcvrHotAssembly.Instance.LoadAndRun(base64, _cube, out string err);
+            sw.Stop();
+            long ms = sw.ElapsedMilliseconds;
+
+            Debug.Log(ok
+                ? $"[Mode-A/IL] interpreted server-compiled assembly ✓ ({ms} ms)"
+                : "[Mode-A/IL] load FAILED: " + err);
+            if (ok) { StartCoroutine(ReportWhatWasBuilt(isBuild)); }
+            _status = ok
+                ? "Mode A: server-compiled C# running on device (interpreted) ✓"
+                : "Mode A FAILED — " + err;
+
+            _ctrlOut.Enqueue((NID_COMPILE_B, ok
+                ? "{\"ok\":true,\"ms\":" + ms + ",\"path\":\"il-interpreted\"}"
+                : "{\"ok\":false,\"ms\":" + ms + ",\"path\":\"il-interpreted\",\"error\":\""
+                  + JsonEscape(err) + "\"}"));
+
+            if (ok)
+            {
+                SafeBehaviourRegistry.MarkGeneratedHierarchy(_cube);
+                _monitor.ScanGenerated(contentInMotion: !isBuild || source.Contains("Update"));
+                _preview?.SetStageProgress(DcvrStage.Execute);
+                _preview?.Finish();
+                DcvrAudio.Instance?.Accepted();
+                _hud?.SetAccepted("generated behaviour running on device");
+                _world?.SetState(DcvrWorld.Green, pulse: true);
+                _fx?.Shockwave(DcvrWorld.Green);
+                _fx?.Materialize(_cube);
+            }
+            else
+            {
+                _preview?.Finish();
+                _hud?.SetBlocked("generated code could not be loaded: " + err, DcvrStage.Execute);
+                _world?.SetState(DcvrWorld.Amber, pulse: true);
+            }
+            _hasResult = true;
+        }
+
+        /// <summary>Report what the generated script actually built, one frame later.
+        ///
+        /// "The assembly loaded" and "generated code built something in the headset" are
+        /// different claims, and only the second is worth making. A load that produces
+        /// nothing is also exactly what a silently-stripped engine method looks like under
+        /// IL2CPP, so the log has to be able to tell those apart.
+        ///
+        /// TWO PIECES OF UNITY TIMING MAKE THE OBVIOUS VERSION OF THIS WRONG, and the first
+        /// draft of it printed "built -15 object(s)":
+        ///
+        ///  - `AddComponent` runs Awake immediately, but Start is deferred to just before
+        ///    the next Update, and generated scene-building code builds in Start. Counting
+        ///    straight after the load reports zero every time.
+        ///  - `Destroy` is ALSO deferred to the end of the frame. A rebuild clears the
+        ///    previous creation first, so a "before" count taken during that frame still
+        ///    includes objects that are already scheduled to vanish — and subtracting it
+        ///    from a later count produces a nonsense negative delta.
+        ///
+        /// So it reports the ABSOLUTE count after everything has settled, which cannot be
+        /// skewed by either, and states whether a rebuild cleared first.</summary>
+        private IEnumerator ReportWhatWasBuilt(bool wasRebuild)
+        {
+            yield return null;   // Start() runs
+            yield return null;   // deferred Destroy() from a rebuild has been applied
+            if (_cube == null) { yield break; }
+            int built = _cube.GetComponentsInChildren<Transform>(true).Length - 1;  // minus the target
+            Debug.Log($"[Mode-A/IL] generated code built {built} object(s) under '{_cube.name}'"
+                      + (wasRebuild ? " (rebuild: the previous creation was cleared first)" : ""));
+        }
+
         private void CompileGeneratedCode(string code)
         {
             // Only wipe the scene for a NEW build (one that creates primitives). Modifier
@@ -488,6 +593,11 @@ namespace DreamCodeVRPlus
         private void ResetTarget()
         {
             if (_cube == null) { return; }
+            // Retire interpreted scripts explicitly. Destroying the adaptor component alone
+            // leaves the interpreter still holding the instance, and Unity defers that
+            // destruction to end of frame — so a cleared script could tick once more, over
+            // objects that no longer exist.
+            DcvrHotAssembly.Instance.ClearAll();
             // Remove every previously-compiled behaviour (the cube has no MonoBehaviours of ours).
             foreach (var mb in _cube.GetComponents<MonoBehaviour>())
             {
@@ -577,6 +687,11 @@ namespace DreamCodeVRPlus
         private static string TryGetData(string json)
         {
             try { return (string)JObject.Parse(json)["data"]; } catch { return null; }
+        }
+
+        private static string TryGetField(string json, string field)
+        {
+            try { return (string)JObject.Parse(json)[field]; } catch { return null; }
         }
 
         /// <summary>Layer-1's refusal reason, present only when the backend neutralized
@@ -989,11 +1104,22 @@ namespace DreamCodeVRPlus
                 if (GUI.Button(new Rect(Screen.width - 312, 40, 140, 34), "Confirm run"))
                 {
                     string c = _confirmGate.Confirm();
-                    if (c != null) { CompileGeneratedCode(c); }
+                    // Two delivery forms, one decision. When an assembly is held, the gate's
+                    // string is the SOURCE (what the user is confirming) and the IL is what
+                    // actually runs — confirming source but running unrelated IL would make
+                    // the gate theatre, so the two are paired here and released together.
+                    if (_pendingAssembly != null)
+                    {
+                        string il = _pendingAssembly;
+                        _pendingAssembly = null;
+                        RunGeneratedAssembly(il, c ?? "");
+                    }
+                    else if (c != null) { CompileGeneratedCode(c); }
                 }
                 if (GUI.Button(new Rect(Screen.width - 162, 40, 140, 34), "Cancel"))
                 {
                     _confirmGate.ResetPending();
+                    _pendingAssembly = null;
                     _status = "Generated code discarded (not run).";
                 }
             }

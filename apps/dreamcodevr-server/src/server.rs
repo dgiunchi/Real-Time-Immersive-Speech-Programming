@@ -599,12 +599,20 @@ fn spawn_utterance(
             // original runtime-compile path safe).
             match &outcome.csharp {
                 Some(cs) if cs.approved => {
-                    let msg = serde_json::json!({
-                        "type": "code",
-                        "peer": peer_id,
-                        "data": cs.candidate,
-                    })
-                    .to_string();
+                    // Quest 3 cannot compile: IL2CPP is ahead-of-time and ships no C#
+                    // compiler. So when the analyzer can compile, do it HERE and send the
+                    // assembly; the device interprets IL, which is ordinary managed code
+                    // and runs fine under AOT. Falls back to sending source for hosts that
+                    // do have a runtime compiler (the Editor, a Mono sideload).
+                    //
+                    // The order matters and is deliberate: the source has ALREADY passed
+                    // the lexical guardrail and the semantic analyzer at this point.
+                    // Compilation is a delivery mechanism, never an approval.
+                    let Some(msg) =
+                        mode_a_payload(services.roslyn.as_ref(), &cs.candidate, &peer_id).await
+                    else {
+                        return;
+                    };
                     // Legacy: bytes unchanged. Hardened: Ed25519-signed envelope
                     // bound to peer+request+code-hash; fail-closed (do not send
                     // unsigned code) if signing is unavailable.
@@ -636,6 +644,66 @@ fn spawn_utterance(
             let _ = sender.send(NID_BACKEND_OUTPUT, json.as_bytes()).await;
         }
     });
+}
+
+/// Build the NID-94 payload that carries approved Mode-A code to the headset.
+///
+/// Shared by the audio flow and the admin panel deliberately. These were separate copies
+/// once and they drifted: the admin path kept sending source long after the audio path had
+/// moved to shipping IL, so a typed command silently took a route the headset could not
+/// execute. One builder means one answer to "what does Mode A put on the wire".
+///
+/// Returns `None` to mean SEND NOTHING. That is the fail-closed case, and it is the only
+/// correct answer when the compiler rejects code the validator approved: the two disagree,
+/// so the safe move is to build nothing rather than to guess which one was right.
+///
+/// `csharp` must already have passed the lexical guardrail and the semantic analyzer.
+/// Compiling here is a delivery mechanism and confers no approval of its own.
+async fn mode_a_payload(
+    roslyn: &dyn RoslynAnalyzer,
+    csharp: &str,
+    peer_id: &str,
+) -> Option<String> {
+    match roslyn.compile(csharp).await {
+        Ok(c) if c.approved && c.assembly.is_some() => {
+            eprintln!("[mode-a] compiled to assembly; sending IL to the headset");
+            Some(
+                serde_json::json!({
+                    "type": "assembly",
+                    "peer": peer_id,
+                    "data": c.assembly.unwrap_or_default(),
+                    // The source travels with the IL for two reasons that are not about
+                    // execution: the headset's disclosure panel shows the user what actually
+                    // ran (A093), and the client decides build-vs-modify from it, so "spin
+                    // this house" spins the house instead of replacing it with a fresh cube.
+                    // The device never compiles this string.
+                    "source": csharp,
+                })
+                .to_string(),
+            )
+        }
+        Ok(c) => {
+            eprintln!(
+                "[mode-a] compile refused ({}); nothing sent",
+                c.diagnostics.join(" | ")
+            );
+            None
+        }
+        Err(e) => {
+            // No compile service. Send source: a host that DOES have a runtime compiler
+            // (the Editor, a 32-bit Mono sideload) can still run it, and a host that does
+            // not will report it cleanly rather than silently doing nothing.
+            eprintln!("[mode-a] no compile service ({e}); sending source instead");
+            Some(
+                serde_json::json!({
+                    "type": "code",
+                    "peer": peer_id,
+                    "data": csharp,
+                })
+                .to_string(),
+            )
+        }
+    }
 }
 
 /// Bump the lifetime stats for one processed utterance. The per-stage LIVE events
@@ -880,6 +948,11 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                 // validated. Target the last headset that issued a command; an empty
                 // `peer` broadcasts to every connected client.
                 let mut delivered = false;
+                // What actually went on the wire, so the operator's reply says which of the
+                // two Mode-A deliveries happened. "Sent as C#" when we sent IL would be a
+                // small lie that costs an hour of debugging on the device.
+                let mut mode_a_form = "validated C#";
+                let mut compiler_refused = false;
                 if self.services.mode_a_live() {
                     if let Some(sender) = self.services.ubiq_sender.read().await.clone() {
                         let target = self
@@ -889,24 +962,41 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                             .await
                             .clone()
                             .unwrap_or_default();
-                        let msg = serde_json::json!({
-                            "type": "code",
-                            "peer": target,
-                            "data": cs.candidate,
-                        })
-                        .to_string();
-                        delivered = match self.services.auth.sign_nid94(
-                            msg.as_bytes(),
+                        // Same builder as the audio path: on a Quest 3 this compiles here
+                        // and ships IL, because IL2CPP has no runtime compiler. None means
+                        // the compiler refused code the validator approved — fail closed.
+                        let msg = match mode_a_payload(
+                            self.services.roslyn.as_ref(),
+                            &cs.candidate,
                             &target,
-                            &outcome.request_id,
-                            crate::auth_gate::now_unix(),
-                        ) {
-                            Ok(bytes) => sender.send(NID_BACKEND_OUTPUT, &bytes).await.is_ok(),
-                            Err(e) => {
-                                eprintln!("[manual-cmd] refusing to send unsigned NID-94: {e}");
-                                false
+                        )
+                        .await
+                        {
+                            Some(m) => {
+                                if m.contains("\"type\":\"assembly\"") {
+                                    mode_a_form =
+                                        "server-compiled IL (Mode A, interpreted on device)";
+                                }
+                                m
+                            }
+                            None => {
+                                compiler_refused = true;
+                                String::new()
                             }
                         };
+                        delivered = !msg.is_empty()
+                            && match self.services.auth.sign_nid94(
+                                msg.as_bytes(),
+                                &target,
+                                &outcome.request_id,
+                                crate::auth_gate::now_unix(),
+                            ) {
+                                Ok(bytes) => sender.send(NID_BACKEND_OUTPUT, &bytes).await.is_ok(),
+                                Err(e) => {
+                                    eprintln!("[manual-cmd] refusing to send unsigned NID-94: {e}");
+                                    false
+                                }
+                            };
                     }
                 }
                 // MODE C dispatch. Without this a typed command was validated and then
@@ -944,12 +1034,22 @@ impl dcvr_admin::AdminHooks for ServerHooks {
 
                 if delivered {
                     let how = if self.services.mode_a_live() {
-                        "validated C#"
+                        mode_a_form
                     } else {
                         "bounded action plan (Mode C)"
                     };
                     format!(
                         "{:?} — approved ({} chars) → SENT to the headset as {how} ✓",
+                        outcome.decision,
+                        cs.candidate.len()
+                    )
+                } else if compiler_refused {
+                    // Not a security block, and saying so matters: the guardrail approved
+                    // this and the COMPILER disagreed. Almost always the model emitted C#
+                    // that does not build, not an attack.
+                    format!(
+                        "{:?} — C# approved ({} chars) but the compiler rejected it; \
+                         nothing was sent (fail-closed). See the backend log for diagnostics.",
                         outcome.decision,
                         cs.candidate.len()
                     )
@@ -1006,6 +1106,83 @@ impl dcvr_admin::AdminHooks for ServerHooks {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+
+    // ---- Mode-A delivery -----------------------------------------------------
+    //
+    // These pin the three answers `mode_a_payload` can give, because the difference
+    // between them is a security property, not a formatting detail: a Quest 3 can only
+    // run IL, and "compiler disagreed with the validator" must never become "send it
+    // anyway".
+
+    use dcvr_roslyn_client::{CompiledAssembly, RoslynVerdict};
+
+    /// Compiles to whatever it was constructed with.
+    struct StubCompiler(Result<CompiledAssembly, ()>);
+
+    #[async_trait::async_trait]
+    impl RoslynAnalyzer for StubCompiler {
+        async fn analyze(
+            &self,
+            _csharp: &str,
+        ) -> Result<RoslynVerdict, dcvr_roslyn_client::RoslynError> {
+            Ok(RoslynVerdict {
+                approved: true,
+                diagnostics: vec![],
+            })
+        }
+
+        async fn compile(
+            &self,
+            _csharp: &str,
+        ) -> Result<CompiledAssembly, dcvr_roslyn_client::RoslynError> {
+            self.0.clone().map_err(|()| {
+                dcvr_roslyn_client::RoslynError::Unavailable("no compile service".into())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn mode_a_sends_il_when_the_compiler_succeeds() {
+        let stub = StubCompiler(Ok(CompiledAssembly {
+            approved: true,
+            assembly: Some("TVqQAAM=".to_string()),
+            diagnostics: vec![],
+        }));
+        let msg = mode_a_payload(&stub, "class C {}", "peer-1")
+            .await
+            .expect("approved code should be delivered");
+        let v: serde_json::Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(v["type"], "assembly");
+        assert_eq!(v["data"], "TVqQAAM=");
+        assert_eq!(v["peer"], "peer-1");
+        // The source rides along for the on-device disclosure panel.
+        assert_eq!(v["source"], "class C {}");
+    }
+
+    #[tokio::test]
+    async fn mode_a_sends_nothing_when_the_compiler_refuses() {
+        // The guardrail approved this and the compiler did not. The two disagree, so the
+        // only safe answer is to build nothing — NOT to fall back to source.
+        let stub = StubCompiler(Ok(CompiledAssembly {
+            approved: false,
+            assembly: None,
+            diagnostics: vec!["CS1002: ; expected".to_string()],
+        }));
+        assert!(mode_a_payload(&stub, "class C {", "peer-1").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn mode_a_falls_back_to_source_only_when_there_is_no_compiler() {
+        // Distinct from a refusal: nothing has judged the code here, and a host that DOES
+        // have a runtime compiler (the Editor, a Mono sideload) can still run it.
+        let stub = StubCompiler(Err(()));
+        let msg = mode_a_payload(&stub, "class C {}", "peer-1")
+            .await
+            .expect("no compiler should fall back to source");
+        let v: serde_json::Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(v["type"], "code");
+        assert_eq!(v["data"], "class C {}");
+    }
 
     // Unit 2: the umbrella is byte-identical when disabled (None just wraps in Some).
     #[tokio::test]

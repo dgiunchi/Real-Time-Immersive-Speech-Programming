@@ -16,6 +16,32 @@ const PROTOCOL_MODELS: &str = include_str!(concat!(
     "/../unity/Runtime/ProtocolModels.cs"
 ));
 
+/// The copy that is actually COMPILED INTO THE APK.
+///
+/// `unity/Runtime/` holds the drop-in scripts; `unity-quest/` is the real project, and it
+/// carries its own copy. Guarding only the first one guarded the file nobody ships: the
+/// budgets were raised in Rust, `unity/Runtime/` was corrected, and the headset kept
+/// re-checking plans against the old, smaller limits — so the client would have refused
+/// plans the backend had approved, and the parity test would still have been green.
+///
+/// The two files must be identical, which is a stronger and simpler invariant than
+/// re-parsing every constant twice: any divergence at all is a mistake, since one is a
+/// copy of the other.
+const PROTOCOL_MODELS_QUEST: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../unity-quest/Assets/DreamCodeVRPlus/ProtocolModels.cs"
+));
+
+#[test]
+fn the_shipped_copy_of_the_bounds_is_identical() {
+    assert_eq!(
+        PROTOCOL_MODELS, PROTOCOL_MODELS_QUEST,
+        "unity-quest/Assets/DreamCodeVRPlus/ProtocolModels.cs has drifted from \
+         unity/Runtime/ProtocolModels.cs — the APK would re-clamp plans against \
+         different bounds than the backend validates with. Copy one over the other."
+    );
+}
+
 /// Extract the literal value assigned to a C# `const ... <Name> = <value>;`.
 /// Returns the raw token (quotes / trailing `f` stripped).
 fn cs_value(name: &str) -> String {

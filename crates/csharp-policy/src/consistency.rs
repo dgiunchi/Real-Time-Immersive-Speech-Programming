@@ -7,12 +7,22 @@ use crate::verdict::CsharpViolation;
 /// Capability tokens each action legitimately needs in generated C#.
 fn capabilities_for(action: &Action) -> &'static [&'static str] {
     match action {
-        Action::SetColor { .. } => &["color"],
+        // `material` belongs here as well as to SetMaterial. There is no way to set a
+        // renderer's colour in Unity without going through `.material`, so when that token
+        // entered the universe alongside SetMaterial, the canonical set-colour candidate
+        // (`r.material.color = ...`) started failing its own consistency check. Granting
+        // it widens nothing: the token only reaches the shared appearance surface that
+        // SetColor is already authorised to write.
+        Action::SetColor { .. } => &["color", "material"],
         Action::SetScale { .. } => &["localScale"],
         Action::Move { .. } => &["position", "Translate"],
         Action::Rotate { .. } => &["Rotate", "rotation"],
         Action::SpawnPrimitive { .. } => &["CreatePrimitive", "Instantiate"],
         Action::SetPhysics { .. } => &["Rigidbody", "mass", "useGravity"],
+        Action::SetMaterial { .. } => &["material", "SetColor", "SetFloat"],
+        Action::SpawnLight { .. } => &["Light", "intensity", "range"],
+        Action::SpawnText { .. } => &["TextMesh", "text"],
+        Action::Orbit { .. } => &["RotateAround", "Rotate"],
     }
 }
 
@@ -28,6 +38,15 @@ const CAPABILITY_UNIVERSE: &[&str] = &[
     "rotation",
     "CreatePrimitive",
     "Instantiate",
+    "material",
+    "SetColor",
+    "SetFloat",
+    "Light",
+    "intensity",
+    "range",
+    "TextMesh",
+    "text",
+    "RotateAround",
     "Rigidbody",
     "mass",
     "useGravity",
