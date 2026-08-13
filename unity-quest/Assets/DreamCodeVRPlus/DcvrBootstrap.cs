@@ -94,7 +94,14 @@ namespace DreamCodeVRPlus
                 // Status panel, moved off the centre line and further out. Straight ahead
                 // at 3.4 m is exactly where creations appear, so a panel there is a panel
                 // in front of the thing you just asked for.
-                var hud = DcvrHud.Build(null, new Vector3(1.25f, 1.62f, 3.9f));
+                // NO PIPELINE BANNER. The INTENT / GENERATE / VALIDATE / EXECUTE panel was
+                // how the security story was made visible before there was anywhere else to
+                // put it. The voice overlay now reports every one of those stages, in the
+                // wearer's view, only while they are actually happening — so the world-space
+                // banner is a second copy of the same information permanently occupying the
+                // space where creations appear. Built off-stage so existing calls stay
+                // valid, and simply never placed in front of the user.
+                var hud = DcvrHud.Build(null, new Vector3(0f, -40f, 0f));
                 var fx = DcvrEffects.Attach(null);
                 var preview = DcvrCodePreview.Build(null, new Vector3(1.9f, 1.55f, 3.1f));
                 DcvrNameShow title = DcvrNameShow.Build(new Vector3(-5.2f, 2.2f, 5.4f), -32f);
@@ -124,6 +131,12 @@ namespace DreamCodeVRPlus
                 // before anything exists, but it is hidden the moment the first real
                 // creation lands (see DcvrStarterTarget).
                 DcvrStarterTarget.Attach(world != null ? world.Target : null, client);
+
+                // Life in the distance: traffic on wide lanes, drifting forms on the
+                // horizon, still beacons for the bloom to catch. All of it beyond 26 m and
+                // above eye level, so the volume where creations appear stays completely
+                // clear — scenery must never compete with the thing the user just asked for.
+                DcvrSkyLife.Build(world != null ? world.transform : null);
 
                 DcvrStartup.Run(fx.NearLayer, hud, title.transform);
                 Debug.Log("[DcvrBootstrap] production presentation wired");

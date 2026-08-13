@@ -33,7 +33,10 @@ namespace DreamCodeVRPlus
         public static readonly Color Red = new Color(1.00f, 0.26f, 0.30f);
         public static readonly Color Dim = new Color(0.30f, 0.42f, 0.52f);
 
-        public const float PlatformRadius = 4.0f;   // 8 m across — room to walk on
+        // 16 m across. The 8 m platform was sized when a "creation" was one cube; a castle
+        // and a pirate ship placed side by side now need room to be walked BETWEEN rather
+        // than walked around.
+        public const float PlatformRadius = 8.0f;
 
         /// <summary>Centre of the creation area, in front of the wearer. The rig origin is
         /// where the person physically stands, so the platform must be offset forward or
@@ -212,28 +215,29 @@ namespace DreamCodeVRPlus
 
         private void BuildRings()
         {
-            // Three concentric rings at different radii and speeds. Counter-rotation
-            // reads as "alive" without any element moving fast enough to cause vection.
-            float[] radii = { PlatformRadius * 0.72f, PlatformRadius * 0.92f, PlatformRadius * 1.06f };
-            float[] widths = { 0.05f, 0.03f, 0.018f };
-            for (int i = 0; i < radii.Length; i++)
-            {
-                GameObject ring = BuildRingMesh($"DCVR_Ring{i}", radii[i], widths[i], 96);
-                ring.transform.SetParent(transform, false);
-                ring.transform.localPosition =
-                    PlatformCenter + new Vector3(0f, 0.135f + i * 0.014f, 0f);
+            // NO CONCENTRIC RINGS UNDER THE WEARER. Three bright counter-rotating rings sat
+            // directly beneath the user and read, from inside the headset, as a large disc
+            // pinned to the bottom of the view — the first thing reported after putting it
+            // on. They were designed to be looked AT from outside; standing in the middle of
+            // them is a different experience entirely, and nothing short of wearing it would
+            // have revealed that.
+            //
+            // One dim rim at the platform boundary does what they were actually for — saying
+            // where the floor ends — without occupying the floor itself.
+            GameObject rim = BuildRingMesh("DCVR_Ring0", PlatformRadius * 0.985f, 0.09f, 128);
+            rim.transform.SetParent(transform, false);
+            rim.transform.localPosition = PlatformCenter + new Vector3(0f, 0.12f, 0f);
 
-                Material mat = MakeMaterial("DreamCodeVRPlus/Holo", $"DCVR_RingMat{i}");
-                if (mat != null)
-                {
-                    mat.SetColor("_Color", Cyan);
-                    mat.SetFloat("_Alpha", 0.30f - i * 0.06f);
-                    mat.SetFloat("_ScanSpeed", (i % 2 == 0) ? 0.5f : -0.4f);
-                    ring.GetComponent<Renderer>().sharedMaterial = mat;
-                    _ringMats.Add(mat);
-                }
-                _rings.Add(ring.transform);
+            Material mat = MakeMaterial("DreamCodeVRPlus/Holo", "DCVR_RingMat0");
+            if (mat != null)
+            {
+                mat.SetColor("_Color", Cyan);
+                mat.SetFloat("_Alpha", 0.22f);
+                mat.SetFloat("_ScanSpeed", 0.22f);
+                rim.GetComponent<Renderer>().sharedMaterial = mat;
+                _ringMats.Add(mat);
             }
+            _rings.Add(rim.transform);
         }
 
         /// <summary>Flat annulus in the XZ plane — a triangle strip between an inner and
@@ -461,6 +465,12 @@ namespace DreamCodeVRPlus
 
             Material m = MakeUnlit("DCVR_TargetMat", new Color(0.62f, 0.72f, 0.85f));
             _target.GetComponent<Renderer>().sharedMaterial = m;
+
+            // NEVER SHOWN. The cube exists only so a deictic edit issued before anything has
+            // been created still has a referent to resolve against — a disabled GameObject
+            // is still a valid reference, so the fallback keeps working while the stage
+            // opens empty. A demo should not begin with a tutorial prop in shot.
+            _target.SetActive(false);
         }
 
         // ---- state feedback ------------------------------------------------------

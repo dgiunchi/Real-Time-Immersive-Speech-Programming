@@ -77,7 +77,9 @@ namespace DreamCodeVRPlus
             root.SetParent(transform, false);
             var rng = new System.Random(2231);
 
-            const int count = 10;
+            // More of them, and taller, now that the platform is twice the radius — the
+            // old ten were spaced for an 8 m stage and would look sparse around a 16 m one.
+            const int count = 18;
             for (int i = 0; i < count; i++)
             {
                 // Skip the forward arc: nothing should stand between the wearer and the
@@ -85,8 +87,10 @@ namespace DreamCodeVRPlus
                 float a = (i / (float)count) * Mathf.PI * 2f + 0.31f;
                 if (Mathf.Abs(Mathf.DeltaAngle(a * Mathf.Rad2Deg, 90f)) < 26f) { continue; }
 
-                float dist = DcvrWorld.PlatformRadius + 1.6f + (float)rng.NextDouble() * 2.2f;
-                float h = 1.6f + (float)rng.NextDouble() * 1.4f;
+                float dist = DcvrWorld.PlatformRadius + 2.2f + (float)rng.NextDouble() * 4.0f;
+                // Taller, so they read as architecture around a large space rather than as
+                // bollards around a small one.
+                float h = 3.2f + (float)rng.NextDouble() * 3.4f;
                 var p = new GameObject($"Pylon{i}").transform;
                 p.SetParent(root, false);
                 p.localPosition = new Vector3(Mathf.Cos(a) * dist, 0f, Mathf.Sin(a) * dist);
@@ -95,7 +99,7 @@ namespace DreamCodeVRPlus
                 var body = DcvrPrim.Create(PrimitiveType.Cube, "body");
                 body.transform.SetParent(p, false);
                 body.transform.localPosition = new Vector3(0f, h * 0.5f, 0f);
-                body.transform.localScale = new Vector3(0.24f, h, 0.24f);
+                body.transform.localScale = new Vector3(0.34f, h, 0.34f);
                 body.GetComponent<Renderer>().sharedMaterial = Unlit(new Color(0.04f, 0.055f, 0.08f));
                 body.isStatic = true;
 
