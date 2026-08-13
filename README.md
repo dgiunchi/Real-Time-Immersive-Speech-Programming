@@ -110,12 +110,40 @@ container isolation:
 bash scripts/verify-all.sh
 ```
 
+For the instructor-facing security walkthrough — the three defence levels, the red-team
+campaign and the benign suite, all driven from the real benchmark rather than canned
+numbers:
+
+```bash
+scripts/security-console.sh
+```
+
 It prints a PASS/FAIL table and exits non-zero if anything fails. Optional tools
 (Docker, .NET, Node, cargo-deny) are reported as SKIP when absent, so a clone with
 only Rust installed still gets a clean run. `--baseline` records the current
 results as the known-good reference; later runs diff against it and report any
 drift, which together with the pinned toolchain is what makes the result
 reproducible over time.
+
+## On a Meta Quest 3
+
+The system runs on a physical Quest 3 as an immersive VR application. One command starts
+everything and prints a status board that only reports READY after a real probe:
+
+```bash
+./run.sh demo
+```
+
+You stand on a lit platform inside a procedural city. Speak or type a command and the
+object ahead of you changes; ask for something unsafe and a security barrier assembles in
+front of the creation zone, showing which layer refused it and why. Measured at 72 fps on
+device. Build, install and demo steps are in [`QUEST_DEMO.md`](QUEST_DEMO.md), which also
+states exactly what has and has not been verified on the hardware.
+
+The deployable path is **Mode C**: the model emits a bounded action plan, not C#. Quest 3
+uses IL2CPP, which has no runtime C# compiler — so the original architecture cannot run
+there at all, and the safe one runs there by construction. That is the deployability half
+of the argument, and it is now demonstrated rather than asserted.
 
 ## Running it
 
@@ -124,6 +152,7 @@ The `run.sh` launcher covers the common cases:
 ```bash
 ./run.sh console   # security benchmark in the browser, no headset, no key
 ./run.sh local     # full pipeline on this machine, admin panel on :7878
+./run.sh demo      # the Quest 3 demo: backend + RoomServer + tunnel + status board
 ./run.sh quest     # full pipeline with a real Meta Quest over wifi
 ./run.sh stop
 ```
@@ -163,7 +192,8 @@ crates/     Rust workspace:
 apps/       dreamcodevr-server (backend) and xr-security-eval (benchmark + console)
 ml/         voice age-gate and attack-analyzer experiments (Python, optional)
 services/   optional .NET Roslyn analyzer and sandbox worker
-unity/      Unity client scripts
+unity/      Unity client drop-in scripts
+unity-quest/ the Unity 6 Quest 3 project (scene, shaders, XR rig, build tooling)
 scripts/    launch and check helpers
 ```
 
