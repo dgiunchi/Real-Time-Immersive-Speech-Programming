@@ -102,3 +102,11 @@ services/roslyn-analyzer/obj/
 unity-quest/LookDev/
 services/roslyn-analyzer/bin/
 services/roslyn-analyzer/obj/
+
+# ---- Dissertation build artefacts (local only; not part of the software repo) ----
+# The dissertation itself is submitted through Canvas, not from this repository.
+# Renderers, HTML intermediates and draft PDFs live here locally and are not
+# source or reproducibility material for the system under study.
+_thesis_build/
+pdf/
+/Start-DreamCodeVR.command
