@@ -27,7 +27,20 @@ public class FeedbackPanelController : MonoBehaviour
     public Color neutralColor = new Color(0.8f, 0.8f, 0.8f);
 
     [Header("Auto-hide")]
-    public float autoHideAfterSeconds = 12f;
+    // Zero means never. The explanation stays until something ends the failure
+    // it describes — a successful outcome, or the next trial's scene reset.
+    //
+    // It was twelve seconds. That is fine for a fluent reader glancing at it
+    // once and wrong for everyone else: a participant thinking about what to say
+    // next, or reading in a second language, looks back to find the explanation
+    // gone. In a study whose entire subject is whether people can work out WHY
+    // something failed, taking the explanation away mid-thought is removing the
+    // evidence and then measuring the diagnosis.
+    //
+    // It also made condition B and condition C differ in how long the same
+    // sentence remained readable, which is not the difference the design is
+    // testing.
+    public float autoHideAfterSeconds = 0f;
     private Coroutine hideCoroutine;
 
     public GameObject panelRoot;

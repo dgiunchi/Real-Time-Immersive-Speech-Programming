@@ -198,7 +198,19 @@ public class EmbodiedAgentDialogue : MonoBehaviour
             yield return new WaitForSeconds(duration);
         }
 
-        HideSubtitle();
+        // The subtitle STAYS. Only the speaking animation stops.
+        //
+        // This used to hide it the instant the audio finished, which made
+        // condition C's explanation available for as long as it took to say —
+        // three or four seconds — while condition B's identical sentence sat on
+        // a panel for twelve. B and C are supposed to differ in delivery and in
+        // nothing else, so that was a difference in how long the explanation
+        // could be READ, quietly attached to the comparison the second half of
+        // the design rests on. A participant who needed to read it twice could
+        // in one condition and not the other.
+        //
+        // It is cleared where it should be: StopSpeaking() on scene reset, and
+        // on a successful outcome, both of which end the failure it explains.
         onAgentFinishedSpeaking?.Invoke();
     }
 
@@ -210,6 +222,20 @@ public class EmbodiedAgentDialogue : MonoBehaviour
 
     private void HideSubtitle()
     {
+        // The moment condition C's explanation stopped being readable.
+        //
+        // Condition B has reported this since gaze dwell was added; condition C
+        // never needed to, because its subtitle vanished when the voice stopped
+        // and the spoken duration was the whole story. Now that it persists,
+        // dwell in C is only interpretable against this event — four seconds of
+        // looking means something different if the text was up for six than for
+        // sixty. Reported before hiding, and only when it was actually visible,
+        // so an explanation that was never shown is not logged as one that was.
+        if (subtitlePanel && subtitlePanel.activeInHierarchy)
+        {
+            StudyOutcomes.ReportHeadsetEvent(this, "feedback-offset", "agent");
+        }
+
         if (subtitleText)  subtitleText.text = "";
         if (subtitlePanel) subtitlePanel.SetActive(false);
     }

@@ -320,12 +320,26 @@ public class StudyOutcomes : MonoBehaviour
     {
         switch (pos)
         {
+            // HEIGHTS ARE EXPLICIT, and have to be.
+            //
+            // These used to inherit the camera's height implicitly, because
+            // OriginPos was the headset position — so "hand" landed at head
+            // height without ever saying so. Anchoring the scene flattened the
+            // origin to the floor, and every position that had been relying on
+            // that inherited height silently dropped to y=0: the ball for task 1
+            // appeared on the ground at the participant's feet instead of in the
+            // air in front of them.
+            //
+            // The numbers below match POSITION_COORDS in app.js exactly, which
+            // is what the researcher's minimap plots. They disagreed before —
+            // the panel drew an object at 1.4 m that Unity had placed at 1.6 m,
+            // and neither was wrong on its own terms.
             case "origin": return Vector3.zero;                       // "wrong place" error
-            case "offset": return OriginPos + OriginFwd * 0.9f;
-            case "high":   return OriginPos + OriginFwd * 0.3f + Vector3.up * 0.6f;
+            case "offset": return OriginPos + OriginFwd * 0.9f + Vector3.up * 1.4f;
+            case "high":   return OriginPos + OriginFwd * 0.3f + Vector3.up * 2.0f;
             // "floor" is the ambiguous-placement error: it appears, but at the
             // participant's feet rather than in their hand.
-            case "floor":  return new Vector3(OriginPos.x, 0.05f, OriginPos.z) + OriginFwd * 0.5f;
+            case "floor":  return new Vector3(OriginPos.x, 0.10f, OriginPos.z) + OriginFwd * 0.5f;
             // Task 4 (system behaviour): the object is created correctly but
             // lands outside the field of view. Placed well behind and slightly
             // up so it is unmistakable once they turn, but invisible until then.
@@ -339,7 +353,11 @@ public class StudyOutcomes : MonoBehaviour
             // Its success counterpart: clearly in front and above, where they
             // would actually look for something "above the campfire".
             case "front":  return OriginPos + OriginFwd * 2.0f + Vector3.up * 1.4f;
-            default:       return OriginPos + OriginFwd * 0.3f;       // "hand"
+            // "hand": in the air in front of them, at about the height a raised
+            // hand sits. Not attached to the controller — the briefing says it
+            // appears when you lift your hand, and a fixed point in front is
+            // what participants actually saw and reacted to.
+            default:       return OriginPos + OriginFwd * 0.5f + Vector3.up * 1.4f;
         }
     }
 
@@ -964,6 +982,13 @@ public class StudyOutcomes : MonoBehaviour
         {
             var stale = FindObjectOfType<FeedbackPanelController>(true);
             if (stale) stale.Clear();
+            // Condition C's subtitle now persists after the agent stops
+            // speaking, so it has to be cleared here as well — otherwise the
+            // explanation of a failure stays on screen through the success that
+            // resolved it, which is the same stale-feedback bug in the other
+            // condition.
+            var agentStale = FindObjectOfType<EmbodiedAgentDialogue>(true);
+            if (agentStale) agentStale.StopSpeaking();
             return;
         }
 
@@ -981,9 +1006,16 @@ public class StudyOutcomes : MonoBehaviour
                     // has no completion callback, and an estimate that is
                     // explicitly an estimate is better than a timestamp that
                     // silently is one.
+                    // This is how long the agent SPEAKS, which is no longer how
+                    // long the explanation is available — the subtitle now stays
+                    // after the voice stops, matching condition B. Logged under
+                    // its own name so the two are not confused: spoken duration
+                    // is a property of the delivery, readable duration runs from
+                    // here to the feedback-offset event.
                     float dur = clip ? clip.length : EstimateSpeech(spec.agentPost);
                     ReportHeadsetEvent(this, "feedback-onset", "agent",
-                                       Mathf.RoundToInt(dur * 1000f).ToString());
+                                       "until-cleared spoken=" +
+                                       Mathf.RoundToInt(dur * 1000f) + "ms");
                 }
             }
         }
@@ -1009,8 +1041,16 @@ public class StudyOutcomes : MonoBehaviour
                     ? spec.errorText
                     : spec.agentPost;
                 panel.ShowError(spec.label, text);
+                // Duration is no longer known at onset, because the panel stays
+                // up until something clears it. Reporting the auto-hide value
+                // would now log "0 ms", which reads as a panel that was never
+                // shown — the opposite of what happens. The matching
+                // feedback-offset event carries the real end time, so dwell is
+                // measured against onset/offset rather than a promised duration.
                 ReportHeadsetEvent(this, "feedback-onset", "panel",
-                    Mathf.RoundToInt(Mathf.Max(0f, panel.autoHideAfterSeconds) * 1000f).ToString());
+                    panel.autoHideAfterSeconds > 0f
+                        ? Mathf.RoundToInt(panel.autoHideAfterSeconds * 1000f).ToString()
+                        : "until-cleared");
             }
         }
     }
