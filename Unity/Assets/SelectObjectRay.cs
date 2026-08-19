@@ -4,6 +4,7 @@ using System.Collections;
 using System;
 using System.Linq;
 using DreamCodeVR2.ContextBridge;
+using DreamCodeVR2.ExperimentalAuthoring;
 using Ubiq.XR;
 using Ubiq.Networking;
 using Ubiq.Logging;
@@ -26,7 +27,6 @@ public class SelectObjectRay : MonoBehaviour
     //private Material lastMaterial = null;
 
     private HandController handController;
-    public CodeGenerationManager codeGenerationManager;
     public MicrophoneCapture genieMicrophoneCapture;
     public bool controlMicrophoneGain = false;
     [SerializeField] private bool logSelectionDebug = true;
@@ -92,7 +92,6 @@ public class SelectObjectRay : MonoBehaviour
             var ray = selector.AddComponent<SelectObjectRay>();
             ray.cloneForOtherHands = false;
             ray.networkId = networkId;
-            ray.codeGenerationManager = codeGenerationManager;
             ray.genieMicrophoneCapture = genieMicrophoneCapture;
             ray.controlMicrophoneGain = controlMicrophoneGain;
         }
@@ -116,6 +115,11 @@ public class SelectObjectRay : MonoBehaviour
 
     public void listenForCommand(bool listen)
     {
+        if (ResearcherUiInteractionState.IsResearcherUiInteractionActive)
+        {
+            if (controlMicrophoneGain && genieMicrophoneCapture) genieMicrophoneCapture.gain = 0.0f;
+            return;
+        }
         if (controlMicrophoneGain && genieMicrophoneCapture)
         {
             genieMicrophoneCapture.gain = listen ? 1.0f : 0.0f;
@@ -143,10 +147,6 @@ public class SelectObjectRay : MonoBehaviour
         }
 
         renderer.material.color = Color.red;
-        if (codeGenerationManager)
-        {
-            codeGenerationManager.targetObject = selection.resolvedObject;
-        }
 
         if (logSelectionDebug && lastSelectedObject != selection.resolvedObject)
         {
@@ -208,10 +208,6 @@ public class SelectObjectRay : MonoBehaviour
             if (lastSelectedObject != null)
             {
                 renderer.material.color = Color.green;
-                if (codeGenerationManager)
-                {
-                    codeGenerationManager.targetObject = null;
-                }
                 lastSelectedObject = null;
             }
         }

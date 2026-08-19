@@ -7,7 +7,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
     {
         public string[] allowedOperations = { "SET_PROPERTY", "ADD_BEHAVIOR", "RELOCATE_OBJECT", "TOGGLE_STATE" };
         public string[] editableProperties = { "color", "visible", "active", "kinematic", "gravity_enabled", "scale" };
-        public string[] allowedBehaviors = { "rotate_continuously", "move_between_anchors", "blink", "follow_target", "activate_on_contact", "activate_on_proximity", "activate_when_task_completed" };
+        public string[] allowedBehaviors = { "rotate_continuously", "blink" };
         public bool canMove = true; public bool canHide = true; public bool canDeactivate; public bool canLink = true;
         public bool questCritical; public bool changesRequireConfirmation = true;
         public string[] forbiddenAffordanceChanges;

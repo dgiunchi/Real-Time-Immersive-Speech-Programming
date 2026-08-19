@@ -3,7 +3,9 @@ using DreamCodeVR2.Quest;
 using DreamCodeVR2.SceneContext;
 using DreamCodeVR2.UI;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
+using Ubiq.XR;
 
 namespace DreamCodeVR2.ExperimentalAuthoring
 {
@@ -13,6 +15,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private static void Install()
         {
             if(SceneManager.GetActiveScene().name!="DreamCodeVR2_EscapeRoom_Testbed")return;
+            EnsureEventSystem(); EnsureXrUiRaycasters();
             var root=GameObject.Find("ExperimentalAuthoringRuntime")??new GameObject("ExperimentalAuthoringRuntime");
             var context=Object.FindFirstObjectByType<SceneContextTransmitter>(); var ui=Object.FindFirstObjectByType<DreamCodeVRAuthoringUIController>();
             var eventBus=Ensure<QuestEventBus>(root); var state=Object.FindFirstObjectByType<QuestRuntimeState>()??Ensure<QuestRuntimeState>(root);
@@ -20,6 +23,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             var protocol=Ensure<AuthoringProtocolClient>(root);protocol.executor=executor;protocol.undoManager=undo;protocol.sceneContext=context;
             var condition=Ensure<ExperimentConditionManager>(root);condition.authoringUi=ui;condition.protocolClient=protocol;
             var telemetry=Ensure<ExperimentTelemetry>(root);telemetry.conditionManager=condition;telemetry.protocolClient=protocol;
+            var researcherPanel=Ensure<ExperimentalResearcherPanel>(root);researcherPanel.conditionManager=condition;researcherPanel.protocol=protocol;researcherPanel.quest=state;researcherPanel.interaction=Object.FindFirstObjectByType<InteractionContextProvider>();researcherPanel.sceneContext=context;researcherPanel.researcherMode=condition.studyConfiguration&&condition.studyConfiguration.researcherMode;
             var presenter=Ensure<AuthoringProposalPresenter>(root);presenter.ui=ui;presenter.protocol=protocol;
             var predefined=Ensure<PredefinedVoiceCommandExecutor>(root);predefined.sceneContext=context;predefined.telemetry=telemetry;
             var reset=Ensure<ExperimentalPlaythroughReset>(root);reset.runtimeState=state;reset.undoManager=undo;reset.executor=executor;reset.protocol=protocol;
@@ -40,6 +44,21 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private static void StartFixedQuest(QuestRuntimeState state)
         {
             if(state.ActiveQuestPlan!=null)return;state.StartQuest(new QuestPlan{quest_id="vertical_slice_fixed",title="Key and Lock",tasks=new System.Collections.Generic.List<QuestTaskSpec>{new QuestTaskSpec{step=1,type="RetrieveKey",target="key_001",description="Retrieve the key.",protectedDuringTask=new[]{"door_001","lock_001","key_001"},forbiddenAffordanceChanges=new[]{"grabbable"},protectedProperties=new[]{"active","visible"}},new QuestTaskSpec{step=2,type="UseKeyWithLock",target="lock_001",key="key_001",description="Use the key with the lock.",protectedDuringTask=new[]{"door_001","lock_001"},protectedProperties=new[]{"active","visible"}}}});
+        }
+        private static void EnsureEventSystem()
+        {
+            if(Object.FindFirstObjectByType<EventSystem>())return;
+            new GameObject("DreamCodeVR2_EventSystem",typeof(EventSystem),typeof(StandaloneInputModule));
+        }
+        private static void EnsureXrUiRaycasters()
+        {
+            foreach(var hand in Object.FindObjectsByType<HandController>(FindObjectsSortMode.None))
+            {
+                if(hand.GetComponentInChildren<XRUIRaycaster>(true))continue;
+                var raycaster=new GameObject("DreamCodeVR2_XRUIRaycaster");
+                raycaster.transform.SetParent(hand.transform,false);
+                raycaster.AddComponent<XRUIRaycaster>();
+            }
         }
         private static T Ensure<T>(GameObject root) where T:Component=>root.GetComponent<T>()??root.AddComponent<T>();
     }

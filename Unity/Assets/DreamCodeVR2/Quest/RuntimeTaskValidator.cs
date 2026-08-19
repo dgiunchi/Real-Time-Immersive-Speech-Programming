@@ -19,7 +19,7 @@ namespace DreamCodeVR2.Quest
                 case "OBJECT_AT_ANCHOR": return obj&&obj.GetComponentInParent<AuthoringAnchor>()&&obj.GetComponentInParent<AuthoringAnchor>().anchorId==condition.anchor_id;
                 case "OBJECT_HAS_STATE": return obj&&obj.GetComponent<AuthoringSemanticState>()?.state==condition.value;
                 case "OBJECT_HAS_AFFORDANCE": var a=obj?obj.GetComponent<AuthoringAffordanceState>():null;return a&&a.Get(condition.value);
-                case "OBJECT_GRABBED": return false; // Requires the project's grab event adapter to publish ObjectGrabbed.
+                case "OBJECT_GRABBED": return obj&&obj.GetComponent<ExperimentalGrabbableAdapter>()?.IsHeld==true;
                 case "OBJECT_LINK_ACTIVE": return obj&&obj.GetComponent<AuthoringObjectLink>();
                 case "OBJECT_BEHAVIOR_ACTIVE": return obj&&obj.GetComponent<AuthoringRuntimeBehavior>()?.IsActive==true;
                 case "MULTIPLE_CONDITIONS_ALL": foreach(var child in condition.children??Array.Empty<RuntimeSuccessCondition>())if(!IsSatisfied(child))return false;return true;

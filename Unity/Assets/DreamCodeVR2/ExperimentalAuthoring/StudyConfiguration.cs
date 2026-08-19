@@ -7,8 +7,8 @@ namespace DreamCodeVR2.ExperimentalAuthoring
     public class StudyConfiguration : ScriptableObject
     {
         public ExperimentCondition condition = ExperimentCondition.PlayerAuthoring;
-        public string[] allowedPredefinedCommands = { "OPEN", "CLOSE", "ACTIVATE", "DEACTIVATE", "MOVE_TO_PRESET", "USE_WITH" };
-        public string[] allowedOperations = { "color", "visible", "active", "kinematic", "gravity_enabled", "scale", "rotate_continuously", "move_between_anchors", "blink", "follow_target", "cube", "sphere", "bridge_segment", "platform" };
+        public string[] allowedPredefinedCommands = { "OPEN", "CLOSE" };
+        public string[] allowedOperations = { "setProperty", "setAffordance", "createObject", "relocateObject", "setSemanticState", "rotate_continuously", "blink", "activate" };
         public bool requireConfirmation = true;
         public int maximumGeneratedObjects = 4;
         public int maximumActiveBehaviors = 8;
@@ -23,7 +23,10 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         public string[] allowedAffordances = { "grabbable", "movable", "interactable", "gravity_enabled", "kinematic", "collision_enabled" };
         public float taskGenerationTimeoutSeconds = 15f;
         public string taskGenerationFallback = "end_playthrough";
-        public bool allowProactiveAuthoringProposals = false;
+        [Header("Researcher tooling")]
+        public bool researcherMode;
+        [Tooltip("Editor defaults to localhost. Quest builds must use the LAN address of the development PC.")]
+        public string researcherControlBaseUrl = "http://130.136.2.161:50001";
         public string ExportJson() => JsonUtility.ToJson(this, true);
     }
 }

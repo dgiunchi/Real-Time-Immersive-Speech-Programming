@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace DreamCodeVR2.ExperimentalAuthoring
 {
@@ -9,17 +11,20 @@ namespace DreamCodeVR2.ExperimentalAuthoring
 
     [Serializable] public class AuthoringAction
     {
-        public string actionId;
+        [JsonProperty("action_id")] public string actionId;
         public AuthoringActionKind kind;
-        public string targetObjectId;
-        public string secondaryObjectId;
+        [JsonProperty("target_object_id")] public string targetObjectId;
+        [JsonProperty("secondary_object_id")] public string secondaryObjectId;
         public string operation;
         public string value;
         public float numericValue;
         public string anchorId;
+        [JsonProperty("parameters")] public JObject parameters;
+        [JsonProperty("api_call")] public ApiCall apiCall;
         public string behaviorId;
         public bool allowFinalGoalBypass;
     }
+    [Serializable] public class ApiCall { public string api; public string method; }
     [Serializable] public class AuthoringProposal
     {
         public string proposalId;
@@ -28,7 +33,6 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         public string targetDisplayName;
         public string expectedEffect;
         public string reason;
-        public bool proactive;
         public AuthoringAction action;
     }
     [Serializable] public class AuthoringValidationError { public string code; public string message; public string field; }
@@ -43,9 +47,30 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         public string questId; public string questVariant; public string taskId; public string eventType;
         public string[] objectIds; public string actionId; public bool success; public float latency; public string numericMetadata;
     }
-    [Serializable] public class AuthoringEnvelope { public string type; public AuthoringProposal proposal; public AuthoringExecutionRequest execution; public AuthoringUndoRequest undo; public PredefinedVoiceCommand predefinedCommand; public NextTaskSpec nextTask; public SceneApiCall sceneApi; public BehaviorApiCall behaviorApi; }
-    [Serializable] public class PredefinedVoiceCommand { public string commandId; public string targetObjectId; public string command; public string preset; }
+    [Serializable] public class AuthoringEnvelope { public string type; public AuthoringAction action; public PredefinedVoiceCommand command; public string command_id; public string action_id; public string reason; public NextTaskSpec task; public string task_id; public string status; public bool confirmation_required; public string interpretation; public string expected_effect; public string target_object_id; }
+    [Serializable] public class PredefinedVoiceCommand
+    {
+        [JsonProperty("command_id")] public string commandId;
+        [JsonProperty("target_object_id")] public string targetObjectId;
+        [JsonProperty("intent")] public string command;
+        [JsonProperty("preset_id")] public string preset;
+        [JsonProperty("secondary_object_id")] public string secondaryObjectId;
+        [JsonProperty("peer_uuid")] public string peerUuid;
+        [JsonProperty("schema_version")] public string schemaVersion;
+    }
     [Serializable] public class PredefinedCommandProposal { public string proposalId; public string interpretation; public string targetDisplayName; public string expectedEffect; public PredefinedVoiceCommand command; }
-    [Serializable] public class NextTaskSpec { public string taskId; public string title; public string playerInstruction; public string taskType; public string[] requiredObjects; public RuntimeSuccessCondition[] successConditions; public string[] dependencies; public string[] protectedObjects; public string[] allowedAuthoringScope; public string narrativeContext; }
+    [Serializable] public class NextTaskSpec
+    {
+        [JsonProperty("task_id")] public string taskId;
+        public string title;
+        [JsonProperty("player_instruction")] public string playerInstruction;
+        [JsonProperty("task_type")] public string taskType;
+        [JsonProperty("required_objects")] public string[] requiredObjects;
+        [JsonProperty("success_conditions")] public RuntimeSuccessCondition[] successConditions;
+        public string[] dependencies;
+        [JsonProperty("protected_objects")] public string[] protectedObjects;
+        [JsonProperty("allowed_authoring_scope")] public string[] allowedAuthoringScope;
+        [JsonProperty("narrative_context")] public string narrativeContext;
+    }
     [Serializable] public class RuntimeSuccessCondition { public string type; public string object_id; public string anchor_id; public string value; public RuntimeSuccessCondition[] children; }
 }

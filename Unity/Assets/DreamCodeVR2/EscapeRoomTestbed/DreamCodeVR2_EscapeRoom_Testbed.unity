@@ -10742,7 +10742,6 @@ MonoBehaviour:
   maxRayDistance: 8
   useExistingSelection: 1
   raycastEverySnapshot: 1
-  codeGenerationManager: {fileID: 0}
   existingSelectionSources:
   - {fileID: 2141631249}
 --- !u!114 &205025807
@@ -16404,7 +16403,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1151129708
 RectTransform:
   m_ObjectHideFlags: 0
@@ -16628,7 +16627,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1176620637
 Transform:
   m_ObjectHideFlags: 0
@@ -21215,13 +21214,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1853535911}
-  - component: {fileID: 1853535912}
   - component: {fileID: 1853535915}
   - component: {fileID: 1853535914}
-  - component: {fileID: 1853535916}
-  - component: {fileID: 1853535917}
   m_Layer: 0
-  m_Name: CodeGenerationManager
+  m_Name: DreamCodeVR2_RuntimeServices
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -21242,25 +21238,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 7068762447081937021}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1853535912
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1853535910}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 093df50a9c4f241b6ad850060785bdc6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  networkId:
-    a: 0
-    b: 94
-  audioSource: {fileID: 268042658}
-  assistantController: {fileID: 114615208}
-  volume: {fileID: 268042663}
-  testRoslyn: {fileID: 0}
 --- !u!114 &1853535914
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -21308,59 +21285,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   microphoneCapture: {fileID: 1853535914}
   controlAndroidRecording: 0
---- !u!114 &1853535916
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1853535910}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c616e1e5dc51c8c43bdf0ca34b88da2d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  selectRay: {fileID: 0}
-  networkId:
-    a: 0
-    b: 94
-  audioSource: {fileID: 268042658}
-  assistantController: {fileID: 114615208}
-  volume: {fileID: 268042663}
-  testRoslyn: {fileID: 1853535917}
-  targetObject: {fileID: 0}
-  sceneController: {fileID: 1931786494}
---- !u!114 &1853535917
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1853535910}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f1db3e64d9409c941ac21d9f7f583691, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  handController: {fileID: 741192223}
-  canvas: {fileID: 324201665}
-  connectionPanel: {fileID: 1380986963}
-  text: {fileID: 977680798}
-  assemblyReferences:
-  - {fileID: 11400000, guid: fe24fc97048e2974787cc8d5328fa171, type: 2}
-  - {fileID: 11400000, guid: a1c9628d65ee91440a328850888fb21e, type: 2}
-  - {fileID: 11400000, guid: 93cd16b8945e2b74cb3101170cee91dd, type: 2}
-  - {fileID: 11400000, guid: eee75363a127d4e43acec7a183e8ba84, type: 2}
-  - {fileID: 11400000, guid: 5aee9bce97ce92f48b2d6cf18dbe96f9, type: 2}
-  - {fileID: 11400000, guid: 49e9f5d6abb77204793f81ae256f8b86, type: 2}
-  - {fileID: 11400000, guid: a8498db15a507764cb646d6e524a2229, type: 2}
-  - {fileID: 11400000, guid: cece2a7086b72e945a5c99dff71597dc, type: 2}
-  - {fileID: 11400000, guid: d88f75994d58d8c40ac6331cae45287e, type: 2}
-  - {fileID: 11400000, guid: f4dfa258860e481479bf5ab6ae500faf, type: 2}
-  - {fileID: 11400000, guid: 047def5916b8efd4788cdf202f1c502e, type: 2}
-  - {fileID: 11400000, guid: d63caa786bb07a04dbed0198792760d9, type: 2}
-  - {fileID: 11400000, guid: e877e94ac5f9c7c4192a879696d5e5d8, type: 2}
-  - {fileID: 11400000, guid: e926a68b2b20b4a49b56d48786be169b, type: 2}
 --- !u!1 &1856759528
 GameObject:
   m_ObjectHideFlags: 0
@@ -23723,7 +23647,6 @@ MonoBehaviour:
   cloneForOtherHands: 0
   isSelecting: 0
   selectedObject: {fileID: 0}
-  codeGenerationManager: {fileID: 1853535916}
   genieMicrophoneCapture: {fileID: 1853535914}
   controlMicrophoneGain: 0
   logSelectionDebug: 1

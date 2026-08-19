@@ -14,7 +14,7 @@ namespace DreamCodeVR2.ContextBridge.Editor
     public static class EscapeRoomSceneRepairTool
     {
         private const string ScenePath = "Assets/DreamCodeVR2/EscapeRoomTestbed/DreamCodeVR2_EscapeRoom_Testbed.unity";
-        private const string ReportPath = "Assets/DreamCodeVR2/EscapeRoomTestbed/SCENE_SNAPSHOT_ESCAPE_ROOM_AFTER_FIXES.md";
+        private const string ReportPath = "Assets/DreamCodeVR2/EscapeRoomTestbed/EscapeRoomSceneSnapshot.generated.md";
         private const string SelectionProxyColliderName = "selection_proxy_collider";
         private const string RequiredTag = "game";
 

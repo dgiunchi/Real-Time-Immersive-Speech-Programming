@@ -1,5 +1,4 @@
 using DreamCodeVR2.ContextBridge;
-using DreamCodeVR2.Quest;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -11,7 +10,6 @@ namespace DreamCodeVR2.UI
     {
         private const string SceneName = "DreamCodeVR2_EscapeRoom_Testbed";
         private const string AuthoringUiRootName = "DreamCodeVR_AuthoringUI";
-        private const string QuestRuntimeRootName = "DreamCodeVR_QuestRuntime";
         private static readonly string[] LegacyUiNames =
         {
             "Menu",
@@ -30,10 +28,6 @@ namespace DreamCodeVR2.UI
             }
 
             var existingUiController = Object.FindFirstObjectByType<DreamCodeVRAuthoringUIController>();
-            var existingQuestScenarioController = Object.FindFirstObjectByType<QuestScenarioController>();
-            var existingQuestPlannerClient = Object.FindFirstObjectByType<QuestPlannerClient>();
-            var existingQuestPlanApplier = Object.FindFirstObjectByType<QuestPlanApplier>();
-            var existingQuestRuntimeState = Object.FindFirstObjectByType<QuestRuntimeState>();
 
             DreamCodeVRAuthoringUIController uiController = existingUiController;
             if (!uiController)
@@ -42,12 +36,6 @@ namespace DreamCodeVR2.UI
                 uiController = CreateAuthoringUi(legacyMenuHidden);
             }
 
-            EnsureQuestRuntime(
-                uiController,
-                existingQuestScenarioController,
-                existingQuestPlannerClient,
-                existingQuestPlanApplier,
-                existingQuestRuntimeState);
         }
 
         private static bool HideLegacyMenuUi()
@@ -191,75 +179,6 @@ namespace DreamCodeVR2.UI
 
             controller.enabled = true;
             return controller;
-        }
-
-        private static void EnsureQuestRuntime(
-            DreamCodeVRAuthoringUIController uiController,
-            QuestScenarioController existingQuestScenarioController,
-            QuestPlannerClient existingQuestPlannerClient,
-            QuestPlanApplier existingQuestPlanApplier,
-            QuestRuntimeState existingQuestRuntimeState)
-        {
-            var questRuntimeRoot = GameObject.Find(QuestRuntimeRootName);
-            var createdRuntimeRoot = false;
-            if (!questRuntimeRoot)
-            {
-                questRuntimeRoot = new GameObject(QuestRuntimeRootName);
-                createdRuntimeRoot = true;
-                Debug.Log("[QuestRuntimeBootstrap] Created DreamCodeVR_QuestRuntime");
-            }
-
-            var questScenarioController = existingQuestScenarioController;
-            if (!questScenarioController)
-            {
-                questScenarioController = questRuntimeRoot.AddComponent<QuestScenarioController>();
-            }
-            else
-            {
-                Debug.Log("[QuestRuntimeBootstrap] Found existing QuestScenarioController");
-                questRuntimeRoot = questScenarioController.gameObject;
-            }
-
-            var questPlannerClient = existingQuestPlannerClient;
-            if (!questPlannerClient)
-            {
-                questPlannerClient = questRuntimeRoot.AddComponent<QuestPlannerClient>();
-                Debug.Log("[QuestRuntimeBootstrap] Attached QuestPlannerClient");
-            }
-
-            var questPlanApplier = existingQuestPlanApplier;
-            if (!questPlanApplier)
-            {
-                questPlanApplier = questRuntimeRoot.AddComponent<QuestPlanApplier>();
-            }
-
-            var questRuntimeState = existingQuestRuntimeState;
-            if (!questRuntimeState)
-            {
-                questRuntimeState = questRuntimeRoot.AddComponent<QuestRuntimeState>();
-            }
-
-            var runtimeCreatableObjectCatalog = Object.FindFirstObjectByType<RuntimeCreatableObjectCatalog>();
-            if (!runtimeCreatableObjectCatalog)
-            {
-                runtimeCreatableObjectCatalog = questRuntimeRoot.AddComponent<RuntimeCreatableObjectCatalog>();
-            }
-
-            if (uiController)
-            {
-                questPlanApplier.authoringUiController = uiController;
-                questScenarioController.authoringUiController = uiController;
-            }
-
-            questPlanApplier.runtimeCreatableObjectCatalog = runtimeCreatableObjectCatalog;
-            questScenarioController.questPlanApplier = questPlanApplier;
-            questScenarioController.questPlannerClient = questPlannerClient;
-            questScenarioController.questRuntimeState = questRuntimeState;
-
-            if (createdRuntimeRoot || uiController || questScenarioController.questPlannerClient == questPlannerClient)
-            {
-                Debug.Log("[QuestRuntimeBootstrap] Wired QuestPlannerClient into QuestScenarioController");
-            }
         }
 
         private static RectTransform CreateCard(string name, Transform parent, Color backgroundColor)

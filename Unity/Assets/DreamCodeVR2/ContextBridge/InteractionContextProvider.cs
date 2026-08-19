@@ -14,7 +14,6 @@ namespace DreamCodeVR2.ContextBridge
         public float maxRayDistance = 8f;
         public bool useExistingSelection = true;
         public bool raycastEverySnapshot = true;
-        public global::CodeGenerationManager codeGenerationManager;
         public global::SelectObjectRay[] existingSelectionSources;
 
         private bool hasCachedPointing;
@@ -119,15 +118,6 @@ namespace DreamCodeVR2.ContextBridge
             if (!useExistingSelection || !sceneRegistry)
             {
                 return null;
-            }
-
-            if (codeGenerationManager && codeGenerationManager.targetObject)
-            {
-                var editableFromManager = codeGenerationManager.targetObject.GetComponentInParent<AIEditableObject>();
-                if (editableFromManager)
-                {
-                    return editableFromManager;
-                }
             }
 
             if (existingSelectionSources == null)

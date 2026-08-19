@@ -1,0 +1,1 @@
+C:\Users\valla\UnityProjects\GitHub\Real-Time-Immersive-Speech-Programming\Unity\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\build\intermediates\cxx\RelWithDebInfo\2q6zop6f\obj\arm64-v8a
