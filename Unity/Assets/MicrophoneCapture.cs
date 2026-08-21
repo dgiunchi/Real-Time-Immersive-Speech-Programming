@@ -28,6 +28,8 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private NetworkContext context;
     private RoomClient roomClient;
     private AudioClip microphoneClip;
+    private AudioClip lastRecordingClip;
+    private AudioSource recordingPlaybackSource;
     private string activeMicrophoneDevice;
     private int lastMicPosition;
     private bool isRecording;
@@ -41,10 +43,15 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private bool loggedMicrophoneStarted;
     private float lastTriggerPressedTime;
     private readonly List<InputDevice> leftControllers = new List<InputDevice>();
+    private readonly List<float> currentRecordingSamples = new List<float>();
 
     private void Start()
     {
         context = NetworkScene.Register(this, networkId);
+        recordingPlaybackSource = gameObject.AddComponent<AudioSource>();
+        recordingPlaybackSource.playOnAwake = false;
+        recordingPlaybackSource.loop = false;
+        recordingPlaybackSource.spatialBlend = 0f;
         EnsureMicrophoneStarted();
     }
 
@@ -194,12 +201,14 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         if (!recording && isRecording)
         {
             SendPendingMicrophoneSamples(true);
+            FinalizeRecordingForPlayback();
         }
 
         isRecording = recording;
         if (isRecording)
         {
             lastMicPosition = microphoneClip ? Microphone.GetPosition(activeMicrophoneDevice) : 0;
+            currentRecordingSamples.Clear();
             loggedFirstAudioChunk = false;
         }
 
@@ -298,6 +307,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             var int16 = (short)Mathf.RoundToInt(mixed * short.MaxValue);
             pcm[outputOffset++] = (byte)(int16 & 0xff);
             pcm[outputOffset++] = (byte)((int16 >> 8) & 0xff);
+            currentRecordingSamples.Add(int16 / 32768f);
 
             stats.sampleCount++;
             stats.volumeSum += Mathf.Abs(mixed);
@@ -305,6 +315,52 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 
         lastFrameStats = stats;
         SendPayloadToServer(pcm);
+    }
+
+    private void FinalizeRecordingForPlayback()
+    {
+        if (currentRecordingSamples.Count == 0)
+        {
+            if (lastRecordingClip) Destroy(lastRecordingClip);
+            lastRecordingClip = null;
+            return;
+        }
+
+        if (lastRecordingClip) Destroy(lastRecordingClip);
+        lastRecordingClip = AudioClip.Create(
+            "Last STT Recording",
+            currentRecordingSamples.Count,
+            1,
+            sampleRate,
+            false);
+        lastRecordingClip.SetData(currentRecordingSamples.ToArray(), 0);
+
+        var sumSquares = 0d;
+        var peak = 0f;
+        foreach (var sample in currentRecordingSamples)
+        {
+            sumSquares += sample * sample;
+            peak = Mathf.Max(peak, Mathf.Abs(sample));
+        }
+        var rms = Mathf.Sqrt((float)(sumSquares / currentRecordingSamples.Count));
+        Debug.Log(
+            $"[MicrophoneCapture] saved last recording duration={lastRecordingClip.length:0.00}s " +
+            $"rms={rms:0.0000} peak={peak:0.0000}");
+    }
+
+    public bool PlayLastRecording()
+    {
+        if (!lastRecordingClip || recordingPlaybackSource == null)
+        {
+            Debug.LogWarning("[MicrophoneCapture] no completed recording is available for playback");
+            return false;
+        }
+
+        recordingPlaybackSource.Stop();
+        recordingPlaybackSource.clip = lastRecordingClip;
+        recordingPlaybackSource.Play();
+        Debug.Log($"[MicrophoneCapture] playing last recording duration={lastRecordingClip.length:0.00}s");
+        return true;
     }
 
     private void SendControlMessage(string controlMessage)

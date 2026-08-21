@@ -12,6 +12,7 @@ namespace AgenticCache
         private Text statusText;
         private Text transcriptText;
         private Text proposalText;
+        private MicrophoneCapture microphoneCapture;
         private string pendingCorrelationId;
         private bool leftPrimaryWasPressed;
 
@@ -83,6 +84,13 @@ namespace AgenticCache
 
         private void Undo() => manager.UndoLatest();
 
+        private void ListenToLastRecording()
+        {
+            if (microphoneCapture == null) microphoneCapture = FindFirstObjectByType<MicrophoneCapture>();
+            if (microphoneCapture == null || !microphoneCapture.PlayLastRecording())
+                ShowStatus("listen", "No completed microphone recording is available yet.");
+        }
+
         private void BuildWorldSpacePanel()
         {
             var root = new GameObject("AgenticXR Panel", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(XRUICanvas), typeof(Image));
@@ -91,7 +99,7 @@ namespace AgenticCache
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.worldCamera = Camera.main;
             var rect = root.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(760, 430);
+            rect.sizeDelta = new Vector2(760, 500);
             root.GetComponent<Image>().color = new Color(0.035f, 0.045f, 0.075f, 0.94f);
 
             var cameraTransform = Camera.main != null ? Camera.main.transform : null;
@@ -103,12 +111,13 @@ namespace AgenticCache
                 root.transform.localScale = Vector3.one * 0.0012f;
             }
 
-            statusText = CreateText(root.transform, "Status", new Vector2(0, 165), new Vector2(700, 70), 26, TextAnchor.MiddleLeft);
-            transcriptText = CreateText(root.transform, "Transcript", new Vector2(0, 105), new Vector2(700, 55), 24, TextAnchor.MiddleLeft);
-            proposalText = CreateText(root.transform, "Proposal", new Vector2(0, 5), new Vector2(700, 140), 24, TextAnchor.UpperLeft);
-            CreateButton(root.transform, "Approve", new Vector2(-210, -150), new Color(0.15f, 0.55f, 0.3f), Approve);
-            CreateButton(root.transform, "Cancel / Reject", new Vector2(0, -150), new Color(0.65f, 0.2f, 0.2f), Reject);
-            CreateButton(root.transform, "Undo", new Vector2(210, -150), new Color(0.25f, 0.35f, 0.65f), Undo);
+            statusText = CreateText(root.transform, "Status", new Vector2(0, 200), new Vector2(700, 70), 26, TextAnchor.MiddleLeft);
+            transcriptText = CreateText(root.transform, "Transcript", new Vector2(-85, 135), new Vector2(530, 55), 24, TextAnchor.MiddleLeft);
+            CreateButton(root.transform, "Listen", new Vector2(275, 135), new Color(0.2f, 0.48f, 0.65f), ListenToLastRecording, new Vector2(145, 55));
+            proposalText = CreateText(root.transform, "Proposal", new Vector2(0, -10), new Vector2(700, 170), 24, TextAnchor.UpperLeft);
+            CreateButton(root.transform, "Approve", new Vector2(-210, -205), new Color(0.15f, 0.55f, 0.3f), Approve);
+            CreateButton(root.transform, "Cancel / Reject", new Vector2(0, -205), new Color(0.65f, 0.2f, 0.2f), Reject);
+            CreateButton(root.transform, "Undo", new Vector2(210, -205), new Color(0.25f, 0.35f, 0.65f), Undo);
         }
 
         private static Text CreateText(Transform parent, string name, Vector2 position, Vector2 size, int fontSize, TextAnchor alignment)
@@ -126,13 +135,14 @@ namespace AgenticCache
             return text;
         }
 
-        private static void CreateButton(Transform parent, string label, Vector2 position, Color color, UnityEngine.Events.UnityAction action)
+        private static void CreateButton(Transform parent, string label, Vector2 position, Color color,
+            UnityEngine.Events.UnityAction action, Vector2? size = null)
         {
             var go = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button));
             go.transform.SetParent(parent, false);
             var rect = go.GetComponent<RectTransform>();
             rect.anchoredPosition = position;
-            rect.sizeDelta = new Vector2(180, 65);
+            rect.sizeDelta = size ?? new Vector2(180, 65);
             go.GetComponent<Image>().color = color;
             go.GetComponent<Button>().onClick.AddListener(action);
             var text = CreateText(go.transform, "Label", Vector2.zero, rect.sizeDelta, 25, TextAnchor.MiddleCenter);
