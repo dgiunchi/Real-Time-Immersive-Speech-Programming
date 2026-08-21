@@ -137,8 +137,10 @@ class ArtifactLog {
     startStudyTrial(context) {
         validateStudyContext(context);
         const candidateTarget = validateCandidateTarget(context.candidateTarget);
-        if (this.activeTrialBySession.has(context.sessionId)) {
-            throw new Error(`sessionId '${context.sessionId}' already has an active study trial`);
+        this._reloadStudyContextFromDisk();
+        if (this.activeTrialBySession.size > 0) {
+            const active = [...this.activeTrialBySession.values()][0];
+            throw new Error(`active study trial '${active.trialId}' must be ended or aborted before starting '${context.trialId}'`);
         }
         return this.append({
             ...context,
@@ -181,6 +183,15 @@ class ArtifactLog {
             this.activeTrialBySession.get(sessionId) ||
             this.studyContextByRuntimeSession.get(sessionId) || null;
         if (context || !fs.existsSync(this.filePath)) return context;
+        this._reloadStudyContextFromDisk();
+        context = this.studyContextByCorrelation.get(correlationId) ||
+            this.activeTrialBySession.get(sessionId) ||
+            this.studyContextByRuntimeSession.get(sessionId) || null;
+        return context;
+    }
+
+    _reloadStudyContextFromDisk() {
+        if (!fs.existsSync(this.filePath)) return;
         // Another process (for example the researcher CLI or Unity bridge) may have
         // opened the trial after this ArtifactLog instance started. Refresh only
         // study context maps; do not duplicate the in-memory history index.
@@ -211,10 +222,6 @@ class ArtifactLog {
                 }
             } catch (_) { /* malformed lines are reported during the normal load */ }
         }
-        context = this.studyContextByCorrelation.get(correlationId) ||
-            this.activeTrialBySession.get(sessionId) ||
-            this.studyContextByRuntimeSession.get(sessionId) || null;
-        return context;
     }
 
     claimRuntimeSession({ runtimeSessionId, correlationId, studySource = "runtime" } = {}) {
@@ -222,8 +229,11 @@ class ArtifactLog {
             ? this.getStudyContext({ correlationId })
             : null;
         if (context) return context;
-        const active = [...this.activeTrialBySession.values()];
         if (typeof runtimeSessionId !== "string" || !STUDY_ID_PATTERN.test(runtimeSessionId)) {
+            // Refresh before deciding that this is a non-study call. The
+            // researcher CLI may have opened a trial after this process booted.
+            this.getStudyContext({ sessionId: runtimeSessionId, correlationId });
+            const active = [...this.activeTrialBySession.values()];
             // Non-study tools commonly omit sessionId. That is not an error unless
             // a trial is active and would otherwise risk producing unjoined data.
             if (active.length === 0) return null;
@@ -238,16 +248,19 @@ class ArtifactLog {
         // The current study protocol is single-participant. A live Ubiq peer or
         // Unity cache identity may therefore claim the sole active trial, but an
         // ambiguous multi-trial state is an error rather than a guessed join.
+        const active = [...this.activeTrialBySession.values()];
         if (active.length === 0) return null;
         if (active.length !== 1) {
             throw new Error(`cannot bind runtime session '${runtimeSessionId}': ${active.length} study trials are active`);
         }
         context = active[0];
-        this.studyContextByRuntimeSession.set(runtimeSessionId, context);
-        if (correlationId) this.studyContextByCorrelation.set(correlationId, context);
+        const bindingCorrelationId = correlationId ||
+            `bind-${context.trialId}-${runtimeSessionId}`.slice(0, 128);
+        // The append is the durable source of truth and indexes the alias only
+        // after the write succeeds. Never mutate the in-memory maps first.
         this.appendStudyEvent({
             ...context,
-            correlationId: correlationId || context.correlationId,
+            correlationId: bindingCorrelationId,
             eventType: "study_runtime_session_bound",
             runtimeSessionId,
             studySource,

@@ -14,6 +14,8 @@ const { ArtifactLog } = require("../../../memory/artifact_log");
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 const DATA_DIR = "data";
 const INPUT_FILE = `${DATA_DIR}/input.txt`;
+const DEBUG_TRANSCRIPTS = String(process.env.STUDY_DEBUG_TRANSCRIPTS || "").toLowerCase() === "1" ||
+    String(process.env.STUDY_DEBUG_TRANSCRIPTS || "").toLowerCase() === "true";
 
 function terminateProcessTree(child) {
     if (!child || child.exitCode != null || child.killed) return;
@@ -79,6 +81,9 @@ class CodeGeneration extends ApplicationController {
         this.baselinePending = null;
         this.agenticTurnTimeoutMs = Number(process.env.AGENTICXR_TURN_TIMEOUT_MS) || 180000;
         this.artifactLog = new ArtifactLog({ filePath: process.env.AGENTICXR_ARTIFACT_LOG });
+        if (DEBUG_TRANSCRIPTS) {
+            console.warn("[AgenticXR] STUDY_DEBUG_TRANSCRIPTS is enabled: verbatim speech may be written to local diagnostics");
+        }
         this.idlePredictionEnabled = String(process.env.AGENTICXR_IDLE_PREDICTION_ENABLED || "false").toLowerCase() === "true";
         this.idlePredictionThresholdMs = Math.max(30000, Number(process.env.AGENTICXR_IDLE_PREDICTION_THRESHOLD_MS) || 60000);
         this.idlePredictionCooldownMs = Math.max(60000, Number(process.env.AGENTICXR_IDLE_PREDICTION_COOLDOWN_MS) || 300000);
@@ -106,12 +111,13 @@ class CodeGeneration extends ApplicationController {
                 }
                 const suppliedIds = new Set(Array.isArray(payload && payload.artifactIds) ? payload.artifactIds : []);
                 const active = this.artifactLog.activeArtifacts();
+                const resetCorrelationId = message.correlationId || randomUUID();
                 for (const artifact of active) {
                     if (suppliedIds.size > 0 && artifact.artifactId && !suppliedIds.has(artifact.artifactId)) continue;
-                    this.artifactLog.append({
+                    this.logArtifactEvent({
                         eventType: "trial_reset",
                         sessionId: message.sessionId || null,
-                        correlationId: message.correlationId || randomUUID(),
+                        correlationId: resetCorrelationId,
                         targetObjectId: artifact.targetObjectId,
                         artifactId: artifact.artifactId || null,
                         operation: "rollback",
@@ -119,10 +125,10 @@ class CodeGeneration extends ApplicationController {
                         reason: "xr_trial_reset",
                     });
                 }
-                this.artifactLog.append({
+                this.logArtifactEvent({
                     eventType: "trial_reset",
                     sessionId: message.sessionId || null,
-                    correlationId: message.correlationId || randomUUID(),
+                    correlationId: resetCorrelationId,
                     operation: "rollback",
                     status: "rolled_back",
                     reason: "xr_trial_reset_all",
@@ -225,9 +231,11 @@ class CodeGeneration extends ApplicationController {
                 // Remove all newlines from the response
                 response = response.replace(/(\r\n|\n|\r)/gm, "");
                 
-                ensureRuntimeDataFiles();
-                fs.appendFileSync(INPUT_FILE, response);
-                console.log(`File ${INPUT_FILE} appended successfully.`);
+                if (DEBUG_TRANSCRIPTS) {
+                    ensureRuntimeDataFiles();
+                    fs.appendFileSync(INPUT_FILE, response);
+                    console.warn(`[AgenticXR] debug transcript appended characters=${response.length}`);
+                }
 
                 if (response.startsWith(">")) response = response.slice(1);
                 if (response.trim()) {
@@ -246,7 +254,7 @@ class CodeGeneration extends ApplicationController {
                             this.agenticTargets.get(identifier),
                             this.agenticCorrelations.get(identifier),
                             "heard",
-                            transcript
+                            `Request transcribed (${transcript.length} characters).`
                         );
                         if (/^(cancel|stop)(\s+(request|generation|claude))?[.!?]*$/i.test(transcript)) {
                             this.cancelAgenticTurn(identifier, null, "voice_cancel");
@@ -267,7 +275,7 @@ class CodeGeneration extends ApplicationController {
                             targetObjectId,
                             studySource: "baseline_runtime",
                         });
-                        console.log(peerName + " -> Agent:: " + response);
+                        console.log(`[AgenticXR] baseline transcript ready peer=${peerName} characters=${response.length}`);
 
                         // this.components.textToSpeechService.sendToChildProcess("default", response + "\n");
                         this.components.codeGenerationService.sendToChildProcess("default", response + "\n");
@@ -275,6 +283,24 @@ class CodeGeneration extends ApplicationController {
                 }
                 response = "";
             }
+        });
+
+        this.components.transcriptionService.on("transcription_error", ({ peerUUID, message, durationMs }) => {
+            const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
+            const targetObjectId = this.agenticTargets.get(peerUUID) || null;
+            this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed",
+                "Speech transcription failed. Please try again.");
+            this.logStudyEvent({
+                eventType: "transcription_failed",
+                sessionId: peerUUID,
+                correlationId,
+                targetObjectId,
+                durationMs,
+                status: "error",
+                reasonCode: "stt_failure",
+                errorType: String(message || "unknown").split(":", 1)[0],
+                studySource: "speech_to_text",
+            });
         });
 
         // Step 3: When we receive a response from the text generation service, send it to the text to speech service
@@ -580,9 +606,25 @@ class CodeGeneration extends ApplicationController {
                 studySource: event && event.studySource || "code_runtime_generator",
             });
             if (!context) return null;
-            this.artifactLog.appendStudyEvent(event);
+            return this.artifactLog.appendStudyEvent(event);
         } catch (error) {
             console.error(`[AgenticXR] study log error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    logArtifactEvent(event) {
+        try {
+            const context = this.artifactLog.claimRuntimeSession({
+                runtimeSessionId: event && event.sessionId,
+                correlationId: event && event.correlationId,
+                studySource: event && event.studySource || "code_runtime_generator",
+            });
+            return context
+                ? this.artifactLog.appendStudyEvent(event)
+                : this.artifactLog.append(event);
+        } catch (error) {
+            console.error(`[AgenticXR] artifact log error: ${error.message}`);
             throw error;
         }
     }

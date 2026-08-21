@@ -599,6 +599,34 @@ const aliasContext = {
     correlationId: "alias-root",
     candidateTarget: 1,
 };
+
+// Production starts the long-lived server before the researcher opens a trial
+// from a separate CLI process. The very first runtime message may not yet carry
+// a turn correlation, so that first claim must refresh from disk and journal a
+// durable alias rather than silently dropping the event.
+const raceLogPath = path.join(testDataDir, "study-runtime-first-claim-race.jsonl");
+const serverStartedFirst = new ArtifactLog({ filePath: raceLogPath });
+const researcherProcess = new ArtifactLog({ filePath: raceLogPath });
+researcherProcess.startStudyTrial({
+    ...aliasContext,
+    sessionId: "operator-race-session",
+    trialId: "race-trial",
+    correlationId: "race-root",
+    at: 5900,
+});
+const firstClaim = serverStartedFirst.claimRuntimeSession({
+    runtimeSessionId: "ubiq-peer-race",
+    studySource: "ubiq_peer",
+});
+equal(firstClaim && firstClaim.trialId, "race-trial",
+    "the first cross-process runtime claim refreshes the active trial from disk");
+const raceBindings = fs.readFileSync(raceLogPath, "utf8").trim().split(/\r?\n/).map(JSON.parse)
+    .filter((event) => event.eventType === "study_runtime_session_bound");
+equal(raceBindings.length, 1, "the first cross-process claim journals exactly one runtime binding");
+ok(Boolean(raceBindings[0].correlationId), "a correlation-free first claim receives a durable binding correlation id");
+equal(new ArtifactLog({ filePath: raceLogPath }).getStudyContext({ sessionId: "ubiq-peer-race" }).trialId,
+    "race-trial", "the runtime binding survives a fresh process");
+
 aliasLog.startStudyTrial({ ...aliasContext, at: 6000 });
 assert.throws(() => aliasLog.claimRuntimeSession({ correlationId: "unjoined-active-call" }),
     /runtimeSessionId must be/, "an active trial rejects an event that cannot be joined to a runtime identity");
@@ -644,9 +672,12 @@ equal(aliasExport.trialRows[0].verificationBypassedCount, 1,
 
 const ambiguousLog = new ArtifactLog({ filePath: path.join(testDataDir, "study-runtime-ambiguous.jsonl") });
 ambiguousLog.startStudyTrial({ ...aliasContext, sessionId: "ambiguous-a", trialId: "ambiguous-a", correlationId: "ambiguous-root-a" });
-ambiguousLog.startStudyTrial({ ...aliasContext, sessionId: "ambiguous-b", trialId: "ambiguous-b", correlationId: "ambiguous-root-b" });
-assert.throws(() => ambiguousLog.claimRuntimeSession({ runtimeSessionId: "unknown-peer", correlationId: "unknown-turn" }),
-    /2 study trials are active/, "an ambiguous runtime join fails instead of guessing");
+assert.throws(() => new ArtifactLog({ filePath: ambiguousLog.filePath }).startStudyTrial({
+    ...aliasContext,
+    sessionId: "ambiguous-b",
+    trialId: "ambiguous-b",
+    correlationId: "ambiguous-root-b",
+}), /active study trial/, "a second process cannot create overlapping active trials");
 assertions += 1;
 
 const unjoinedEvents = [
@@ -655,9 +686,13 @@ const unjoinedEvents = [
     { ...aliasContext, eventType: "study_trial_ended", studyEvent: true, taskCompletion: false,
         taskSuccess: null, timestampUtc: new Date(7200).toISOString(), loggedAt: 7200 },
 ];
-assert.throws(() => buildStudyExports(unjoinedEvents), /runtime event\(s\).*without joining/,
-    "the exporter refuses to silently discard runtime events inside a trial window");
-assertions += 1;
+const unjoinedExport = buildStudyExports(unjoinedEvents);
+equal(unjoinedExport.trialRows.length, 0,
+    "a trial with unjoined runtime events is quarantined from analysis rows");
+equal(unjoinedExport.rejectedTrials.length, 1,
+    "the exporter reports a rejected trial instead of silently discarding runtime events");
+ok(/runtime event\(s\).*without joining/.test(unjoinedExport.rejectedTrials[0].reason),
+    "the rejection preserves the unjoined-runtime failure reason");
 
 const noCandidateLog = new ArtifactLog({ filePath: path.join(testDataDir, "study-no-candidate.jsonl") });
 const noCandidateContext = { ...aliasContext, sessionId: "no-candidate-session", trialId: "no-candidate-trial",
@@ -669,6 +704,11 @@ noCandidateLog.endStudyTrial({ sessionId: noCandidateContext.sessionId, trialId:
     correlationId: "no-candidate-turn", taskCompletion: true, taskSuccess: false, at: 8200 });
 equal(buildStudyExports(noCandidateLog.records).trialRows[0].candidatesGenerated, "",
     "missing H4 evidence stays missing instead of fabricating one candidate");
+const mixedBatchExport = buildStudyExports([...noCandidateLog.records, ...unjoinedEvents]);
+equal(mixedBatchExport.trialRows.length, 1,
+    "one rejected trial does not poison valid participant exports");
+equal(mixedBatchExport.rejectedTrials.length, 1,
+    "mixed exports retain a machine-readable rejection report");
 
 // A separate process (e.g. the runtime spawning an orchestrator turn) must see the
 // per-trial candidate target after reloading the shared log file. trial-02 above
@@ -681,6 +721,16 @@ equal(new ArtifactLog({ filePath: studyLogPath }).getStudyContext({ sessionId: "
 
 const unityManager = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CacheExchangeManager.cs"), "utf8");
 const unityPublisher = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CachePublisher.cs"), "utf8");
+const runtimeAppSource = fs.readFileSync(path.join(root, "samples", "apps", "code_runtime_generator", "app.js"), "utf8");
+const sttServiceSource = fs.readFileSync(path.join(root, "samples", "services", "speech_to_text", "service.js"), "utf8");
+ok(runtimeAppSource.includes("if (DEBUG_TRANSCRIPTS)"),
+    "verbatim transcript persistence is gated behind explicit debug consent");
+ok(!runtimeAppSource.includes('peerName + " -> Agent:: " + response'),
+    "baseline diagnostics do not print verbatim participant speech");
+ok(sttServiceSource.includes("characters=${responseText.length}"),
+    "STT diagnostics default to transcript length instead of content");
+ok(sttServiceSource.includes('emit("transcription_error"'),
+    "STT failures produce a structured event for visible recovery and study logging");
 for (const required of ["CommitAccepted", "CommitRejected", "UserDecision", "RollbackResult", "AgentStatusVisible", "ValidateProposalEnvelope", "BuildBackfillPayload"]) {
     ok(unityManager.includes(required) || unityPublisher.includes(required), `Unity contract contains ${required}`);
 }

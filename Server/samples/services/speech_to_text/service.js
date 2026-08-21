@@ -238,10 +238,16 @@ class FasterWhisperHttpSttService extends EventEmitter {
 
         try {
             const responseText = await postWav(this.url, wavBuffer);
-            console.log(`[FasterWhisperHttpSttService] response peerUUID=${peerUUID}: ${responseText}`);
+            const debugTranscripts = getBoolean("STUDY_DEBUG_TRANSCRIPTS", false);
+            if (debugTranscripts) {
+                console.warn(`[FasterWhisperHttpSttService] debug transcript peerUUID=${peerUUID}: ${responseText}`);
+            } else {
+                console.log(`[FasterWhisperHttpSttService] response peerUUID=${peerUUID} characters=${responseText.length}`);
+            }
             this.emit("response", Buffer.from(responseText), peerUUID);
         } catch (error) {
             console.error(`[FasterWhisperHttpSttService] request error peerUUID=${peerUUID}: ${error.message}`);
+            this.emit("transcription_error", { peerUUID, reason, message: error.message, durationMs });
         } finally {
             session.transcribing = false;
             if (session.bytes > 0) {

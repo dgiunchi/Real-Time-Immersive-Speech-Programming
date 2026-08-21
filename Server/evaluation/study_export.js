@@ -419,34 +419,61 @@ function buildStudyExports(allEvents) {
             event.sessionId === started.sessionId && event.trialId === started.trialId);
         return {
             started,
+            key: trialKey(started),
             from: eventTime(started),
             to: ended ? eventTime(ended) : Number.POSITIVE_INFINITY,
         };
     });
-    const unjoined = allEvents.filter((event) => {
-        if (event.studyEvent || !event.eventType || !event.correlationId) return false;
+    const unjoinedByTrial = new Map();
+    for (const event of allEvents) {
+        if (event.studyEvent || !event.eventType || !event.correlationId) continue;
         const at = eventTime(event);
-        return Number.isFinite(at) && windows.some((window) =>
-            Number.isFinite(window.from) && at >= window.from && at <= window.to);
-    });
-    if (unjoined.length) {
-        const examples = unjoined.slice(0, 5)
-            .map((event) => `${event.eventType}:${event.sessionId || "missing-session"}`)
-            .join(", ");
-        throw new Error(`${unjoined.length} runtime event(s) occurred during a study trial without joining it: ${examples}`);
+        if (!Number.isFinite(at)) continue;
+        for (const window of windows) {
+            if (!Number.isFinite(window.from) || at < window.from || at > window.to) continue;
+            if (!unjoinedByTrial.has(window.key)) unjoinedByTrial.set(window.key, []);
+            unjoinedByTrial.get(window.key).push(event);
+        }
     }
 
     const events = allEvents.filter((event) => event.studyEvent);
-    validateStudyEvents(events);
     const grouped = new Map();
     for (const event of events) {
         const key = trialKey(event);
         if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key).push(event);
     }
-    const trialRows = [...grouped.values()].map(aggregateTrial);
-    const longRows = events.sort((a, b) => eventTime(a) - eventTime(b)).map(longRow);
-    return { trialRows, longRows };
+    const trialRows = [];
+    const acceptedEvents = [];
+    const rejectedTrials = [];
+    for (const [key, trialEvents] of grouped.entries()) {
+        const identity = trialEvents.find((event) => event.eventType === "study_trial_started") || trialEvents[0] || {};
+        try {
+            validateStudyEvents(trialEvents);
+            const unjoined = unjoinedByTrial.get(key) || [];
+            if (unjoined.length) {
+                const examples = unjoined.slice(0, 5)
+                    .map((event) => `${event.eventType}:${event.sessionId || "missing-session"}`)
+                    .join(", ");
+                throw new Error(`${unjoined.length} runtime event(s) occurred during a study trial without joining it: ${examples}`);
+            }
+            trialRows.push(aggregateTrial(trialEvents));
+            acceptedEvents.push(...trialEvents);
+        } catch (error) {
+            rejectedTrials.push({
+                participantId: identity.participantId || null,
+                sessionId: identity.sessionId || null,
+                trialId: identity.trialId || null,
+                condition: identity.condition || null,
+                taskId: identity.taskId || null,
+                interactionMode: identity.interactionMode || null,
+                eventCount: trialEvents.length,
+                reason: error.message,
+            });
+        }
+    }
+    const longRows = acceptedEvents.sort((a, b) => eventTime(a) - eventTime(b)).map(longRow);
+    return { trialRows, longRows, rejectedTrials };
 }
 
 function argument(name, fallback) {
@@ -458,13 +485,21 @@ function argument(name, fallback) {
 function runCli() {
     const input = path.resolve(argument("input", path.join(__dirname, "..", "memory", "data", "artifact_log.jsonl")));
     const outputDir = path.resolve(argument("output-dir", path.join(__dirname, "data", "study-export")));
-    const { trialRows, longRows } = buildStudyExports(readJsonLines(input));
+    const { trialRows, longRows, rejectedTrials } = buildStudyExports(readJsonLines(input));
     const trialsPath = path.join(outputDir, "trials.csv");
     const eventsPath = path.join(outputDir, "events.csv");
+    const rejectedPath = path.join(outputDir, "rejected_trials.json");
     writeCsv(trialsPath, TRIAL_COLUMNS, trialRows);
     writeCsv(eventsPath, LONG_COLUMNS, longRows);
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(rejectedPath, JSON.stringify(rejectedTrials, null, 2) + "\n");
     console.log(`[study_export] wrote ${trialRows.length} trial row(s) to ${trialsPath}`);
     console.log(`[study_export] wrote ${longRows.length} event row(s) to ${eventsPath}`);
+    console.log(`[study_export] wrote ${rejectedTrials.length} rejected trial record(s) to ${rejectedPath}`);
+    if (rejectedTrials.length) {
+        console.error(`[study_export] ${rejectedTrials.length} trial(s) rejected; valid trials were exported but this run is incomplete`);
+        process.exitCode = 2;
+    }
 }
 
 if (require.main === module) runCli();
