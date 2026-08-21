@@ -104,5 +104,6 @@ namespace AgenticCache
         public const string AgentUtterance = "AgentUtterance";
         public const string AgentPresenceHeartbeat = "AgentPresenceHeartbeat";
         public const string UserDecision = "UserDecision";
+        public const string CancelRequest = "CancelRequest";
     }
 }

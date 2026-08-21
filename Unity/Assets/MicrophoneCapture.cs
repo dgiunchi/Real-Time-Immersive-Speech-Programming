@@ -17,6 +17,8 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     public float gain = 1.0f;
     public int sampleRate = 16000;
     public int microphoneBufferSeconds = 1;
+    [Tooltip("Optional microphone device name. Leave empty to prefer the Oculus headset microphone while XR is active, then fall back to the system default.")]
+    public string preferredMicrophoneDevice = "";
     public float triggerThreshold = 0.75f;
     public float releaseDebounceSeconds = 0.15f;
     public bool logRecordingState = true;
@@ -26,6 +28,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private NetworkContext context;
     private RoomClient roomClient;
     private AudioClip microphoneClip;
+    private string activeMicrophoneDevice;
     private int lastMicPosition;
     private bool isRecording;
     private bool leftTriggerState;
@@ -49,7 +52,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     {
         if (microphoneClip)
         {
-            Microphone.End(null);
+            Microphone.End(activeMicrophoneDevice);
         }
     }
 
@@ -94,18 +97,48 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             return;
         }
 
-        microphoneClip = Microphone.Start(null, true, Mathf.Max(1, microphoneBufferSeconds), sampleRate);
-        lastMicPosition = Microphone.GetPosition(null);
+        activeMicrophoneDevice = ResolveMicrophoneDevice();
+        microphoneClip = Microphone.Start(activeMicrophoneDevice, true, Mathf.Max(1, microphoneBufferSeconds), sampleRate);
+        lastMicPosition = Microphone.GetPosition(activeMicrophoneDevice);
         loggedNoMicrophoneDevices = false;
 
         if (logRecordingState && !loggedMicrophoneStarted)
         {
             Debug.Log(
-                $"[MicrophoneCapture] microphone started devices={string.Join(",", Microphone.devices)} " +
+                $"[MicrophoneCapture] microphone started selected={activeMicrophoneDevice ?? "<system default>"} " +
+                $"devices={string.Join(",", Microphone.devices)} " +
                 $"frequency={sampleRate} channels={microphoneClip.channels} samples={microphoneClip.samples} " +
                 $"position={lastMicPosition}");
             loggedMicrophoneStarted = true;
         }
+    }
+
+    private string ResolveMicrophoneDevice()
+    {
+        var devices = Microphone.devices;
+        if (!string.IsNullOrWhiteSpace(preferredMicrophoneDevice))
+        {
+            foreach (var device in devices)
+            {
+                if (device.IndexOf(preferredMicrophoneDevice, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return device;
+                }
+            }
+
+            Debug.LogWarning($"[MicrophoneCapture] preferred device not found: {preferredMicrophoneDevice}");
+        }
+
+        foreach (var device in devices)
+        {
+            if (device.IndexOf("Oculus", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                device.IndexOf("Headset Microphone", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return device;
+            }
+        }
+
+        return null;
     }
 
     private void UpdateRecordingFromLeftTrigger()
@@ -166,7 +199,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         isRecording = recording;
         if (isRecording)
         {
-            lastMicPosition = microphoneClip ? Microphone.GetPosition(null) : 0;
+            lastMicPosition = microphoneClip ? Microphone.GetPosition(activeMicrophoneDevice) : 0;
             loggedFirstAudioChunk = false;
         }
 
@@ -201,7 +234,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             return;
         }
 
-        var currentPosition = Microphone.GetPosition(null);
+        var currentPosition = Microphone.GetPosition(activeMicrophoneDevice);
         if (lastMicPosition < 0)
         {
             lastMicPosition = currentPosition;

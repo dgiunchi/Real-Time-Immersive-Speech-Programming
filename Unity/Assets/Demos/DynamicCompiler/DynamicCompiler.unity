@@ -11101,7 +11101,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 02aa14982b527f6498e01f290d7f8f18, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  gain: 1
 --- !u!1 &447842902
 GameObject:
   m_ObjectHideFlags: 0
@@ -13871,18 +13870,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 061d4dd0e23491f49be45abab3d8ed9e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  headPositionNode: HeadPosition
-  headRotationNode: HeadRotation
-  leftHandPositionNode: LeftHandPosition
-  leftHandRotationNode: LeftHandRotation
-  leftWristPositionNode: LeftWristPosition
-  leftWristRotationNode: LeftWristRotation
-  rightHandPositionNode: RightHandPosition
-  rightHandRotationNode: RightHandRotation
-  rightWristPositionNode: RightWristPosition
-  rightWristRotationNode: RightWristRotation
-  leftGripNode: LeftGrip
-  rightGripNode: RightGrip
 --- !u!1 &1135516414
 GameObject:
   m_ObjectHideFlags: 0
@@ -16625,7 +16612,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1639988834}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 528d6b835dda40a45a7b6fcb38e50529, type: 3}
   m_Name: 
@@ -17591,6 +17578,7 @@ MonoBehaviour:
   gain: 1
   sampleRate: 16000
   microphoneBufferSeconds: 1
+  preferredMicrophoneDevice:
   triggerThreshold: 0.75
   releaseDebounceSeconds: 0.15
   logRecordingState: 1
@@ -17610,6 +17598,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   microphoneCapture: {fileID: 1853535914}
+  controlAndroidRecording: 0
 --- !u!114 &1853535916
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -58188,14 +58177,14 @@ PrefabInstance:
     - target: {fileID: 7068762446378101730, guid: 2fb578800afc87244b5ba3a0fbbd11c0, type: 3}
       propertyPath: 'servers.Array.data[0]'
       value: 
-      objectReference: {fileID: -7849211376014683480, guid: 93a11a03679144996b40cad90b8b229a, type: 2}
+      objectReference: {fileID: -7849211376014683480, guid: 3e36ec89f88438b4b88a5cfbadabea92, type: 2}
     - target: {fileID: 7068762446378101730, guid: 2fb578800afc87244b5ba3a0fbbd11c0, type: 3}
       propertyPath: servers.Array.data[0].send_to_ip
       value: localhost
       objectReference: {fileID: 0}
     - target: {fileID: 7068762446378101730, guid: 2fb578800afc87244b5ba3a0fbbd11c0, type: 3}
       propertyPath: servers.Array.data[0].send_to_port
-      value: 8005
+      value: 8009
       objectReference: {fileID: 0}
     - target: {fileID: 7068762446378101732, guid: 2fb578800afc87244b5ba3a0fbbd11c0, type: 3}
       propertyPath: m_Name
@@ -68258,7 +68247,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6797238083459581891}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 528d6b835dda40a45a7b6fcb38e50529, type: 3}
   m_Name: 

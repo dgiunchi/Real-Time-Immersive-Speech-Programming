@@ -98,6 +98,9 @@ namespace AgenticCache
         private float nextHeartbeat;
         private string latestArtifactId;
         private string observedSelectedObjectId;
+        private string activeAgentSessionId;
+        private string activeAgentCorrelationId;
+        private string activeAgentTargetObjectId;
         private string CheckpointPath => Path.Combine(Application.persistentDataPath, "agenticxr-runtime-checkpoint.json");
 
         private void Start()
@@ -233,8 +236,17 @@ namespace AgenticCache
             if (envelope.type == CacheMessageTypes.AgentStatus)
             {
                 var status = Parse<AgentStatusPayload>(envelope.payload);
+                TrackActiveAgentRequest(envelope, status != null ? status.state : null);
                 localCache.SetAgentStatus(status != null ? status.state : null, status != null ? status.detail : null);
-                ShowStatus(status != null ? status.state : "working", status != null ? status.detail : null);
+                if (status != null && status.state == "heard" && consentPanel != null)
+                {
+                    ShowStatus("heard", "Speech recognized.");
+                    consentPanel.ShowTranscript(status.detail);
+                }
+                else
+                {
+                    ShowStatus(status != null ? status.state : "working", status != null ? status.detail : null);
+                }
                 var visible = NewEnvelope(CacheMessageTypes.AgentStatusVisible, envelope.correlationId,
                     envelope.targetObjectId, "{\"status\":\"" +
                     AgenticSceneRegistry.Escape(status != null ? status.state : "working") + "\"}");
@@ -525,6 +537,41 @@ namespace AgenticCache
             SendUserDecision(proposal.envelope, reason == "confirmation_timeout" ? "timeout" : "rejected", reason);
             SendArtifactResult(proposal.envelope, "rejected", null, reason);
             ShowStatus("rejected", "The proposal was not applied.");
+        }
+
+        public void CancelActiveRequest()
+        {
+            if (string.IsNullOrEmpty(activeAgentCorrelationId) || string.IsNullOrEmpty(activeAgentSessionId))
+            {
+                ShowStatus("cancel", "There is no active request to cancel.");
+                return;
+            }
+
+            var envelope = NewEnvelope(CacheMessageTypes.CancelRequest, activeAgentCorrelationId,
+                activeAgentTargetObjectId, "{\"reason\":\"user_cancelled\"}");
+            envelope.sessionId = activeAgentSessionId;
+            SendDecision(envelope);
+            ShowStatus("cancelling", "Cancelling the current Claude request.");
+        }
+
+        private void TrackActiveAgentRequest(CacheEnvelope envelope, string state)
+        {
+            if (envelope == null || string.IsNullOrEmpty(envelope.correlationId)) return;
+            if (state == "cancelled" || state == "failed" || state == "rejected" || state == "committed" ||
+                state == "rolled_back")
+            {
+                if (activeAgentCorrelationId == envelope.correlationId)
+                {
+                    activeAgentSessionId = null;
+                    activeAgentCorrelationId = null;
+                    activeAgentTargetObjectId = null;
+                }
+                return;
+            }
+
+            activeAgentSessionId = envelope.sessionId;
+            activeAgentCorrelationId = envelope.correlationId;
+            activeAgentTargetObjectId = envelope.targetObjectId;
         }
 
         public void UndoLatest()

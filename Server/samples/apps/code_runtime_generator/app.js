@@ -15,6 +15,21 @@ const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 const DATA_DIR = "data";
 const INPUT_FILE = `${DATA_DIR}/input.txt`;
 
+function terminateProcessTree(child) {
+    if (!child || child.exitCode != null || child.killed) return;
+    if (process.platform === "win32" && child.pid) {
+        const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+            windowsHide: true,
+            stdio: "ignore",
+        });
+        killer.once("error", () => {
+            try { child.kill(); } catch (_) { /* process already exited */ }
+        });
+        return;
+    }
+    try { child.kill("SIGTERM"); } catch (_) { /* process already exited */ }
+}
+
 function ensureRuntimeDataFiles() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     if (!fs.existsSync(INPUT_FILE)) {
@@ -50,12 +65,14 @@ class CodeGeneration extends ApplicationController {
         this.isGenerating = false;
         this.agenticTargets = new Map();
         this.agenticRuns = new Map();
+        this.claudePingRuns = new Set();
         this.agenticCorrelations = new Map();
         this.lastBaselineAttach = new Map(); // sessionId -> { correlationId, targetObjectId }
         // Unity's legacy path replies CodeAttachResult on the same channel the
         // CodeGenerated command goes out on - this is the baseline arm's
         // validated-execution acknowledgement (docs/study-logging-schema.md).
         this.components.legacyResultReader = new MessageReader(this.scene, 94);
+        this.components.agenticControlReader = new MessageReader(this.scene, 100);
         this.lastAgenticActivityAt = new Map();
         this.idlePredictionRuns = new Map();
         this.lastIdlePredictionAt = new Map();
@@ -72,6 +89,14 @@ class CodeGeneration extends ApplicationController {
     }
 
     definePipeline() {
+        this.components.agenticControlReader.on("data", (data) => {
+            let message;
+            try { message = JSON.parse(data.message.toString()); }
+            catch (_) { return; }
+            if (!message || message.type !== "CancelRequest") return;
+            this.cancelAgenticTurn(message.sessionId, message.correlationId, "xr_cancel_button");
+        });
+
         // Baseline attach acknowledgement: Unity reports whether the direct-apply
         // legacy attach compiled/attached and how long it took. Logged with the
         // pending baseline trial identity so the exporter derives the baseline
@@ -173,15 +198,29 @@ class CodeGeneration extends ApplicationController {
                 if (response.startsWith(">")) response = response.slice(1);
                 if (response.trim()) {
                     if (this.agenticMode) {
+                        const transcript = response.trim();
                         this.lastAgenticActivityAt.set(identifier, Date.now());
                         this.logEvaluation({
                             eventType: "transcript_ready",
                             sessionId: identifier,
                             correlationId: this.agenticCorrelations.get(identifier),
                             targetObjectId: this.agenticTargets.get(identifier),
-                            transcriptCharacters: response.trim().length,
+                            transcriptCharacters: transcript.length,
                         });
-                        this.startAgenticTurn(response.trim(), identifier);
+                        this.sendAgenticStatus(
+                            identifier,
+                            this.agenticTargets.get(identifier),
+                            this.agenticCorrelations.get(identifier),
+                            "heard",
+                            transcript
+                        );
+                        if (/^(cancel|stop)(\s+(request|generation|claude))?[.!?]*$/i.test(transcript)) {
+                            this.cancelAgenticTurn(identifier, null, "voice_cancel");
+                        } else if (/^(claude|cloud)\s+ping[.!?]*$/i.test(transcript)) {
+                            this.runClaudePing(identifier);
+                        } else {
+                            this.startAgenticTurn(transcript, identifier);
+                        }
                     } else if (this.isGenerating == false) {
                         this.isGenerating = true;
                         const correlationId = this.agenticCorrelations.get(identifier) || randomUUID();
@@ -236,6 +275,80 @@ class CodeGeneration extends ApplicationController {
                 this.isGenerating = false;
             }
         });
+    }
+
+    async runClaudePing(peerUUID) {
+        const targetObjectId = this.agenticTargets.get(peerUUID) || null;
+        const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
+        if (this.claudePingRuns.has(peerUUID)) {
+            this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "A Claude ping is already running.");
+            return;
+        }
+
+        this.claudePingRuns.add(peerUUID);
+        const startedAt = Date.now();
+        this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "claude_ping", "Claude ping sent.");
+        try {
+            const { query } = await import("@anthropic-ai/claude-agent-sdk");
+            let result = null;
+            for await (const message of query({
+                prompt: "Reply exactly PONG.",
+                options: {
+                    model: "sonnet",
+                    maxTurns: 1,
+                    permissionMode: "bypassPermissions",
+                    cwd: path.resolve(__dirname, "../../.."),
+                },
+            })) {
+                if (message.type === "result") result = message;
+            }
+
+            const elapsedMs = Date.now() - startedAt;
+            if (result && result.subtype === "success") {
+                const reply = String(result.result || "PONG").trim().slice(0, 120);
+                this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "claude_replied",
+                    `Claude replied in ${(elapsedMs / 1000).toFixed(1)}s: ${reply}`);
+                this.logEvaluation({ eventType: "claude_ping_success", sessionId: peerUUID, correlationId, elapsedMs });
+            } else {
+                this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "Claude ping returned without a successful result.");
+                this.logEvaluation({ eventType: "claude_ping_failed", sessionId: peerUUID, correlationId, elapsedMs });
+            }
+        } catch (error) {
+            const elapsedMs = Date.now() - startedAt;
+            console.error(`[AgenticXR] Claude ping failed: ${error.message}`);
+            this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "Claude ping failed: " + error.message);
+            this.logEvaluation({ eventType: "claude_ping_failed", sessionId: peerUUID, correlationId, elapsedMs, error: error.message });
+        } finally {
+            this.claudePingRuns.delete(peerUUID);
+        }
+    }
+
+    cancelAgenticTurn(peerUUID, requestedCorrelationId, source = "user_cancelled") {
+        const run = this.agenticRuns.get(peerUUID);
+        const correlationId = requestedCorrelationId || (run && run.correlationId) ||
+            this.agenticCorrelations.get(peerUUID) || randomUUID();
+        const targetObjectId = this.agenticTargets.get(peerUUID) || null;
+        if (!run || run.child.exitCode != null) {
+            this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "cancelled", "There is no active request to cancel.");
+            return false;
+        }
+        if (requestedCorrelationId && requestedCorrelationId !== run.correlationId) {
+            this.sendAgenticStatus(peerUUID, targetObjectId, requestedCorrelationId, "failed", "That request is no longer active.");
+            return false;
+        }
+
+        run.cancelled = true;
+        clearTimeout(run.watchdog);
+        this.sendAgenticStatus(peerUUID, targetObjectId, run.correlationId, "cancelled", "Request cancelled.");
+        this.logEvaluation({
+            eventType: "turn_cancelled",
+            sessionId: peerUUID,
+            correlationId: run.correlationId,
+            targetObjectId,
+            reason: source,
+        });
+        terminateProcessTree(run.child);
+        return true;
     }
 
     startAgenticTurn(intent, peerUUID) {
@@ -307,12 +420,14 @@ class CodeGeneration extends ApplicationController {
         });
         const watchdog = setTimeout(() => {
             if (child.exitCode != null || child.killed) return;
+            const run = this.agenticRuns.get(peerUUID);
+            if (run) run.timedOut = true;
             console.error(`[AgenticXR] turn watchdog expired after ${this.agenticTurnTimeoutMs}ms correlationId=${correlationId}`);
             this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "The agent timed out. Please try again.");
             this.logEvaluation({ eventType: "turn_timeout", sessionId: peerUUID, correlationId, targetObjectId, timeoutMs: this.agenticTurnTimeoutMs });
-            child.kill();
+            terminateProcessTree(child);
         }, this.agenticTurnTimeoutMs);
-        this.agenticRuns.set(peerUUID, { child, watchdog, correlationId });
+        this.agenticRuns.set(peerUUID, { child, watchdog, correlationId, cancelled: false, timedOut: false });
         child.on("error", (err) => {
             console.error(`[AgenticXR] failed to start Claude turn: ${err.message}`);
             clearTimeout(watchdog);
@@ -322,8 +437,10 @@ class CodeGeneration extends ApplicationController {
         });
         child.on("exit", (code, signal) => {
             clearTimeout(watchdog);
+            const run = this.agenticRuns.get(peerUUID);
             console.log(`[AgenticXR] Claude turn finished peer=${peerUUID} correlationId=${correlationId} exitCode=${code} signal=${signal || "none"}`);
-            if (code !== 0) this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "The agent stopped before completing the request.");
+            if (code !== 0 && !(run && (run.cancelled || run.timedOut)))
+                this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "The agent stopped before completing the request.");
             this.logEvaluation({ eventType: "turn_process_exit", sessionId: peerUUID, correlationId, targetObjectId, exitCode: code, signal: signal || null });
             this.agenticRuns.delete(peerUUID);
             this.agenticCorrelations.delete(peerUUID);

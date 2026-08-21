@@ -79,7 +79,8 @@ const AGENTS = {
             "Constraints: ASCII only; no keyboard/mouse input APIs; no System.IO, " +
             "System.Net, System.Diagnostics, or reflection; a Component name that does not collide with a " +
             "common Unity type; if a new object is instantiated, parent it under transform; default any speed " +
-            `to 1; tag the target 'game'. Output ONLY a JSON array of ${CANDIDATE_COUNT} object(s) with candidateId, operation, ` +
+            `to 1. Do not change the target GameObject's tag unless the user's intent explicitly requests a tag change. ` +
+            `Output ONLY a JSON array of ${CANDIDATE_COUNT} object(s) with candidateId, operation, ` +
             "existingArtifactId, approach, experienceMode, and code (null only for remove).",
         tools: [],
         model: "sonnet",
