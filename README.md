@@ -1,3 +1,5 @@
+<img width="556" height="488" alt="스크린샷 2026-08-21 230044" src="https://github.com/user-attachments/assets/759b5e60-3b76-4b5a-a567-c3496f4eba66" />
+<img width="537" height="421" alt="스크린샷 2026-08-21 230022" src="https://github.com/user-attachments/assets/97cacdc5-dc89-46e9-a659-400ae3762358" />
 # DreamCodeVR
 DreamCodeVR is a Unity project developed at UCL based on Ubiq Social VR Platform and Ubiq Genie (plugin for backend services). It is designed to assist users, irrespective of their coding skills, in crafting basic object behavior in VR environments by translating spoken language into
 code within an active application. 
@@ -196,3 +198,8 @@ General Aspects to be tackled
 
 
 - store the created scene  (do not know if it is possible - versioning) (and so restore)
+
+
+<img width="556" height="488" alt="스크린샷 2026-08-21 230044" src="https://github.com/user-attachments/assets/bc18394f-c7b4-4a22-b157-546e3c1fcf6d" />
+<img width="537" height="421" alt="스크린샷 2026-08-21 230022" src="https://github.com/user-attachments/assets/12d7afb2-ca3f-4b28-998d-d129bb5d3507" />
+
