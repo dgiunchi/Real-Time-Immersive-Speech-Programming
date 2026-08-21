@@ -222,7 +222,11 @@ class ArtifactLog {
             ? this.getStudyContext({ correlationId })
             : null;
         if (context) return context;
+        const active = [...this.activeTrialBySession.values()];
         if (typeof runtimeSessionId !== "string" || !STUDY_ID_PATTERN.test(runtimeSessionId)) {
+            // Non-study tools commonly omit sessionId. That is not an error unless
+            // a trial is active and would otherwise risk producing unjoined data.
+            if (active.length === 0) return null;
             throw new Error("runtimeSessionId must be a 1-128 character safe identifier");
         }
         context = this.getStudyContext({ sessionId: runtimeSessionId, correlationId });
@@ -234,7 +238,6 @@ class ArtifactLog {
         // The current study protocol is single-participant. A live Ubiq peer or
         // Unity cache identity may therefore claim the sole active trial, but an
         // ambiguous multi-trial state is an error rather than a guessed join.
-        const active = [...this.activeTrialBySession.values()];
         if (active.length === 0) return null;
         if (active.length !== 1) {
             throw new Error(`cannot bind runtime session '${runtimeSessionId}': ${active.length} study trials are active`);

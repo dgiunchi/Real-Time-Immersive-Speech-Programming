@@ -73,9 +73,8 @@ crashlytics-build.properties
 # VSCode folder
 .vscode/
 
-# Ignore auto-generated XR because these are per-end user settings
-/Assets/XR/
-/Assets/XR.meta
+# XR loader and OpenXR settings are part of the experiment runtime configuration.
+# Keep them versioned so a clean study checkout builds with the same headset stack.
 
 Recordings/
 

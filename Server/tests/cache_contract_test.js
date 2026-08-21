@@ -585,6 +585,8 @@ ok(fs.readFileSync(eventCsvPath, "utf8").startsWith(LONG_COLUMNS.join(",")), "lo
 // all subsequent events must retain the canonical study identity.
 const aliasLogPath = path.join(testDataDir, "study-runtime-alias.jsonl");
 const aliasLog = new ArtifactLog({ filePath: aliasLogPath });
+equal(aliasLog.claimRuntimeSession({ correlationId: "ordinary-non-study-call" }), null,
+    "a non-study call may omit runtimeSessionId when no trial is active");
 const aliasContext = {
     participantId: "participant-alias",
     sessionId: "operator-session",
@@ -596,6 +598,9 @@ const aliasContext = {
     candidateTarget: 1,
 };
 aliasLog.startStudyTrial({ ...aliasContext, at: 6000 });
+assert.throws(() => aliasLog.claimRuntimeSession({ correlationId: "unjoined-active-call" }),
+    /runtimeSessionId must be/, "an active trial rejects an event that cannot be joined to a runtime identity");
+assertions += 1;
 const claimed = aliasLog.claimRuntimeSession({
     runtimeSessionId: "ubiq-peer-0001",
     correlationId: "alias-turn",
