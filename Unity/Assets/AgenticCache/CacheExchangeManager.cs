@@ -2,6 +2,7 @@ using RoslynCSharp;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Ubiq.Messaging;
 using UnityEngine;
@@ -75,6 +76,75 @@ namespace AgenticCache
             public string code;
             public string artifactVersion;
             public string rollbackPointer;
+            public GameObjectStateSnapshot stateBeforeApply;
+            public long applySequence;
+        }
+
+        private sealed class GameObjectStateSnapshot
+        {
+            private sealed class RendererState
+            {
+                public Renderer renderer;
+                public bool enabled;
+                public Material[] sharedMaterials;
+                public Color[] colors;
+            }
+
+            private GameObject target;
+            private bool activeSelf;
+            private Vector3 localPosition;
+            private Quaternion localRotation;
+            private Vector3 localScale;
+            private readonly List<RendererState> renderers = new List<RendererState>();
+
+            public static GameObjectStateSnapshot Capture(GameObject target)
+            {
+                if (target == null) return null;
+                var snapshot = new GameObjectStateSnapshot
+                {
+                    target = target,
+                    activeSelf = target.activeSelf,
+                    localPosition = target.transform.localPosition,
+                    localRotation = target.transform.localRotation,
+                    localScale = target.transform.localScale,
+                };
+                foreach (var renderer in target.GetComponentsInChildren<Renderer>(true))
+                {
+                    var materials = renderer.sharedMaterials;
+                    var colors = new Color[materials.Length];
+                    for (var i = 0; i < materials.Length; i++)
+                        colors[i] = materials[i] != null && materials[i].HasProperty("_Color")
+                            ? materials[i].color : Color.clear;
+                    snapshot.renderers.Add(new RendererState
+                    {
+                        renderer = renderer,
+                        enabled = renderer.enabled,
+                        sharedMaterials = (Material[])materials.Clone(),
+                        colors = colors,
+                    });
+                }
+                return snapshot;
+            }
+
+            public void Restore()
+            {
+                if (target == null) return;
+                target.transform.localPosition = localPosition;
+                target.transform.localRotation = localRotation;
+                target.transform.localScale = localScale;
+                foreach (var state in renderers)
+                {
+                    if (state.renderer == null) continue;
+                    state.renderer.sharedMaterials = state.sharedMaterials;
+                    state.renderer.enabled = state.enabled;
+                    for (var i = 0; i < state.sharedMaterials.Length && i < state.colors.Length; i++)
+                    {
+                        var material = state.sharedMaterials[i];
+                        if (material != null && material.HasProperty("_Color")) material.color = state.colors[i];
+                    }
+                }
+                target.SetActive(activeSelf);
+            }
         }
 
         public LocalXRCache localCache = new LocalXRCache();
@@ -101,6 +171,7 @@ namespace AgenticCache
         private string activeAgentSessionId;
         private string activeAgentCorrelationId;
         private string activeAgentTargetObjectId;
+        private long nextApplySequence;
         private string CheckpointPath => Path.Combine(Application.persistentDataPath, "agenticxr-runtime-checkpoint.json");
 
         private void Start()
@@ -362,7 +433,8 @@ namespace AgenticCache
             {
                 ShowStatus("waiting_for_user", "A validated proposal needs your approval.");
                 if (consentPanel != null) consentPanel.ShowProposal(envelope.correlationId, target.name, payload.intent,
-                    payload.validationSummary, payload.riskScore, payload.requiredPermissions, payload.expectedSideEffects);
+                    payload.validationSummary, payload.riskScore, payload.requiredPermissions, payload.expectedSideEffects,
+                    payload.candidateCount, payload.selectionReason);
             }
         }
 
@@ -441,6 +513,7 @@ namespace AgenticCache
             }
             ScriptProxy proxy = null;
             string error = null;
+            var stateBeforeApply = GameObjectStateSnapshot.Capture(target);
             var commitAttachStartedAt = Time.realtimeSinceStartupAsDouble;
             if (compiler == null || !compiler.TryCompileAndAttach(target, proposal.payload.code, out proxy, out error))
             {
@@ -470,6 +543,8 @@ namespace AgenticCache
                 code = proposal.payload.code,
                 artifactVersion = proposal.payload.artifactVersion,
                 rollbackPointer = previous != null ? previous.artifactId : null,
+                stateBeforeApply = stateBeforeApply,
+                applySequence = ++nextApplySequence,
             };
             appliedByArtifactId[artifactId] = applied;
             activeByObjectId[applied.targetObjectId] = applied;
@@ -493,17 +568,21 @@ namespace AgenticCache
                 RejectForCommit(correlationId, proposal, commitRequest, "remove_target_not_active");
                 return;
             }
+            var target = sceneRegistry != null ? sceneRegistry.Find(removed.targetObjectId) : null;
+            var stateBeforeRemoval = GameObjectStateSnapshot.Capture(target);
             if (removed.proxy != null && removed.proxy.MonoBehaviourInstance != null)
             {
                 executionWatchdog?.Unregister(removed.proxy.MonoBehaviourInstance);
                 removed.proxy.MonoBehaviourInstance.enabled = false;
             }
+            removed.stateBeforeApply?.Restore();
             var artifactId = "unity-remove-" + correlationId;
             var tombstone = new AppliedArtifact
             {
                 artifactId = artifactId, correlationId = correlationId, targetObjectId = removed.targetObjectId,
                 previous = removed, proposalEnvelope = proposal.envelope, operation = "remove",
                 artifactVersion = proposal.payload.artifactVersion, rollbackPointer = removed.artifactId,
+                stateBeforeApply = stateBeforeRemoval, applySequence = ++nextApplySequence,
             };
             appliedByArtifactId[artifactId] = tombstone;
             activeByObjectId.Remove(removed.targetObjectId);
@@ -601,11 +680,12 @@ namespace AgenticCache
                 ok ? "{\"status\":\"rolled_back\"}" : "{\"status\":\"not_found\"}"));
         }
 
-        private bool Rollback(string artifactId)
+        private bool Rollback(string artifactId, bool saveCheckpoint = true)
         {
             if (string.IsNullOrEmpty(artifactId) || !appliedByArtifactId.TryGetValue(artifactId, out var applied)) return false;
             if (applied.proxy != null) executionWatchdog?.Unregister(applied.proxy.MonoBehaviourInstance);
             if (applied.proxy != null) applied.proxy.Dispose();
+            applied.stateBeforeApply?.Restore();
             if (applied.previous != null && applied.previous.proxy != null && applied.previous.proxy.MonoBehaviourInstance != null)
             {
                 applied.previous.proxy.MonoBehaviourInstance.enabled = true;
@@ -619,8 +699,51 @@ namespace AgenticCache
             }
             appliedByArtifactId.Remove(artifactId);
             ShowStatus("rolled_back", "The last generated behaviour was removed.");
-            SaveRuntimeCheckpoint();
+            if (saveCheckpoint) SaveRuntimeCheckpoint();
             return true;
+        }
+
+        public void ResetTrialState()
+        {
+            CancelActiveRequest();
+            var resetCorrelationId = "trial-reset-" + Guid.NewGuid().ToString();
+            var resetArtifacts = appliedByArtifactId.Values
+                .OrderByDescending(item => item.applySequence)
+                .Select(item => item.artifactId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Distinct()
+                .ToArray();
+            foreach (var artifactId in appliedByArtifactId.Values
+                .OrderByDescending(item => item.applySequence)
+                .Select(item => item.artifactId)
+                .ToArray())
+            {
+                Rollback(artifactId, false);
+            }
+            pending.Clear();
+            localCache.ClearAllProposals();
+            activeByObjectId.Clear();
+            appliedByArtifactId.Clear();
+            latestArtifactId = null;
+            var resetPayload = new StringBuilder("{\"status\":\"trial_reset\",\"artifactIds\":[");
+            for (var i = 0; i < resetArtifacts.Length; i++)
+            {
+                if (i > 0) resetPayload.Append(',');
+                resetPayload.Append('"').Append(AgenticSceneRegistry.Escape(resetArtifacts[i])).Append('"');
+            }
+            resetPayload.Append("]}");
+            SendDecision(NewEnvelope(CacheMessageTypes.TrialReset, resetCorrelationId, null, resetPayload.ToString()));
+            try
+            {
+                if (File.Exists(CheckpointPath)) File.Delete(CheckpointPath);
+                if (File.Exists(CheckpointPath + ".tmp")) File.Delete(CheckpointPath + ".tmp");
+                ShowStatus("trial_reset", "All generated behaviours were removed and the trial checkpoint was cleared.");
+            }
+            catch (Exception error)
+            {
+                Debug.LogError("[AgenticXR] trial reset failed: " + error.Message);
+                ShowStatus("trial_reset_failed", error.Message);
+            }
         }
 
         private void SaveRuntimeCheckpoint()
@@ -668,6 +791,7 @@ namespace AgenticCache
                         "{\"status\":\"checkpoint_orphaned\",\"artifactId\":\"" + AgenticSceneRegistry.Escape(entry.artifactId) + "\"}"));
                     continue;
                 }
+                var stateBeforeApply = GameObjectStateSnapshot.Capture(target);
                 if (!compiler.TryCompileAndAttach(target, entry.code, out var proxy, out var error))
                 {
                     Debug.LogError("[AgenticXR] checkpoint restore failed for " + entry.artifactId + ": " + error);
@@ -680,6 +804,8 @@ namespace AgenticCache
                     artifactId = entry.artifactId, correlationId = entry.correlationId, targetObjectId = entry.targetObjectId,
                     code = entry.code, artifactVersion = entry.artifactVersion, rollbackPointer = entry.rollbackPointer,
                     proxy = proxy, operation = "resume",
+                    stateBeforeApply = stateBeforeApply,
+                    applySequence = ++nextApplySequence,
                 };
                 appliedByArtifactId[restored.artifactId] = restored;
                 activeByObjectId[restored.targetObjectId] = restored;

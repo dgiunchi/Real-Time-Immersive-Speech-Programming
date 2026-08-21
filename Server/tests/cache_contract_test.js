@@ -300,6 +300,8 @@ const checkpoints = new CheckpointStore({ filePath: path.join(testDataDir, "chec
 checkpoints.save({ artifactLog: evolutionLog, personPolicy: people, experienceContext: contexts, sceneEpoch: "epoch-test" });
 const resumed = checkpoints.load({ currentObjectIds: ["different-object"] });
 equal(resumed.orphaned.length, 1, "checkpoint explicitly classifies missing object references as orphaned");
+evolutionLog.append({ eventType: "trial_reset", operation: "rollback", status: "rolled_back", reason: "test_reset" });
+equal(evolutionLog.activeArtifacts().length, 0, "global trial reset clears reconstructed active artifacts");
 
 // --- Context-derived function choice (implicit showcase §2): the environmental
 // context supplied to implicit turns is assembled from Shared XR Memory and

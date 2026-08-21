@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using Ubiq.Messaging;
@@ -21,6 +22,10 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     public string preferredMicrophoneDevice = "";
     public float triggerThreshold = 0.75f;
     public float releaseDebounceSeconds = 0.15f;
+    [Tooltip("Recordings below this peak level are treated as a silent/stale microphone stream.")]
+    public float silentRecordingPeakThreshold = 0.001f;
+    [Tooltip("Delay before reopening the microphone after a silent recording.")]
+    public float microphoneRestartDelaySeconds = 0.35f;
     public bool logRecordingState = true;
     public PlaybackStats lastFrameStats { get; private set; }
     public NetworkId networkId = new NetworkId(98);
@@ -41,6 +46,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private bool loggedMicrophonePermissionRequest;
     private bool loggedNoMicrophoneDevices;
     private bool loggedMicrophoneStarted;
+    private bool microphoneRestarting;
     private float lastTriggerPressedTime;
     private readonly List<InputDevice> leftControllers = new List<InputDevice>();
     private readonly List<float> currentRecordingSamples = new List<float>();
@@ -89,7 +95,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             return;
         }
 #endif
-        if (microphoneClip)
+        if (microphoneClip || microphoneRestarting)
         {
             return;
         }
@@ -201,7 +207,10 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         if (!recording && isRecording)
         {
             SendPendingMicrophoneSamples(true);
-            FinalizeRecordingForPlayback();
+            if (FinalizeRecordingForPlayback())
+            {
+                RestartMicrophoneCapture("silent recording");
+            }
         }
 
         isRecording = recording;
@@ -317,13 +326,14 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         SendPayloadToServer(pcm);
     }
 
-    private void FinalizeRecordingForPlayback()
+    private bool FinalizeRecordingForPlayback()
     {
         if (currentRecordingSamples.Count == 0)
         {
             if (lastRecordingClip) Destroy(lastRecordingClip);
             lastRecordingClip = null;
-            return;
+            Debug.LogWarning("[MicrophoneCapture] recording contained no samples; restarting microphone");
+            return true;
         }
 
         if (lastRecordingClip) Destroy(lastRecordingClip);
@@ -346,6 +356,53 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         Debug.Log(
             $"[MicrophoneCapture] saved last recording duration={lastRecordingClip.length:0.00}s " +
             $"rms={rms:0.0000} peak={peak:0.0000}");
+
+        return peak < silentRecordingPeakThreshold;
+    }
+
+    public void RestartMicrophoneCapture(string reason = "manual request")
+    {
+        if (microphoneRestarting)
+        {
+            return;
+        }
+
+        StartCoroutine(RestartMicrophoneCoroutine(reason));
+    }
+
+    private IEnumerator RestartMicrophoneCoroutine(string reason)
+    {
+        microphoneRestarting = true;
+        var deviceToClose = activeMicrophoneDevice;
+        if (logRecordingState)
+        {
+            Debug.LogWarning($"[MicrophoneCapture] restarting microphone reason={reason} device={deviceToClose ?? "<system default>"}");
+        }
+
+        var panel = FindFirstObjectByType<AgenticXRConsentPanel>();
+        if (panel != null)
+        {
+            panel.ShowStatus("microphone reconnecting", "The recording was silent. Reopening the headset microphone...");
+        }
+
+        Microphone.End(deviceToClose);
+        if (microphoneClip)
+        {
+            Destroy(microphoneClip);
+        }
+        microphoneClip = null;
+        activeMicrophoneDevice = null;
+        lastMicPosition = 0;
+        loggedMicrophoneStarted = false;
+
+        yield return new WaitForSecondsRealtime(Mathf.Max(0.1f, microphoneRestartDelaySeconds));
+
+        microphoneRestarting = false;
+        EnsureMicrophoneStarted();
+        if (microphoneClip && panel != null)
+        {
+            panel.ShowStatus("microphone reconnected", "Please hold the left trigger and try speaking again.");
+        }
     }
 
     public bool PlayLastRecording()
