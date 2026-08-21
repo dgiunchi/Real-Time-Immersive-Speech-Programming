@@ -61,6 +61,7 @@ class ArtifactLog {
         this.byArtifactId = new Map();
         this.activeTrialBySession = new Map();
         this.studyContextByCorrelation = new Map();
+        this.studyContextByRuntimeSession = new Map();
         this._loadExisting();
     }
 
@@ -90,6 +91,15 @@ class ArtifactLog {
         } else if (entry.eventType === "study_trial_ended") {
             const active = this.activeTrialBySession.get(entry.sessionId);
             if (active && active.trialId === entry.trialId) this.activeTrialBySession.delete(entry.sessionId);
+            for (const [runtimeSessionId, context] of this.studyContextByRuntimeSession.entries()) {
+                if (context.trialId === entry.trialId && context.sessionId === entry.sessionId) {
+                    this.studyContextByRuntimeSession.delete(runtimeSessionId);
+                }
+            }
+        } else if (entry.eventType === "study_runtime_session_bound" && entry.runtimeSessionId) {
+            const context = studyContextOf(entry);
+            this.studyContextByRuntimeSession.set(entry.runtimeSessionId, context);
+            this.studyContextByCorrelation.set(entry.correlationId, context);
         } else if (entry.studyEvent && entry.correlationId && entry.participantId) {
             this.studyContextByCorrelation.set(entry.correlationId, studyContextOf(entry));
         }
@@ -98,13 +108,17 @@ class ArtifactLog {
     append(entry) {
         if (!entry || typeof entry !== "object") throw new Error("artifact log entry must be an object");
         const context = this.studyContextByCorrelation.get(entry.correlationId) ||
-            this.activeTrialBySession.get(entry.sessionId) || null;
+            this.activeTrialBySession.get(entry.sessionId) ||
+            this.studyContextByRuntimeSession.get(entry.sessionId) || null;
         const now = Date.now();
         const eventAt = Number.isFinite(entry.timestamp) ? entry.timestamp :
             Number.isFinite(entry.at) ? entry.at : now;
+        const runtimeSessionId = context && entry.sessionId && entry.sessionId !== context.sessionId
+            ? entry.sessionId : entry.runtimeSessionId;
         const record = {
-            ...(context || {}),
             ...entry,
+            ...(context || {}),
+            ...(runtimeSessionId ? { runtimeSessionId } : {}),
             studyEvent: entry.studyEvent || Boolean(context && entry.correlationId),
             timestampUtc: entry.timestampUtc || new Date(eventAt).toISOString(),
             loggedAt: now,
@@ -164,13 +178,15 @@ class ArtifactLog {
 
     getStudyContext({ sessionId, correlationId } = {}) {
         let context = this.studyContextByCorrelation.get(correlationId) ||
-            this.activeTrialBySession.get(sessionId) || null;
+            this.activeTrialBySession.get(sessionId) ||
+            this.studyContextByRuntimeSession.get(sessionId) || null;
         if (context || !fs.existsSync(this.filePath)) return context;
         // Another process (for example the researcher CLI or Unity bridge) may have
         // opened the trial after this ArtifactLog instance started. Refresh only
         // study context maps; do not duplicate the in-memory history index.
         this.activeTrialBySession.clear();
         this.studyContextByCorrelation.clear();
+        this.studyContextByRuntimeSession.clear();
         for (const line of fs.readFileSync(this.filePath, "utf8").split(/\r?\n/).filter(Boolean)) {
             try {
                 const entry = JSON.parse(line);
@@ -181,13 +197,58 @@ class ArtifactLog {
                 } else if (entry.eventType === "study_trial_ended") {
                     const active = this.activeTrialBySession.get(entry.sessionId);
                     if (active && active.trialId === entry.trialId) this.activeTrialBySession.delete(entry.sessionId);
+                    for (const [runtimeSessionId, bound] of this.studyContextByRuntimeSession.entries()) {
+                        if (bound.trialId === entry.trialId && bound.sessionId === entry.sessionId) {
+                            this.studyContextByRuntimeSession.delete(runtimeSessionId);
+                        }
+                    }
+                } else if (entry.eventType === "study_runtime_session_bound" && entry.runtimeSessionId) {
+                    const loaded = studyContextOf(entry);
+                    this.studyContextByRuntimeSession.set(entry.runtimeSessionId, loaded);
+                    this.studyContextByCorrelation.set(entry.correlationId, loaded);
                 } else if (entry.studyEvent && entry.correlationId && entry.participantId) {
                     this.studyContextByCorrelation.set(entry.correlationId, studyContextOf(entry));
                 }
             } catch (_) { /* malformed lines are reported during the normal load */ }
         }
         context = this.studyContextByCorrelation.get(correlationId) ||
-            this.activeTrialBySession.get(sessionId) || null;
+            this.activeTrialBySession.get(sessionId) ||
+            this.studyContextByRuntimeSession.get(sessionId) || null;
+        return context;
+    }
+
+    claimRuntimeSession({ runtimeSessionId, correlationId, studySource = "runtime" } = {}) {
+        let context = correlationId
+            ? this.getStudyContext({ correlationId })
+            : null;
+        if (context) return context;
+        if (typeof runtimeSessionId !== "string" || !STUDY_ID_PATTERN.test(runtimeSessionId)) {
+            throw new Error("runtimeSessionId must be a 1-128 character safe identifier");
+        }
+        context = this.getStudyContext({ sessionId: runtimeSessionId, correlationId });
+        if (context) {
+            if (correlationId) this.studyContextByCorrelation.set(correlationId, context);
+            return context;
+        }
+
+        // The current study protocol is single-participant. A live Ubiq peer or
+        // Unity cache identity may therefore claim the sole active trial, but an
+        // ambiguous multi-trial state is an error rather than a guessed join.
+        const active = [...this.activeTrialBySession.values()];
+        if (active.length === 0) return null;
+        if (active.length !== 1) {
+            throw new Error(`cannot bind runtime session '${runtimeSessionId}': ${active.length} study trials are active`);
+        }
+        context = active[0];
+        this.studyContextByRuntimeSession.set(runtimeSessionId, context);
+        if (correlationId) this.studyContextByCorrelation.set(correlationId, context);
+        this.appendStudyEvent({
+            ...context,
+            correlationId: correlationId || context.correlationId,
+            eventType: "study_runtime_session_bound",
+            runtimeSessionId,
+            studySource,
+        });
         return context;
     }
 

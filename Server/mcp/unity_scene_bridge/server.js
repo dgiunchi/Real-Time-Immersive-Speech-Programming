@@ -97,7 +97,12 @@ async function main() {
     }
 
     function appendStudyIfActive({ sessionId, correlationId } = {}, event) {
-        if (!memory.artifactLog.getStudyContext({ sessionId, correlationId })) return null;
+        const context = memory.artifactLog.claimRuntimeSession({
+            runtimeSessionId: sessionId,
+            correlationId,
+            studySource: "unity_scene_bridge",
+        });
+        if (!context) return null;
         return memory.artifactLog.appendStudyEvent({
             ...(sessionId ? { sessionId } : {}),
             correlationId,
@@ -109,7 +114,11 @@ async function main() {
     // researcher CLI / start_study_trial is the single switch. Outside a trial there
     // is no condition and therefore never a verification bypass.
     function activeStudyCondition({ sessionId, correlationId } = {}) {
-        const context = memory.artifactLog.getStudyContext({ sessionId, correlationId });
+        const context = memory.artifactLog.claimRuntimeSession({
+            runtimeSessionId: sessionId,
+            correlationId,
+            studySource: "unity_scene_bridge",
+        });
         return context ? context.condition || null : null;
     }
 

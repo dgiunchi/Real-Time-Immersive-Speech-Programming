@@ -579,6 +579,90 @@ writeCsv(trialCsvPath, TRIAL_COLUMNS, studyExports.trialRows);
 writeCsv(eventCsvPath, LONG_COLUMNS, studyExports.longRows);
 ok(fs.readFileSync(trialCsvPath, "utf8").startsWith(TRIAL_COLUMNS.join(",")), "trial CSV has the stable analysis header");
 ok(fs.readFileSync(eventCsvPath, "utf8").startsWith(LONG_COLUMNS.join(",")), "long CSV has the stable event header");
+
+// Live Unity/Ubiq identities differ from the researcher-selected study session.
+// The sole active trial is the authority: runtime aliases must bind audibly and
+// all subsequent events must retain the canonical study identity.
+const aliasLogPath = path.join(testDataDir, "study-runtime-alias.jsonl");
+const aliasLog = new ArtifactLog({ filePath: aliasLogPath });
+const aliasContext = {
+    participantId: "participant-alias",
+    sessionId: "operator-session",
+    trialId: "alias-trial",
+    condition: "agenticxr_no_verification",
+    taskId: "alias-task",
+    interactionMode: "L2",
+    correlationId: "alias-root",
+    candidateTarget: 1,
+};
+aliasLog.startStudyTrial({ ...aliasContext, at: 6000 });
+const claimed = aliasLog.claimRuntimeSession({
+    runtimeSessionId: "ubiq-peer-0001",
+    correlationId: "alias-turn",
+    studySource: "ubiq_peer",
+});
+equal(claimed.sessionId, aliasContext.sessionId, "a live peer claims the sole active canonical study session");
+const aliasedIntent = aliasLog.appendStudyEvent({
+    sessionId: "ubiq-peer-0001",
+    correlationId: "alias-turn",
+    eventType: "intent_captured",
+    studySource: "code_runtime_generator",
+    at: 6100,
+});
+equal(aliasedIntent.sessionId, aliasContext.sessionId, "runtime aliases cannot overwrite canonical sessionId");
+equal(aliasedIntent.runtimeSessionId, "ubiq-peer-0001", "the original runtime identity remains auditable");
+equal(aliasedIntent.condition, aliasContext.condition, "condition activation follows the canonical trial");
+aliasLog.appendStudyEvent({
+    sessionId: "ubiq-peer-0001",
+    correlationId: "alias-turn",
+    eventType: "simulate_artifact",
+    verificationBypassed: true,
+    status: SIMULATION_SKIPPED_STATUS,
+    at: 6200,
+});
+aliasLog.endStudyTrial({
+    sessionId: aliasContext.sessionId,
+    trialId: aliasContext.trialId,
+    correlationId: "alias-turn",
+    taskCompletion: true,
+    taskSuccess: true,
+    at: 6300,
+});
+const reloadedAliasLog = new ArtifactLog({ filePath: aliasLogPath });
+equal(reloadedAliasLog.records.find((entry) => entry.eventType === "intent_captured").sessionId,
+    aliasContext.sessionId, "canonical runtime joins survive a process restart");
+const aliasExport = buildStudyExports(reloadedAliasLog.records);
+equal(aliasExport.trialRows[0].verificationBypassedCount, 1,
+    "the live alias path preserves H2 bypass evidence in the exported trial");
+
+const ambiguousLog = new ArtifactLog({ filePath: path.join(testDataDir, "study-runtime-ambiguous.jsonl") });
+ambiguousLog.startStudyTrial({ ...aliasContext, sessionId: "ambiguous-a", trialId: "ambiguous-a", correlationId: "ambiguous-root-a" });
+ambiguousLog.startStudyTrial({ ...aliasContext, sessionId: "ambiguous-b", trialId: "ambiguous-b", correlationId: "ambiguous-root-b" });
+assert.throws(() => ambiguousLog.claimRuntimeSession({ runtimeSessionId: "unknown-peer", correlationId: "unknown-turn" }),
+    /2 study trials are active/, "an ambiguous runtime join fails instead of guessing");
+assertions += 1;
+
+const unjoinedEvents = [
+    { ...aliasContext, eventType: "study_trial_started", studyEvent: true, timestampUtc: new Date(7000).toISOString(), loggedAt: 7000 },
+    { eventType: "intent_captured", sessionId: "wrong-live-session", correlationId: "lost-turn", loggedAt: 7100 },
+    { ...aliasContext, eventType: "study_trial_ended", studyEvent: true, taskCompletion: false,
+        taskSuccess: null, timestampUtc: new Date(7200).toISOString(), loggedAt: 7200 },
+];
+assert.throws(() => buildStudyExports(unjoinedEvents), /runtime event\(s\).*without joining/,
+    "the exporter refuses to silently discard runtime events inside a trial window");
+assertions += 1;
+
+const noCandidateLog = new ArtifactLog({ filePath: path.join(testDataDir, "study-no-candidate.jsonl") });
+const noCandidateContext = { ...aliasContext, sessionId: "no-candidate-session", trialId: "no-candidate-trial",
+    correlationId: "no-candidate-root", condition: "baseline", interactionMode: "L3", candidateTarget: null };
+noCandidateLog.startStudyTrial({ ...noCandidateContext, at: 8000 });
+noCandidateLog.appendStudyEvent({ sessionId: noCandidateContext.sessionId, correlationId: "no-candidate-turn",
+    eventType: "intent_captured", studySource: "baseline_runtime", at: 8100 });
+noCandidateLog.endStudyTrial({ sessionId: noCandidateContext.sessionId, trialId: noCandidateContext.trialId,
+    correlationId: "no-candidate-turn", taskCompletion: true, taskSuccess: false, at: 8200 });
+equal(buildStudyExports(noCandidateLog.records).trialRows[0].candidatesGenerated, "",
+    "missing H4 evidence stays missing instead of fabricating one candidate");
+
 // A separate process (e.g. the runtime spawning an orchestrator turn) must see the
 // per-trial candidate target after reloading the shared log file. trial-02 above
 // was ended, so register a fresh open trial for the cross-process check.

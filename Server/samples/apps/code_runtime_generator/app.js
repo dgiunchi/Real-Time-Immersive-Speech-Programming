@@ -355,6 +355,12 @@ class CodeGeneration extends ApplicationController {
         const targetObjectId = this.agenticTargets.get(peerUUID);
         const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
         this.agenticCorrelations.set(peerUUID, correlationId);
+        const studyContext = this.artifactLog.claimRuntimeSession({
+            runtimeSessionId: peerUUID,
+            correlationId,
+            studySource: "ubiq_peer",
+        });
+        const canonicalSessionId = studyContext ? studyContext.sessionId : peerUUID;
         this.artifactLog.append({
             eventType: "continuous_assist_preempt_requested",
             sessionId: peerUUID,
@@ -408,11 +414,10 @@ class CodeGeneration extends ApplicationController {
         });
         // Per-trial H4 configuration: the registered trial's candidateTarget (N=1
         // vs. N>1) reaches the orchestrator turn through its environment.
-        const studyContext = this.artifactLog.getStudyContext({ sessionId: peerUUID, correlationId });
         const turnEnv = studyContext && Number.isInteger(studyContext.candidateTarget)
             ? { ...process.env, AGENTICXR_CANDIDATE_COUNT: String(studyContext.candidateTarget) }
             : process.env;
-        const child = spawn(process.execPath, [orchestrator, intent, targetObjectId, peerUUID, correlationId], {
+        const child = spawn(process.execPath, [orchestrator, intent, targetObjectId, canonicalSessionId, correlationId], {
             cwd: path.resolve(__dirname, "../../.."),
             env: turnEnv,
             stdio: "inherit",
@@ -502,9 +507,15 @@ class CodeGeneration extends ApplicationController {
 
     sendAgenticStatus(sessionId, targetObjectId, correlationId, state, detail) {
         if (!sessionId || !correlationId) return;
+        const studyContext = this.artifactLog.claimRuntimeSession({
+            runtimeSessionId: sessionId,
+            correlationId,
+            studySource: "ubiq_peer",
+        });
+        const canonicalSessionId = studyContext ? studyContext.sessionId : sessionId;
         const envelope = makeEnvelope({
             type: "AgentStatus",
-            sessionId,
+            sessionId: canonicalSessionId,
             correlationId,
             originAgent: "code_runtime_generator",
             targetObjectId: targetObjectId || null,
@@ -528,10 +539,17 @@ class CodeGeneration extends ApplicationController {
 
     logStudyEvent(event) {
         try {
-            if (!this.artifactLog.getStudyContext(event)) return;
+            const runtimeSessionId = event && event.sessionId;
+            const context = this.artifactLog.claimRuntimeSession({
+                runtimeSessionId,
+                correlationId: event && event.correlationId,
+                studySource: event && event.studySource || "code_runtime_generator",
+            });
+            if (!context) return null;
             this.artifactLog.appendStudyEvent(event);
         } catch (error) {
             console.error(`[AgenticXR] study log error: ${error.message}`);
+            throw error;
         }
     }
 }

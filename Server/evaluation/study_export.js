@@ -159,6 +159,7 @@ function aggregateTrial(events) {
     const started = first(events, (event) => event.eventType === "study_trial_started");
     if (!started) throw new Error(`trial '${events[0].trialId}' has no study_trial_started event`);
     const ended = last(events, (event) => event.eventType === "study_trial_ended");
+    if (!ended) throw new Error(`trial '${started.trialId}' has no study_trial_ended event`);
     const intent = first(events, (event) => event.eventType === "intent_captured" || event.eventType === "turn_started");
     const acknowledgement = first(events, (event) =>
         ["agent_acknowledgement_surfaced", "agent_status_surfaced"].includes(event.eventType));
@@ -179,6 +180,21 @@ function aggregateTrial(events) {
         event.eventType === "proposal_gate_checked" || event.eventType === "artifactresult"), ["timestampAgeMs"]);
     const candidateEvents = events.filter((event) => event.candidateId && event.speculative !== true);
     const uniqueCandidates = new Set(candidateEvents.map((event) => event.candidateId));
+    if (ended.taskCompletion === true && !intent) {
+        throw new Error(`completed trial '${started.trialId}' has no joined runtime intent event`);
+    }
+    if (ended.taskCompletion === true && started.condition === "agenticxr_no_verification" &&
+        !events.some((event) => event.verificationBypassed === true)) {
+        throw new Error(`completed no-verification trial '${started.trialId}' has no bypass evidence`);
+    }
+    if (ended.taskCompletion === true && Number.isInteger(started.candidateTarget) && started.candidateTarget > 1) {
+        const observedCandidateCount = Math.max(
+            uniqueCandidates.size,
+            ...events.map((event) => Number(event.candidateCount) || 0));
+        if (observedCandidateCount < started.candidateTarget) {
+            throw new Error(`completed trial '${started.trialId}' expected ${started.candidateTarget} candidates but observed ${observedCandidateCount}`);
+        }
+    }
     const selection = last(events, (event) => event.eventType === "candidate_selection");
     const selectedCandidateId = selection && (selection.selectedCandidateId ||
         (selection.selected && selection.selected.candidateId)) ||
@@ -321,7 +337,9 @@ function aggregateTrial(events) {
         resumptionCount: resumptions.length,
         interruptionTotalTimeMs: interruptionTotal,
         candidateTargetCount: Number.isInteger(started.candidateTarget) ? started.candidateTarget : "",
-        candidatesGenerated: uniqueCandidates.size || Number(selection && selection.candidateCount) || 1,
+        // Missing candidate evidence must stay missing. A default of 1 makes a
+        // broken H4 join look like a legitimate single-candidate trial.
+        candidatesGenerated: uniqueCandidates.size || Number(selection && selection.candidateCount) || "",
         selectedCandidateId,
         selectedCandidateRank: selectedEvent.selectedCandidateRank ?? selectedEvent.rank ?? "",
         selectedCandidateScore: selectedEvent.selectedCandidateScore ??
@@ -394,6 +412,30 @@ function longRow(event) {
 }
 
 function buildStudyExports(allEvents) {
+    const starts = allEvents.filter((event) => event.studyEvent && event.eventType === "study_trial_started");
+    const windows = starts.map((started) => {
+        const ended = allEvents.find((event) => event.studyEvent &&
+            event.eventType === "study_trial_ended" &&
+            event.sessionId === started.sessionId && event.trialId === started.trialId);
+        return {
+            started,
+            from: eventTime(started),
+            to: ended ? eventTime(ended) : Number.POSITIVE_INFINITY,
+        };
+    });
+    const unjoined = allEvents.filter((event) => {
+        if (event.studyEvent || !event.eventType || !event.correlationId) return false;
+        const at = eventTime(event);
+        return Number.isFinite(at) && windows.some((window) =>
+            Number.isFinite(window.from) && at >= window.from && at <= window.to);
+    });
+    if (unjoined.length) {
+        const examples = unjoined.slice(0, 5)
+            .map((event) => `${event.eventType}:${event.sessionId || "missing-session"}`)
+            .join(", ");
+        throw new Error(`${unjoined.length} runtime event(s) occurred during a study trial without joining it: ${examples}`);
+    }
+
     const events = allEvents.filter((event) => event.studyEvent);
     validateStudyEvents(events);
     const grouped = new Map();
