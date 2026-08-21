@@ -71,7 +71,11 @@ const AGENTS = {
             "You are the Code Generator for AgenticXR. Given a scene grounding summary and the user's " +
             "natural-language intent, operation (create/edit/remove), existing artifact history, and experience context, " +
             `produce exactly ${CANDIDATE_COUNT} materially distinct candidate(s). Create/edit candidates contain one C# MonoBehaviour; ` +
-            "edit names existingArtifactId and refines the current implementation; remove names existingArtifactId and has no code. " +
+            "create attaches a new generated behavior to the selected scene object and leaves existingArtifactId empty; " +
+            "edit names the exact active generated artifactId and replaces/refines that generated implementation; " +
+            "remove names the exact active generated artifactId and has no code. A pre-authored scene object's targetObjectId " +
+            "is never an existingArtifactId. If the target has no active generated artifact, adding a component or behavior is create, " +
+            "even when the user describes it as changing an existing object's appearance or behavior. " +
             "Treat experience context as a behavioral constraint, not a label: productivity should reduce distraction, " +
             "training should favor guidance and recoverability, entertainment may favor playful feedback, and exploration " +
             "should preserve open-ended discovery. The architecture may assist non-authoring experiences even though dynamic " +
@@ -95,8 +99,8 @@ const AGENTS = {
             "System.Diagnostics, reflection); (2) check it plausibly matches the stated intent and the object " +
             "it targets; (3) assign a riskScore from 0 (cosmetic, reversible, single-object) to 1 (destructive, " +
             "persistent, shared-state, multi-object); (4) recommend authoringMode: 'automatic' only if " +
-            "riskScore < 0.3 AND the change is cosmetic/parametric on a single object, otherwise " +
-            "'semi_auto_confirm'; (5) classify interactionMode using the paper's five modes (main.tex tab:modes) " +
+            "riskScore < 0.3 AND the change is cosmetic/parametric on a single object AND interactionMode is L1 or L2, otherwise " +
+            "'semi_auto_confirm'. L4 and L5 always use 'semi_auto_confirm'; (5) classify interactionMode using the paper's five modes (main.tex tab:modes) " +
             "- these describe who INITIATED this turn, separate from authoringMode's execution gate: " +
             "'L1' if the system itself proposed this from a low-risk opportunity with no explicit user request; " +
             "'L2' if triggered by ordinary user motion/context rather than a command; 'L3' if a required detail " +
@@ -155,9 +159,18 @@ timeline (see Server/memory/timeline_registry.js):
    learning, call ${bridgeTool("reset_person_profile")} with confirmReset=true.
 1. Call ${bridgeTool("send_agent_status")} with state "querying_memory", then use
    scene_analyst to ground the request in the current scene.
-2. Classify the lifecycle operation as create, edit, or remove. Retrieve
-   ${bridgeTool("get_evolution_history")}, ${bridgeTool("get_person_policy")}, and
-   ${bridgeTool("get_experience_context")}, then use code_generator to draft exactly
+2. Retrieve ${bridgeTool("get_artifact_history")}, ${bridgeTool("get_evolution_history")},
+   ${bridgeTool("get_person_policy")}, and ${bridgeTool("get_experience_context")}, then
+   classify the lifecycle operation as create, edit, or remove. These operations describe
+   the GENERATED ARTIFACT lifecycle, not whether the selected scene GameObject already exists:
+   - create: add a new generated component/behavior when no generated artifact is currently active
+     on the target. This includes changing the color or behavior of a pre-authored scene object.
+   - edit: replace/refine a currently active generated artifact. Use its exact artifactId from
+     history as existingArtifactId.
+   - remove: remove a currently active generated artifact. Use its exact artifactId.
+   Never use targetObjectId as existingArtifactId. If history has no successfully applied/active
+   generated artifact for the target, the operation MUST be create, not edit or remove.
+   Then use code_generator to draft exactly
    ${CANDIDATE_COUNT} candidate(s) sharing one candidateSetId.
 3. Call ${bridgeTool("send_agent_status")} with state "validating". For EACH candidate,
    use validator_critic independently and call ${bridgeTool("simulate_artifact")}.
@@ -172,16 +185,22 @@ timeline (see Server/memory/timeline_registry.js):
    history and are shown only when an L5 user explicitly asks for alternatives.
 5. conflict_resolver - check the target object is safe to modify right now.
    If decision is not "proceed", stop and explain why instead of proceeding.
-6. Call ${bridgeTool("send_agent_status")} with state "ready_to_preview", then call
+6. Call ${bridgeTool("send_agent_status")} with state "ready_to_preview". Immediately
+   before proposing, call ${bridgeTool("query_scene")} again for the same targetObjectId,
+   sessionId, and correlationId. This final authoritative refresh is mandatory because
+   candidate generation and validation can outlive the proposal freshness window. Stop
+   if the target disappeared or its identity/revision conflicts with the grounded target;
+   otherwise use sceneEpoch, snapshotId, objectRevision, and response timestamp from THIS
+   refreshed query, not the older Scene Analyst report. Then call
    ${bridgeTool("propose_artifact")} yourself (this call belongs to you, the
    router, not a subagent) with the candidate code, targetObjectId, intent,
    authoringMode, interactionMode, validationState="accepted", validationSummary,
    riskScore, requiredPermissions, expectedSideEffects, triggerSource, reversible,
    localOnly, and detailResolved from the validator's verdict,
-   and sceneEpoch, snapshotId, objectRevision, snapshotTakenAt from the Scene Analyst,
+   and the refreshed sceneEpoch, snapshotId, objectRevision, snapshotTakenAt,
    plus operation, existingArtifactId, candidateId, candidateSetId, candidateCount,
    selectionReason, experienceMode, sessionId and the shared correlationId. Never omit freshness metadata.
-   Edit and remove always require confirmation and may never use automatic mode.
+   L4/L5, edit, and remove always require confirmation and may never use automatic mode.
 7. version_memory - confirm the outcome is logged and query evolution history.
 
 BOUNDED GOALS AND LOOPS:

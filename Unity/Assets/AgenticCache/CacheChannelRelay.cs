@@ -3,6 +3,7 @@ using System.Text;
 using Ubiq.Logging.Utf8Json;
 using Ubiq.Messaging;
 using UnityEngine;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace AgenticCache
@@ -37,7 +38,16 @@ namespace AgenticCache
             {
                 var json = Encoding.UTF8.GetString(data.bytes, data.start, data.length);
                 var root = JObject.Parse(json);
-                envelope = root.ToObject<CacheEnvelope>();
+                // Node represents optional numeric envelope fields as JSON null,
+                // while CacheEnvelope uses -1 sentinels because Unity's
+                // JsonUtility does not reliably support nullable value types.
+                // Ignoring null values preserves those field initializers instead
+                // of throwing while converting null to long/float/double.
+                var serializer = Newtonsoft.Json.JsonSerializer.Create(new JsonSerializerSettings
+                {
+                    NullValueHandling = NullValueHandling.Ignore
+                });
+                envelope = root.ToObject<CacheEnvelope>(serializer);
                 var payload = root["payload"];
                 if (payload != null)
                 {
