@@ -84,6 +84,9 @@ const AGENTS = {
             "System.Net, System.Diagnostics, or reflection; a Component name that does not collide with a " +
             "common Unity type; if a new object is instantiated, parent it under transform; default any speed " +
             `to 1. Do not change the target GameObject's tag unless the user's intent explicitly requests a tag change. ` +
+            "Every create/edit candidate must be genuinely reversible: capture every pre-existing value it mutates before " +
+            "the first mutation, restore those values idempotently in both OnDisable and OnDestroy, and destroy any child " +
+            "objects it spawned. Never restore shared state by mutating a shared Material asset. " +
             `Output ONLY a JSON array of ${CANDIDATE_COUNT} object(s) with candidateId, operation, ` +
             "existingArtifactId, approach, experienceMode, and code (null only for remove).",
         tools: [],
@@ -180,7 +183,9 @@ timeline (see Server/memory/timeline_registry.js):
    that exact status forward as the candidate's simulationStatus and continue; the
    proposal will be marked unverified. You may not skip a dry-run on your own.
 4. Call ${bridgeTool("rank_artifact_candidates")} with every candidate's verdict and
-   dry-run outcome (a single-candidate set is valid and still logged). Stop if none
+   dry-run outcome and its approach summary (a single-candidate set is valid and still logged).
+   Preserve the tool's comparisonSummary and pass it unchanged as selectionReason when
+   proposing the selected candidate, so Unity can show all ranked alternatives. Stop if none
    is eligible. Rejected alternatives remain in evolution
    history and are shown only when an L5 user explicitly asks for alternatives.
 5. conflict_resolver - check the target object is safe to modify right now.

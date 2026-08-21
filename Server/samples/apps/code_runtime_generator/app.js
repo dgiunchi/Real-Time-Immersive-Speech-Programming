@@ -93,8 +93,42 @@ class CodeGeneration extends ApplicationController {
             let message;
             try { message = JSON.parse(data.message.toString()); }
             catch (_) { return; }
-            if (!message || message.type !== "CancelRequest") return;
-            this.cancelAgenticTurn(message.sessionId, message.correlationId, "xr_cancel_button");
+            if (!message) return;
+            if (message.type === "CancelRequest") {
+                this.cancelAgenticTurn(message.sessionId, message.correlationId, "xr_cancel_button");
+                return;
+            }
+            if (message.type === "TrialReset") {
+                let payload = message.payload;
+                if (typeof payload === "string") {
+                    try { payload = JSON.parse(payload); }
+                    catch (_) { payload = {}; }
+                }
+                const suppliedIds = new Set(Array.isArray(payload && payload.artifactIds) ? payload.artifactIds : []);
+                const active = this.artifactLog.activeArtifacts();
+                for (const artifact of active) {
+                    if (suppliedIds.size > 0 && artifact.artifactId && !suppliedIds.has(artifact.artifactId)) continue;
+                    this.artifactLog.append({
+                        eventType: "trial_reset",
+                        sessionId: message.sessionId || null,
+                        correlationId: message.correlationId || randomUUID(),
+                        targetObjectId: artifact.targetObjectId,
+                        artifactId: artifact.artifactId || null,
+                        operation: "rollback",
+                        status: "rolled_back",
+                        reason: "xr_trial_reset",
+                    });
+                }
+                this.artifactLog.append({
+                    eventType: "trial_reset",
+                    sessionId: message.sessionId || null,
+                    correlationId: message.correlationId || randomUUID(),
+                    operation: "rollback",
+                    status: "rolled_back",
+                    reason: "xr_trial_reset_all",
+                });
+                console.log(`[AgenticXR] trial reset synchronized artifacts=${active.length}`);
+            }
         });
 
         // Baseline attach acknowledgement: Unity reports whether the direct-apply

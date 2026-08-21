@@ -36,7 +36,8 @@ namespace AgenticCache
         }
 
         public void ShowProposal(string correlationId, string targetName, string intent, string validationSummary,
-            float riskScore, string[] requiredPermissions, string expectedSideEffects)
+            float riskScore, string[] requiredPermissions, string expectedSideEffects, int candidateCount,
+            string candidateComparison)
         {
             pendingCorrelationId = correlationId;
             if (proposalText != null)
@@ -45,6 +46,8 @@ namespace AgenticCache
                     "\nRisk: " + (riskScore >= 0f ? riskScore.ToString("0.00") : "not supplied") +
                     "\nPermissions: " + (requiredPermissions != null ? string.Join(", ", requiredPermissions) : "attach_component") +
                     "\nExpected effects: " + (string.IsNullOrEmpty(expectedSideEffects) ? "not supplied" : expectedSideEffects) +
+                    (candidateCount > 1 ? "\n\nCompared " + candidateCount + " candidates:\n" +
+                        (string.IsNullOrEmpty(candidateComparison) ? "Best eligible candidate selected." : candidateComparison) : "") +
                     "\n\nApprove or reject?";
             if (canvas != null) canvas.gameObject.SetActive(true);
         }
@@ -84,6 +87,8 @@ namespace AgenticCache
 
         private void Undo() => manager.UndoLatest();
 
+        private void ResetTrial() => manager.ResetTrialState();
+
         private void ListenToLastRecording()
         {
             if (microphoneCapture == null) microphoneCapture = FindFirstObjectByType<MicrophoneCapture>();
@@ -99,7 +104,7 @@ namespace AgenticCache
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.worldCamera = Camera.main;
             var rect = root.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(760, 500);
+            rect.sizeDelta = new Vector2(760, 590);
             root.GetComponent<Image>().color = new Color(0.035f, 0.045f, 0.075f, 0.94f);
 
             var cameraTransform = Camera.main != null ? Camera.main.transform : null;
@@ -114,10 +119,11 @@ namespace AgenticCache
             statusText = CreateText(root.transform, "Status", new Vector2(0, 200), new Vector2(700, 70), 26, TextAnchor.MiddleLeft);
             transcriptText = CreateText(root.transform, "Transcript", new Vector2(-85, 135), new Vector2(530, 55), 24, TextAnchor.MiddleLeft);
             CreateButton(root.transform, "Listen", new Vector2(275, 135), new Color(0.2f, 0.48f, 0.65f), ListenToLastRecording, new Vector2(145, 55));
-            proposalText = CreateText(root.transform, "Proposal", new Vector2(0, -10), new Vector2(700, 170), 24, TextAnchor.UpperLeft);
+            proposalText = CreateText(root.transform, "Proposal", new Vector2(0, -20), new Vector2(700, 250), 20, TextAnchor.UpperLeft);
             CreateButton(root.transform, "Approve", new Vector2(-210, -205), new Color(0.15f, 0.55f, 0.3f), Approve);
             CreateButton(root.transform, "Cancel / Reject", new Vector2(0, -205), new Color(0.65f, 0.2f, 0.2f), Reject);
             CreateButton(root.transform, "Undo", new Vector2(210, -205), new Color(0.25f, 0.35f, 0.65f), Undo);
+            CreateButton(root.transform, "Reset Trial", new Vector2(0, -280), new Color(0.45f, 0.3f, 0.55f), ResetTrial, new Vector2(240, 55));
         }
 
         private static Text CreateText(Transform parent, string name, Vector2 position, Vector2 size, int fontSize, TextAnchor alignment)

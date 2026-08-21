@@ -350,6 +350,7 @@ async function main() {
                     candidateId: z.string(), operation: z.enum(LIFECYCLE_OPERATIONS), code: z.string().optional(),
                     existingArtifactId: z.string().optional(), validationState: z.string(), simulationStatus: z.string(),
                     riskScore: z.number().min(0).max(1), authoringMode: z.string().optional(), experienceMode: z.string().optional(),
+                    approach: z.string().optional(),
                 })).min(1),
             },
         },
@@ -361,6 +362,14 @@ async function main() {
                 experienceContext: memory.experienceContext.get(sessionId),
                 verificationBypassed,
             });
+            const compact = (value, max = 90) => {
+                const text = String(value || "No approach summary").replace(/\s+/g, " ").trim();
+                return text.length <= max ? text : `${text.slice(0, max - 3)}...`;
+            };
+            result.comparisonSummary = result.ranked.map((candidate, index) =>
+                `${index + 1}. ${candidate.candidateId} score=${candidate.ranking.score}: ${compact(candidate.approach)}`
+            ).join("\n");
+            if (result.selected) result.selected.selectionReason = result.comparisonSummary;
             for (const candidate of result.ranked) {
                 memory.artifactLog.append({
                     eventType: candidate === result.selected ? "candidate_selected" : "candidate_rejected",

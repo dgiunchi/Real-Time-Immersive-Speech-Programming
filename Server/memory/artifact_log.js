@@ -284,11 +284,15 @@ class ArtifactLog {
     activeArtifacts() {
         const active = new Map();
         for (const entry of this.history({ limit: Number.MAX_SAFE_INTEGER }).reverse()) {
+            if (entry.eventType === "trial_reset" && !entry.targetObjectId) {
+                active.clear();
+                continue;
+            }
             if (!entry.targetObjectId) continue;
             const operation = entry.operation || "create";
             const committed = entry.status === "committed" || entry.status === "removed" || entry.eventType === "commitaccepted";
             if (committed && operation !== "remove") active.set(entry.targetObjectId, entry);
-            if ((committed && operation === "remove") || /rollback|removed/.test(entry.eventType || "")) active.delete(entry.targetObjectId);
+            if ((committed && operation === "remove") || /rollback|removed|trial_reset/.test(entry.eventType || "")) active.delete(entry.targetObjectId);
         }
         return Array.from(active.values());
     }
