@@ -68,6 +68,7 @@ class SharedMemory {
             });
         });
         this.proposalSentAt = new Map();
+        this.seenEnvelopeKeys = new Set();
         this.sensors = new SensorRegistry({ visualStore: this.visual, sceneGraphStore: this.sceneGraph, regionStore: this.region });
     }
 
@@ -111,6 +112,13 @@ class SharedMemory {
     // Subscribes to every envelope (inbound and outbound) a SceneBridgeClient sees.
     attach(bridge) {
         bridge.on("envelope", (envelope) => {
+            const envelopeKey = [envelope.type, envelope.sessionId, envelope.correlationId,
+                envelope.targetObjectId, envelope.timestamp, envelope.originAgent].join("\u001f");
+            if (this.seenEnvelopeKeys.has(envelopeKey)) return;
+            this.seenEnvelopeKeys.add(envelopeKey);
+            if (this.seenEnvelopeKeys.size > 10000) {
+                this.seenEnvelopeKeys.delete(this.seenEnvelopeKeys.values().next().value);
+            }
             this.timeline.observeEnvelope(envelope);
             const hasStudyContext = Boolean(this.artifactLog.getStudyContext({
                 sessionId: envelope.sessionId,
@@ -148,6 +156,7 @@ class SharedMemory {
                     staleness: envelope.staleness || null,
                     verificationDurationMs: envelope.verificationDurationMs || null,
                     commitAttachDurationMs: envelope.commitAttachDurationMs || null,
+                    clientRenderDurationMs: envelope.clientRenderDurationMs || null,
                 });
             } catch (error) {
                 console.error(`[evaluation] failed to record envelope: ${error.message}`);
@@ -168,12 +177,22 @@ class SharedMemory {
             if (envelope.type === "ArtifactProposal" && envelope.correlationId) {
                 this.proposalSentAt.set(envelope.correlationId, envelope.timestamp || Date.now());
                 recordStudyEnvelope({
-                    eventType: "proposal_preview_surfaced",
+                    eventType: "proposal_sent",
                     artifactVersion: envelope.artifactVersion || null,
                     candidateId: envelope.candidateId || null,
                     candidateSetId: envelope.candidateSetId || null,
                     validationState: envelope.validationState || null,
                     riskScore: envelope.riskScore,
+                });
+            }
+            if (envelope.type === "ProposalVisible") {
+                recordStudyEnvelope({
+                    eventType: "proposal_preview_surfaced",
+                    artifactVersion: envelope.artifactVersion || null,
+                    candidateId: envelope.candidateId || null,
+                    candidateSetId: envelope.candidateSetId || null,
+                    clientRenderDurationMs: Number.isFinite(envelope.clientRenderDurationMs)
+                        ? envelope.clientRenderDurationMs : null,
                 });
             }
             if (envelope.type === "AgentStatus") {
@@ -186,10 +205,25 @@ class SharedMemory {
                 recordStudyEnvelope({
                     eventType: "agent_status_surfaced",
                     status: envelope.payload && envelope.payload.status,
+                    clientRenderDurationMs: Number.isFinite(envelope.clientRenderDurationMs)
+                        ? envelope.clientRenderDurationMs : null,
                 });
             }
             if (envelope.type === "AgentUtterance") {
                 recordStudyEnvelope({ eventType: "agent_acknowledgement_surfaced" });
+            }
+            if (envelope.type === "TrialReset") {
+                this.artifactLog.append({
+                    eventType: envelope.payload && envelope.payload.status === "trial_reset"
+                        ? "trial_reset" : "trial_reset_failed",
+                    sessionId: envelope.sessionId || null,
+                    correlationId: envelope.correlationId || null,
+                    operation: "rollback",
+                    status: envelope.payload && envelope.payload.status === "trial_reset" ? "rolled_back" : "error",
+                    reasonCode: envelope.payload && envelope.payload.reasonCode || null,
+                    studySource: "unity_trial_reset",
+                    at: envelope.timestamp || Date.now(),
+                });
             }
             if (["UserDecision", "ArtifactResult", "CommitAccepted", "CommitRejected", "RollbackResult"].includes(envelope.type)) {
                 if (envelope.type === "UserDecision") this.activity.observeDecision(envelope);

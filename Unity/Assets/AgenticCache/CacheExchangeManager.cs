@@ -87,14 +87,21 @@ namespace AgenticCache
                 public Renderer renderer;
                 public bool enabled;
                 public Material[] sharedMaterials;
-                public Color[] colors;
+            }
+
+            private sealed class ObjectState
+            {
+                public GameObject gameObject;
+                public bool activeSelf;
+                public Vector3 localPosition;
+                public Quaternion localRotation;
+                public Vector3 localScale;
+                public HashSet<Component> originalComponents;
             }
 
             private GameObject target;
-            private bool activeSelf;
-            private Vector3 localPosition;
-            private Quaternion localRotation;
-            private Vector3 localScale;
+            private readonly HashSet<GameObject> originalObjects = new HashSet<GameObject>();
+            private readonly List<ObjectState> objects = new List<ObjectState>();
             private readonly List<RendererState> renderers = new List<RendererState>();
 
             public static GameObjectStateSnapshot Capture(GameObject target)
@@ -103,24 +110,28 @@ namespace AgenticCache
                 var snapshot = new GameObjectStateSnapshot
                 {
                     target = target,
-                    activeSelf = target.activeSelf,
-                    localPosition = target.transform.localPosition,
-                    localRotation = target.transform.localRotation,
-                    localScale = target.transform.localScale,
                 };
+                foreach (var child in target.GetComponentsInChildren<Transform>(true))
+                {
+                    snapshot.originalObjects.Add(child.gameObject);
+                    snapshot.objects.Add(new ObjectState
+                    {
+                        gameObject = child.gameObject,
+                        activeSelf = child.gameObject.activeSelf,
+                        localPosition = child.localPosition,
+                        localRotation = child.localRotation,
+                        localScale = child.localScale,
+                        originalComponents = new HashSet<Component>(child.gameObject.GetComponents<Component>()),
+                    });
+                }
                 foreach (var renderer in target.GetComponentsInChildren<Renderer>(true))
                 {
                     var materials = renderer.sharedMaterials;
-                    var colors = new Color[materials.Length];
-                    for (var i = 0; i < materials.Length; i++)
-                        colors[i] = materials[i] != null && materials[i].HasProperty("_Color")
-                            ? materials[i].color : Color.clear;
                     snapshot.renderers.Add(new RendererState
                     {
                         renderer = renderer,
                         enabled = renderer.enabled,
                         sharedMaterials = (Material[])materials.Clone(),
-                        colors = colors,
                     });
                 }
                 return snapshot;
@@ -129,21 +140,72 @@ namespace AgenticCache
             public void Restore()
             {
                 if (target == null) return;
-                target.transform.localPosition = localPosition;
-                target.transform.localRotation = localRotation;
-                target.transform.localScale = localScale;
+                foreach (var child in target.GetComponentsInChildren<Transform>(true)
+                    .OrderByDescending(item => HierarchyDepth(item)))
+                {
+                    if (!originalObjects.Contains(child.gameObject)) UnityEngine.Object.Destroy(child.gameObject);
+                }
+                foreach (var state in objects)
+                {
+                    if (state.gameObject == null) continue;
+                    foreach (var component in state.gameObject.GetComponents<Component>())
+                    {
+                        if (component != null && !(component is Transform) && !state.originalComponents.Contains(component))
+                            UnityEngine.Object.Destroy(component);
+                    }
+                    state.gameObject.transform.localPosition = state.localPosition;
+                    state.gameObject.transform.localRotation = state.localRotation;
+                    state.gameObject.transform.localScale = state.localScale;
+                    state.gameObject.SetActive(state.activeSelf);
+                }
                 foreach (var state in renderers)
                 {
                     if (state.renderer == null) continue;
+                    var currentMaterials = state.renderer.sharedMaterials;
                     state.renderer.sharedMaterials = state.sharedMaterials;
                     state.renderer.enabled = state.enabled;
-                    for (var i = 0; i < state.sharedMaterials.Length && i < state.colors.Length; i++)
+                    foreach (var material in currentMaterials)
                     {
-                        var material = state.sharedMaterials[i];
-                        if (material != null && material.HasProperty("_Color")) material.color = state.colors[i];
+                        if (material != null && Array.IndexOf(state.sharedMaterials, material) < 0)
+                            UnityEngine.Object.Destroy(material);
                     }
                 }
-                target.SetActive(activeSelf);
+            }
+
+            private static int HierarchyDepth(Transform item)
+            {
+                var depth = 0;
+                while (item != null) { depth++; item = item.parent; }
+                return depth;
+            }
+        }
+
+        private static void IsolateRendererMaterials(GameObject target)
+        {
+            if (target == null) return;
+            foreach (var renderer in target.GetComponentsInChildren<Renderer>(true))
+            {
+                var shared = renderer.sharedMaterials;
+                var isolated = new Material[shared.Length];
+                for (var i = 0; i < shared.Length; i++)
+                {
+                    isolated[i] = shared[i] == null ? null : new Material(shared[i])
+                    {
+                        name = shared[i].name + " [AgenticXR Instance]"
+                    };
+                }
+                renderer.sharedMaterials = isolated;
+            }
+        }
+
+        private static void DestroyIsolatedRendererMaterials(GameObject target)
+        {
+            if (target == null) return;
+            foreach (var renderer in target.GetComponentsInChildren<Renderer>(true))
+            {
+                foreach (var material in renderer.sharedMaterials)
+                    if (material != null) UnityEngine.Object.Destroy(material);
+                renderer.sharedMaterials = Array.Empty<Material>();
             }
         }
 
@@ -306,6 +368,7 @@ namespace AgenticCache
         {
             if (envelope.type == CacheMessageTypes.AgentStatus)
             {
+                var renderStartedAt = Time.realtimeSinceStartupAsDouble;
                 var status = Parse<AgentStatusPayload>(envelope.payload);
                 TrackActiveAgentRequest(envelope, status != null ? status.state : null);
                 localCache.SetAgentStatus(status != null ? status.state : null, status != null ? status.detail : null);
@@ -322,6 +385,7 @@ namespace AgenticCache
                     envelope.targetObjectId, "{\"status\":\"" +
                     AgenticSceneRegistry.Escape(status != null ? status.state : "working") + "\"}");
                 visible.sessionId = envelope.sessionId;
+                visible.clientRenderDurationMs = (Time.realtimeSinceStartupAsDouble - renderStartedAt) * 1000.0;
                 SendDecision(visible);
             }
             else if (envelope.type == CacheMessageTypes.AgentUtterance)
@@ -336,10 +400,12 @@ namespace AgenticCache
             if (envelope.type == CacheMessageTypes.ArtifactProposal) HandleArtifactProposal(envelope);
             else if (envelope.type == CacheMessageTypes.CommitRequest) CommitPending(envelope.correlationId, envelope, false);
             else if (envelope.type == CacheMessageTypes.RollbackRequest) HandleRollbackRequest(envelope);
+            else if (envelope.type == CacheMessageTypes.TrialResetRequest) ResetTrialState(envelope.correlationId);
         }
 
         private void HandleArtifactProposal(CacheEnvelope envelope)
         {
+            var previewStartedAt = Time.realtimeSinceStartupAsDouble;
             var payload = Parse<ArtifactProposalPayload>(envelope.payload);
             var target = sceneRegistry != null ? sceneRegistry.Find(envelope.targetObjectId) : null;
             var operation = payload != null && !string.IsNullOrEmpty(payload.operation) ? payload.operation : "create";
@@ -388,11 +454,13 @@ namespace AgenticCache
                 var verificationStartedAt = Time.realtimeSinceStartupAsDouble;
                 var clone = Instantiate(target);
                 clone.name = target.name + " [AgenticXR Verification]";
+                IsolateRendererMaterials(clone);
                 clone.SetActive(false);
                 ScriptProxy stageProxy = null;
                 var stageError = compiler == null ? "The Roslyn runtime compiler is unavailable in this scene." : null;
                 staged = compiler != null && compiler.TryCompileAndAttach(clone, payload.code, out stageProxy, out stageError);
                 if (stageProxy != null) stageProxy.Dispose();
+                DestroyIsolatedRendererMaterials(clone);
                 Destroy(clone);
                 envelope.verificationDurationMs = (Time.realtimeSinceStartupAsDouble - verificationStartedAt) * 1000.0;
                 if (!staged)
@@ -427,15 +495,23 @@ namespace AgenticCache
                 target = target,
                 targetRevision = sceneRegistry.GetRevision(target),
             };
-            if (string.Equals(envelope.authoringMode, "automatic", StringComparison.OrdinalIgnoreCase))
-                CommitPending(envelope.correlationId, null, false);
-            else
+            if (!string.Equals(envelope.authoringMode, "automatic", StringComparison.OrdinalIgnoreCase))
             {
                 ShowStatus("waiting_for_user", "A validated proposal needs your approval.");
                 if (consentPanel != null) consentPanel.ShowProposal(envelope.correlationId, target.name, payload.intent,
                     payload.validationSummary, payload.riskScore, payload.requiredPermissions, payload.expectedSideEffects,
                     payload.candidateCount, payload.selectionReason);
             }
+            var visible = NewEnvelope(CacheMessageTypes.ProposalVisible, envelope.correlationId,
+                envelope.targetObjectId, "{\"status\":\"visible\"}");
+            visible.sessionId = envelope.sessionId;
+            visible.candidateId = envelope.candidateId;
+            visible.candidateSetId = envelope.candidateSetId;
+            visible.artifactVersion = envelope.artifactVersion;
+            visible.clientRenderDurationMs = (Time.realtimeSinceStartupAsDouble - previewStartedAt) * 1000.0;
+            SendDecision(visible);
+            if (string.Equals(envelope.authoringMode, "automatic", StringComparison.OrdinalIgnoreCase))
+                CommitPending(envelope.correlationId, null, false);
         }
 
         private string ValidateProposalEnvelope(CacheEnvelope envelope, ArtifactProposalPayload payload)
@@ -514,9 +590,11 @@ namespace AgenticCache
             ScriptProxy proxy = null;
             string error = null;
             var stateBeforeApply = GameObjectStateSnapshot.Capture(target);
+            IsolateRendererMaterials(target);
             var commitAttachStartedAt = Time.realtimeSinceStartupAsDouble;
             if (compiler == null || !compiler.TryCompileAndAttach(target, proposal.payload.code, out proxy, out error))
             {
+                stateBeforeApply?.Restore();
                 pending.Remove(correlationId);
                 localCache.ClearProposal(correlationId);
                 var compileError = error ?? "The Roslyn runtime compiler is unavailable.";
@@ -703,10 +781,11 @@ namespace AgenticCache
             return true;
         }
 
-        public void ResetTrialState()
+        public void ResetTrialState(string requestedCorrelationId = null)
         {
             CancelActiveRequest();
-            var resetCorrelationId = "trial-reset-" + Guid.NewGuid().ToString();
+            var resetCorrelationId = !string.IsNullOrEmpty(requestedCorrelationId)
+                ? requestedCorrelationId : "trial-reset-" + Guid.NewGuid().ToString();
             var resetArtifacts = appliedByArtifactId.Values
                 .OrderByDescending(item => item.applySequence)
                 .Select(item => item.artifactId)
@@ -725,23 +804,25 @@ namespace AgenticCache
             activeByObjectId.Clear();
             appliedByArtifactId.Clear();
             latestArtifactId = null;
-            var resetPayload = new StringBuilder("{\"status\":\"trial_reset\",\"artifactIds\":[");
-            for (var i = 0; i < resetArtifacts.Length; i++)
-            {
-                if (i > 0) resetPayload.Append(',');
-                resetPayload.Append('"').Append(AgenticSceneRegistry.Escape(resetArtifacts[i])).Append('"');
-            }
-            resetPayload.Append("]}");
-            SendDecision(NewEnvelope(CacheMessageTypes.TrialReset, resetCorrelationId, null, resetPayload.ToString()));
             try
             {
                 if (File.Exists(CheckpointPath)) File.Delete(CheckpointPath);
                 if (File.Exists(CheckpointPath + ".tmp")) File.Delete(CheckpointPath + ".tmp");
+                var resetPayload = new StringBuilder("{\"status\":\"trial_reset\",\"artifactIds\":[");
+                for (var i = 0; i < resetArtifacts.Length; i++)
+                {
+                    if (i > 0) resetPayload.Append(',');
+                    resetPayload.Append('"').Append(AgenticSceneRegistry.Escape(resetArtifacts[i])).Append('"');
+                }
+                resetPayload.Append("]}");
+                SendDecision(NewEnvelope(CacheMessageTypes.TrialReset, resetCorrelationId, null, resetPayload.ToString()));
                 ShowStatus("trial_reset", "All generated behaviours were removed and the trial checkpoint was cleared.");
             }
             catch (Exception error)
             {
                 Debug.LogError("[AgenticXR] trial reset failed: " + error.Message);
+                SendDecision(NewEnvelope(CacheMessageTypes.TrialReset, resetCorrelationId, null,
+                    "{\"status\":\"trial_reset_failed\",\"reasonCode\":\"checkpoint_delete_failed\"}"));
                 ShowStatus("trial_reset_failed", error.Message);
             }
         }
@@ -792,8 +873,10 @@ namespace AgenticCache
                     continue;
                 }
                 var stateBeforeApply = GameObjectStateSnapshot.Capture(target);
+                IsolateRendererMaterials(target);
                 if (!compiler.TryCompileAndAttach(target, entry.code, out var proxy, out var error))
                 {
+                    stateBeforeApply?.Restore();
                     Debug.LogError("[AgenticXR] checkpoint restore failed for " + entry.artifactId + ": " + error);
                     SendDecision(NewEnvelope(CacheMessageTypes.RollbackResult, entry.correlationId, entry.targetObjectId,
                         "{\"status\":\"checkpoint_restore_failed\",\"artifactId\":\"" + AgenticSceneRegistry.Escape(entry.artifactId) + "\"}"));

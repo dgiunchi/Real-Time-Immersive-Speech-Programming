@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0",
+  "protocolId": "agenticxr-paper-study-v1",
+  "ethicsApproval": false,
+  "participantInformationAndConsentWording": false,
+  "studySpecificQuestionnaireWording": false,
+  "automationTrustScaleForm": false,
+  "rawNasaTlxForm": false,
+  "taskInstructions": false,
+  "taskRubrics": false,
+  "recordingAndTranscriptionPolicy": false,
+  "approvedBy": null,
+  "approvedAtUtc": null,
+  "notes": "Copy to approvals.local.json and update only from documented researcher/ethics approvals. Never commit participant-identifying approval records."
+}

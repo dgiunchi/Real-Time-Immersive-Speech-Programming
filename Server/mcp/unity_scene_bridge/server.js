@@ -1362,6 +1362,29 @@ async function main() {
     );
 
     server.registerTool(
+        "reset_trial_state",
+        {
+            title: "Reset all generated Unity trial state and await confirmation",
+            inputSchema: {
+                correlationId: z.string(),
+                sessionId: sessionIdSchema,
+                timeoutMs: z.number().int().positive().optional(),
+            },
+        },
+        async ({ correlationId, sessionId, timeoutMs }) => {
+            try {
+                const result = await bridge.sendTrialResetRequest({ correlationId, sessionId, timeoutMs });
+                if (!result.payload || result.payload.status !== "trial_reset") {
+                    throw new Error(`Unity reset was not confirmed (${result.payload && result.payload.reasonCode || "unknown"})`);
+                }
+                return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+            } catch (err) {
+                return { content: [{ type: "text", text: `reset_trial_state failed: ${err.message}` }], isError: true };
+            }
+        }
+    );
+
+    server.registerTool(
         "send_cache_invalidation",
         {
             title: "Tell Unity a cached object/region/proposal is stale",

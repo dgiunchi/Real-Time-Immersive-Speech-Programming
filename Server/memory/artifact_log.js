@@ -18,6 +18,13 @@ const STUDY_CONTEXT_FIELDS = Object.freeze([
     "taskId",
     "interactionMode",
 ]);
+const STUDY_OPTIONAL_CONTEXT_FIELDS = Object.freeze([
+    "protocolId",
+    "blockId",
+    "conditionAlias",
+    "h4Arm",
+    "sequenceIndex",
+]);
 
 function validateStudyContext(context, { requireCorrelationId = true } = {}) {
     if (!context || typeof context !== "object") throw new Error("study context is required");
@@ -48,6 +55,9 @@ function validateCandidateTarget(candidateTarget) {
 
 function studyContextOf(entry) {
     const context = Object.fromEntries(STUDY_CONTEXT_FIELDS.map((field) => [field, entry[field]]));
+    for (const field of STUDY_OPTIONAL_CONTEXT_FIELDS) {
+        if (entry[field] != null) context[field] = entry[field];
+    }
     if (Number.isInteger(entry.candidateTarget)) context.candidateTarget = entry.candidateTarget;
     return context;
 }
@@ -141,6 +151,10 @@ class ArtifactLog {
         if (this.activeTrialBySession.size > 0) {
             const active = [...this.activeTrialBySession.values()][0];
             throw new Error(`active study trial '${active.trialId}' must be ended or aborted before starting '${context.trialId}'`);
+        }
+        const activeArtifacts = this.activeArtifacts();
+        if (activeArtifacts.length > 0) {
+            throw new Error(`${activeArtifacts.length} active artifact(s) remain from the previous trial; complete a TrialReset before starting '${context.trialId}'`);
         }
         return this.append({
             ...context,
@@ -311,4 +325,4 @@ class ArtifactLog {
     }
 }
 
-module.exports = { ArtifactLog, STUDY_CONTEXT_FIELDS, STUDY_ID_PATTERN, validateStudyContext, validateCandidateTarget };
+module.exports = { ArtifactLog, STUDY_CONTEXT_FIELDS, STUDY_OPTIONAL_CONTEXT_FIELDS, STUDY_ID_PATTERN, validateStudyContext, validateCandidateTarget };

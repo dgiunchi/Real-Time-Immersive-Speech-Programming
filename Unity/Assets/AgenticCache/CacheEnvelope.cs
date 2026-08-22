@@ -52,6 +52,7 @@ namespace AgenticCache
         public string candidateSetId;
         public double verificationDurationMs;
         public double commitAttachDurationMs;
+        public double clientRenderDurationMs;
 
         // Cache Exchange Layer fields (tab:envelope: "sceneEpoch, snapshotId ->
         // cache freshness boundary"; "deltaSeq, objectRevision -> idempotence and
@@ -88,6 +89,7 @@ namespace AgenticCache
         public const string CacheInvalidation = "CacheInvalidation";
         public const string AgentStatus = "AgentStatus";
         public const string AgentStatusVisible = "AgentStatusVisible";
+        public const string ProposalVisible = "ProposalVisible";
         public const string DetailRequest = "DetailRequest";
         public const string DetailResponse = "DetailResponse";
         public const string ArtifactProposal = "ArtifactProposal";
@@ -106,5 +108,6 @@ namespace AgenticCache
         public const string UserDecision = "UserDecision";
         public const string CancelRequest = "CancelRequest";
         public const string TrialReset = "TrialReset";
+        public const string TrialResetRequest = "TrialResetRequest";
     }
 }

@@ -14,8 +14,8 @@ const { ArtifactLog } = require("../../../memory/artifact_log");
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 const DATA_DIR = "data";
 const INPUT_FILE = `${DATA_DIR}/input.txt`;
-const DEBUG_TRANSCRIPTS = String(process.env.STUDY_DEBUG_TRANSCRIPTS || "").toLowerCase() === "1" ||
-    String(process.env.STUDY_DEBUG_TRANSCRIPTS || "").toLowerCase() === "true";
+const DEBUG_TRANSCRIPTS = ["1", "true", "yes"].includes(
+    String(process.env.STUDY_DEBUG_TRANSCRIPTS || "").toLowerCase());
 
 function terminateProcessTree(child) {
     if (!child || child.exitCode != null || child.killed) return;
@@ -69,6 +69,7 @@ class CodeGeneration extends ApplicationController {
         this.agenticRuns = new Map();
         this.claudePingRuns = new Set();
         this.agenticCorrelations = new Map();
+        this.studyIdentityBlocked = new Set();
         this.lastBaselineAttach = new Map(); // sessionId -> { correlationId, targetObjectId }
         // Unity's legacy path replies CodeAttachResult on the same channel the
         // CodeGenerated command goes out on - this is the baseline arm's
@@ -108,6 +109,17 @@ class CodeGeneration extends ApplicationController {
                 if (typeof payload === "string") {
                     try { payload = JSON.parse(payload); }
                     catch (_) { payload = {}; }
+                }
+                if (!payload || payload.status !== "trial_reset") {
+                    this.logArtifactEvent({
+                        eventType: "trial_reset_failed",
+                        sessionId: message.sessionId || null,
+                        correlationId: message.correlationId || randomUUID(),
+                        status: "error",
+                        reasonCode: payload && payload.reasonCode || "reset_not_confirmed",
+                    });
+                    console.error("[AgenticXR] Unity did not confirm a complete trial reset; active artifacts remain locked");
+                    return;
                 }
                 const suppliedIds = new Set(Array.isArray(payload && payload.artifactIds) ? payload.artifactIds : []);
                 const active = this.artifactLog.activeArtifacts();
@@ -182,25 +194,30 @@ class CodeGeneration extends ApplicationController {
                     const action = separator >= 0 ? actionWithTarget.slice(0, separator) : actionWithTarget;
                     const targetObjectId = separator >= 0 ? actionWithTarget.slice(separator + 1) : null;
                     if (action === "start") {
+                        this.studyIdentityBlocked.delete(peerUUID);
                         if (targetObjectId) this.agenticTargets.set(peerUUID, targetObjectId);
                         this.lastAgenticActivityAt.set(peerUUID, Date.now());
                         const correlationId = randomUUID();
                         this.agenticCorrelations.set(peerUUID, correlationId);
-                        this.artifactLog.append({
+                        if (!this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "listening", "Listening to your request.")) return;
+                        this.logArtifactEvent({
                             eventType: "continuous_assist_preempt_requested",
                             sessionId: peerUUID,
                             correlationId,
                             targetObjectId: targetObjectId || null,
                             reasonCode: "push_to_talk_started",
                         });
-                        this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "listening", "Listening to your request.");
                         this.logEvaluation({ eventType: "recording_start", sessionId: peerUUID, correlationId, targetObjectId });
+                        this.logStudyEvent({ eventType: "recording_start", sessionId: peerUUID, correlationId, targetObjectId,
+                            studySource: "speech_to_text" });
                         this.components.transcriptionService.recordingStart(peerUUID);
                     } else if (action === "stop") {
                         this.lastAgenticActivityAt.set(peerUUID, Date.now());
                         const correlationId = this.agenticCorrelations.get(peerUUID);
-                        this.sendAgenticStatus(peerUUID, this.agenticTargets.get(peerUUID), correlationId, "transcribing", "Transcribing your request.");
+                        if (!this.sendAgenticStatus(peerUUID, this.agenticTargets.get(peerUUID), correlationId, "transcribing", "Transcribing your request.")) return;
                         this.logEvaluation({ eventType: "recording_stop", sessionId: peerUUID, correlationId, targetObjectId: this.agenticTargets.get(peerUUID) });
+                        this.logStudyEvent({ eventType: "recording_stop", sessionId: peerUUID, correlationId,
+                            targetObjectId: this.agenticTargets.get(peerUUID), studySource: "speech_to_text" });
                         this.components.transcriptionService.recordingStop(peerUUID);
                     } else {
                         console.warn("Unknown STT control action from " + peerUUID + ": " + action);
@@ -218,7 +235,7 @@ class CodeGeneration extends ApplicationController {
         });
 
         // Step 2: When we receive a transcription from the transcription service, send it to the image generation service
-        this.components.transcriptionService.on("response", (data, identifier) => {
+        this.components.transcriptionService.on("response", (data, identifier, timing = {}) => {
             // roomClient.peers is a Map of all peers in the room
             // Get the peer with the given identifier
             const peer = this.roomClient.peers.get(identifier);
@@ -239,8 +256,18 @@ class CodeGeneration extends ApplicationController {
 
                 if (response.startsWith(">")) response = response.slice(1);
                 if (response.trim()) {
+                    const transcript = response.trim();
+                    this.logStudyEvent({
+                        eventType: "transcript_ready",
+                        sessionId: identifier,
+                        correlationId: this.agenticCorrelations.get(identifier),
+                        targetObjectId: this.agenticTargets.get(identifier),
+                        transcriptCharacters: transcript.length,
+                        audioDurationMs: Number.isFinite(timing.audioDurationMs) ? timing.audioDurationMs : null,
+                        transcriptionDurationMs: Number.isFinite(timing.transcriptionDurationMs) ? timing.transcriptionDurationMs : null,
+                        studySource: "speech_to_text",
+                    });
                     if (this.agenticMode) {
-                        const transcript = response.trim();
                         this.lastAgenticActivityAt.set(identifier, Date.now());
                         this.logEvaluation({
                             eventType: "transcript_ready",
@@ -285,7 +312,7 @@ class CodeGeneration extends ApplicationController {
             }
         });
 
-        this.components.transcriptionService.on("transcription_error", ({ peerUUID, message, durationMs }) => {
+        this.components.transcriptionService.on("transcription_error", ({ peerUUID, message, audioDurationMs }) => {
             const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
             const targetObjectId = this.agenticTargets.get(peerUUID) || null;
             this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed",
@@ -295,10 +322,9 @@ class CodeGeneration extends ApplicationController {
                 sessionId: peerUUID,
                 correlationId,
                 targetObjectId,
-                durationMs,
+                audioDurationMs,
                 status: "error",
                 reasonCode: "stt_failure",
-                errorType: String(message || "unknown").split(":", 1)[0],
                 studySource: "speech_to_text",
             });
         });
@@ -412,14 +438,21 @@ class CodeGeneration extends ApplicationController {
     }
 
     startAgenticTurn(intent, peerUUID) {
+        if (this.studyIdentityBlocked.has(peerUUID)) return;
         const targetObjectId = this.agenticTargets.get(peerUUID);
         const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
         this.agenticCorrelations.set(peerUUID, correlationId);
-        const studyContext = this.artifactLog.claimRuntimeSession({
-            runtimeSessionId: peerUUID,
-            correlationId,
-            studySource: "ubiq_peer",
-        });
+        let studyContext;
+        try {
+            studyContext = this.artifactLog.claimRuntimeSession({
+                runtimeSessionId: peerUUID,
+                correlationId,
+                studySource: "ubiq_peer",
+            });
+        } catch (error) {
+            this.failClosedStudyIdentity(peerUUID, targetObjectId, correlationId, error);
+            return;
+        }
         const canonicalSessionId = studyContext ? studyContext.sessionId : peerUUID;
         this.artifactLog.append({
             eventType: "continuous_assist_preempt_requested",
@@ -462,7 +495,7 @@ class CodeGeneration extends ApplicationController {
             return;
         }
         const orchestrator = path.resolve(__dirname, "../../../orchestrator/app.js");
-        console.log(`[AgenticXR] starting Claude turn peer=${peerUUID} correlationId=${correlationId} target=${targetObjectId} intent=${JSON.stringify(intent)}`);
+        console.log(`[AgenticXR] starting Claude turn peer=${peerUUID} correlationId=${correlationId} target=${targetObjectId} intentCharacters=${intent.length}`);
         this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "thinking", "Claude is grounding and validating your request.");
         this.logEvaluation({ eventType: "turn_started", sessionId: peerUUID, correlationId, targetObjectId });
         this.logStudyEvent({
@@ -566,12 +599,18 @@ class CodeGeneration extends ApplicationController {
     }
 
     sendAgenticStatus(sessionId, targetObjectId, correlationId, state, detail) {
-        if (!sessionId || !correlationId) return;
-        const studyContext = this.artifactLog.claimRuntimeSession({
-            runtimeSessionId: sessionId,
-            correlationId,
-            studySource: "ubiq_peer",
-        });
+        if (!sessionId || !correlationId) return false;
+        let studyContext;
+        try {
+            studyContext = this.artifactLog.claimRuntimeSession({
+                runtimeSessionId: sessionId,
+                correlationId,
+                studySource: "ubiq_peer",
+            });
+        } catch (error) {
+            this.failClosedStudyIdentity(sessionId, targetObjectId, correlationId, error);
+            return false;
+        }
         const canonicalSessionId = studyContext ? studyContext.sessionId : sessionId;
         const envelope = makeEnvelope({
             type: "AgentStatus",
@@ -590,6 +629,7 @@ class CodeGeneration extends ApplicationController {
             status: state,
             studySource: "code_runtime_generator",
         });
+        return !this.studyIdentityBlocked.has(sessionId);
     }
 
     logEvaluation(event) {
@@ -609,8 +649,31 @@ class CodeGeneration extends ApplicationController {
             return this.artifactLog.appendStudyEvent(event);
         } catch (error) {
             console.error(`[AgenticXR] study log error: ${error.message}`);
-            throw error;
+            this.failClosedStudyIdentity(event && event.sessionId, event && event.targetObjectId,
+                event && event.correlationId, error);
+            return null;
         }
+    }
+
+    failClosedStudyIdentity(sessionId, targetObjectId, correlationId, error) {
+        if (sessionId) this.studyIdentityBlocked.add(sessionId);
+        const run = sessionId ? this.agenticRuns.get(sessionId) : null;
+        if (run && run.child) terminateProcessTree(run.child);
+        if (sessionId && correlationId) {
+            const envelope = makeEnvelope({
+                type: "AgentStatus",
+                sessionId,
+                correlationId,
+                originAgent: "code_runtime_generator",
+                targetObjectId: targetObjectId || null,
+                payload: {
+                    state: "failed",
+                    detail: "Study logging identity failed. The request was stopped; ask the researcher to check the active trial.",
+                },
+            });
+            this.scene.send(97, toWireFormat(envelope));
+        }
+        console.error(`[AgenticXR] request stopped because study identity could not be guaranteed: ${error.message}`);
     }
 
     logArtifactEvent(event) {
@@ -625,7 +688,9 @@ class CodeGeneration extends ApplicationController {
                 : this.artifactLog.append(event);
         } catch (error) {
             console.error(`[AgenticXR] artifact log error: ${error.message}`);
-            throw error;
+            this.failClosedStudyIdentity(event && event.sessionId, event && event.targetObjectId,
+                event && event.correlationId, error);
+            return null;
         }
     }
 }

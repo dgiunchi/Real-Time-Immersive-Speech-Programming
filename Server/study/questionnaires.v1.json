@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "protocolId": "agenticxr-paper-study-v1",
+  "collectionStatus": "blocked-until-approved-wording-is-inserted",
+  "rule": "Do not invent, paraphrase, or adapt item wording. Store the exact researcher-approved wording and response anchors before human piloting.",
+  "validatedInstruments": [
+    {
+      "instrumentId": "automation-trust-jian-2000",
+      "construct": "trust",
+      "citationKey": "JianBisantzDrury2000",
+      "timing": "after-each-task",
+      "scoring": "approved-version-required",
+      "items": [],
+      "approvalStatus": "pending"
+    },
+    {
+      "instrumentId": "raw-nasa-tlx",
+      "construct": "workload",
+      "citationKey": "HartStaveland1988",
+      "timing": "after-each-task",
+      "scoring": "unweighted-raw-nasa-tlx-approved-version-required",
+      "items": [],
+      "approvalStatus": "pending"
+    }
+  ],
+  "studySpecificItemSlots": [
+    { "itemId": "perceivedSynchronicity", "responseType": "likert", "timing": "after-each-task", "hypotheses": ["H1"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "temporalIntelligibility", "responseType": "likert", "timing": "after-each-task", "hypotheses": ["H1"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "control", "responseType": "likert", "timing": "after-each-task", "hypotheses": ["H1"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "intrusiveness", "responseType": "likert", "timing": "after-each-task", "hypotheses": ["H1"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "predictability", "responseType": "likert", "timing": "after-each-task", "hypotheses": ["H3"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "validatedExecutionConfidence", "responseType": "likert", "timing": "after-L1-L2-task", "hypotheses": ["H2"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "candidateQuality", "responseType": "likert", "timing": "after-full-L4-L5-proposal", "hypotheses": ["H4"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "candidateFit", "responseType": "likert", "timing": "after-full-L4-L5-proposal", "hypotheses": ["H4"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "perceivedLatency", "responseType": "likert", "timing": "after-each-task", "hypotheses": ["H2"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "immediateProposalPerceivedLatency", "responseType": "likert", "timing": "immediately-after-full-L4-L5-proposal", "hypotheses": ["H4"], "wording": null, "anchors": null, "approvalStatus": "pending" },
+    { "itemId": "appropriatenessBipolar", "responseType": "bipolar", "timing": "after-each-task", "hypotheses": ["H3"], "wording": null, "anchors": ["too-little", "appropriate", "too-much"], "approvalStatus": "pending" }
+  ],
+  "responseIdentityFields": ["protocolId", "questionnaireVersion", "participantId", "sessionId", "trialId", "taskId", "condition", "interactionMode", "itemId", "response", "answeredAtUtc"]
+}

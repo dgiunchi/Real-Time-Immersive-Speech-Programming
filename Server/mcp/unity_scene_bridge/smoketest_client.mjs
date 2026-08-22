@@ -179,6 +179,13 @@ log("end_study_trial", await client.callTool({
         taskQualitySignals: { rubricVersion: "mock-v1", behaviorMatched: true },
     },
 }));
+log("reset_trial_state between conditions", await client.callTool({
+    name: "reset_trial_state",
+    arguments: {
+        sessionId,
+        correlationId: "mock-between-condition-reset",
+    },
+}));
 
 // --- H2 condition-arm contract (docs/code-study-readiness-2026-08-11.md §2): the
 // SAME intent runs again under agenticxr_no_verification with the H4 N=1 switch.

@@ -19,6 +19,7 @@ const { ActivityMonitor } = require("../memory/activity_monitor");
 const { SharedMemory } = require("../memory");
 const { FutureGoalPredictor } = require("../orchestrator/future_goal_predictor");
 const { TRIAL_COLUMNS, LONG_COLUMNS, buildStudyExports, writeCsv } = require("../evaluation/study_export");
+const { EXPLICIT_TASK_ORDERS, generateParticipantPlan } = require("../study/protocol");
 
 const root = path.resolve(__dirname, "..");
 let assertions = 0;
@@ -39,6 +40,24 @@ for (const file of walk(root)) {
     const checked = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
     equal(checked.status, 0, `node --check failed for ${path.relative(root, file)}: ${checked.stderr}`);
 }
+
+const studyPlans = Array.from({ length: 24 }, (_, index) =>
+    generateParticipantPlan(`P${String(index + 1).padStart(3, "0")}`));
+for (const plan of studyPlans) {
+    equal(plan.trials.length, 10, "paper protocol generates two arms for each of five tasks");
+    equal(plan.trials[0].interactionMode, "L1", "L1 remains first in the fixed implicit block");
+    equal(plan.trials[2].interactionMode, "L2", "L2 remains second in the fixed implicit block");
+    equal(plan.trials.filter((trial) => trial.condition === "agenticxr_no_verification").length, 2,
+        "H2 is isolated to the L1/L2 no-dry-run arms");
+    equal(plan.trials.filter((trial) => trial.condition === "baseline").length, 3,
+        "H1 baseline appears only once for each explicit L3-L5 task");
+    equal(plan.trials.filter((trial) => trial.h4Arm === "single").length, 1,
+        "H4 assigns exactly one full AgenticXR single-candidate proposal");
+    equal(plan.trials.filter((trial) => trial.h4Arm === "best-of-3").length, 1,
+        "H4 assigns exactly one full AgenticXR best-of-three proposal");
+}
+equal(new Set(studyPlans.slice(0, 6).map((plan) => plan.assignment.explicitTaskOrder.join(""))).size,
+    EXPLICIT_TASK_ORDERS.length, "the first six participants cover all explicit task orders");
 
 const wire = toWireFormat(makeCacheEnvelope({
     type: "ArtifactProposal",
@@ -398,7 +417,13 @@ studyLog.appendStudyEvent({
     status: "pending_policy_and_verification", at: 1060,
 });
 studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "intent_captured", at: 1100 });
-studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "agent_status_surfaced", status: "thinking", at: 1125 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "recording_start", at: 1005 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "recording_stop", at: 1070 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "transcript_ready",
+    audioDurationMs: 65, transcriptionDurationMs: 10, transcriptCharacters: 24, at: 1080 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "agent_status_sent", status: "thinking", at: 1110 });
+studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "agent_status_surfaced",
+    status: "thinking", clientRenderDurationMs: 2, at: 1125 });
 studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "memory_retrieval", durationMs: 4.5, at: 1150 });
 studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "interruption", at: 1175 });
 studyLog.appendStudyEvent({ sessionId: studyContext.sessionId, correlationId: "turn-correlation", eventType: "resumption", at: 1200 });
@@ -426,6 +451,14 @@ studyLog.appendStudyEvent({
     sessionId: studyContext.sessionId, correlationId: "turn-correlation",
     eventType: "propose_artifact", candidateId: "candidate-1", candidateSetId: "candidate-set-1",
     targetObjectId: "object-study", status: "pending", at: 1300,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "proposal_sent", candidateId: "candidate-1", at: 1290,
+});
+studyLog.appendStudyEvent({
+    sessionId: studyContext.sessionId, correlationId: "turn-correlation",
+    eventType: "proposal_preview_surfaced", candidateId: "candidate-1", clientRenderDurationMs: 3, at: 1310,
 });
 studyLog.appendStudyEvent({
     sessionId: studyContext.sessionId, correlationId: "turn-correlation",
@@ -476,6 +509,16 @@ studyLog.endStudyTrial({
     sessionId: studyContext.sessionId, trialId: studyContext.trialId,
     correlationId: "turn-correlation", taskCompletion: true, taskSuccess: true,
     taskQualityScore: 4, taskQualitySignals: { rubricVersion: "v1", behaviorMatched: true }, at: 2000,
+});
+
+assert.throws(() => studyLog.startStudyTrial({
+    ...studyContext, sessionId: "premature-next-session", trialId: "premature-next-trial",
+    correlationId: "premature-next-root", at: 2500,
+}), /TrialReset/, "the next condition cannot start while prior generated behavior remains live");
+assertions += 1;
+studyLog.append({
+    eventType: "trial_reset", sessionId: studyContext.sessionId, correlationId: "between-trial-reset",
+    operation: "rollback", status: "rolled_back", reason: "technical_test_reset", at: 2600,
 });
 
 // Second arm of the H2 contract: the SAME intent runs under agenticxr_no_verification
@@ -534,6 +577,10 @@ studyLog.endStudyTrial({
     correlationId: "turn-b", taskCompletion: true, taskSuccess: true,
     taskQualityScore: 4, taskQualitySignals: { rubricVersion: "v1", behaviorMatched: true }, at: 4000,
 });
+studyLog.append({
+    eventType: "trial_reset", sessionId: bypassContext.sessionId, correlationId: "between-trial-reset-b",
+    operation: "rollback", status: "rolled_back", reason: "technical_test_reset", at: 4500,
+});
 
 const studyExports = buildStudyExports(fs.readFileSync(studyLogPath, "utf8").trim().split(/\r?\n/).map(JSON.parse));
 equal(studyExports.trialRows.length, 2, "study exporter emits one row per participant task-trial");
@@ -544,6 +591,16 @@ equal(verificationRow.trialId, studyContext.trialId, "study exporter joins event
 equal(verificationRow.immediateAcknowledgementLatencyMs, 25, "acknowledgement latency uses separate timestamps");
 equal(verificationRow.proposalLatencyMs, 200, "proposal latency uses intent and first-proposal timestamps");
 equal(verificationRow.validatedExecutionLatencyMs, 400, "validated execution latency uses intent and committed timestamps");
+equal(verificationRow.speechCaptureDurationMsJson, "[65]", "push-to-talk capture duration is exported per turn");
+equal(verificationRow.transcriptionLatencyMsJson, "[10]", "STT service latency is exported without transcript text");
+equal(verificationRow.agentStatusTransportLatencyMsJson, "[15]", "status send-to-visible latency is exported");
+equal(verificationRow.clientStatusRenderDurationMsJson, "[2]", "Unity status render duration is exported");
+equal(verificationRow.proposalTransportLatencyMsJson, "[20]", "proposal send-to-visible latency is exported");
+equal(verificationRow.clientPreviewRenderDurationMsJson, "[3]", "Unity preview render duration is exported");
+equal(verificationRow.previewDecisionLatencyMsJson, "[90]", "visible-preview decision latency is exported");
+equal(verificationRow.commitAttachDurationMsJson, "[12]", "live compilation and attachment duration is exported");
+equal(verificationRow.endToEndTurnLatencyMsJson, "[400]", "intent-to-live-commit latency is exported per turn");
+equal(verificationRow.previewToCommitTimeMs, 190, "preview-to-commit begins at confirmed Unity visibility");
 equal(verificationRow.candidatesGenerated, 3, "H4 candidate count is exported");
 equal(verificationRow.firstProposalAcceptedWithoutRevision, true, "H4 first acceptance is cleanly derived");
 equal(verificationRow.interruptionTotalTimeMs, 25, "interruption/resumption duration is exported");
@@ -731,12 +788,28 @@ ok(sttServiceSource.includes("characters=${responseText.length}"),
     "STT diagnostics default to transcript length instead of content");
 ok(sttServiceSource.includes('emit("transcription_error"'),
     "STT failures produce a structured event for visible recovery and study logging");
+ok(runtimeAppSource.includes('payload.status !== "trial_reset"'),
+    "the server clears prior artifacts only after Unity confirms a complete reset");
+ok(!runtimeAppSource.includes("intent=${JSON.stringify(intent)}"),
+    "agent diagnostics never print verbatim participant intent");
 for (const required of ["CommitAccepted", "CommitRejected", "UserDecision", "RollbackResult", "AgentStatusVisible", "ValidateProposalEnvelope", "BuildBackfillPayload"]) {
     ok(unityManager.includes(required) || unityPublisher.includes(required), `Unity contract contains ${required}`);
 }
 ok(unityPublisher.includes("PublishCurrentSnapshot();"), "production Unity publisher emits a snapshot");
 ok(unityPublisher.includes("PublishStateDelta("), "production Unity publisher scans changed state");
 ok(unityManager.includes("verificationBypassed"), "Unity honors the H2 dry-run bypass flag without touching consent");
+ok(unityManager.includes("IsolateRendererMaterials(clone)"),
+    "Verification Space clones cannot mutate materials shared with the live scene");
+ok(unityManager.includes("IsolateRendererMaterials(target)"),
+    "committed generated behavior receives target-local material instances for reversible reset");
+ok(!unityManager.includes("material.color = state.colors"),
+    "trial restore never mutates a shared Material asset to recover visual state");
+ok(unityManager.includes("originalObjects.Contains"),
+    "trial restore removes generated child objects that were absent at capture");
+ok(unityManager.includes("originalComponents.Contains"),
+    "trial restore removes generated components that were absent at capture");
+ok(unityManager.indexOf("File.Delete(CheckpointPath)") < unityManager.indexOf("SendDecision(NewEnvelope(CacheMessageTypes.TrialReset"),
+    "Unity acknowledges reset only after checkpoint deletion succeeds");
 const implicitSensors = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "ImplicitTriggerSensors.cs"), "utf8");
 for (const required of ["AgenticRegionVolume", "PublishSensorEvent", "\\\"sensorType\\\":\\\"locomotion\\\"",
     "\\\"sensorType\\\":\\\"proximity\\\"", "\\\"sensorType\\\":\\\"gaze\\\"", "gazeDwellSeconds", "entering"]) {

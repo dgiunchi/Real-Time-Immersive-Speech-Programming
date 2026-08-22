@@ -1,0 +1,146 @@
+{
+  "schemaVersion": "1.0",
+  "protocolId": "agenticxr-paper-study-v1",
+  "sourceOfTruth": "Worlds That Think With Us: Toward Symbiotic AgenticXR, section 7",
+  "status": "planned-not-yet-run",
+  "design": {
+    "type": "within-subjects",
+    "targetParticipants": { "minimum": 20, "maximum": 24 },
+    "participantIdPattern": "^P\\d{3}$",
+    "trialsPerParticipant": 10,
+    "fixedTaskOrder": ["L1", "L2"],
+    "counterbalancedTaskSet": ["L3", "L4", "L5"],
+    "h4CandidateCounts": [1, 3]
+  },
+  "apparatus": {
+    "unityVersion": "6000.3.9f1",
+    "runtimeTarget": "Windows x64 PC-VR",
+    "headset": "Quest-class over Meta Quest Link or Air Link",
+    "xrProvider": "OpenXR",
+    "standaloneQuestSupported": false,
+    "standaloneReason": "Roslyn runtime compilation requires the Windows Mono player used by the study build"
+  },
+  "conditions": {
+    "full": {
+      "runtimeCondition": "agenticxr_verification",
+      "sharedMemory": true,
+      "cacheExchange": true,
+      "preview": true,
+      "verificationDryRun": true
+    },
+    "noDryRun": {
+      "runtimeCondition": "agenticxr_no_verification",
+      "sharedMemory": true,
+      "cacheExchange": true,
+      "preview": true,
+      "verificationDryRun": false
+    },
+    "baseline": {
+      "runtimeCondition": "baseline",
+      "sharedMemory": false,
+      "cacheExchange": false,
+      "preview": false,
+      "verificationDryRun": false,
+      "directApply": true
+    }
+  },
+  "tasks": [
+    {
+      "taskId": "L1-proactive",
+      "interactionMode": "L1",
+      "order": "fixed-1",
+      "conditionPair": ["full", "noDryRun"],
+      "tests": ["H2", "H3"],
+      "trigger": "low-risk implicit opportunity",
+      "allowedScope": "local reversible non-persistent",
+      "draftScenario": true
+    },
+    {
+      "taskId": "L2-context",
+      "interactionMode": "L2",
+      "order": "fixed-2",
+      "conditionPair": ["full", "noDryRun"],
+      "tests": ["H2", "H3"],
+      "trigger": "discrete region, proximity, gaze-dwell, or manipulation transition",
+      "allowedScope": "local reversible non-persistent",
+      "draftScenario": true
+    },
+    {
+      "taskId": "L3-clarify",
+      "interactionMode": "L3",
+      "order": "counterbalanced",
+      "conditionPair": ["full", "baseline"],
+      "tests": ["H1", "H3"],
+      "trigger": "underspecified explicit speech request",
+      "draftScenario": true
+    },
+    {
+      "taskId": "L4-confirm",
+      "interactionMode": "L4",
+      "order": "counterbalanced",
+      "conditionPair": ["full", "baseline"],
+      "tests": ["H1", "H3", "H4"],
+      "trigger": "persistent or shared explicit request",
+      "h4Eligible": true,
+      "draftScenario": true
+    },
+    {
+      "taskId": "L5-converse",
+      "interactionMode": "L5",
+      "order": "counterbalanced",
+      "conditionPair": ["full", "baseline"],
+      "tests": ["H1", "H3", "H4"],
+      "trigger": "complex explicit conversational request",
+      "h4Eligible": true,
+      "draftScenario": true
+    }
+  ],
+  "hypotheses": {
+    "H1": {
+      "comparison": "full versus baseline on L3-L5",
+      "loadBearing": ["taskCompletion", "taskSuccess", "taskQualityScore", "totalTaskTimeMs", "immediateAcknowledgementLatencyMs", "perceivedSynchronicity", "temporalIntelligibility", "control", "trust"],
+      "guards": ["rawNasaTlx", "intrusiveness"]
+    },
+    "H2": {
+      "comparison": "full versus noDryRun on L1-L2",
+      "loadBearing": ["groundingErrorCount", "staleApplicationCount", "unsafeProposalCount", "blockedUnsafeArtifactCount", "validationFailureCount", "repairAttemptCount", "rollbackCount", "validatedExecutionConfidence"],
+      "guards": ["rawNasaTlx", "perceivedLatency"]
+    },
+    "H3": {
+      "comparison": "consent routes across L1-L5",
+      "loadBearing": ["appropriatenessBipolar", "predictability", "decisionRouteBreakdownJson"]
+    },
+    "H4": {
+      "comparison": "N=1 versus selected best of N=3, nested across full L4/L5",
+      "loadBearing": ["firstProposalAcceptedWithoutRevision", "candidateQuality", "candidateFit"],
+      "guards": ["immediateProposalPerceivedLatency"]
+    }
+  },
+  "dataPolicy": {
+    "participantDirectoryIsolation": true,
+    "rawAudioRetained": false,
+    "verbatimTranscriptLoggingDefault": false,
+    "transcriptDebugEnvironmentVariable": "STUDY_DEBUG_TRANSCRIPTS",
+    "continuousTrajectories": false,
+    "eyeTracking": false,
+    "cameraCapture": false,
+    "allowedImplicitSignals": ["region-transition", "proximity-transition", "head-ray-gaze-dwell", "object-manipulation-transition"]
+  },
+  "safety": {
+    "implicitMustBe": ["local", "reversible", "non-persistent", "low-risk", "verified-except-in-assigned-H2-ablation"],
+    "alwaysRequireConfirmation": ["locomotion", "deletion", "persistence", "physics-forces", "shared-object", "multiple-objects"],
+    "goalLoopMustHaveAttemptOrTimeBound": true,
+    "timeoutDefaultsToRejection": true,
+    "controlsRequired": ["visible-status", "preview", "reject", "undo", "stop-on-discomfort", "withdrawal"]
+  },
+  "humanApprovalGates": [
+    "ethicsApproval",
+    "participantInformationAndConsentWording",
+    "studySpecificQuestionnaireWording",
+    "automationTrustScaleForm",
+    "rawNasaTlxForm",
+    "taskInstructions",
+    "taskRubrics",
+    "recordingAndTranscriptionPolicy"
+  ]
+}

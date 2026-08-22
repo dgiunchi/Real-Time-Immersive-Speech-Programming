@@ -7,12 +7,17 @@ const fs = require("fs");
 const path = require("path");
 
 const TRIAL_COLUMNS = Object.freeze([
-    "participantId", "sessionId", "trialId", "condition", "taskId", "interactionMode",
+    "protocolId", "participantId", "sessionId", "trialId", "condition", "conditionAlias",
+    "taskId", "interactionMode", "blockId", "sequenceIndex", "h4Arm",
     "trialStartedAtUtc", "trialEndedAtUtc", "taskCompletion", "taskSuccess",
     "taskQualityScore", "taskQualitySignalsJson", "totalTaskTimeMs", "correlationIds",
     "intentCapturedAtUtc", "firstAcknowledgementAtUtc", "firstProposalAtUtc",
     "validatedExecutionAtUtc", "immediateAcknowledgementLatencyMs",
     "proposalLatencyMs", "validatedExecutionLatencyMs",
+    "speechCaptureDurationMsJson", "audioDurationMsJson", "transcriptionLatencyMsJson",
+    "agentStatusTransportLatencyMsJson", "clientStatusRenderDurationMsJson",
+    "proposalTransportLatencyMsJson", "clientPreviewRenderDurationMsJson",
+    "previewDecisionLatencyMsJson", "commitAttachDurationMsJson", "endToEndTurnLatencyMsJson",
     "generatedArtifactCount", "compileFailureCount", "validationFailureCount",
     "runtimeFailureCount", "verificationApplyCount", "verificationClarifyCount",
     "verificationRepairCount", "verificationRejectCount",
@@ -39,7 +44,8 @@ const TRIAL_COLUMNS = Object.freeze([
 ]);
 
 const LONG_COLUMNS = Object.freeze([
-    "participantId", "sessionId", "trialId", "condition", "taskId", "interactionMode",
+    "protocolId", "participantId", "sessionId", "trialId", "condition", "conditionAlias",
+    "taskId", "interactionMode", "blockId", "sequenceIndex", "h4Arm",
     "correlationId", "timestampUtc", "eventType", "targetObjectId", "artifactId",
     "candidateId", "candidateSetId", "status", "reasonCode", "durationMs",
     "verificationDurationMs", "commitAttachDurationMs", "timestampAgeMs",
@@ -48,6 +54,7 @@ const LONG_COLUMNS = Object.freeze([
     "verificationLevel", "goalStatus", "boundExhausted",
     "resolutionLatencyMs", "speculative", "authoringMode", "consentRoute",
     "validationState", "verificationBypassed",
+    "audioDurationMs", "transcriptionDurationMs", "clientRenderDurationMs",
 ]);
 
 function readJsonLines(filePath) {
@@ -124,6 +131,17 @@ function first(events, predicate) {
     return events.find(predicate) || null;
 }
 
+function pairedDurations(events, startType, endTypes) {
+    const endings = Array.isArray(endTypes) ? endTypes : [endTypes];
+    const values = [];
+    for (const start of events.filter((event) => event.eventType === startType)) {
+        const end = events.find((event) => endings.includes(event.eventType) &&
+            event.correlationId === start.correlationId && eventTime(event) >= eventTime(start));
+        if (end) values.push(eventTime(end) - eventTime(start));
+    }
+    return values;
+}
+
 function last(events, predicate) {
     return [...events].reverse().find(predicate) || null;
 }
@@ -170,14 +188,34 @@ function aggregateTrial(events) {
     const verification = events.filter((event) =>
         event.eventType === "verification_outcome" || event.eventType === "simulate_artifact");
     const verificationDurations = numericList(verification, ["verificationDurationMs", "durationMs"]);
-    const preview = first(events, (event) =>
-        event.eventType === "proposal_preview_surfaced" || event.eventType === "propose_artifact");
+    const preview = first(events, (event) => event.eventType === "proposal_preview_surfaced") ||
+        first(events, (event) => event.eventType === "propose_artifact");
     const commit = first(events, (event) =>
         ["artifactresult", "commitaccepted"].includes(String(event.eventType || "").toLowerCase()) &&
         ["committed", "removed"].includes(String(event.status || "").toLowerCase()));
     const memoryDurations = numericList(events.filter((event) => event.eventType === "memory_retrieval"), ["durationMs"]);
     const timestampAges = numericList(events.filter((event) =>
         event.eventType === "proposal_gate_checked" || event.eventType === "artifactresult"), ["timestampAgeMs"]);
+    const speechCaptureDurations = pairedDurations(events, "recording_start", "recording_stop");
+    const audioDurations = numericList(events.filter((event) => event.eventType === "transcript_ready"), ["audioDurationMs"]);
+    const transcriptionDurations = numericList(events.filter((event) => event.eventType === "transcript_ready"), ["transcriptionDurationMs"]);
+    if (!transcriptionDurations.length) transcriptionDurations.push(...pairedDurations(events, "recording_stop", "transcript_ready"));
+    const statusTransportDurations = pairedDurations(events, "agent_status_sent", "agent_status_surfaced");
+    const statusRenderDurations = numericList(events.filter((event) => event.eventType === "agent_status_surfaced"), ["clientRenderDurationMs"]);
+    const proposalTransportDurations = pairedDurations(events, "proposal_sent", "proposal_preview_surfaced");
+    const previewRenderDurations = numericList(events.filter((event) => event.eventType === "proposal_preview_surfaced"), ["clientRenderDurationMs"]);
+    const previewDecisionDurations = pairedDurations(events, "proposal_preview_surfaced",
+        ["user_decision:approved", "user_decision:rejected", "user_decision:timeout", "user_decision:undo"]);
+    const commitAttachDurations = numericList(events.filter((event) =>
+        ["artifactresult", "commitaccepted"].includes(String(event.eventType || "").toLowerCase())), ["commitAttachDurationMs"]);
+    const endToEndTurnDurations = [];
+    for (const captured of events.filter((event) => event.eventType === "intent_captured" || event.eventType === "turn_started")) {
+        const committed = events.find((event) => event.correlationId === captured.correlationId &&
+            ["artifactresult", "commitaccepted"].includes(String(event.eventType || "").toLowerCase()) &&
+            ["committed", "removed"].includes(String(event.status || "").toLowerCase()) &&
+            eventTime(event) >= eventTime(captured));
+        if (committed) endToEndTurnDurations.push(eventTime(committed) - eventTime(captured));
+    }
     const candidateEvents = events.filter((event) => event.candidateId && event.speculative !== true);
     const uniqueCandidates = new Set(candidateEvents.map((event) => event.candidateId));
     if (ended.taskCompletion === true && !intent) {
@@ -270,12 +308,17 @@ function aggregateTrial(events) {
     }
 
     return {
+        protocolId: started.protocolId || "",
         participantId: started.participantId,
         sessionId: started.sessionId,
         trialId: started.trialId,
         condition: started.condition,
+        conditionAlias: started.conditionAlias || "",
         taskId: started.taskId,
         interactionMode: started.interactionMode,
+        blockId: started.blockId || "",
+        sequenceIndex: started.sequenceIndex ?? "",
+        h4Arm: started.h4Arm || "",
         trialStartedAtUtc: iso(startedAt),
         trialEndedAtUtc: iso(endedAt),
         taskCompletion: ended ? ended.taskCompletion : false,
@@ -291,6 +334,16 @@ function aggregateTrial(events) {
         immediateAcknowledgementLatencyMs: Number.isFinite(intentAt) && Number.isFinite(ackAt) ? ackAt - intentAt : "",
         proposalLatencyMs: Number.isFinite(intentAt) && Number.isFinite(firstProposalAt) ? firstProposalAt - intentAt : "",
         validatedExecutionLatencyMs: Number.isFinite(intentAt) && Number.isFinite(validatedAt) ? validatedAt - intentAt : "",
+        speechCaptureDurationMsJson: JSON.stringify(speechCaptureDurations),
+        audioDurationMsJson: JSON.stringify(audioDurations),
+        transcriptionLatencyMsJson: JSON.stringify(transcriptionDurations),
+        agentStatusTransportLatencyMsJson: JSON.stringify(statusTransportDurations),
+        clientStatusRenderDurationMsJson: JSON.stringify(statusRenderDurations),
+        proposalTransportLatencyMsJson: JSON.stringify(proposalTransportDurations),
+        clientPreviewRenderDurationMsJson: JSON.stringify(previewRenderDurations),
+        previewDecisionLatencyMsJson: JSON.stringify(previewDecisionDurations),
+        commitAttachDurationMsJson: JSON.stringify(commitAttachDurations),
+        endToEndTurnLatencyMsJson: JSON.stringify(endToEndTurnDurations),
         generatedArtifactCount: proposals.length || uniqueCandidates.size,
         compileFailureCount: count(reasonEvents, ({ event, code }) => code === "compile_failure" || event.failureStage === "compile"),
         validationFailureCount: count(reasonEvents, ({ event, code }) =>
@@ -372,12 +425,17 @@ function aggregateTrial(events) {
 
 function longRow(event) {
     return {
+        protocolId: event.protocolId || "",
         participantId: event.participantId,
         sessionId: event.sessionId,
         trialId: event.trialId,
         condition: event.condition,
+        conditionAlias: event.conditionAlias || "",
         taskId: event.taskId,
         interactionMode: event.interactionMode,
+        blockId: event.blockId || "",
+        sequenceIndex: event.sequenceIndex ?? "",
+        h4Arm: event.h4Arm || "",
         correlationId: event.correlationId,
         timestampUtc: event.timestampUtc,
         eventType: event.eventType,
@@ -408,6 +466,9 @@ function longRow(event) {
         consentRoute: event.consentRoute || "",
         validationState: event.validationState || "",
         verificationBypassed: event.verificationBypassed ?? "",
+        audioDurationMs: event.audioDurationMs ?? "",
+        transcriptionDurationMs: event.transcriptionDurationMs ?? "",
+        clientRenderDurationMs: event.clientRenderDurationMs ?? "",
     };
 }
 

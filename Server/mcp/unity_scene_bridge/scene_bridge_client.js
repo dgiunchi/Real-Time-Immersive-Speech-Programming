@@ -377,6 +377,20 @@ class SceneBridgeClient extends EventEmitter {
         return reply;
     }
 
+    async sendTrialResetRequest({ correlationId, sessionId, timeoutMs } = {}) {
+        const effectiveTimeout = this.#effectiveTimeout(timeoutMs);
+        const envelope = makeCacheEnvelope({
+            type: CACHE_MESSAGE_TYPES.TRIAL_RESET_REQUEST,
+            sessionId,
+            correlationId,
+            originAgent: "study_operator",
+            payload: {},
+        });
+        const reply = this.#awaitReply(envelope.correlationId, CACHE_MESSAGE_TYPES.TRIAL_RESET, effectiveTimeout);
+        this.#sendCache(CHANNELS.ARTIFACT_CHANNEL, envelope);
+        return reply;
+    }
+
     // Fire-and-forget: tells Unity a cached object/region/proposal is no longer
     // trustworthy (e.g. after a sceneEpoch change invalidated pending proposals).
     sendCacheInvalidation({ sessionId, correlationId, targetObjectId, reason } = {}) {

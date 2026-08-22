@@ -204,10 +204,24 @@ new Listener(CHANNELS.AGENT_UTTERANCE, (envelope) => {
         targetObjectId: envelope.targetObjectId,
         payload: { status: envelope.payload && envelope.payload.state },
     });
+    visible.clientRenderDurationMs = 1;
     scene.send(CHANNELS.USER_DECISION, toWireFormat(visible));
 });
 
 new Listener(CHANNELS.ARTIFACT_CHANNEL, (envelope) => {
+    if (envelope.type === CACHE_MESSAGE_TYPES.TRIAL_RESET_REQUEST) {
+        const decoded = fromWireFormat(envelope);
+        const result = makeCacheEnvelope({
+            type: CACHE_MESSAGE_TYPES.TRIAL_RESET,
+            sessionId: decoded.sessionId,
+            correlationId: decoded.correlationId,
+            originAgent: "mock_unity_peer",
+            payload: { status: "trial_reset", artifactIds: [] },
+        });
+        scene.send(CHANNELS.USER_DECISION, toWireFormat(result));
+        console.log(`[mock_unity_peer] TrialResetRequest ${decoded.correlationId} -> TrialReset confirmed`);
+        return;
+    }
     if (envelope.type === CACHE_MESSAGE_TYPES.COMMIT_REQUEST) {
         const decoded = fromWireFormat(envelope);
         const currentRev = objectRevisions.get(decoded.targetObjectId) || 0;
@@ -259,6 +273,22 @@ new Listener(CHANNELS.ARTIFACT_CHANNEL, (envelope) => {
         `payload.mode ${envelope.payload && envelope.payload.mode}, target ${envelope.targetObjectId}) - ` +
         `${isSimulate ? "running Verification Space dry-run" : needsConfirm ? "simulating user confirmation delay" : "auto-applying"}`
     );
+
+    if (!isSimulate) {
+        const visible = makeEnvelope({
+            type: CACHE_MESSAGE_TYPES.PROPOSAL_VISIBLE,
+            sessionId: envelope.sessionId,
+            correlationId: envelope.correlationId,
+            originAgent: "mock_unity_peer",
+            targetObjectId: envelope.targetObjectId,
+            payload: { status: "visible" },
+        });
+        visible.candidateId = envelope.payload && envelope.payload.candidateId || null;
+        visible.candidateSetId = envelope.payload && envelope.payload.candidateSetId || null;
+        visible.artifactVersion = envelope.payload && envelope.payload.artifactVersion || "1";
+        visible.clientRenderDurationMs = 2;
+        scene.send(CHANNELS.USER_DECISION, toWireFormat(visible));
+    }
 
     setTimeout(() => {
         const result = isSimulate

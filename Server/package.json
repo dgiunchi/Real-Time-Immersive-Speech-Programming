@@ -13,7 +13,8 @@
     "test:integration": "node tests/run_mock_integration.js",
     "evaluation:report": "node evaluation/report.js",
     "study:trial": "node evaluation/study_trial.js",
-    "study:export": "node evaluation/study_export.js"
+    "study:export": "node evaluation/study_export.js",
+    "study:operator": "node evaluation/study_operator.js"
   },
   "author": "UCL VECG",
   "license": "Apache-2.0",

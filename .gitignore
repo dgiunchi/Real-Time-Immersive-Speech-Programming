@@ -103,4 +103,6 @@ Server/samples/*.png
 Server/samples/apps/code_runtime_generator/data/input.txt
 Server/samples/apps/code_runtime_generator/data/response.txt
 Server/memory/data/
+Server/study/approvals.local.json
+Server/evaluation/data/
 Unity/Recordings/

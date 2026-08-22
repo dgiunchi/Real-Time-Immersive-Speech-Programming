@@ -7,8 +7,8 @@ runtime instrumentation, and analysis export. It covers objective machine-record
 data only. Questionnaire, interview, demographics, raw audio, and transcript text are
 not part of either CSV.
 
-The source-complete pipeline writes study events into the existing append-only
-`Server/memory/data/artifact_log.jsonl`. Generated study files are ignored by Git.
+The operator writes each participant's events into an isolated append-only
+`Server/evaluation/data/participants/P###/artifact_log.jsonl`. Generated study files are ignored by Git.
 The deterministic contract and mock-Ubiq tests exercise the exporter. Unity-side
 visibility, consent, validation, execution, mismatch, and rollback fields are wired
 but have not yet been observed in a live/on-device run.
@@ -50,6 +50,11 @@ them before writing and throws if one is missing, empty, or unsafe.
 | `timestampUtc` | UTC string | Event occurrence timestamp, not export time. |
 | `studyEvent` | boolean | Must be `true` for inclusion in the objective export. |
 | `studySource` | string | Emitter such as `pipeline`, `mcp`, `researcher_cli`, `code_runtime_generator`, or `baseline_runtime`. |
+
+The paper-study operator also carries `protocolId`, `conditionAlias`, `blockId`,
+`sequenceIndex`, and `h4Arm` from the frozen participant plan into every joined
+event. These fields audit counterbalancing without changing the six required runtime
+identity fields.
 
 Identifiers allow ASCII letters, digits, `.`, `_`, `:`, and `-`, with a maximum of
 128 characters. A missing identifier fails loudly. Null envelope metadata cannot
@@ -100,6 +105,9 @@ Common optional join/evidence fields are:
 | `blockedUnsafeArtifact` | boolean | Capability policy prevented execution. |
 | `verificationLiveMismatch` | boolean | Dry-run result disagreed with live result. |
 | `verificationBypassed` | boolean | The `agenticxr_no_verification` arm skipped this dry-run/proposal's verification. |
+| `audioDurationMs` | number/ms | Duration of the utterance submitted to STT; no audio bytes are retained. |
+| `transcriptionDurationMs` | number/ms | HTTP STT request-to-response processing time. |
+| `clientRenderDurationMs` | number/ms | Unity receive-to-visible status/preview duration measured with its monotonic clock. |
 | `verificationState` | string | `unverified` on proposals whose dry-run was bypassed; absent otherwise. |
 | `consentRoute` | string | `automatic_low_risk` or `explicit_confirmation`; used for per-route decision counts. |
 | `selectedCandidateRank` | integer | One-based deterministic rank. |
@@ -167,6 +175,9 @@ Common optional join/evidence fields are:
   `firstAcknowledgementAtUtc`, `firstProposalAtUtc`, `validatedExecutionAtUtc`,
   `immediateAcknowledgementLatencyMs`, `proposalLatencyMs`,
   `validatedExecutionLatencyMs`.
+- Per-turn latency lists: speech capture, audio duration, transcription, status
+  send-to-visible and Unity render, proposal send-to-visible and Unity preview
+  render, preview-to-decision, live compile/attach, and intent-to-commit.
 - Artifacts/failures: `generatedArtifactCount`, compile/validation/runtime failure
   counts, four verification-outcome counts,
   `verificationCandidateDurationsMsJson`, `verificationTimeTotalMs`,
@@ -211,37 +222,13 @@ not exported.
 
 ## Researcher workflow
 
-From `Server`:
-
-```powershell
-node evaluation/study_trial.js start --participant=P001 --session=S001 --trial=T01 --condition=agenticxr_verification --task=door_guidance --mode=L4 --correlation=T01-root --candidates=3
-```
-
-`--condition=agenticxr_no_verification` activates the H2 dry-run bypass for the
-trial (see "Condition semantics" above). `--candidates=1` selects the H4
-single-candidate arm; omit it for the runtime default of three.
-
-Run the task. Record non-inferable events when required:
-
-```powershell
-node evaluation/study_trial.js event --session=S001 --correlation=turn-123 --type=interruption
-node evaluation/study_trial.js event --session=S001 --correlation=turn-123 --type=resumption
-```
-
-Close the trial using only protocol-defined structured rubric signals:
-
-```powershell
-node evaluation/study_trial.js end --session=S001 --trial=T01 --correlation=turn-123 --completed=true --success=true --quality-score=4 --quality-signals-json='{"rubricVersion":"v1","behaviorMatched":true}'
-```
-
-Export after the session:
-
-```powershell
-node evaluation/study_export.js --input=memory/data/artifact_log.jsonl --output-dir=evaluation/data/study-P001
-```
-
-This writes `trials.csv` and `events.csv`. Export fails rather than silently emitting
-unjoinable data if a study event lacks a required identifier.
+The paper-study workflow is `npm run study:operator`; see
+`docs/EXPERIMENTER_RUNBOOK.md`. It creates a frozen ten-trial plan, routes the
+runtime to one participant-specific log, enforces preflight and reset, and refuses
+unplanned condition/candidate assignments. Export writes `trials.csv`, `events.csv`,
+`questionnaire_responses.csv`, `rubric_ratings.csv`, `rejected_trials.json`, and
+`export_manifest.json`. Invalid trials are quarantined without poisoning valid
+trials, and the command exits non-zero whenever a rejection exists.
 
 ## Before collecting participants
 
