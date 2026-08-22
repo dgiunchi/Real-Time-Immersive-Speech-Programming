@@ -106,55 +106,175 @@ Generated folders such as `Server/samples/venv`, `node_modules`, Unity `Library`
 
 ### AgenticXR user study
 
-The authoritative, versioned study definitions and server runtime are in
-`Server/study/`; operator commands are implemented in
-`Server/evaluation/study_operator.js`. Unity study code is in
-`Unity/Assets/Study/`, the deterministic scene builder is
-`Unity/Assets/Editor/AgenticXRStudySceneBuilder.cs`, and its generated output is
-`Unity/Assets/Scenes/AgenticXRStudy.unity`. Follow
-`docs/EXPERIMENTER_RUNBOOK.md` for operation and
-`docs/vr-study-rehearsal-checklist.md` for physical rehearsal. Scientific-design
-changes require explicit review; commit messages and progress notes are not
-substitutes for executable behaviour and test evidence.
+#### Current implementation snapshot
 
-All Node commands below run from `Server/`, **not the repository root**. Create
-the participant plan before participant-specific preflight:
+The study implementation is on branch `agenticxr/study`. Snapshot commit
+`830d429` is suitable for collaborator code review and continued development,
+but the project is **not participant-ready**.
+
+The study is a within-participant design with 24 participants and ten trials per
+participant: five interaction modes, each experienced in two conditions. The
+working session target is approximately 120 minutes, but that estimate must be
+replaced with timings from two complete headset rehearsals.
+
+| Mode | Participant task | Experimental comparison |
+| --- | --- | --- |
+| L1 | A loose tool finishes inside an empty workbench tray | Full AgenticXR vs. no Verification-Space dry-run |
+| L2 | A loose part finishes inside its matching station socket | Full AgenticXR vs. no Verification-Space dry-run |
+| L3 | An underspecified spoken request moves a marker to one of three pads; the participant then presses Done | Full AgenticXR clarification vs. DreamCodeVR-style baseline |
+| L4 | A spoken request opens a trial-local practice door from its marked approach region | Full AgenticXR consent route vs. DreamCodeVR-style baseline |
+| L5 | A three-step sequence survives two standardised spoken revisions | Full AgenticXR multi-turn route vs. DreamCodeVR-style baseline |
+
+The confirmatory outcomes are H1 task success for L3-L5, H2 grounding-error
+count for L1-L2, and H4 first-proposal acceptance for best-of-N=3 versus N=1.
+H3 appropriateness is estimation-only, with 90% confidence intervals and TOST as
+a sensitivity analysis; absence of statistical significance is not evidence of
+stability.
+
+#### What has been built
+
+- A deterministic P001-P024 assignment with balanced task order, condition
+  position, A/B room variants, and H4 candidate-count order.
+- Versioned task, questionnaire, rubric, interaction-contract, model-pin, and
+  hash-locked analysis-plan definitions under `Server/study/`.
+- A fail-closed session state machine, append-only journal, replay verifier,
+  privacy audit, blinded rater packets, trial exports, and a synthetic 24-person
+  pilot harness.
+- A generated Unity study scene containing 83 GameObjects, ten A/B variant
+  roots, and all 68 manifest identifiers.
+- The canonical Ubiq/OpenXR player prefab with tracked HMD and controllers,
+  joystick movement, two teleport rays, a Teleport-tagged floor, grasp/use
+  routes, reachable L2/L4 regions, graspable L1-L3 task objects, and working L3
+  Done buttons. The system never moves the participant automatically.
+- A study-safe `AgenticRuntimeCompiler`; the legacy `TestRoslyn` component is now
+  only a demo adapter and is absent from the study scene.
+- L4 safety controls: a trial-local door off the egress route, no door or proxy
+  colliders, two scripted proxy avatars, no persistence, and no forced
+  locomotion.
+- H2 exposure fields derived from the append-only journal, including candidate,
+  dry-run, visible-proposal, application, error-opportunity, error, and exposure-
+  duration counts.
+- Gate 7 physical-executability checks, which reject a generated scene missing
+  its XR player, interaction paths, locomotion, task affordances, safe compiler,
+  or D6 safety controls.
+
+The authoritative definitions are in `Server/study/`; operator commands are in
+`Server/evaluation/study_operator.js`; Unity study code is in
+`Unity/Assets/Study/`; the deterministic builder is
+`Unity/Assets/Editor/AgenticXRStudySceneBuilder.cs`; and its generated output is
+`Unity/Assets/Scenes/AgenticXRStudy.unity`. Change the builder or definitions and
+rebuild—never hand-edit the generated scene.
+
+#### Latest verification
+
+| Evidence | Current result |
+| --- | --- |
+| Node deterministic suite | PASS: 1,241 assertions |
+| Mock integration | PASS, including 117-column trial exports |
+| Synthetic pilot | PASS: 24 participants, 240 trials and 240 exports |
+| Static task readiness | PASS: 104/104 checks and 68/68 manifest identifiers |
+| Unity 6000.3.9f1 compilation | PASS in the recorded build run |
+| Runtime compile/attach/dispose smoke test | PASS |
+| Generated-scene determinism | PASS: two normalized rebuilds were byte-identical |
+| Human Unity Editor inspection | NOT RUN |
+| Quest-over-Link rehearsal | NOT RUN |
+| Real model/STT session | NOT RUN |
+| Human/institutional preflight | BLOCKED as intended |
+
+Automated checks do not prove visual quality, comfort, reachability in a real
+headset, tracking quality, ray ambiguity, or session-day safety.
+
+#### What the researcher/investigators need to do next
+
+Complete these in order. Do not recruit or run participants until every item is
+finished.
+
+1. **Resolve the remaining pre-data scientific decisions.** Confirm whether H2's
+   primary estimand is errors per trial or errors per attempted application. The
+   current locked plan calls the plain count-model coefficient an
+   “incidence-rate ratio” without an exposure offset; exports now contain the
+   denominators needed for either choice. If the plan changes, document the
+   pre-data decision, update the method version where required, and deliberately
+   re-lock the plan. Also decide whether to preregister and whether the paper's
+   section 7.1 wording should be amended to match the implemented L1 route.
+2. **Record the study's limitations.** L4 uses a safe trial-local door and two
+   scripted proxies, so its “shared consequence” has deliberately reduced real
+   stakes. L5 uses two fixed revisions, making it standardised multi-turn
+   instruction-following rather than unconstrained co-authoring. L1/L2 have no
+   additional participant primary activity beyond their paper-aligned task; any
+   new activity would be a study-design amendment, not a code cleanup.
+3. **Obtain the protected wording and approvals.** Add the exact licensed
+   NASA-TLX and Jian et al. (2000) text through the approved process—never an AI
+   paraphrase. Investigator-approve the twelve study-specific items, task cards,
+   and rubrics. Complete ethics/institutional approval, information sheet,
+   consent and debrief wording, safety, privacy/data-management, recruitment,
+   recording/transcription, and adverse-event procedures. Copy
+   `Server/study/approvals.example.json` to the gitignored
+   `Server/study/approvals.local.json` and record only real approvals.
+4. **Configure the private live environment.** Provide the pinned model version,
+   model credentials, STT URL and credentials, the required STT-confidence
+   channel, and a participant-specific artifact-log path. Keep secrets, logs,
+   recordings, transcripts, and participant data out of Git. Disable transcript
+   debugging before any human session.
+5. **Inspect the generated scene in Unity.** Use Unity `6000.3.9f1`, run
+   **AgenticXR > Build Study Scene** twice, verify byte-identical output, then open
+   `AgenticXRStudy.unity`. Inspect the Console, hierarchy, all stable IDs, the XR
+   player and both hands, teleport floor, every A/B task route, colliders, task
+   cards, questionnaires, consent UI, lighting, resets, and build settings.
+6. **Perform two complete researcher headset sessions.** Use reserved IDs such as
+   P900 and P901 so both balancing blocks are rehearsed. Test Quest over Link,
+   tracking, controllers, locomotion, grasp/use, push-to-talk, all L1-L5 routes,
+   interruptions, recovery, abort, breaks, resume, export, and withdrawal.
+   Record real phase timings and sign
+   `docs/vr-study-rehearsal-checklist.md` only from observed evidence.
+7. **Pass both final gates.** Technical preflight must pass with live services and
+   log routing. Human preflight must then pass with licensed instruments,
+   investigator sign-off, institutional approvals, and the signed rehearsal.
+   Only then is participant recruitment permitted.
+
+#### Commands
+
+Run all Node commands from `Server/`, **not the repository root**. Create a plan
+before participant-specific preflight. Use P900-P999 only for researcher dry-runs:
 
 ```powershell
 cd Server
 npm test
 npm run test:integration
 node study/pilot_harness.js
-node evaluation/study_operator.js plan --participant=P001
-node evaluation/study_operator.js preflight --mode=technical --participant=P001
-node evaluation/study_operator.js preflight --mode=human --participant=P001
 node -e "const r=require('./study/task_readiness').validateTaskReadiness(); console.log(JSON.stringify(r,null,2)); process.exit(r.ok?0:1)"
+
+# Researcher dry-run
+node evaluation/study_operator.js plan --participant=P900
+node evaluation/study_operator.js preflight --mode=technical --participant=P900
+
+# Human session, only after every approval and rehearsal gate is complete
+node evaluation/study_operator.js plan --participant=P001
+node evaluation/study_operator.js preflight --mode=human --participant=P001
 ```
 
-`technical` is the researcher dry-run preflight; `human` is the fail-closed human
-session preflight. Technical preflight checks the executable design, task scene,
-state graph, analysis lock, model pin, privacy defaults, live service settings,
-and participant log routing without accepting human-use approvals. It can still
-fail on a development machine until STT, both model credentials, model-version
-pinning, confidence output, and the participant-specific artifact-log path are
-configured. Human preflight adds the questionnaire, rubric, investigator, and
-institutional gates and is **expected to fail at present**. Never add approximate
-NASA-TLX or Jian et al. item text, weaken the analysis-plan hash lock, or widen
-the H3 equivalence margin to make it green.
+Technical preflight checks the executable design, scene, state graph, analysis
+lock, model pin, privacy defaults, live services, and participant log routing.
+Human preflight adds questionnaire, rubric, investigator, institutional, and
+physical-rehearsal gates. Its current failure is intentional; do not weaken or
+bypass it to obtain a green result.
 
-| Evidence level | Current expectation | Required evidence |
-| --- | --- | --- |
-| 1. Node deterministic tests | Pass | `npm test` with no assertion-count reduction. |
-| 2. Mock integration tests | Pass | `npm run test:integration`. |
-| 3. Design/task readiness and technical preflight | Static design/task readiness and pilot pass; live technical checks require the configured services and participant log path | Preserve the JSON reports and resolve every failed check before a live rehearsal. |
-| 4. Unity compilation and generated-scene inspection | Automated compilation and scene generation can pass; human Editor inspection is still required | In Unity `6000.3.9f1`, use **AgenticXR > Build Study Scene**. Rebuild twice and confirm `AgenticXRStudy.unity` is byte-identical, then open it and inspect console, hierarchy, stable IDs, XR player, hands, teleport floor, task variants, colliders, consent UI, and reset behaviour. Do not hand-edit the generated scene. |
-| 5. Physical headset rehearsal | Outstanding until performed | With a Quest over Link, rehearse tracking, controllers, push-to-talk, locomotion, reachability, grasp/use, status and consent UI, all L1-L5 routes, error recovery, abort, breaks, resume, export, and participant safety. Automated YAML checks are not a headset test. |
-| 6. Human/institutional readiness | Blocked | Add licensed validated-instrument wording through the approved process; investigator-approve the twelve study-specific items and rubrics; complete ethics/institutional, consent, safety, privacy/data-management, recruitment, and adverse-event approvals; then pass human preflight and a full physical rehearsal. |
+#### Do not
 
-The project is therefore **not participant-ready**. Lower-level automated gates
-passing does not establish Unity visual quality, physical usability, approval, or
-human-session readiness. Local approvals, participant/operator data, recordings,
-and audit working materials are deliberately excluded from Git.
+- Do not invent, reconstruct, or paraphrase copyrighted validated instruments.
+- Do not widen the H3 equivalence margin or silently retune a hypothesis.
+- Do not change the model, prompt, toolset, or candidate-count default without a
+  new method version.
+- Do not hand-edit `AgenticXRStudy.unity`; rebuild it deterministically.
+- Do not run tests from the repository root.
+- Do not claim participant readiness from Node tests, mock integration, Unity
+  YAML, or compilation alone.
+- Do not commit local approvals, credentials, logs, recordings, transcripts,
+  participant data, `_audit_context/`, or Unity Performance Testing artifacts.
+
+For operation, read `docs/EXPERIMENTER_RUNBOOK.md`. For the missing physical
+evidence, complete `docs/vr-study-rehearsal-checklist.md`. Gate 7's scope and
+limits are recorded in `docs/PHYSICAL_EXECUTABILITY_GATE.md`.
 
 ## Features
 
