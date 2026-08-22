@@ -75,6 +75,8 @@ interactionSessions.recordUtterance({ sessionId: "l4-session", text: "make the d
 const l4Revise = interactionSessions.recordDecision({ sessionId: "l4-session", decision: "revise" });
 equal(l4Revise.action, "await_revision_utterance", "L4 revise does not approve or commit the proposal");
 equal(interactionSessions.correlationFor("l4-session"), "l4-chain", "L4 revise preserves proposal correlation");
+equal(interactionSessions.sessionForCorrelation("l4-chain"), "l4-session",
+    "Unity decisions can resolve the runtime session from the preserved correlation");
 
 interactionSessions.begin({ sessionId: "l5-session", mode: "L5", correlationId: "l5-chain", targetObjectId: "console" });
 const l5Initial = interactionSessions.recordUtterance({ sessionId: "l5-session", text: "make a three-step inspection" });
@@ -852,6 +854,7 @@ equal(new ArtifactLog({ filePath: studyLogPath }).getStudyContext({ sessionId: "
     "candidateTarget survives the cross-process study-context reload");
 
 const unityManager = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CacheExchangeManager.cs"), "utf8");
+const consentPanel = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "AgenticXRConsentPanel.cs"), "utf8");
 const unityPublisher = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CachePublisher.cs"), "utf8");
 const runtimeAppSource = fs.readFileSync(path.join(root, "samples", "apps", "code_runtime_generator", "app.js"), "utf8");
 const sttServiceSource = fs.readFileSync(path.join(root, "samples", "services", "speech_to_text", "service.js"), "utf8");
@@ -865,6 +868,15 @@ ok(sttServiceSource.includes('emit("transcription_error"'),
     "STT failures produce a structured event for visible recovery and study logging");
 ok(runtimeAppSource.includes('payload.status !== "trial_reset"'),
     "the server clears prior artifacts only after Unity confirms a complete reset");
+ok(runtimeAppSource.includes("InteractionSessionStore"),
+    "speech runtime uses the deterministic multi-turn interaction state");
+ok(runtimeAppSource.includes('eventType: "clarification_turn"'),
+    "L3 surfaces and records a clarification before execution");
+ok(consentPanel.includes('"Revise"') && unityManager.includes("RevisePending"),
+    "Unity exposes a real revise control without approving the proposal");
+const continuousMonitorSource = fs.readFileSync(path.join(root, "orchestrator", "continuous_monitor.js"), "utf8");
+ok(continuousMonitorSource.includes('? "system_opportunity" : "context"'),
+    "continuous monitor has a distinct executable L1 system-opportunity route");
 ok(!runtimeAppSource.includes("intent=${JSON.stringify(intent)}"),
     "agent diagnostics never print verbatim participant intent");
 for (const required of ["CommitAccepted", "CommitRejected", "UserDecision", "RollbackResult", "AgentStatusVisible", "ValidateProposalEnvelope", "BuildBackfillPayload"]) {

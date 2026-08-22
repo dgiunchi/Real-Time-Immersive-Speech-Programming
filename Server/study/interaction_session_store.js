@@ -51,6 +51,13 @@ class InteractionSessionStore {
         return active ? active.correlationId : null;
     }
 
+    sessionForCorrelation(correlationId) {
+        for (const [sessionId, state] of this.bySession.entries()) {
+            if (!state.terminal && state.correlationId === correlationId) return sessionId;
+        }
+        return null;
+    }
+
     recordUtterance({ sessionId, text }) {
         const state = this.requireActive(sessionId);
         const utterance = typeof text === "string" ? text.trim() : "";

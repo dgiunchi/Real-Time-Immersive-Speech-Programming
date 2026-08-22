@@ -42,6 +42,7 @@ function appendSuppressed(opportunity, reason) {
 }
 
 memory.activity.on("assist_worthy", (opportunity) => {
+    const studyContext = memory.artifactLog.getStudyContext({ sessionId: opportunity.sessionId });
     if (!assistEnabled) {
         appendSuppressed(opportunity, "continuous_assist_disabled");
         return;
@@ -58,8 +59,12 @@ memory.activity.on("assist_worthy", (opportunity) => {
         appendSuppressed(opportunity, "continuous_assist_already_running");
         return;
     }
-    if (!allowDuringStudy && memory.artifactLog.getStudyContext({ sessionId: opportunity.sessionId })) {
+    if (!allowDuringStudy && studyContext) {
         appendSuppressed(opportunity, "active_study_trial");
+        return;
+    }
+    if (studyContext && !["L1", "L2"].includes(studyContext.interactionMode)) {
+        appendSuppressed(opportunity, "implicit_trigger_outside_l1_l2");
         return;
     }
 
@@ -68,7 +73,9 @@ memory.activity.on("assist_worthy", (opportunity) => {
     // derive WHAT function fits from it (the study's variability requirement;
     // docs/code-implicit-proactive-showcase-2026-08-13.md §2). No trigger->
     // function mapping exists here or anywhere else in code.
-    const objective = `Monitored activity crossed the assistance threshold for ${opportunity.targetObjectId} ` +
+    const triggerSource = studyContext && studyContext.interactionMode === "L1" ? "system_opportunity" : "context";
+    const objective = `${triggerSource === "system_opportunity" ? "A low-risk system opportunity" : "Monitored activity"} ` +
+        `crossed the assistance threshold for ${opportunity.targetObjectId} ` +
         `(signals: ${opportunity.signalTypes.join(", ")}). Environmental context - ${memory.describeContext(opportunity)}. ` +
         "Derive from this context what reversible, local, clearly VISIBLE assistance (light, motion, or a spawned " +
         "child object) would genuinely help here, if any. Do nothing if no useful low-risk assistance exists.";
@@ -89,7 +96,8 @@ memory.activity.on("assist_worthy", (opportunity) => {
         cwd: path.join(__dirname, ".."),
         env: {
             ...process.env,
-            AGENTICXR_TRIGGER_SOURCE: "context",
+            AGENTICXR_TRIGGER_SOURCE: triggerSource,
+            AGENTICXR_INTERACTION_MODE: studyContext && studyContext.interactionMode || "L2",
             AGENTICXR_EXPERIENCE_MODE: experience && experience.mode || "unspecified",
         },
         stdio: "inherit",
@@ -109,6 +117,7 @@ memory.activity.on("assist_worthy", (opportunity) => {
         ...opportunity,
         correlationId: opportunity.triggerId,
         experienceMode: experience && experience.mode || "unspecified",
+        triggerSource,
     });
     child.once("exit", (code, signal) => {
         clearTimeout(watchdog);

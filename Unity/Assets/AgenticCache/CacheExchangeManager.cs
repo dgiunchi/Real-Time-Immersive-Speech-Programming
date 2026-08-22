@@ -696,6 +696,16 @@ namespace AgenticCache
             ShowStatus("rejected", "The proposal was not applied.");
         }
 
+        public void RevisePending(string correlationId)
+        {
+            if (!pending.TryGetValue(correlationId, out var proposal)) return;
+            pending.Remove(correlationId);
+            localCache.ClearProposal(correlationId);
+            if (consentPanel != null) consentPanel.HideProposal();
+            SendUserDecision(proposal.envelope, "revise", "user_requested_revision");
+            ShowStatus("awaiting_revision", "Tell me what you want changed. The proposal has not been applied.");
+        }
+
         public void CancelActiveRequest()
         {
             if (string.IsNullOrEmpty(activeAgentCorrelationId) || string.IsNullOrEmpty(activeAgentSessionId))

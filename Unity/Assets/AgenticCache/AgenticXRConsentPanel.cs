@@ -63,6 +63,7 @@ namespace AgenticCache
             // Editor/desktop fallback; the buttons remain available to the XR UI ray.
             if (!string.IsNullOrEmpty(pendingCorrelationId) && Input.GetKeyDown(KeyCode.Return)) Approve();
             if (Input.GetKeyDown(KeyCode.Escape)) Reject();
+            if (!string.IsNullOrEmpty(pendingCorrelationId) && Input.GetKeyDown(KeyCode.R)) Revise();
             if (Input.GetKeyDown(KeyCode.U)) Undo();
 
             // Oculus/Meta left-controller X button maps to the XR primaryButton.
@@ -83,6 +84,11 @@ namespace AgenticCache
         {
             if (!string.IsNullOrEmpty(pendingCorrelationId)) manager.RejectPending(pendingCorrelationId, "user_rejected");
             else manager.CancelActiveRequest();
+        }
+
+        private void Revise()
+        {
+            if (!string.IsNullOrEmpty(pendingCorrelationId)) manager.RevisePending(pendingCorrelationId);
         }
 
         private void Undo() => manager.UndoLatest();
@@ -120,9 +126,10 @@ namespace AgenticCache
             transcriptText = CreateText(root.transform, "Transcript", new Vector2(-85, 135), new Vector2(530, 55), 24, TextAnchor.MiddleLeft);
             CreateButton(root.transform, "Listen", new Vector2(275, 135), new Color(0.2f, 0.48f, 0.65f), ListenToLastRecording, new Vector2(145, 55));
             proposalText = CreateText(root.transform, "Proposal", new Vector2(0, -20), new Vector2(700, 250), 20, TextAnchor.UpperLeft);
-            CreateButton(root.transform, "Approve", new Vector2(-210, -205), new Color(0.15f, 0.55f, 0.3f), Approve);
-            CreateButton(root.transform, "Cancel / Reject", new Vector2(0, -205), new Color(0.65f, 0.2f, 0.2f), Reject);
-            CreateButton(root.transform, "Undo", new Vector2(210, -205), new Color(0.25f, 0.35f, 0.65f), Undo);
+            CreateButton(root.transform, "Approve", new Vector2(-270, -205), new Color(0.15f, 0.55f, 0.3f), Approve, new Vector2(150, 65));
+            CreateButton(root.transform, "Revise", new Vector2(-90, -205), new Color(0.7f, 0.45f, 0.12f), Revise, new Vector2(150, 65));
+            CreateButton(root.transform, "Reject", new Vector2(90, -205), new Color(0.65f, 0.2f, 0.2f), Reject, new Vector2(150, 65));
+            CreateButton(root.transform, "Undo", new Vector2(270, -205), new Color(0.25f, 0.35f, 0.65f), Undo, new Vector2(150, 65));
             CreateButton(root.transform, "Reset Trial", new Vector2(0, -280), new Color(0.45f, 0.3f, 0.55f), ResetTrial, new Vector2(240, 55));
         }
 

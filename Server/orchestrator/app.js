@@ -315,6 +315,10 @@ async function main() {
         `Pseudonymous person id: ${process.env.AGENTICXR_PERSON_ID || "not-provided"}\n` +
         `Speculative idle preparation: ${String(process.env.AGENTICXR_SPECULATIVE_ONLY || "false").toLowerCase() === "true"}\n` +
         `External trigger source: ${process.env.AGENTICXR_TRIGGER_SOURCE || "explicit_request"}\n` +
+        `Frozen interaction mode: ${process.env.AGENTICXR_INTERACTION_MODE || "infer-from-request"}\n` +
+        `Interaction action: ${process.env.AGENTICXR_INTERACTION_ACTION || "initial"}\n` +
+        `Clarification detail resolved: ${process.env.AGENTICXR_DETAIL_RESOLVED || "not-applicable"}\n` +
+        `Revision count in this chain: ${process.env.AGENTICXR_REVISION_COUNT || "0"}\n` +
         `Experience mode supplied by the continuous runtime: ${process.env.AGENTICXR_EXPERIENCE_MODE || "not-provided"}\n` +
         `correlationId to reuse for every subagent and tool call in this turn: ${correlationId}`;
 

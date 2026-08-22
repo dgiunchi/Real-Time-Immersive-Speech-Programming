@@ -10,6 +10,7 @@ const { makeEnvelope } = require("../../../mcp/unity_scene_bridge/protocol");
 const { toWireFormat } = require("../../../cache/protocol");
 const { appendEvaluationEvent } = require("../../../evaluation/event_logger");
 const { ArtifactLog } = require("../../../memory/artifact_log");
+const { InteractionSessionStore } = require("../../../study/interaction_session_store");
 
 const STT_CONTROL_PREFIX = "__STT_CONTROL__:";
 const DATA_DIR = "data";
@@ -82,6 +83,7 @@ class CodeGeneration extends ApplicationController {
         this.baselinePending = null;
         this.agenticTurnTimeoutMs = Number(process.env.AGENTICXR_TURN_TIMEOUT_MS) || 180000;
         this.artifactLog = new ArtifactLog({ filePath: process.env.AGENTICXR_ARTIFACT_LOG });
+        this.interactionSessions = new InteractionSessionStore();
         if (DEBUG_TRANSCRIPTS) {
             console.warn("[AgenticXR] STUDY_DEBUG_TRANSCRIPTS is enabled: verbatim speech may be written to local diagnostics");
         }
@@ -100,6 +102,37 @@ class CodeGeneration extends ApplicationController {
             try { message = JSON.parse(data.message.toString()); }
             catch (_) { return; }
             if (!message) return;
+            if (message.type === "UserDecision") {
+                let payload = message.payload;
+                if (typeof payload === "string") {
+                    try { payload = JSON.parse(payload); } catch (_) { payload = {}; }
+                }
+                const decision = payload && payload.decision;
+                const runtimeSessionId = this.interactionSessions.sessionForCorrelation(message.correlationId);
+                if (runtimeSessionId && decision) {
+                    try {
+                        const transition = this.interactionSessions.recordDecision({ sessionId: runtimeSessionId, decision });
+                        this.logStudyEvent({
+                            eventType: decision === "revise" ? "revision_requested" : `interaction_${transition.state}`,
+                            sessionId: runtimeSessionId,
+                            correlationId: message.correlationId,
+                            targetObjectId: message.targetObjectId || null,
+                            status: transition.state,
+                            interactionState: transition.state,
+                        });
+                        if (decision === "revise") {
+                            this.agenticCorrelations.set(runtimeSessionId, message.correlationId);
+                            this.sendAgenticStatus(runtimeSessionId, message.targetObjectId, message.correlationId,
+                                "awaiting_revision", "Tell me what you want changed; this will revise the same proposal.");
+                        } else {
+                            this.agenticCorrelations.delete(runtimeSessionId);
+                        }
+                    } catch (error) {
+                        console.warn(`[AgenticXR] ignored invalid interaction decision: ${error.message}`);
+                    }
+                }
+                return;
+            }
             if (message.type === "CancelRequest") {
                 this.cancelAgenticTurn(message.sessionId, message.correlationId, "xr_cancel_button");
                 return;
@@ -145,6 +178,10 @@ class CodeGeneration extends ApplicationController {
                     status: "rolled_back",
                     reason: "xr_trial_reset_all",
                 });
+                for (const sessionId of [...this.interactionSessions.bySession.keys()]) {
+                    this.interactionSessions.reset(sessionId);
+                    this.agenticCorrelations.delete(sessionId);
+                }
                 console.log(`[AgenticXR] trial reset synchronized artifacts=${active.length}`);
             }
         });
@@ -197,7 +234,7 @@ class CodeGeneration extends ApplicationController {
                         this.studyIdentityBlocked.delete(peerUUID);
                         if (targetObjectId) this.agenticTargets.set(peerUUID, targetObjectId);
                         this.lastAgenticActivityAt.set(peerUUID, Date.now());
-                        const correlationId = randomUUID();
+                        const correlationId = this.interactionSessions.correlationFor(peerUUID) || randomUUID();
                         this.agenticCorrelations.set(peerUUID, correlationId);
                         if (!this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "listening", "Listening to your request.")) return;
                         this.logArtifactEvent({
@@ -454,6 +491,40 @@ class CodeGeneration extends ApplicationController {
             return;
         }
         const canonicalSessionId = studyContext ? studyContext.sessionId : peerUUID;
+        let interactionTurn = null;
+        if (studyContext && ["L3", "L4", "L5"].includes(studyContext.interactionMode)) {
+            try {
+                this.interactionSessions.begin({
+                    sessionId: peerUUID,
+                    mode: studyContext.interactionMode,
+                    correlationId,
+                    targetObjectId,
+                });
+                interactionTurn = this.interactionSessions.recordUtterance({ sessionId: peerUUID, text: intent });
+                this.logStudyEvent({
+                    eventType: "interaction_state_transition",
+                    sessionId: peerUUID,
+                    correlationId,
+                    targetObjectId,
+                    status: interactionTurn.state,
+                    interactionState: interactionTurn.state,
+                    utteranceIndex: interactionTurn.utteranceCount,
+                    revisionCount: interactionTurn.revisionCount,
+                });
+            } catch (error) {
+                this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", error.message);
+                this.logStudyEvent({ eventType: "interaction_state_rejected", sessionId: peerUUID,
+                    correlationId, targetObjectId, reasonCode: "interaction_contract", status: "rejected" });
+                return;
+            }
+            if (interactionTurn.action === "request_clarification") {
+                this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "clarifying",
+                    "Which of the two target pads do you mean?");
+                this.logStudyEvent({ eventType: "clarification_turn", sessionId: peerUUID,
+                    correlationId, targetObjectId, status: "awaiting_answer", utteranceIndex: 1 });
+                return;
+            }
+        }
         this.artifactLog.append({
             eventType: "continuous_assist_preempt_requested",
             sessionId: peerUUID,
@@ -507,10 +578,20 @@ class CodeGeneration extends ApplicationController {
         });
         // Per-trial H4 configuration: the registered trial's candidateTarget (N=1
         // vs. N>1) reaches the orchestrator turn through its environment.
-        const turnEnv = studyContext && Number.isInteger(studyContext.candidateTarget)
-            ? { ...process.env, AGENTICXR_CANDIDATE_COUNT: String(studyContext.candidateTarget) }
-            : process.env;
-        const child = spawn(process.execPath, [orchestrator, intent, targetObjectId, canonicalSessionId, correlationId], {
+        const turnEnv = { ...process.env };
+        if (studyContext && Number.isInteger(studyContext.candidateTarget)) {
+            turnEnv.AGENTICXR_CANDIDATE_COUNT = String(studyContext.candidateTarget);
+        }
+        if (interactionTurn) {
+            turnEnv.AGENTICXR_INTERACTION_MODE = interactionTurn.mode;
+            turnEnv.AGENTICXR_INTERACTION_ACTION = interactionTurn.action;
+            turnEnv.AGENTICXR_DETAIL_RESOLVED = String(interactionTurn.mode !== "L3" || interactionTurn.state === "resolved");
+            turnEnv.AGENTICXR_REVISION_COUNT = String(interactionTurn.revisionCount);
+        }
+        const effectiveIntent = interactionTurn && interactionTurn.promptContext.length > 1
+            ? interactionTurn.promptContext.map((turn, index) => `Turn ${index + 1}: ${turn}`).join("\n")
+            : intent;
+        const child = spawn(process.execPath, [orchestrator, effectiveIntent, targetObjectId, canonicalSessionId, correlationId], {
             cwd: path.resolve(__dirname, "../../.."),
             env: turnEnv,
             stdio: "inherit",
@@ -541,7 +622,7 @@ class CodeGeneration extends ApplicationController {
                 this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed", "The agent stopped before completing the request.");
             this.logEvaluation({ eventType: "turn_process_exit", sessionId: peerUUID, correlationId, targetObjectId, exitCode: code, signal: signal || null });
             this.agenticRuns.delete(peerUUID);
-            this.agenticCorrelations.delete(peerUUID);
+            if (!this.interactionSessions.active(peerUUID)) this.agenticCorrelations.delete(peerUUID);
             this.lastAgenticActivityAt.set(peerUUID, Date.now());
         });
     }
