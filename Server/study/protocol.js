@@ -44,6 +44,7 @@ function generateParticipantPlan(participantId) {
     const ordinal = participantOrdinal(participantId);
     const zeroBased = ordinal - 1;
     const byMode = new Map(protocol.tasks.map((task) => [task.interactionMode, task]));
+    const canonicalModeOrder = ["L1", "L2", "L3", "L4", "L5"];
     const modeOrder = ["L1", "L2", ...EXPLICIT_TASK_ORDERS[zeroBased % EXPLICIT_TASK_ORDERS.length]];
     const h4ByMode = zeroBased % 2 === 0 ? { L4: 1, L5: 3 } : { L4: 3, L5: 1 };
     const trials = [];
@@ -52,13 +53,18 @@ function generateParticipantPlan(participantId) {
         const task = byMode.get(mode);
         const aliases = [...task.conditionPair];
         if ((zeroBased + taskIndex) % 2 === 1) aliases.reverse();
-        for (const conditionAlias of aliases) {
+        const canonicalModeIndex = canonicalModeOrder.indexOf(mode);
+        const variants = (Math.floor(zeroBased / 2) + canonicalModeIndex) % 2 === 0
+            ? [...protocol.design.taskVariants]
+            : [...protocol.design.taskVariants].reverse();
+        for (const [conditionIndex, conditionAlias] of aliases.entries()) {
             const condition = protocol.conditions[conditionAlias];
             const sequenceIndex = trials.length + 1;
             const isFullH4 = conditionAlias === "full" && task.h4Eligible === true;
             const candidateTarget = isFullH4 ? h4ByMode[mode] : null;
             trials.push({
                 protocolId: protocol.protocolId,
+                methodVersion: protocol.methodVersion,
                 participantId,
                 sequenceIndex,
                 trialId: `T${String(sequenceIndex).padStart(2, "0")}`,
@@ -66,6 +72,7 @@ function generateParticipantPlan(participantId) {
                 blockId: taskIndex < 2 ? "implicit-fixed" : "explicit-counterbalanced",
                 taskId: task.taskId,
                 interactionMode: mode,
+                taskVariant: variants[conditionIndex],
                 conditionAlias,
                 condition: condition.runtimeCondition,
                 candidateTarget,
@@ -85,11 +92,13 @@ function generateParticipantPlan(participantId) {
     return {
         schemaVersion: "1.0",
         protocolId: protocol.protocolId,
+        methodVersion: protocol.methodVersion,
         participantId,
         generatedAtUtc: new Date().toISOString(),
         assignment: {
             explicitTaskOrder: modeOrder.slice(2),
             h4CandidateByMode: h4ByMode,
+            taskVariantByTrial: Object.fromEntries(trials.map((trial) => [trial.trialId, trial.taskVariant])),
         },
         trials,
     };

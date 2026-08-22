@@ -3,7 +3,7 @@
   "protocolId": "agenticxr-paper-study-v1",
   "collectionStatus": "blocked-until-task-scenarios-and-rubrics-are-approved",
   "rule": "Rubrics must be versioned and condition-blind. Do not infer success from system logs alone where the paper requires recording/artifact coding.",
-  "raterFields": ["rubricVersion", "participantId", "trialId", "taskId", "raterPseudonym", "conditionBlinded", "taskCompletion", "taskSuccess", "qualityScore", "dimensionScores", "codedAtUtc"],
+  "raterFields": ["methodVersion", "rubricVersion", "participantId", "trialId", "taskId", "taskVariant", "raterPseudonym", "conditionBlinded", "taskCompletion", "taskSuccess", "qualityScore", "dimensionScores", "codedAtUtc"],
   "tasks": [
     { "taskId": "L1-proactive", "rubricVersion": null, "approved": false, "qualityScale": null, "successCriteria": [], "qualityDimensions": [] },
     { "taskId": "L2-context", "rubricVersion": null, "approved": false, "qualityScale": null, "successCriteria": [], "qualityDimensions": [] },

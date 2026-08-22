@@ -51,10 +51,12 @@ them before writing and throws if one is missing, empty, or unsafe.
 | `studyEvent` | boolean | Must be `true` for inclusion in the objective export. |
 | `studySource` | string | Emitter such as `pipeline`, `mcp`, `researcher_cli`, `code_runtime_generator`, or `baseline_runtime`. |
 
-The paper-study operator also carries `protocolId`, `conditionAlias`, `blockId`,
-`sequenceIndex`, and `h4Arm` from the frozen participant plan into every joined
-event. These fields audit counterbalancing without changing the six required runtime
-identity fields.
+The paper-study operator also carries `protocolId`, `methodVersion`, `conditionAlias`,
+`taskVariant`, `blockId`, `sequenceIndex`, and `h4Arm` from the frozen participant
+plan into every joined event. These fields audit the exact method and counterbalancing
+without changing the six required runtime identity fields. Task variants A/B are
+balanced independently of condition order so stimulus identity cannot be inferred
+from the experimental arm.
 
 Identifiers allow ASCII letters, digits, `.`, `_`, `:`, and `-`, with a maximum of
 128 characters. A missing identifier fails loudly. Null envelope metadata cannot

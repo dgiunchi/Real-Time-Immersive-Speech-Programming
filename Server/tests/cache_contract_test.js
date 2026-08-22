@@ -44,6 +44,7 @@ for (const file of walk(root)) {
 const studyPlans = Array.from({ length: 24 }, (_, index) =>
     generateParticipantPlan(`P${String(index + 1).padStart(3, "0")}`));
 for (const plan of studyPlans) {
+    equal(plan.methodVersion, "method-draft-2026-08-22", "every plan pins the exact study method version");
     equal(plan.trials.length, 10, "paper protocol generates two arms for each of five tasks");
     equal(plan.trials[0].interactionMode, "L1", "L1 remains first in the fixed implicit block");
     equal(plan.trials[2].interactionMode, "L2", "L2 remains second in the fixed implicit block");
@@ -55,9 +56,27 @@ for (const plan of studyPlans) {
         "H4 assigns exactly one full AgenticXR single-candidate proposal");
     equal(plan.trials.filter((trial) => trial.h4Arm === "best-of-3").length, 1,
         "H4 assigns exactly one full AgenticXR best-of-three proposal");
+    ok(plan.trials.every((trial) => trial.methodVersion === plan.methodVersion),
+        "every trial inherits the plan method version");
+    for (const mode of ["L1", "L2", "L3", "L4", "L5"]) {
+        equal(plan.trials.filter((trial) => trial.interactionMode === mode)
+            .map((trial) => trial.taskVariant).sort().join(","), "A,B",
+        `${mode} assigns both task variants within each participant`);
+    }
 }
 equal(new Set(studyPlans.slice(0, 6).map((plan) => plan.assignment.explicitTaskOrder.join(""))).size,
     EXPLICIT_TASK_ORDERS.length, "the first six participants cover all explicit task orders");
+for (const mode of ["L1", "L2", "L3", "L4", "L5"]) {
+    const cells = new Map();
+    for (const plan of studyPlans) {
+        for (const trial of plan.trials.filter((candidate) => candidate.interactionMode === mode)) {
+            const key = `${trial.conditionAlias}:${trial.taskVariant}`;
+            cells.set(key, (cells.get(key) || 0) + 1);
+        }
+    }
+    equal(cells.size, 4, `${mode} covers all condition-by-task-variant cells`);
+    equal(new Set(cells.values()).size, 1, `${mode} balances condition independently of task variant`);
+}
 
 const wire = toWireFormat(makeCacheEnvelope({
     type: "ArtifactProposal",

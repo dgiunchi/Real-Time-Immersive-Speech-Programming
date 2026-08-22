@@ -7,8 +7,8 @@ const fs = require("fs");
 const path = require("path");
 
 const TRIAL_COLUMNS = Object.freeze([
-    "protocolId", "participantId", "sessionId", "trialId", "condition", "conditionAlias",
-    "taskId", "interactionMode", "blockId", "sequenceIndex", "h4Arm",
+    "protocolId", "methodVersion", "participantId", "sessionId", "trialId", "condition", "conditionAlias",
+    "taskId", "interactionMode", "taskVariant", "blockId", "sequenceIndex", "h4Arm",
     "trialStartedAtUtc", "trialEndedAtUtc", "taskCompletion", "taskSuccess",
     "taskQualityScore", "taskQualitySignalsJson", "totalTaskTimeMs", "correlationIds",
     "intentCapturedAtUtc", "firstAcknowledgementAtUtc", "firstProposalAtUtc",
@@ -44,8 +44,8 @@ const TRIAL_COLUMNS = Object.freeze([
 ]);
 
 const LONG_COLUMNS = Object.freeze([
-    "protocolId", "participantId", "sessionId", "trialId", "condition", "conditionAlias",
-    "taskId", "interactionMode", "blockId", "sequenceIndex", "h4Arm",
+    "protocolId", "methodVersion", "participantId", "sessionId", "trialId", "condition", "conditionAlias",
+    "taskId", "interactionMode", "taskVariant", "blockId", "sequenceIndex", "h4Arm",
     "correlationId", "timestampUtc", "eventType", "targetObjectId", "artifactId",
     "candidateId", "candidateSetId", "status", "reasonCode", "durationMs",
     "verificationDurationMs", "commitAttachDurationMs", "timestampAgeMs",
@@ -309,6 +309,7 @@ function aggregateTrial(events) {
 
     return {
         protocolId: started.protocolId || "",
+        methodVersion: started.methodVersion || "",
         participantId: started.participantId,
         sessionId: started.sessionId,
         trialId: started.trialId,
@@ -316,6 +317,7 @@ function aggregateTrial(events) {
         conditionAlias: started.conditionAlias || "",
         taskId: started.taskId,
         interactionMode: started.interactionMode,
+        taskVariant: started.taskVariant || "",
         blockId: started.blockId || "",
         sequenceIndex: started.sequenceIndex ?? "",
         h4Arm: started.h4Arm || "",
@@ -426,6 +428,7 @@ function aggregateTrial(events) {
 function longRow(event) {
     return {
         protocolId: event.protocolId || "",
+        methodVersion: event.methodVersion || "",
         participantId: event.participantId,
         sessionId: event.sessionId,
         trialId: event.trialId,
@@ -433,6 +436,7 @@ function longRow(event) {
         conditionAlias: event.conditionAlias || "",
         taskId: event.taskId,
         interactionMode: event.interactionMode,
+        taskVariant: event.taskVariant || "",
         blockId: event.blockId || "",
         sequenceIndex: event.sequenceIndex ?? "",
         h4Arm: event.h4Arm || "",

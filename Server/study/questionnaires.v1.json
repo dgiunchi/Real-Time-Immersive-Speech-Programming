@@ -36,5 +36,5 @@
     { "itemId": "immediateProposalPerceivedLatency", "responseType": "likert", "timing": "immediately-after-full-L4-L5-proposal", "hypotheses": ["H4"], "wording": null, "anchors": null, "approvalStatus": "pending" },
     { "itemId": "appropriatenessBipolar", "responseType": "bipolar", "timing": "after-each-task", "hypotheses": ["H3"], "wording": null, "anchors": ["too-little", "appropriate", "too-much"], "approvalStatus": "pending" }
   ],
-  "responseIdentityFields": ["protocolId", "questionnaireVersion", "participantId", "sessionId", "trialId", "taskId", "condition", "interactionMode", "itemId", "response", "answeredAtUtc"]
+  "responseIdentityFields": ["protocolId", "methodVersion", "questionnaireVersion", "participantId", "sessionId", "trialId", "taskId", "taskVariant", "condition", "interactionMode", "itemId", "response", "answeredAtUtc"]
 }

@@ -16,11 +16,11 @@ const {
 
 const PARTICIPANTS_ROOT = path.resolve(__dirname, "data", "participants");
 const QUESTIONNAIRE_COLUMNS = Object.freeze([
-    "protocolId", "questionnaireVersion", "participantId", "sessionId", "trialId",
-    "taskId", "condition", "interactionMode", "itemId", "response", "answeredAtUtc",
+    "protocolId", "methodVersion", "questionnaireVersion", "participantId", "sessionId", "trialId",
+    "taskId", "taskVariant", "condition", "interactionMode", "itemId", "response", "answeredAtUtc",
 ]);
 const RUBRIC_COLUMNS = Object.freeze([
-    "protocolId", "rubricVersion", "participantId", "sessionId", "trialId", "taskId",
+    "protocolId", "methodVersion", "rubricVersion", "participantId", "sessionId", "trialId", "taskId", "taskVariant",
     "raterPseudonym", "conditionBlinded", "taskCompletion", "taskSuccess", "qualityScore",
     "dimensionScoresJson", "codedAtUtc",
 ]);
@@ -88,7 +88,12 @@ function preflight(participantId, { technicalOnly = false } = {}) {
     const checks = [];
     const check = (ok, id, detail) => checks.push({ ok: Boolean(ok), id, detail });
     check(plan.protocolId === protocol.protocolId, "protocol-plan-match", plan.protocolId);
+    check(plan.methodVersion === protocol.methodVersion, "method-version-plan-match", plan.methodVersion || "missing");
     check(plan.trials.length === protocol.design.trialsPerParticipant, "trial-count", `${plan.trials.length}`);
+    check(plan.trials.every((trial) => trial.methodVersion === protocol.methodVersion),
+        "method-version-trial-match", protocol.methodVersion);
+    check(plan.trials.every((trial) => protocol.design.taskVariants.includes(trial.taskVariant)),
+        "task-variant-valid", protocol.design.taskVariants.join(","));
     check(fs.existsSync(PROTOCOL_PATH), "protocol-manifest", PROTOCOL_PATH);
     check(fs.existsSync(QUESTIONNAIRES_PATH), "questionnaire-schema", QUESTIONNAIRES_PATH);
     check(fs.existsSync(RUBRICS_PATH), "rubric-schema", RUBRICS_PATH);
@@ -293,11 +298,13 @@ function run(argv = process.argv.slice(2)) {
         }
         appendStructuredResponse(paths.questionnaireResponses, {
             protocolId: plan.protocolId,
+            methodVersion: plan.methodVersion,
             questionnaireVersion: "1.0",
             participantId,
             sessionId: trial.sessionId,
             trialId: trial.trialId,
             taskId: trial.taskId,
+            taskVariant: trial.taskVariant,
             condition: trial.condition,
             interactionMode: trial.interactionMode,
             itemId,
@@ -321,10 +328,12 @@ function run(argv = process.argv.slice(2)) {
         }
         appendStructuredResponse(paths.rubricRatings, {
             protocolId: plan.protocolId,
+            methodVersion: plan.methodVersion,
             participantId,
             sessionId: trial.sessionId,
             trialId: trial.trialId,
             taskId: trial.taskId,
+            taskVariant: trial.taskVariant,
             raterPseudonym,
             conditionBlinded: true,
             ...rating,
@@ -345,6 +354,7 @@ function run(argv = process.argv.slice(2)) {
         writeJsonAtomic(path.join(paths.exportDirectory, "rejected_trials.json"), result.rejectedTrials);
         writeJsonAtomic(path.join(paths.exportDirectory, "export_manifest.json"), {
             protocolId: plan.protocolId,
+            methodVersion: plan.methodVersion,
             participantId,
             exportedAtUtc: new Date().toISOString(),
             acceptedTrialCount: result.trialRows.length,

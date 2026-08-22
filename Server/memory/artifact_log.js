@@ -20,8 +20,10 @@ const STUDY_CONTEXT_FIELDS = Object.freeze([
 ]);
 const STUDY_OPTIONAL_CONTEXT_FIELDS = Object.freeze([
     "protocolId",
+    "methodVersion",
     "blockId",
     "conditionAlias",
+    "taskVariant",
     "h4Arm",
     "sequenceIndex",
 ]);

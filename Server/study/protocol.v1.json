@@ -1,6 +1,8 @@
 {
   "schemaVersion": "1.0",
   "protocolId": "agenticxr-paper-study-v1",
+  "methodVersion": "method-draft-2026-08-22",
+  "methodApprovalStatus": "pending-investigator-review",
   "sourceOfTruth": "Worlds That Think With Us: Toward Symbiotic AgenticXR, section 7",
   "status": "planned-not-yet-run",
   "design": {
@@ -10,6 +12,7 @@
     "trialsPerParticipant": 10,
     "fixedTaskOrder": ["L1", "L2"],
     "counterbalancedTaskSet": ["L3", "L4", "L5"],
+    "taskVariants": ["A", "B"],
     "h4CandidateCounts": [1, 3]
   },
   "apparatus": {
