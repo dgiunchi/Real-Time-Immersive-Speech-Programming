@@ -9,6 +9,7 @@ using AgenticXR.Study;
 using Newtonsoft.Json.Linq;
 using RoslynCSharp;
 using Ubiq.Messaging;
+using Ubiq.Networking;
 using Ubiq.Rooms;
 using Ubiq.Samples;
 using Ubiq.XR;
@@ -106,6 +107,8 @@ public static class AgenticXRStudySceneBuilder
         director.taskCardPresenter = presenter;
         director.questionnairePresenter = questionnairePresenter;
         director.variants = bindings.ToArray();
+        system.initializer.trialDirector = director;
+        system.initializer.enableDebugStudyLauncher = true;
         presenter.taskCardDefinition = AssetDatabase.LoadAssetAtPath<TextAsset>(TaskCardAssetPath);
         questionnairePresenter.questionnaireDefinition = AssetDatabase.LoadAssetAtPath<TextAsset>(QuestionnaireAssetPath);
         questionnairePresenter.publisher = system.publisher;
@@ -114,6 +117,7 @@ public static class AgenticXRStudySceneBuilder
         EditorUtility.SetDirty(presenter);
         EditorUtility.SetDirty(questionnairePresenter);
         EditorUtility.SetDirty(system.consentPanel);
+        EditorUtility.SetDirty(system.initializer);
         EditorUtility.SetDirty(director);
         SmokeTestRuntimeCompiler(system.compiler);
         ValidateBuiltScene(scene, manifest, director, training);
@@ -131,13 +135,18 @@ public static class AgenticXRStudySceneBuilder
         public CachePublisher publisher;
         public AgenticXRConsentPanel consentPanel;
         public AgenticRuntimeCompiler compiler;
+        public StudyAgenticSystemInitializer initializer;
     }
 
     private static SystemReferences ConfigureAgenticSystem(GameObject parent)
     {
         var runtime = EnsureChild(parent.transform, "AgenticXRBootstrap");
         EnsureComponent<NetworkScene>(runtime);
-        EnsureComponent<RoomClient>(runtime);
+        var roomClient = EnsureComponent<RoomClient>(runtime);
+        var localhost = AssetDatabase.LoadAssetAtPath<ConnectionDefinition>("Assets/Demos/Localhost.asset");
+        if (localhost == null)
+            throw new InvalidOperationException("Study scene requires Assets/Demos/Localhost.asset for localhost:8009.");
+        roomClient.SetDefaultServer(localhost);
         var registry = EnsureComponent<AgenticSceneRegistry>(runtime);
         var publisher = EnsureComponent<CachePublisher>(runtime);
         var panel = EnsureComponent<AgenticXRConsentPanel>(runtime);
@@ -153,6 +162,8 @@ public static class AgenticXRStudySceneBuilder
         if (compiler.assemblyReferences.Length == 0)
             throw new InvalidOperationException("Study runtime compiler has no assembly-reference assets.");
         var initializer = EnsureComponent<StudyAgenticSystemInitializer>(runtime);
+        EnsureComponent<StudyXRLocalAvatar>(runtime);
+        var baseline = EnsureComponent<CodeGenerationManager>(runtime);
         exchange.cachePublisher = publisher;
         exchange.sceneRegistry = registry;
         exchange.consentPanel = panel;
@@ -171,8 +182,10 @@ public static class AgenticXRStudySceneBuilder
         initializer.watchdog = watchdog;
         initializer.implicitSensors = sensors;
         initializer.compiler = compiler;
-        foreach (var item in new UnityEngine.Object[] { exchange, publisher, sensors, watchdog, compiler, initializer }) EditorUtility.SetDirty(item);
-        return new SystemReferences { publisher = publisher, consentPanel = panel, compiler = compiler };
+        baseline.runtimeCompiler = compiler;
+        baseline.sceneRegistry = registry;
+        foreach (var item in new UnityEngine.Object[] { exchange, publisher, sensors, watchdog, compiler, initializer, baseline }) EditorUtility.SetDirty(item);
+        return new SystemReferences { publisher = publisher, consentPanel = panel, compiler = compiler, initializer = initializer };
     }
 
     private static void SmokeTestRuntimeCompiler(AgenticRuntimeCompiler compiler)
@@ -284,7 +297,8 @@ public static class AgenticXRStudySceneBuilder
         if (id.Contains("region")) return null;
         if (id.Contains("avatar")) return PrimitiveType.Capsule;
         if (id.Contains("pad") || id.Contains("tray") || id.Contains("socket")) return PrimitiveType.Cylinder;
-        if (id.Contains("marker") || id.Contains("part") || id.Contains("tool")) return PrimitiveType.Sphere;
+        if (id.Contains("part") || id.Contains("tool")) return PrimitiveType.Cube;
+        if (id.Contains("marker")) return PrimitiveType.Sphere;
         return PrimitiveType.Cube;
     }
 

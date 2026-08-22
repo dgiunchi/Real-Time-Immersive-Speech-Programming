@@ -42,8 +42,21 @@ function appendSuppressed(opportunity, reason) {
 }
 
 memory.activity.on("assist_worthy", (opportunity) => {
-    const studyContext = memory.artifactLog.getStudyContext({ sessionId: opportunity.sessionId });
-    if (!assistEnabled) {
+    let studyContext = null;
+    try {
+        studyContext = memory.artifactLog.claimRuntimeSession({
+            runtimeSessionId: opportunity.sessionId,
+            correlationId: opportunity.triggerId,
+            studySource: "continuous_monitor",
+        });
+    } catch (error) {
+        appendSuppressed(opportunity, "study_identity_failed");
+        console.error(`[continuous_monitor] study identity failed: ${error.message}`);
+        return;
+    }
+    const debugImplicitStudy = studyContext && studyContext.runMode === "unity_debug_launcher" &&
+        ["L1", "L2"].includes(studyContext.interactionMode);
+    if (!assistEnabled && !debugImplicitStudy) {
         appendSuppressed(opportunity, "continuous_assist_disabled");
         return;
     }
@@ -59,7 +72,7 @@ memory.activity.on("assist_worthy", (opportunity) => {
         appendSuppressed(opportunity, "continuous_assist_already_running");
         return;
     }
-    if (!allowDuringStudy && studyContext) {
+    if (!allowDuringStudy && studyContext && !debugImplicitStudy) {
         appendSuppressed(opportunity, "active_study_trial");
         return;
     }
@@ -111,6 +124,7 @@ memory.activity.on("assist_worthy", (opportunity) => {
         watchdog,
         correlationId: opportunity.triggerId,
         startedAt: Date.now(),
+        trialId: studyContext && studyContext.trialId || null,
     });
     memory.artifactLog.append({
         eventType: "continuous_assist_started",
@@ -222,10 +236,15 @@ setInterval(() => {
         [speculativeRunning, "idle_prediction_preempted"],
     ]) {
         for (const [sessionId, run] of pool) {
-            const preempt = [...events].reverse().find((entry) =>
+            const explicitPreempt = [...events].reverse().find((entry) =>
                 entry.eventType === "continuous_assist_preempt_requested" &&
                 entry.sessionId === sessionId &&
                 (entry.loggedAt || entry.at || 0) > run.startedAt);
+            const trialEnded = run.trialId && [...events].reverse().find((entry) =>
+                entry.eventType === "study_trial_ended" &&
+                entry.trialId === run.trialId &&
+                (entry.loggedAt || entry.at || 0) > run.startedAt);
+            const preempt = explicitPreempt || trialEnded;
             if (!preempt) continue;
             clearTimeout(run.watchdog);
             if (run.child.exitCode == null && !run.child.killed) run.child.kill();
@@ -234,7 +253,7 @@ setInterval(() => {
                 eventType: preemptEventType,
                 sessionId,
                 correlationId: run.correlationId,
-                reasonCode: "explicit_user_activity",
+                reasonCode: trialEnded ? "study_trial_ended" : "explicit_user_activity",
                 ...(pool === speculativeRunning ? { speculative: true } : {}),
             });
         }

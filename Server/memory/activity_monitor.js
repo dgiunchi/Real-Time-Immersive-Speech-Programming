@@ -51,6 +51,18 @@ class ActivityMonitor extends EventEmitter {
         const payload = envelope.payload || {};
         const focus = payload.focus || {};
         const sensorEvents = Array.isArray(payload.sensorEvents) ? payload.sensorEvents : [];
+        // Study lifecycle/questionnaire events share SceneDelta transport but
+        // are telemetry, not participant activity. Unity increments the object
+        // revision for these envelopes, so treating that revision as a scene
+        // change can incorrectly launch another implicit Claude turn after a
+        // task has already completed.
+        const stateIsEmpty = payload.state == null ||
+            (typeof payload.state === "object" && Object.keys(payload.state).length === 0);
+        const studyTelemetryOnly = sensorEvents.length > 0 &&
+            sensorEvents.every((event) => event &&
+                String(event.sensorType || "").startsWith("study_")) &&
+            !payload.focus && !payload.changedSince && stateIsEmpty;
+        if (studyTelemetryOnly) return null;
         const targetObjectId = envelope.targetObjectId || focus.id ||
             (sensorEvents.find((event) => event && event.targetObjectId) || {}).targetObjectId || null;
         const key = `${sessionId}:${targetObjectId || "activity"}`;

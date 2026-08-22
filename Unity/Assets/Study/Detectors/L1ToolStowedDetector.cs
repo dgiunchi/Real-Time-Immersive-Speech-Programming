@@ -19,7 +19,20 @@ namespace AgenticXR.Study
                 if (tool == null) continue;
                 Collider containingTray = null;
                 foreach (var tray in trays)
-                    if (tray != null && tray.bounds.Contains(tool.worldCenterOfMass)) { containingTray = tray; break; }
+                {
+                    if (tray == null) continue;
+                    var acceptanceBounds = tray.bounds;
+                    // Placement is performed by an XR ray and the authored tray
+                    // is shallow. Allow a small tolerance around its logical
+                    // volume so visually correct placements are not rejected by
+                    // centre-of-mass rounding or contact jitter.
+                    acceptanceBounds.Expand(new Vector3(0.12f, 0.2f, 0.12f));
+                    if (acceptanceBounds.Contains(tool.worldCenterOfMass))
+                    {
+                        containingTray = tray;
+                        break;
+                    }
+                }
                 if (containingTray == null || !IsAtRest(tool)) { restingSince.Remove(tool); continue; }
                 if (!restingSince.TryGetValue(tool, out var since)) { restingSince[tool] = Time.unscaledTime; continue; }
                 if (Time.unscaledTime - since < settleWindowSeconds) continue;

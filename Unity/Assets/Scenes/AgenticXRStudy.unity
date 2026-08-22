@@ -8926,7 +8926,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Ubiq::Ubiq.Rooms.RoomClient
   servers:
-  - {fileID: 1385597026}
+  - {fileID: -7849211376014683480, guid: 3e36ec89f88438b4b88a5cfbadabea92, type: 2}
   timeoutBehaviour: 2
 --- !u!114 &1951609192
 MonoBehaviour:

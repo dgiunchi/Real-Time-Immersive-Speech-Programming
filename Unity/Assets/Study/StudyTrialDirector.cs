@@ -265,6 +265,8 @@ namespace AgenticXR.Study
             var json = "[{\"sensorType\":\"" + AgenticSceneRegistry.Escape(eventType) +
                 "\",\"sourceObjectId\":\"study-trial-director\",\"value\":{\"transitionAuthority\":\"StudySessionMachine\"" +
                 (trial == null ? string.Empty : ",\"trialId\":\"" + AgenticSceneRegistry.Escape(trial.trialId) +
+                    "\",\"participantId\":\"" + AgenticSceneRegistry.Escape(trial.participantId) +
+                    "\",\"sessionId\":\"" + AgenticSceneRegistry.Escape(trial.sessionId) +
                     "\",\"taskId\":\"" + AgenticSceneRegistry.Escape(trial.taskId) +
                     "\",\"interactionMode\":\"" + AgenticSceneRegistry.Escape(trial.interactionMode) +
                     "\",\"taskVariant\":\"" + AgenticSceneRegistry.Escape(trial.taskVariant) +

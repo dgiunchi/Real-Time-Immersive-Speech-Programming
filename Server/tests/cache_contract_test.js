@@ -4,6 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { EventEmitter } = require("events");
 const { spawnSync } = require("child_process");
 const { AgentWorkingCache } = require("../cache/agent_working_cache");
 const { EventJournal } = require("../cache/event_journal");
@@ -651,6 +652,17 @@ ok(activity.observeSceneDelta({
         sensorEvents: [{ sensorType: "collision", targetObjectId: "activity-object", confidence: 1 }],
     },
 }), "a later assist-worthy activity can trigger after cooldown");
+equal(activity.observeSceneDelta({
+    type: "SceneDelta",
+    sessionId: "activity-session",
+    timestamp: activityNow + 1,
+    objectRevision: 99,
+    payload: {
+        state: {},
+        sensorEvents: [{ sensorType: "study_questionnaire_response", confidence: 1,
+            value: { trialId: "trial-complete", response: "7" } }],
+    },
+}), null, "study telemetry cannot become an implicit activity trigger through objectRevision");
 
 // --- Anticipation: predicted engagement before the trigger (implicit showcase §1) ---
 let anticipationNow = 500000;
@@ -751,6 +763,61 @@ equal(validateCandidateTarget("3"), 3, "numeric-string candidateTarget normalize
 const testDataDir = path.join(root, "evaluation", "data", "contract-test");
 fs.rmSync(testDataDir, { recursive: true, force: true });
 fs.mkdirSync(testDataDir, { recursive: true });
+
+// Unity publishes study lifecycle evidence on the SceneDelta sensor channel.
+// The monitor process must durably close the trial configured by the runtime
+// process, without an API key or a live Unity Editor.
+const studyEvidencePath = path.join(testDataDir, "unity-study-evidence.jsonl");
+const studyEvidenceMemory = new SharedMemory({
+    artifactLogPath: studyEvidencePath,
+    personProfilePath: path.join(testDataDir, "unity-study-people.json"),
+    experienceContextPath: path.join(testDataDir, "unity-study-context.json"),
+    checkpointPath: path.join(testDataDir, "unity-study-checkpoint.json"),
+});
+const studyEvidenceContext = {
+    participantId: "DEBUG",
+    sessionId: "debug-L1-lifecycle",
+    trialId: "debug-L1-A-lifecycle",
+    condition: "agenticxr_verification",
+    taskId: "L1-proactive",
+    interactionMode: "L1",
+    taskVariant: "A",
+    correlationId: "debug-config-lifecycle",
+};
+studyEvidenceMemory.artifactLog.startStudyTrial(studyEvidenceContext);
+const fakeStudyBridge = new EventEmitter();
+studyEvidenceMemory.attach(fakeStudyBridge);
+fakeStudyBridge.emit("envelope", {
+    type: "SceneDelta",
+    sessionId: "unity-runtime-peer",
+    correlationId: "unity-t1-lifecycle",
+    timestamp: 2000,
+    objectRevision: 7,
+    payload: {
+        sensorEvents: [{
+            sensorType: "study_trial_t1",
+            sourceObjectId: "study-trial-director",
+            confidence: 1,
+            value: {
+                participantId: studyEvidenceContext.participantId,
+                sessionId: studyEvidenceContext.sessionId,
+                trialId: studyEvidenceContext.trialId,
+                condition: studyEvidenceContext.condition,
+                taskId: studyEvidenceContext.taskId,
+                interactionMode: studyEvidenceContext.interactionMode,
+                taskVariant: studyEvidenceContext.taskVariant,
+                detail: { arbitrationReason: "detector" },
+            },
+        }],
+    },
+});
+equal(studyEvidenceMemory.artifactLog.activeTrialBySession.size, 0,
+    "Unity t1 evidence closes the server-side debug trial");
+ok(studyEvidenceMemory.artifactLog.records.some((entry) =>
+    entry.eventType === "study_trial_ended" && entry.reason === "detector" && entry.taskSuccess === true),
+"detector completion is recorded as a successful terminal trial event");
+equal(studyEvidenceMemory.activity.recent.length, 0,
+    "terminal study evidence does not launch another continuous-assistance turn");
 const profilePath = path.join(testDataDir, "profiles.json");
 const people = new PersonPolicyStore({ filePath: profilePath });
 people.setPersistenceConsent({ sessionId: "session-a", personId: "participant-007", consent: true, retentionDays: 30 });
@@ -1416,6 +1483,9 @@ ok(unityManager.includes("ResetGeneratedStudyBehaviour"),
 const continuousMonitorSource = fs.readFileSync(path.join(root, "orchestrator", "continuous_monitor.js"), "utf8");
 ok(continuousMonitorSource.includes('? "system_opportunity" : "context"'),
     "continuous monitor has a distinct executable L1 system-opportunity route");
+ok(continuousMonitorSource.includes('entry.eventType === "study_trial_ended"') &&
+    continuousMonitorSource.includes('reasonCode: trialEnded ? "study_trial_ended"'),
+"an implicit Claude turn is cancelled when the easy physical detector ends its trial");
 ok(!runtimeAppSource.includes("intent=${JSON.stringify(intent)}"),
     "agent diagnostics never print verbatim participant intent");
 for (const required of ["CommitAccepted", "CommitRejected", "UserDecision", "RollbackResult", "AgentStatusVisible", "ValidateProposalEnvelope", "BuildBackfillPayload"]) {
@@ -1464,7 +1534,7 @@ ok(sceneBuilderSource.includes("root.SetActive(false)") &&
 ok(sceneBuilderSource.includes("StructuralSignature(a, \"-a-\").SequenceEqual(StructuralSignature(b, \"-b-\"))"),
     "scene builder rejects structurally unequal A/B variants");
 const buildSettingsSource = fs.readFileSync(
-    path.join(root, "..", "Unity", "ProjectSettings", "EditorBuildSettings.asset"), "utf8");
+    path.join(root, "..", "Unity", "ProjectSettings", "EditorBuildSettings.asset"), "utf8").replace(/\r\n/g, "\n");
 ok(buildSettingsSource.includes("m_Scenes:\n  - enabled: 1\n    path: Assets/Scenes/AgenticXRStudy.unity"),
     "the study scene is the first enabled build scene");
 ok(sceneBuilderSource.includes("registered.guid.ToString()") &&

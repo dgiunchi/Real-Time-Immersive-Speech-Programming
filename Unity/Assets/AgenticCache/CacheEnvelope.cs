@@ -109,5 +109,7 @@ namespace AgenticCache
         public const string CancelRequest = "CancelRequest";
         public const string TrialReset = "TrialReset";
         public const string TrialResetRequest = "TrialResetRequest";
+        public const string StudyTrialStartRequest = "StudyTrialStartRequest";
+        public const string StudyTrialConfigured = "StudyTrialConfigured";
     }
 }

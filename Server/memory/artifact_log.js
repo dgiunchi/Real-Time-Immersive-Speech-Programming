@@ -185,6 +185,11 @@ class ArtifactLog {
         return this.append({ ...entry, studyEvent: true });
     }
 
+    refreshStudyContextFromDisk() {
+        this._reloadStudyContextFromDisk();
+        return this.activeTrialBySession;
+    }
+
     endStudyTrial({ sessionId, correlationId, trialId, taskCompletion, taskSuccess,
         taskQualityScore = null, taskQualitySignals = null, reason = null, at } = {}) {
         const context = this.studyContextByCorrelation.get(correlationId) ||

@@ -339,7 +339,10 @@ async function main() {
         try {
             for await (const message of query({ prompt, options })) {
                 const reportedModel = message.model || (message.message && message.message.model);
-                if (reportedModel && reportedModel !== MODEL_ID) {
+                // The Agent SDK emits synthetic routing/status messages with the
+                // sentinel model name <synthetic>. They are not model responses
+                // and must not be treated as evidence of live model drift.
+                if (reportedModel && reportedModel !== "<synthetic>" && reportedModel !== MODEL_ID) {
                     throw new Error(`live model drift: reported '${reportedModel}', pinned '${MODEL_ID}'`);
                 }
                 if (message.type === "assistant") {

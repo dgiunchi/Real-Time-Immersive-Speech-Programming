@@ -44,6 +44,7 @@ namespace AgenticXR.Study
         public bool DecisionAffordanceLocked { get; private set; }
         public event Action ImmediateItemCompleted;
         public event Action BatteryCompleted;
+        public event Action Started;
 
         private QuestionnaireDefinition definition;
         private StudyTrialDirector.TrialAssignment trial;
@@ -129,6 +130,7 @@ namespace AgenticXR.Study
             IsRunning = true;
             DecisionAffordanceLocked = immediate;
             if (immediate) trialDirector.BeginQuestionnairePause();
+            Started?.Invoke();
             SetPanelVisible(true);
             RenderCurrent();
         }

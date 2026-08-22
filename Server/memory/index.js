@@ -164,6 +164,7 @@ class SharedMemory {
             if (envelope.type === "SceneDelta") {
                 this.visual.ingestSceneDelta(envelope);
                 this.sceneGraph.ingestSceneDelta(envelope);
+                this._ingestStudySensorEvents(envelope);
                 this.sensors.ingestSceneDelta(envelope);
                 this.activity.observeSceneDelta(envelope);
                 for (const sensor of (envelope.payload && envelope.payload.sensorEvents) || []) {
@@ -278,6 +279,71 @@ class SharedMemory {
                 if (["ArtifactResult", "CommitAccepted", "CommitRejected", "RollbackResult"].includes(envelope.type)) this.proposalSentAt.delete(envelope.correlationId);
             }
         });
+    }
+
+    _ingestStudySensorEvents(envelope) {
+        const sensors = ((envelope.payload || {}).sensorEvents || [])
+            .filter((sensor) => sensor && String(sensor.sensorType || "").startsWith("study_"));
+        if (!sensors.length) return;
+
+        // The runtime application and continuous monitor use separate
+        // ArtifactLog instances over one JSONL file. Refresh before routing a
+        // Unity lifecycle event so the monitor sees the trial configured by
+        // the runtime process and does not retain an already-ended trial.
+        this.artifactLog.refreshStudyContextFromDisk();
+        for (const sensor of sensors) {
+            const value = sensor.value && typeof sensor.value === "object" ? sensor.value : {};
+            let context = this.artifactLog.getStudyContext({
+                sessionId: value.sessionId || envelope.sessionId,
+                correlationId: envelope.correlationId,
+            });
+            if (!context) {
+                const active = [...this.artifactLog.activeTrialBySession.values()];
+                context = active.length === 1 && (!value.trialId || active[0].trialId === value.trialId)
+                    ? active[0] : null;
+            }
+
+            // Questionnaire events arrive after t1 has closed the active
+            // context, but carry their complete immutable trial identity.
+            if (!context && ["participantId", "sessionId", "trialId", "condition", "taskId", "interactionMode"]
+                .every((field) => typeof value[field] === "string" && value[field])) {
+                context = {
+                    participantId: value.participantId,
+                    sessionId: value.sessionId,
+                    trialId: value.trialId,
+                    condition: value.condition,
+                    taskId: value.taskId,
+                    interactionMode: value.interactionMode,
+                    ...(value.taskVariant ? { taskVariant: value.taskVariant } : {}),
+                };
+            }
+            if (!context) continue;
+
+            const correlationId = envelope.correlationId ||
+                `unity-${sensor.sensorType}-${context.trialId}`.slice(0, 128);
+            this.artifactLog.appendStudyEvent({
+                ...context,
+                correlationId,
+                eventType: sensor.sensorType,
+                targetObjectId: envelope.targetObjectId || sensor.targetObjectId || null,
+                studySource: "unity_study_evidence",
+                studyEvidence: value,
+                at: sensor.timestamp || envelope.timestamp || Date.now(),
+            });
+
+            if (sensor.sensorType !== "study_trial_t1") continue;
+            const reason = value.detail && value.detail.arbitrationReason || "unity_t1";
+            const completed = reason !== "timeout";
+            this.artifactLog.endStudyTrial({
+                sessionId: context.sessionId,
+                correlationId,
+                trialId: context.trialId,
+                taskCompletion: completed,
+                taskSuccess: completed,
+                reason,
+                at: sensor.timestamp || envelope.timestamp || Date.now(),
+            });
+        }
     }
 }
 

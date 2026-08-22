@@ -1,4 +1,5 @@
 using AgenticCache;
+using Ubiq.Rooms;
 using UnityEngine;
 
 namespace AgenticXR.Study
@@ -6,6 +7,9 @@ namespace AgenticXR.Study
     [DefaultExecutionOrder(-100)]
     public sealed class StudyAgenticSystemInitializer : MonoBehaviour
     {
+        private static readonly System.Guid RuntimeRoomId =
+            new System.Guid("6765c52b-3ad6-4fb0-9030-2c9a05dc4731");
+
         public CacheExchangeManager exchange;
         public CachePublisher publisher;
         public AgenticSceneRegistry sceneRegistry;
@@ -13,6 +17,8 @@ namespace AgenticXR.Study
         public GeneratedBehaviourWatchdog watchdog;
         public ImplicitTriggerSensors implicitSensors;
         public AgenticRuntimeCompiler compiler;
+        public StudyTrialDirector trialDirector;
+        public bool enableDebugStudyLauncher = true;
 
         private void Awake()
         {
@@ -31,6 +37,28 @@ namespace AgenticXR.Study
             implicitSensors.sceneRegistry = sceneRegistry;
             watchdog.manager = exchange;
             consentPanel.Initialize(exchange);
+            var roomClient = GetComponent<RoomClient>();
+            if (roomClient == null)
+                throw new System.InvalidOperationException("AgenticXR study system requires a RoomClient.");
+            // The hand-authored study bootstrap does not include Ubiq's Social
+            // join UI. Join the fixed room UUID from the Node app config; joining
+            // by the display name would create a different room named My Room.
+            // Join queues safely before RoomClient.Start establishes the socket.
+            roomClient.Join(RuntimeRoomId);
+            var baseline = GetComponent<CodeGenerationManager>();
+            if (baseline == null) baseline = gameObject.AddComponent<CodeGenerationManager>();
+            baseline.runtimeCompiler = compiler;
+            baseline.sceneRegistry = sceneRegistry;
+            var localAvatar = GetComponent<StudyXRLocalAvatar>();
+            if (localAvatar == null) localAvatar = gameObject.AddComponent<StudyXRLocalAvatar>();
+            localAvatar.Initialize(baseline);
+            if (enableDebugStudyLauncher)
+            {
+                if (trialDirector == null) trialDirector = FindFirstObjectByType<StudyTrialDirector>();
+                var launcher = GetComponent<StudyDebugLauncher>();
+                if (launcher == null) launcher = gameObject.AddComponent<StudyDebugLauncher>();
+                launcher.Initialize(trialDirector, exchange, consentPanel);
+            }
         }
     }
 }

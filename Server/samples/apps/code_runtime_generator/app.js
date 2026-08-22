@@ -59,7 +59,9 @@ class CodeGeneration extends ApplicationController {
         this.components.transcriptionService = new SpeechToTextService(this.scene, nconf.get());
 
         // A CodeGenerationService to generate text based on text
-        if (!this.agenticMode) {
+        this.hybridStudyRuntime = this.agenticMode &&
+            String(process.env.AGENTICXR_HYBRID_STUDY_RUNTIME || "true").toLowerCase() !== "false";
+        if (!this.agenticMode || this.hybridStudyRuntime) {
             this.components.codeGenerationService = new CodeGenerationService(this.scene, nconf.get());
         }
 
@@ -103,6 +105,10 @@ class CodeGeneration extends ApplicationController {
             try { message = JSON.parse(data.message.toString()); }
             catch (_) { return; }
             if (!message) return;
+            if (message.type === "StudyTrialStartRequest") {
+                this.configureDebugStudyTrial(message);
+                return;
+            }
             if (message.type === "UserDecision") {
                 let payload = message.payload;
                 if (typeof payload === "string") {
@@ -318,7 +324,27 @@ class CodeGeneration extends ApplicationController {
                         transcriptionDurationMs: Number.isFinite(timing.transcriptionDurationMs) ? timing.transcriptionDurationMs : null,
                         studySource: "speech_to_text",
                     });
-                    if (this.agenticMode) {
+                    let activeStudyContext = null;
+                    try {
+                        activeStudyContext = this.artifactLog.claimRuntimeSession({
+                            runtimeSessionId: identifier,
+                            correlationId: this.agenticCorrelations.get(identifier),
+                            studySource: "runtime_router",
+                        });
+                    } catch (error) {
+                        this.failClosedStudyIdentity(identifier, this.agenticTargets.get(identifier),
+                            this.agenticCorrelations.get(identifier), error);
+                        return;
+                    }
+                    const useAgenticPipeline = this.agenticMode &&
+                        (!activeStudyContext || activeStudyContext.condition !== "baseline");
+                    if (activeStudyContext && activeStudyContext.condition !== "baseline" && !this.agenticMode) {
+                        this.failClosedStudyIdentity(identifier, this.agenticTargets.get(identifier),
+                            this.agenticCorrelations.get(identifier),
+                            new Error("This trial requires npm run start:agenticxr"));
+                        return;
+                    }
+                    if (useAgenticPipeline) {
                         this.lastAgenticActivityAt.set(identifier, Date.now());
                         this.logEvaluation({
                             eventType: "transcript_ready",
@@ -339,7 +365,7 @@ class CodeGeneration extends ApplicationController {
                         } else if (/^(claude|cloud)\s+ping[.!?]*$/i.test(transcript)) {
                             this.runClaudePing(identifier);
                         } else {
-                            this.startAgenticTurn(transcript, identifier);
+                            this.startAgenticTurn(transcript, identifier, activeStudyContext);
                         }
                     } else if (this.isGenerating == false) {
                         this.isGenerating = true;
@@ -436,6 +462,92 @@ class CodeGeneration extends ApplicationController {
         });
     }
 
+    configureDebugStudyTrial(message) {
+        const reply = (status, detail, trialId = null) => {
+            const envelope = makeEnvelope({
+                type: "StudyTrialConfigured",
+                sessionId: message.sessionId || "unity-xr-session",
+                correlationId: message.correlationId || randomUUID(),
+                originAgent: "code_runtime_generator",
+                payload: { status, detail, trialId },
+            });
+            this.scene.send(97, toWireFormat(envelope));
+        };
+        try {
+            let request = message.payload;
+            if (typeof request === "string") request = JSON.parse(request);
+            if (!request || request.participantId !== "DEBUG")
+                throw new Error("The in-scene launcher accepts DEBUG dry-run identities only.");
+            const taskByMode = {
+                L1: "L1-proactive", L2: "L2-context", L3: "L3-clarify",
+                L4: "L4-confirm", L5: "L5-converse",
+            };
+            if (taskByMode[request.interactionMode] !== request.taskId)
+                throw new Error("Task ID does not match the selected interaction mode.");
+            if (!["A", "B"].includes(request.taskVariant))
+                throw new Error("Task variant must be A or B.");
+            const implicit = ["L1", "L2"].includes(request.interactionMode);
+            const allowedConditions = implicit
+                ? ["agenticxr_verification", "agenticxr_no_verification"]
+                : ["agenticxr_verification", "baseline"];
+            if (!allowedConditions.includes(request.condition))
+                throw new Error(`Condition '${request.condition}' is invalid for ${request.interactionMode}.`);
+            if (request.condition !== "baseline" && !this.agenticMode)
+                throw new Error("AgenticXR conditions require npm run start:agenticxr.");
+            if (request.condition === "baseline" && !this.components.codeGenerationService)
+                throw new Error("The baseline code-generation service is unavailable in this runtime.");
+
+            const candidateTarget = request.condition === "agenticxr_verification" &&
+                ["L4", "L5"].includes(request.interactionMode)
+                ? Number(request.candidateTarget) : null;
+            if (candidateTarget != null && ![1, 3].includes(candidateTarget))
+                throw new Error("Full L4/L5 trials require candidate count N=1 or N=3.");
+
+            this.artifactLog.refreshStudyContextFromDisk();
+            const active = [...this.artifactLog.activeTrialBySession.values()][0] || null;
+            if (active) {
+                if (active.runMode !== "unity_debug_launcher")
+                    throw new Error(`Researcher/operator trial '${active.trialId}' is active; the debug launcher cannot replace it.`);
+                this.artifactLog.endStudyTrial({
+                    sessionId: active.sessionId,
+                    correlationId: (`debug-end-${active.trialId}`).slice(0, 128),
+                    trialId: active.trialId,
+                    taskCompletion: false,
+                    taskSuccess: false,
+                    reason: "debug_launcher_reconfigured",
+                });
+            }
+
+            const context = {
+                participantId: request.participantId,
+                sessionId: request.sessionId,
+                trialId: request.trialId,
+                condition: request.condition,
+                taskId: request.taskId,
+                interactionMode: request.interactionMode,
+                taskVariant: request.taskVariant,
+                conditionAlias: request.conditionAlias,
+                correlationId: message.correlationId,
+                protocolId: "agenticxr-paper-study-v1",
+                methodVersion: "method-draft-2026-08-22",
+                runMode: "unity_debug_launcher",
+                isDryRun: true,
+                ...(candidateTarget != null ? {
+                    candidateTarget,
+                    h4Arm: candidateTarget === 3 ? "best-of-3" : "single-candidate",
+                } : {}),
+            };
+            this.artifactLog.startStudyTrial(context);
+            this.studyIdentityBlocked.clear();
+            console.log(`[AgenticXR] debug trial configured mode=${context.interactionMode} variant=${context.taskVariant} ` +
+                `condition=${context.condition} candidates=${candidateTarget || "n/a"}`);
+            reply("configured", "Server pipeline and Unity task assignment are synchronized.", context.trialId);
+        } catch (error) {
+            console.error(`[AgenticXR] debug trial configuration rejected: ${error.message}`);
+            reply("rejected", error.message);
+        }
+    }
+
     async runClaudePing(peerUUID) {
         const targetObjectId = this.agenticTargets.get(peerUUID) || null;
         const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
@@ -510,18 +622,20 @@ class CodeGeneration extends ApplicationController {
         return true;
     }
 
-    startAgenticTurn(intent, peerUUID) {
+    startAgenticTurn(intent, peerUUID, suppliedStudyContext = null) {
         if (this.studyIdentityBlocked.has(peerUUID)) return;
         const targetObjectId = this.agenticTargets.get(peerUUID);
         const correlationId = this.agenticCorrelations.get(peerUUID) || randomUUID();
         this.agenticCorrelations.set(peerUUID, correlationId);
-        let studyContext;
+        let studyContext = suppliedStudyContext;
         try {
-            studyContext = this.artifactLog.claimRuntimeSession({
-                runtimeSessionId: peerUUID,
-                correlationId,
-                studySource: "ubiq_peer",
-            });
+            if (!studyContext) {
+                studyContext = this.artifactLog.claimRuntimeSession({
+                    runtimeSessionId: peerUUID,
+                    correlationId,
+                    studySource: "ubiq_peer",
+                });
+            }
         } catch (error) {
             this.failClosedStudyIdentity(peerUUID, targetObjectId, correlationId, error);
             return;

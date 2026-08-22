@@ -43,6 +43,7 @@ namespace AgenticCache
         [Serializable] private sealed class BackfillRequestPayload { public bool requestSnapshot; public long lastSeenSeq; }
         [Serializable] private sealed class DeltaAckPayload { public long deltaSeq; }
         [Serializable] private sealed class AgentStatusPayload { public string state; public string detail; }
+        [Serializable] private sealed class DebugStudyTrialResultPayload { public string status; public string detail; public string trialId; }
         [Serializable] private sealed class AgentUtterancePayload { public string text; }
         [Serializable] private sealed class CacheInvalidationPayload { public string reason; }
         [Serializable] private sealed class RollbackPayload { public string artifactId; }
@@ -222,10 +223,13 @@ namespace AgenticCache
         public float maxSnapshotAgeMsSemiAutoSteer = 120000f;
         public float proposalTimeoutSeconds = 120f;
 
+        public event Action<string, string, string> DebugStudyTrialConfigured;
+
         private readonly Dictionary<string, PendingArtifact> pending = new Dictionary<string, PendingArtifact>();
         private readonly Dictionary<string, AppliedArtifact> appliedByArtifactId = new Dictionary<string, AppliedArtifact>();
         private readonly Dictionary<string, AppliedArtifact> activeByObjectId = new Dictionary<string, AppliedArtifact>();
         private NetworkContext decisionContext;
+        private bool decisionContextReady;
         private CacheChannelRelay presenceRelay;
         private float nextHeartbeat;
         private string latestArtifactId;
@@ -239,6 +243,7 @@ namespace AgenticCache
         private void Start()
         {
             decisionContext = NetworkScene.Register(this, new NetworkId(100));
+            decisionContextReady = true;
             AddRelay(new NetworkId(96), HandleChannel96);
             AddRelay(new NetworkId(97), HandleChannel97);
             AddRelay(new NetworkId(99), HandleChannel99);
@@ -387,6 +392,13 @@ namespace AgenticCache
                 visible.sessionId = envelope.sessionId;
                 visible.clientRenderDurationMs = (Time.realtimeSinceStartupAsDouble - renderStartedAt) * 1000.0;
                 SendDecision(visible);
+            }
+            else if (envelope.type == CacheMessageTypes.StudyTrialConfigured)
+            {
+                var result = Parse<DebugStudyTrialResultPayload>(envelope.payload);
+                DebugStudyTrialConfigured?.Invoke(envelope.correlationId,
+                    result != null ? result.status : "rejected",
+                    result != null ? result.detail : "Malformed server response.");
             }
             else if (envelope.type == CacheMessageTypes.AgentUtterance)
             {
@@ -837,6 +849,14 @@ namespace AgenticCache
                     "{\"status\":\"trial_reset_failed\",\"reasonCode\":\"checkpoint_delete_failed\"}"));
                 ShowStatus("trial_reset_failed", error.Message);
             }
+        }
+
+        public bool RequestDebugStudyTrial(string assignmentJson, string correlationId)
+        {
+            if (!decisionContextReady || string.IsNullOrWhiteSpace(assignmentJson) || string.IsNullOrEmpty(correlationId))
+                return false;
+            SendDecision(NewEnvelope(CacheMessageTypes.StudyTrialStartRequest, correlationId, null, assignmentJson));
+            return true;
         }
 
         private void SaveRuntimeCheckpoint()

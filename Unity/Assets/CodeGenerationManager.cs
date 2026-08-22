@@ -12,6 +12,7 @@ using Ubiq.Samples;
 using Ubiq.Voip;
 using Ubiq.Voip.Implementations;
 using RoslynCSharp;
+using AgenticCache;
 
 public class CodeGenerationManager : MonoBehaviour
 {
@@ -35,6 +36,8 @@ public class CodeGenerationManager : MonoBehaviour
 
     private List<AssistantSpeechUnit> speechUnits = new List<AssistantSpeechUnit>();
     public TestRoslyn testRoslyn;
+    public AgenticRuntimeCompiler runtimeCompiler;
+    public AgenticSceneRegistry sceneRegistry;
 
     public GameObject targetObject;
     public GameObject sceneController;
@@ -88,15 +91,24 @@ public class CodeGenerationManager : MonoBehaviour
         // server's CodeGenerated messages so replies can never re-trigger an attach.
         if (message.type != "CodeGenerated") return;
         Debug.Log("Res: " + message.data.ToString());
-        testRoslyn.SetCodeString(message.data.ToString());
+        if (testRoslyn != null) testRoslyn.SetCodeString(message.data.ToString());
 
         // Baseline attach acknowledgement (study measure): the legacy direct-apply
         // path reports whether the generated behavior actually compiled/attached,
         // and how long that took, so baseline trials get a validated-execution
         // timestamp comparable to the agentic path's ArtifactResult.
-        var target = targetObject != null ? targetObject : sceneController;
+        var target = targetObject;
+        if (target == null && sceneRegistry != null)
+            target = sceneRegistry.Find(sceneRegistry.GetSelectedObjectId());
+        if (target == null) target = sceneController;
         var startedAt = Time.realtimeSinceStartupAsDouble;
-        var attached = testRoslyn.TryCompileAndAttach(target, message.data.ToString(), out var replacement, out var error);
+        ScriptProxy replacement = null;
+        string error;
+        var attached = runtimeCompiler != null
+            ? runtimeCompiler.TryCompileAndAttach(target, message.data.ToString(), out replacement, out error)
+            : testRoslyn != null
+                ? testRoslyn.TryCompileAndAttach(target, message.data.ToString(), out replacement, out error)
+                : FailWithoutCompiler(out error);
         if (attached)
         {
             // Frozen baseline-l5-replace-v1 semantics: a later successful direct
@@ -109,6 +121,12 @@ public class CodeGenerationManager : MonoBehaviour
         var durationMs = (Time.realtimeSinceStartupAsDouble - startedAt) * 1000.0;
         if (!attached) Debug.LogError("[Baseline] attach failed: " + error);
         SendAttachResult(message.peer, attached, durationMs, error);
+    }
+
+    private static bool FailWithoutCompiler(out string error)
+    {
+        error = "No runtime compiler is configured for the baseline path.";
+        return false;
     }
 
     private void SendAttachResult(string peer, bool attached, double durationMs, string error)

@@ -43,6 +43,9 @@ class SensorRegistry {
     }
 
     _ingestOne(raw, fallbackTimestamp) {
+        // Study telemetry is routed to ArtifactLog by SharedMemory. It is not a
+        // spatial sensor and should not produce noisy "unrecognized" errors.
+        if (raw && String(raw.sensorType || "").startsWith("study_")) return;
         if (!raw || !KNOWN_SENSOR_TYPES.includes(raw.sensorType)) {
             console.error(`[sensor_registry] dropped unrecognized sensor event: ${JSON.stringify(raw)}`);
             return;

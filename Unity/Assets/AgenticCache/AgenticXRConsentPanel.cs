@@ -23,7 +23,11 @@ namespace AgenticCache
         {
             manager = owner;
             if (questionnairePresenter == null) questionnairePresenter = FindFirstObjectByType<StudyQuestionnairePresenter>();
-            if (questionnairePresenter != null) questionnairePresenter.ImmediateItemCompleted += UnlockDecision;
+            if (questionnairePresenter != null)
+            {
+                questionnairePresenter.ImmediateItemCompleted += UnlockDecision;
+                questionnairePresenter.Started += HideForQuestionnaire;
+            }
             BuildWorldSpacePanel();
             ShowStatus("ready", "Point at an object and hold the left trigger to speak.");
         }
@@ -56,7 +60,8 @@ namespace AgenticCache
                     (candidateCount > 1 ? "\n\nCompared " + candidateCount + " candidates:\n" +
                         (string.IsNullOrEmpty(candidateComparison) ? "Best eligible candidate selected." : candidateComparison) : "") +
                     "\n\nApprove or reject?";
-            if (canvas != null) canvas.gameObject.SetActive(true);
+            if (canvas != null && (questionnairePresenter == null || !questionnairePresenter.IsRunning))
+                canvas.gameObject.SetActive(true);
         }
 
         public void HideProposal()
@@ -64,6 +69,11 @@ namespace AgenticCache
             pendingCorrelationId = null;
             decisionLocked = false;
             if (proposalText != null) proposalText.text = "";
+        }
+
+        public void SetPanelVisible(bool visible)
+        {
+            if (canvas != null) canvas.gameObject.SetActive(visible);
         }
 
         private void Update()
@@ -102,7 +112,21 @@ namespace AgenticCache
             if (!string.IsNullOrEmpty(pendingCorrelationId)) manager.RevisePending(pendingCorrelationId);
         }
 
-        private void UnlockDecision() => decisionLocked = false;
+        private void UnlockDecision()
+        {
+            decisionLocked = false;
+            if (canvas != null && !string.IsNullOrEmpty(pendingCorrelationId))
+                canvas.gameObject.SetActive(true);
+        }
+
+        private void HideForQuestionnaire() => SetPanelVisible(false);
+
+        private void OnDestroy()
+        {
+            if (questionnairePresenter == null) return;
+            questionnairePresenter.ImmediateItemCompleted -= UnlockDecision;
+            questionnairePresenter.Started -= HideForQuestionnaire;
+        }
 
         private void Undo() => manager.UndoLatest();
 
