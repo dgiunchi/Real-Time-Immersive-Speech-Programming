@@ -99,3 +99,34 @@ evidence of participant readiness until the higher gates pass.
 states for L1, L3, L4, L5 and the baseline L5 replacement rule. Its presence closes
 only the contract-definition part of step 2. A gate remains open until executable
 state transitions, integration evidence, and the physical pass named above exist.
+
+## Implementation checkpoint after `577f4c6`
+
+The deterministic suite now passes 794 assertions. The following lower-level pieces
+exist, but the original physical gates remain deliberately open:
+
+- G-TASK-ID: method version and independently balanced A/B task variant now travel
+  through plans, trial events, questionnaires, rubrics, manifests, and CSV exports.
+- G-L1: the continuous monitor selects `system_opportunity` for an active L1 study
+  context, while L2 retains `context`; the existing mode policy still enforces the
+  low-risk/local/reversible constraints.
+- G-L3: a two-utterance transient state retains one correlation, surfaces the fixed
+  missing-target clarification, fails on a third turn, and writes no transcript text.
+- G-L4-REVISE: Unity now exposes Revise, removes the unapproved pending proposal,
+  emits a `revise` decision, and waits for speech on the same correlation.
+- G-L5: three transient speech turns retain one correlation and two revision counts;
+  the complete turn context is passed to each new orchestrator process without being
+  persisted as transcript text.
+- G-BASELINE-L5: `baseline-l5-replace-v1` disposes the prior active script only after
+  a replacement compiles, logs predecessor/rule/operation, and participates in trial
+  reset.
+- G-SCENE: `task_manifest.v1.json` specifies both variants for all five modes and
+  preflight now fails closed because `AgenticXRStudy.unity` has not been authored.
+
+This checkpoint is not a claim that the complete study works. The new interaction
+paths have deterministic/source-contract evidence only. Unity reached a successful
+Mono assembly reload with no compiler diagnostics, but the batch process could not
+complete because the local Unity Licensing Client repeatedly disconnected; therefore
+this wave is not labelled a clean Unity batch pass. No mock end-to-end multi-turn run,
+authored scene pass, headset pass, approved rubric/questionnaire, or participant run
+has occurred.
