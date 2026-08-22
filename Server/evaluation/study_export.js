@@ -8,17 +8,23 @@ const path = require("path");
 
 const TRIAL_COLUMNS = Object.freeze([
     "protocolId", "methodVersion", "participantId", "sessionId", "trialId", "condition", "conditionAlias",
-    "taskId", "interactionMode", "taskVariant", "blockId", "sequenceIndex", "h4Arm",
+    "taskId", "interactionMode", "taskVariant", "blockId", "sequenceIndex", "h4Arm", "runMode", "isDryRun",
+    "modelId", "modelVersionString", "modelPinHash",
     "trialStartedAtUtc", "trialEndedAtUtc", "taskCompletion", "taskSuccess",
-    "taskQualityScore", "taskQualitySignalsJson", "totalTaskTimeMs", "correlationIds",
+    "taskQualityScore", "taskQualitySignalsJson", "t0", "t1", "taskTimeMs", "trialEndReason",
+    "totalTaskTimeMs", "triggerToVisibleChangeMs", "correlationIds",
     "intentCapturedAtUtc", "firstAcknowledgementAtUtc", "firstProposalAtUtc",
     "validatedExecutionAtUtc", "immediateAcknowledgementLatencyMs",
     "proposalLatencyMs", "validatedExecutionLatencyMs",
     "speechCaptureDurationMsJson", "audioDurationMsJson", "transcriptionLatencyMsJson",
+    "asrConfidenceJson", "asrWordCountJson", "transcriptionErrorCount", "transcriptionErrorRate",
     "agentStatusTransportLatencyMsJson", "clientStatusRenderDurationMsJson",
     "proposalTransportLatencyMsJson", "clientPreviewRenderDurationMsJson",
     "previewDecisionLatencyMsJson", "commitAttachDurationMsJson", "endToEndTurnLatencyMsJson",
     "generatedArtifactCount", "compileFailureCount", "validationFailureCount",
+    "candidateAttemptCount", "dryRunAttemptCount", "dryRunSuccessCount", "dryRunFailureCount",
+    "visibleProposalCount", "applicationAttemptCount", "committedApplicationCount",
+    "observedErrorOpportunityCount", "observedErrorCount", "analysisExposureDurationMs",
     "runtimeFailureCount", "verificationApplyCount", "verificationClarifyCount",
     "verificationRepairCount", "verificationRejectCount",
     "verificationCandidateDurationsMsJson", "verificationTimeTotalMs",
@@ -54,7 +60,7 @@ const LONG_COLUMNS = Object.freeze([
     "verificationLevel", "goalStatus", "boundExhausted",
     "resolutionLatencyMs", "speculative", "authoringMode", "consentRoute",
     "validationState", "verificationBypassed", "operation", "previousArtifactId", "baselineRevisionRule",
-    "audioDurationMs", "transcriptionDurationMs", "clientRenderDurationMs",
+    "audioDurationMs", "transcriptionDurationMs", "asrConfidence", "asrWordCount", "clientRenderDurationMs",
 ]);
 
 function readJsonLines(filePath) {
@@ -199,6 +205,10 @@ function aggregateTrial(events) {
     const speechCaptureDurations = pairedDurations(events, "recording_start", "recording_stop");
     const audioDurations = numericList(events.filter((event) => event.eventType === "transcript_ready"), ["audioDurationMs"]);
     const transcriptionDurations = numericList(events.filter((event) => event.eventType === "transcript_ready"), ["transcriptionDurationMs"]);
+    const transcriptEvents = events.filter((event) => event.eventType === "transcript_ready");
+    const asrConfidences = numericList(transcriptEvents, ["asrConfidence"]);
+    const asrWordCounts = numericList(transcriptEvents, ["asrWordCount"]);
+    const transcriptionErrorCount = count(events, (event) => event.eventType === "transcription_error");
     if (!transcriptionDurations.length) transcriptionDurations.push(...pairedDurations(events, "recording_stop", "transcript_ready"));
     const statusTransportDurations = pairedDurations(events, "agent_status_sent", "agent_status_surfaced");
     const statusRenderDurations = numericList(events.filter((event) => event.eventType === "agent_status_surfaced"), ["clientRenderDurationMs"]);
@@ -273,6 +283,20 @@ function aggregateTrial(events) {
     const validatedAt = validated ? eventTime(validated) : null;
     const firstProposal = first(events, (event) => event.eventType === "propose_artifact");
     const firstProposalAt = firstProposal ? eventTime(firstProposal) : null;
+    const taskT0Event = first(events, (event) => event.eventType === "study_trial_t0");
+    const taskT1Event = first(events, (event) => event.eventType === "study_trial_t1");
+    const taskT0 = eventTime(taskT0Event);
+    const taskT1 = eventTime(taskT1Event);
+    const trialEndReason = taskT1Event && taskT1Event.arbitrationReason || "";
+    if (trialEndReason && !["detector", "declared", "timeout"].includes(trialEndReason)) {
+        throw new Error(`trial '${started.trialId}' has invalid trialEndReason '${trialEndReason}'`);
+    }
+    const l2Trigger = first(events, (event) => event.eventType === "study_l2_trigger");
+    const l2VisibleChange = l2Trigger && first(events, (event) =>
+        eventTime(event) >= eventTime(l2Trigger) &&
+        (event.eventType === "study_l2_visible_change" ||
+            (["artifactresult", "commitaccepted"].includes(String(event.eventType || "").toLowerCase()) &&
+                ["committed", "removed"].includes(String(event.status || "").toLowerCase()))));
     // Per-consent-route decision breakdown (paper Measures: per-route accept/
     // reject/undo). Route falls back to the authoring mode when the decision
     // envelope carried no explicit consent route.
@@ -306,6 +330,19 @@ function aggregateTrial(events) {
             eventTime(event) >= eventTime(trigger));
         if (visible) implicitTriggerToVisibleChange.push(eventTime(visible) - eventTime(trigger));
     }
+    // H2 exposure counters are derived only from the append-only journal. They make
+    // both defensible estimands auditable: errors per trial and errors per attempted
+    // application. No parallel Unity counter is allowed to become a second authority.
+    const dryRunAttempts = events.filter((event) => event.eventType === "simulate_artifact");
+    const visibleProposals = events.filter((event) => event.eventType === "proposal_preview_surfaced");
+    const applicationAttempts = events.filter((event) => event.eventType === "propose_artifact");
+    const committedApplications = events.filter((event) =>
+        ["artifactresult", "commitaccepted"].includes(String(event.eventType || "").toLowerCase()) &&
+        ["committed", "removed"].includes(String(event.status || "").toLowerCase()));
+    const groundingErrorCount = count(events, (event) => event.eventType === "grounding_error" ||
+        event.groundingError === true || event.correlationIdValid === false || event.targetObjectValid === false);
+    const analysisExposureDurationMs = taskT1Event && Number.isFinite(taskT1Event.totalTaskTimeMs)
+        ? taskT1Event.totalTaskTimeMs : Number.isFinite(taskT0) && Number.isFinite(taskT1) ? taskT1 - taskT0 : "";
 
     return {
         protocolId: started.protocolId || "",
@@ -321,13 +358,23 @@ function aggregateTrial(events) {
         blockId: started.blockId || "",
         sequenceIndex: started.sequenceIndex ?? "",
         h4Arm: started.h4Arm || "",
+        runMode: started.runMode || "",
+        isDryRun: started.isDryRun ?? "",
+        modelId: started.modelId || "",
+        modelVersionString: started.modelVersionString || "",
+        modelPinHash: started.modelPinHash || "",
         trialStartedAtUtc: iso(startedAt),
         trialEndedAtUtc: iso(endedAt),
         taskCompletion: ended ? ended.taskCompletion : false,
         taskSuccess: ended ? ended.taskSuccess : "",
         taskQualityScore: ended ? ended.taskQualityScore : "",
         taskQualitySignalsJson: ended && ended.taskQualitySignals != null ? JSON.stringify(ended.taskQualitySignals) : "",
+        t0: Number.isFinite(taskT0) ? taskT0 : "",
+        t1: Number.isFinite(taskT1) ? taskT1 : "",
+        taskTimeMs: analysisExposureDurationMs,
+        trialEndReason,
         totalTaskTimeMs: Number.isFinite(startedAt) && Number.isFinite(endedAt) ? endedAt - startedAt : "",
+        triggerToVisibleChangeMs: l2Trigger && l2VisibleChange ? eventTime(l2VisibleChange) - eventTime(l2Trigger) : "",
         correlationIds: [...new Set(events.map((event) => event.correlationId).filter(Boolean))].join(";"),
         intentCapturedAtUtc: iso(intentAt),
         firstAcknowledgementAtUtc: iso(ackAt),
@@ -339,6 +386,11 @@ function aggregateTrial(events) {
         speechCaptureDurationMsJson: JSON.stringify(speechCaptureDurations),
         audioDurationMsJson: JSON.stringify(audioDurations),
         transcriptionLatencyMsJson: JSON.stringify(transcriptionDurations),
+        asrConfidenceJson: JSON.stringify(asrConfidences),
+        asrWordCountJson: JSON.stringify(asrWordCounts),
+        transcriptionErrorCount,
+        transcriptionErrorRate: transcriptEvents.length + transcriptionErrorCount > 0
+            ? transcriptionErrorCount / (transcriptEvents.length + transcriptionErrorCount) : "",
         agentStatusTransportLatencyMsJson: JSON.stringify(statusTransportDurations),
         clientStatusRenderDurationMsJson: JSON.stringify(statusRenderDurations),
         proposalTransportLatencyMsJson: JSON.stringify(proposalTransportDurations),
@@ -347,6 +399,18 @@ function aggregateTrial(events) {
         commitAttachDurationMsJson: JSON.stringify(commitAttachDurations),
         endToEndTurnLatencyMsJson: JSON.stringify(endToEndTurnDurations),
         generatedArtifactCount: proposals.length || uniqueCandidates.size,
+        candidateAttemptCount: uniqueCandidates.size || proposals.length,
+        dryRunAttemptCount: dryRunAttempts.length,
+        dryRunSuccessCount: count(dryRunAttempts, (event) => ["simulated", "apply"].includes(
+            String(event.status || event.verificationOutcome || "").toLowerCase())),
+        dryRunFailureCount: count(dryRunAttempts, (event) => !["simulated", "apply", "skipped_no_verification"].includes(
+            String(event.status || event.verificationOutcome || "").toLowerCase())),
+        visibleProposalCount: visibleProposals.length,
+        applicationAttemptCount: applicationAttempts.length,
+        committedApplicationCount: committedApplications.length,
+        observedErrorOpportunityCount: applicationAttempts.length,
+        observedErrorCount: groundingErrorCount,
+        analysisExposureDurationMs,
         compileFailureCount: count(reasonEvents, ({ event, code }) => code === "compile_failure" || event.failureStage === "compile"),
         validationFailureCount: count(reasonEvents, ({ event, code }) =>
             code === "validation_failure" || event.validationState === "rejected" || event.failureStage === "validation"),
@@ -361,9 +425,7 @@ function aggregateTrial(events) {
         verificationBypassedCount: count(events, (event) => event.verificationBypassed === true),
         previewToCommitTimeMs: preview && commit ? eventTime(commit) - eventTime(preview) : "",
         verificationLiveMismatchCount: mismatchExplicit + mismatchDerived,
-        groundingErrorCount: count(events, (event) => event.eventType === "grounding_error" ||
-            event.groundingError === true ||
-            event.correlationIdValid === false || event.targetObjectValid === false),
+        groundingErrorCount,
         staleApplicationCount: count(events, (event) =>
             event.eventType === "stale_application" || event.staleApplication === true),
         staleProposalCount: count(events, (event) => event.eventType === "stale_proposal" ||
@@ -475,11 +537,13 @@ function longRow(event) {
         baselineRevisionRule: event.baselineRevisionRule || "",
         audioDurationMs: event.audioDurationMs ?? "",
         transcriptionDurationMs: event.transcriptionDurationMs ?? "",
+        asrConfidence: event.asrConfidence ?? "",
+        asrWordCount: event.asrWordCount ?? "",
         clientRenderDurationMs: event.clientRenderDurationMs ?? "",
     };
 }
 
-function buildStudyExports(allEvents) {
+function buildStudyExports(allEvents, { questionnaireResponses = [] } = {}) {
     const starts = allEvents.filter((event) => event.studyEvent && event.eventType === "study_trial_started");
     const windows = starts.map((started) => {
         const ended = allEvents.find((event) => event.studyEvent &&
@@ -518,6 +582,19 @@ function buildStudyExports(allEvents) {
         const identity = trialEvents.find((event) => event.eventType === "study_trial_started") || trialEvents[0] || {};
         try {
             validateStudyEvents(trialEvents);
+            const t0 = first(trialEvents, (event) => event.eventType === "study_trial_t0");
+            const t1 = first(trialEvents, (event) => event.eventType === "study_trial_t1");
+            if (t0 && t1) {
+                const from = eventTime(t0);
+                const to = eventTime(t1);
+                const overlap = questionnaireResponses.find((response) => response.trialId === identity.trialId &&
+                    response.sessionId === identity.sessionId &&
+                    [response.answeredAtUtc, response.respondedAtUtc].some((value) => {
+                        const at = Date.parse(value || "");
+                        return Number.isFinite(at) && at >= from && at <= to;
+                    }));
+                if (overlap) throw new Error(`questionnaire response '${overlap.itemId}' falls inside task window [t0,t1]`);
+            }
             const unjoined = unjoinedByTrial.get(key) || [];
             if (unjoined.length) {
                 const examples = unjoined.slice(0, 5)

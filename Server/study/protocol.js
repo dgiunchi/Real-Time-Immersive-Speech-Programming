@@ -43,18 +43,22 @@ function generateParticipantPlan(participantId) {
     const protocol = loadProtocol();
     const ordinal = participantOrdinal(participantId);
     const zeroBased = ordinal - 1;
+    // Balancing block, orthogonal to EXPLICIT_TASK_ORDERS[zeroBased % 6].
+    // Condition order and H4 arm must not be keyed on the permuted task position:
+    // period-2 factors degenerate against the period-6 permutation.
+    const balancingBlock = Math.floor(zeroBased / 6) % 2;
     const byMode = new Map(protocol.tasks.map((task) => [task.interactionMode, task]));
     const canonicalModeOrder = ["L1", "L2", "L3", "L4", "L5"];
     const modeOrder = ["L1", "L2", ...EXPLICIT_TASK_ORDERS[zeroBased % EXPLICIT_TASK_ORDERS.length]];
-    const h4ByMode = zeroBased % 2 === 0 ? { L4: 1, L5: 3 } : { L4: 3, L5: 1 };
+    const h4ByMode = balancingBlock === 0 ? { L4: 1, L5: 3 } : { L4: 3, L5: 1 };
     const trials = [];
 
     for (const [taskIndex, mode] of modeOrder.entries()) {
         const task = byMode.get(mode);
-        const aliases = [...task.conditionPair];
-        if ((zeroBased + taskIndex) % 2 === 1) aliases.reverse();
         const canonicalModeIndex = canonicalModeOrder.indexOf(mode);
-        const variants = (Math.floor(zeroBased / 2) + canonicalModeIndex) % 2 === 0
+        const aliases = [...task.conditionPair];
+        if ((balancingBlock + canonicalModeIndex) % 2 === 1) aliases.reverse();
+        const variants = (Math.floor(zeroBased / 3) + canonicalModeIndex) % 2 === 0
             ? [...protocol.design.taskVariants]
             : [...protocol.design.taskVariants].reverse();
         for (const [conditionIndex, conditionAlias] of aliases.entries()) {

@@ -26,6 +26,11 @@ const STUDY_OPTIONAL_CONTEXT_FIELDS = Object.freeze([
     "taskVariant",
     "h4Arm",
     "sequenceIndex",
+    "runMode",
+    "isDryRun",
+    "modelPinHash",
+    "modelId",
+    "modelVersionString",
 ]);
 
 function validateStudyContext(context, { requireCorrelationId = true } = {}) {
@@ -72,6 +77,8 @@ class ArtifactLog {
         this.byObjectId = new Map(); // objectId -> [entries]
         this.byArtifactId = new Map();
         this.activeTrialBySession = new Map();
+        this.startedStudyTrials = new Set();
+        this.completedStudyTrials = new Set();
         this.studyContextByCorrelation = new Map();
         this.studyContextByRuntimeSession = new Map();
         this._loadExisting();
@@ -98,9 +105,11 @@ class ArtifactLog {
         }
         if (entry.eventType === "study_trial_started") {
             const context = studyContextOf(entry);
+            this.startedStudyTrials.add(`${entry.participantId}|${entry.trialId}`);
             this.activeTrialBySession.set(entry.sessionId, context);
             this.studyContextByCorrelation.set(entry.correlationId, context);
         } else if (entry.eventType === "study_trial_ended") {
+            this.completedStudyTrials.add(`${entry.participantId}|${entry.trialId}`);
             const active = this.activeTrialBySession.get(entry.sessionId);
             if (active && active.trialId === entry.trialId) this.activeTrialBySession.delete(entry.sessionId);
             for (const [runtimeSessionId, context] of this.studyContextByRuntimeSession.entries()) {
@@ -150,6 +159,10 @@ class ArtifactLog {
         validateStudyContext(context);
         const candidateTarget = validateCandidateTarget(context.candidateTarget);
         this._reloadStudyContextFromDisk();
+        const trialKey = `${context.participantId}|${context.trialId}`;
+        if (this.startedStudyTrials.has(trialKey)) {
+            throw new Error(`study trial '${context.trialId}' for '${context.participantId}' has already been started`);
+        }
         if (this.activeTrialBySession.size > 0) {
             const active = [...this.activeTrialBySession.values()][0];
             throw new Error(`active study trial '${active.trialId}' must be ended or aborted before starting '${context.trialId}'`);
@@ -214,14 +227,18 @@ class ArtifactLog {
         this.activeTrialBySession.clear();
         this.studyContextByCorrelation.clear();
         this.studyContextByRuntimeSession.clear();
+        this.startedStudyTrials.clear();
+        this.completedStudyTrials.clear();
         for (const line of fs.readFileSync(this.filePath, "utf8").split(/\r?\n/).filter(Boolean)) {
             try {
                 const entry = JSON.parse(line);
                 if (entry.eventType === "study_trial_started") {
                     const loaded = studyContextOf(entry);
+                    this.startedStudyTrials.add(`${entry.participantId}|${entry.trialId}`);
                     this.activeTrialBySession.set(entry.sessionId, loaded);
                     this.studyContextByCorrelation.set(entry.correlationId, loaded);
                 } else if (entry.eventType === "study_trial_ended") {
+                    this.completedStudyTrials.add(`${entry.participantId}|${entry.trialId}`);
                     const active = this.activeTrialBySession.get(entry.sessionId);
                     if (active && active.trialId === entry.trialId) this.activeTrialBySession.delete(entry.sessionId);
                     for (const [runtimeSessionId, bound] of this.studyContextByRuntimeSession.entries()) {
@@ -324,6 +341,11 @@ class ArtifactLog {
             if ((committed && operation === "remove") || /rollback|removed|trial_reset/.test(entry.eventType || "")) active.delete(entry.targetObjectId);
         }
         return Array.from(active.values());
+    }
+
+    verifyStudyReplay({ plans, contract } = {}) {
+        const { replayStudyJournal } = require("../study/study_replay_verifier");
+        return replayStudyJournal({ events: this.records, plans, contract });
     }
 }
 

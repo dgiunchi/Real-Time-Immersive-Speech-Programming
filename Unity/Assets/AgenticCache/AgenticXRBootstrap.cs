@@ -20,7 +20,7 @@ namespace AgenticCache
 
             exchange.sceneRegistry = registry;
             exchange.cachePublisher = publisher;
-            exchange.compiler = Object.FindFirstObjectByType<TestRoslyn>();
+            exchange.compiler = Object.FindFirstObjectByType<AgenticRuntimeCompiler>();
             exchange.consentPanel = panel;
             exchange.executionWatchdog = watchdog;
             watchdog.manager = exchange;
@@ -32,7 +32,7 @@ namespace AgenticCache
             panel.Initialize(exchange);
 
             if (exchange.compiler == null)
-                Debug.LogError("[AgenticXR] TestRoslyn was not found. Open the DynamicCompiler scene or assign a runtime compiler.");
+                Debug.LogError("[AgenticXR] AgenticRuntimeCompiler was not found. Assign a runtime compiler.");
         }
     }
 }

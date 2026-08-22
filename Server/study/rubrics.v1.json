@@ -1,14 +1,61 @@
 {
   "schemaVersion": "1.0",
   "protocolId": "agenticxr-paper-study-v1",
-  "collectionStatus": "blocked-until-task-scenarios-and-rubrics-are-approved",
-  "rule": "Rubrics must be versioned and condition-blind. Do not infer success from system logs alone where the paper requires recording/artifact coding.",
-  "raterFields": ["methodVersion", "rubricVersion", "participantId", "trialId", "taskId", "taskVariant", "raterPseudonym", "conditionBlinded", "taskCompletion", "taskSuccess", "qualityScore", "dimensionScores", "codedAtUtc"],
+  "rubricVersion": "rubric-v1",
+  "approved": false,
+  "qualityScale": "0-2",
+  "collectionStatus": "drafted-pending-investigator-approval",
+  "rule": "Rubrics are versioned and condition-blind. Investigator approval is required before human coding.",
+  "blinding": {
+    "raterCount": 2,
+    "independentCodingCoverage": "100%-of-L1-L2-episodes",
+    "agreementStatistic": "Cohens-kappa",
+    "unreliableThresholdExclusive": 0.6,
+    "adjudicateToInflateAgreement": false,
+    "raterInstruction": "Do not ask whether the system did the right thing. Ask whether a reasonable observer, seeing only what the system could see, would call this a sensible thing to try."
+  },
+  "raterFields": ["methodVersion", "rubricVersion", "codingId", "taskId", "taskVariant", "raterPseudonym", "conditionBlinded", "taskCompletion", "taskSuccess", "qualityScore", "dimensionScores", "codedAtUtc"],
   "tasks": [
-    { "taskId": "L1-proactive", "rubricVersion": null, "approved": false, "qualityScale": null, "successCriteria": [], "qualityDimensions": [] },
-    { "taskId": "L2-context", "rubricVersion": null, "approved": false, "qualityScale": null, "successCriteria": [], "qualityDimensions": [] },
-    { "taskId": "L3-clarify", "rubricVersion": null, "approved": false, "qualityScale": null, "successCriteria": [], "qualityDimensions": [] },
-    { "taskId": "L4-confirm", "rubricVersion": null, "approved": false, "qualityScale": null, "successCriteria": [], "qualityDimensions": [] },
-    { "taskId": "L5-converse", "rubricVersion": null, "approved": false, "qualityScale": null, "successCriteria": [], "qualityDimensions": [] }
+    {
+      "taskId": "L1-proactive", "rubricVersion": "rubric-v1", "approved": false, "qualityScale": "0-2", "successRule": "all-four-binaries-true",
+      "successCriteria": [
+        {"criterionId": "grounded", "type": "binary", "source": "log-derived", "definition": "Artifact targets an object in the current task region with a valid StableObjectId."},
+        {"criterionId": "inEnvelope", "type": "binary", "source": "log-derived", "definition": "Effect is local, reversible, non-persistent, creates no more than one artifact, and has risk below 0.3."},
+        {"criterionId": "timely", "type": "binary", "source": "log-derived", "definition": "Visible change occurs before the participant leaves the region or completes the subtask."},
+        {"criterionId": "contextuallyAdmissible", "type": "binary", "source": "blind-rater", "definition": "A plausible response to observable context; it is not judged against a target function."}
+      ],
+      "qualityDimensions": [{"dimensionId": "contextuallyAdmissible", "minimum": 0, "maximum": 1}]
+    },
+    {
+      "taskId": "L2-context", "rubricVersion": "rubric-v1", "approved": false, "qualityScale": "0-2", "successRule": "all-four-binaries-true",
+      "successCriteria": [
+        {"criterionId": "grounded", "type": "binary", "source": "log-derived", "definition": "Artifact targets an object in the current task region with a valid StableObjectId."},
+        {"criterionId": "inEnvelope", "type": "binary", "source": "log-derived", "definition": "Effect is local, reversible, non-persistent, creates no more than one artifact, and has risk below 0.3."},
+        {"criterionId": "timely", "type": "binary", "source": "log-derived", "definition": "Visible change occurs before the participant leaves the region or completes the subtask."},
+        {"criterionId": "contextuallyAdmissible", "type": "binary", "source": "blind-rater", "definition": "A plausible response to observable context; it is not judged against a target function."}
+      ],
+      "qualityDimensions": [{"dimensionId": "contextuallyAdmissible", "minimum": 0, "maximum": 1}]
+    },
+    {
+      "taskId": "L3-clarify", "rubricVersion": "rubric-v1", "approved": false, "qualityScale": "0-2", "successRule": "named-pad-reached-and-done-pressed",
+      "requiredLogFields": ["padReached", "repairInitiator"], "allowedRepairInitiators": ["system", "participant", "none"],
+      "successCriteria": [{"criterionId": "goalPadCommitted", "type": "binary", "source": "detector-and-goal-card", "definition": "Marker is at rest on the pad named by the goal card and the done button was pressed."}],
+      "qualityDimensions": [{"dimensionId": "executionQuality", "minimum": 0, "maximum": 2, "anchors": {"0": "Wrong pad or no commitment.", "1": "Correct pad after visible flailing or an off-plan recovery.", "2": "Correct pad, clean."}}]
+    },
+    {
+      "taskId": "L4-confirm", "rubricVersion": "rubric-v1", "approved": false, "qualityScale": "0-2", "successRule": "door-fully-open-and-participant-in-approach-region",
+      "requiredLogFields": ["consentGatePresented", "consentGateOutcome"], "allowedConsentGateOutcomes": ["approved", "rejected", "revised", "none"], "baselineConsentGatePresented": false,
+      "successCriteria": [{"criterionId": "sharedEffectProxyComplete", "type": "binary", "source": "detector", "definition": "Door reaches fully open while the participant is inside the approach region."}],
+      "qualityDimensions": [{"dimensionId": "intentMatch", "minimum": 0, "maximum": 2, "definition": "How well the resulting effect matched what the participant intended."}]
+    },
+    {
+      "taskId": "L5-converse", "rubricVersion": "rubric-v1", "approved": false, "qualityScale": "0-2", "successRule": "both-revisions-at-least-one-and-sequence-runs",
+      "requiredLogFields": ["priorRequirementRestatementCount", "sequenceRuns"],
+      "successCriteria": [{"criterionId": "bothRevisionsAndSequence", "type": "compound", "source": "blind-rater-and-detector", "definition": "Both requested revisions score at least 1 and the sequence still runs."}],
+      "qualityDimensions": [
+        {"dimensionId": "slowerStepsRevision", "minimum": 0, "maximum": 2, "analyseSeparately": true},
+        {"dimensionId": "resetAfterFinishRevision", "minimum": 0, "maximum": 2, "analyseSeparately": true}
+      ]
+    }
   ]
 }

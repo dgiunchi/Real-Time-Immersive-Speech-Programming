@@ -106,3 +106,6 @@ Server/memory/data/
 Server/study/approvals.local.json
 Server/evaluation/data/
 Unity/Recordings/
+
+# Local study-audit materials (prompts, working papers, and reviewer context)
+_audit_context/

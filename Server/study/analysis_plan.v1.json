@@ -1,0 +1,144 @@
+{
+  "schemaVersion": "1.0",
+  "protocolId": "agenticxr-paper-study-v1",
+  "methodVersion": "method-draft-2026-08-22",
+  "status": "drafted-pending-investigator-approval",
+  "frozenBeforeFirstParticipant": true,
+  "targetParticipants": 24,
+  "powerConvention": {
+    "alphaTwoSided": 0.05,
+    "targetPower": 0.8,
+    "method": "Advance simulation/analytic approximation under the declared mixed-model structure; values are design-stage sensitivity bounds, not post-hoc power.",
+    "limitations": "Exact mixed-model MDE depends on realised random-effect variance and event prevalence; all assumptions below must be reported with the estimates."
+  },
+  "confirmatoryTests": [
+    {
+      "hypothesis": "H1",
+      "primaryOutcome": "rubricCodedTaskSuccess",
+      "scope": { "interactionModes": ["L3", "L4", "L5"] },
+      "model": "success ~ condition + task + position + (1|participant)",
+      "family": "binomial-logit mixed model",
+      "estimand": "condition odds ratio",
+      "mdeAtN24": { "metric": "oddsRatio", "value": 2.8, "assumptions": "144 binary trials, two-sided alpha .05, 80% power, baseline success probability .50, participant ICC .20, balanced condition/task/position." }
+    },
+    {
+      "hypothesis": "H2",
+      "primaryOutcome": "groundingErrorCount",
+      "scope": { "interactionModes": ["L1", "L2"] },
+      "model": "count ~ condition + task + (1|participant)",
+      "family": "Poisson mixed model",
+      "dispersionSwitchRule": "Fit the declared Poisson model first. If a likelihood-ratio dispersion test rejects equidispersion at alpha .05, refit the identical fixed/random-effect formula with a negative-binomial distribution and report the dispersion estimate and switch.",
+      "prohibitedAnalysis": "Do not t-test condition means.",
+      "estimand": "condition incidence-rate ratio",
+      "mdeAtN24": { "metric": "incidenceRateRatio", "value": 2.25, "assumptions": "96 count trials, two-sided alpha .05, 80% power, reference mean .50 errors/trial, participant ICC .20; overdispersion would increase this MDE." }
+    },
+    {
+      "hypothesis": "H4",
+      "primaryOutcome": "firstProposalAcceptedWithoutRevision",
+      "scope": { "conditions": ["agenticxr_verification"], "interactionModes": ["L4", "L5"], "candidateCounts": [1, 3] },
+      "model": "accepted ~ candidateCount + task + order + (1|participant)",
+      "family": "binomial-logit mixed model",
+      "incompleteFactorial": "Each participant contributes one N=1 and one N=3 observation on different tasks. The candidateCount-by-task interaction is not estimable within participant, and no paired comparison may be reported as if task were controlled.",
+      "powerWarning": "With 48 binary observations this is the least-powered confirmatory hypothesis.",
+      "estimand": "candidate-count odds ratio adjusted only for the declared task and order terms",
+      "mdeAtN24": { "metric": "oddsRatio", "value": 4.1, "assumptions": "48 binary observations, two-sided alpha .05, 80% power, reference acceptance probability .50, participant ICC .15, balanced candidate-count order; incomplete task crossing retained." }
+    }
+  ],
+  "estimationAnalyses": [
+    {
+      "hypothesis": "H3",
+      "classification": "non-confirmatory-estimation",
+      "primaryOutcome": "appropriatenessBipolar",
+      "scope": { "interactionModes": ["L1", "L2", "L3", "L4", "L5"], "trialsPerModePerParticipant": 2, "pairwiseContrasts": 10 },
+      "model": "ordinal mixed model with participant random intercept",
+      "estimand": "every pairwise mode contrast with 90% confidence intervals",
+      "equivalenceTest": {
+        "method": "TOST sensitivity analysis",
+        "marginScalePoints": 0.5,
+        "confidenceIntervalPercent": 90,
+        "decisionRule": "The sensitivity TOST clears only if the 90% CI for every pairwise interaction-mode contrast lies entirely inside [-0.5, +0.5] scale points. It does not restore confirmatory status.",
+        "marginRationale": "Half a point on a 7-point scale is below the resolution at which a participant meaningfully distinguishes about right from slightly off, so a smaller difference is not a behavioural change worth claiming.",
+        "marginRevisionRationale": "No margin revision is proposed. The substantive +/-0.5 boundary remains unchanged pending investigator sign-off and was not widened in response to power.",
+        "nullWarning": "A non-significant difference is not evidence of stability."
+      },
+      "varianceDecomposition": {
+        "totalWithinParticipantContrastSdScalePoints": 1.45,
+        "totalVariance": 2.1025,
+        "trialLevelVarianceShare": 0.8,
+        "trialLevelVariance": 1.682,
+        "trialLevelSdScalePoints": 1.2969194269,
+        "trialLevelSource": "Declared planning assumption; no task-matched pilot estimate or directly applicable prior-literature variance component was available before data collection.",
+        "stableParticipantByModeVarianceShare": 0.2,
+        "stableParticipantByModeVariance": 0.4205,
+        "stableParticipantByModeSdScalePoints": 0.6484597135,
+        "stableParticipantByModeSource": "Declared planning assumption; no task-matched pilot estimate or directly applicable prior-literature variance component was available before data collection.",
+        "pairAverageVarianceFormula": "stableParticipantByModeVariance + trialLevelVariance / 2",
+        "pairAverageVariance": 1.2615,
+        "pairAverageSdScalePoints": 1.1231651704,
+        "interpretation": "Averaging two trials per mode halves only trial-level variance. Stable participant-by-mode variance is not reduced."
+      },
+      "equivalencePowerAtN24": {
+        "planningMethod": "Fixed-variance normal per-contrast power approximation using t(.95,23)=1.714 as the 90% CI critical value, true contrast=0, and power=max(0, 2*Phi(margin/SE-critical)-1). The confirmatory rule requires the intersection of all ten contrast events, so its power cannot exceed per-contrast power.",
+        "unaveragedReading": {
+          "sdScalePoints": 1.45,
+          "standardError": 0.2959800106,
+          "ciHalfWidthAtNull": 0.5073097381,
+          "maximumSdThatCouldFitAtNull": 1.4291072012,
+          "power": 0.0,
+          "powerPercent": 0.0,
+          "simultaneousTenContrastPowerUpperBoundPercent": 0.0,
+          "interpretation": "With all 1.45 SD treated as stable contrast variance, the 90% CI cannot fit inside +/-0.5 even at a perfectly null point estimate."
+        },
+        "twoTrialPairAverageReading": {
+          "sdScalePoints": 1.1231651704,
+          "standardError": 0.2292651304,
+          "ciHalfWidthAtNull": 0.3929604334,
+          "power": 0.3594150512,
+          "powerPercent": 35.94150512,
+          "simultaneousTenContrastPowerUpperBoundPercent": 35.94150512,
+          "simultaneousTenContrastPowerUnderIndependencePercent": 0.0035971836,
+          "jointPowerCaveat": "The ten pairwise contrasts are correlated, so the independence value is a reference rather than an exact joint-power claim. The rigorous intersection upper bound is the per-contrast 35.94150512%, already below the eligibility threshold.",
+          "interpretation": "The pair average is geometrically capable of clearing the margin, but both per-contrast power and the rigorous upper bound on simultaneous ten-contrast power remain below 50%."
+        }
+      },
+      "confirmatoryEligibilityRule": {
+        "thresholdPower": 0.5,
+        "rule": "If advance equivalence power at the unchanged +/-0.5 margin is below 50%, remove H3 from confirmatoryTests, report H3 as estimation with 90% CIs, label it non-confirmatory, and report the TOST only as a sensitivity analysis.",
+        "declaredBranch": "estimation",
+        "branchReason": "Declared two-trial pair-average per-contrast power is 35.94150512%, which is also an upper bound on power for all ten contrasts clearing simultaneously and is below the 50% threshold. This branch is fixed before participant data and is not selected from the observed outcome."
+      },
+      "mdeAtN24": { "metric": "scalePointDifference", "value": 0.64, "assumptions": "Two-sided alpha .05, 80% power, pair-average SD 1.1231651704 scale points under the declared 80/20 variance split; this difference MDE is not an equivalence margin." }
+    }
+  ],
+  "secondaryMeasures": {
+    "classification": "exploratory",
+    "significanceClaimsAllowed": false,
+    "reportingRule": "Report effect sizes and confidence intervals. No secondary measure may be promoted to confirmatory after data inspection.",
+    "measures": ["taskTimeMs", "taskCompletion", "taskQualityScore", "perceivedSynchronicity", "temporalIntelligibility", "control", "intrusiveness", "predictability", "perceivedLatency", "validatedExecutionConfidence", "candidateQuality", "candidateFit", "immediateProposalPerceivedLatency", "compileFailureCount", "validationFailureCount", "runtimeFailureCount", "staleApplicationCount", "unsafeProposalCount", "repairAttemptCount", "rollbackCount", "clarificationTurnCount", "confirmationCount", "rejectionCount", "undoCount", "asrConfidence", "asrWordCount", "transcriptionErrorRate", "triggerToVisibleChangeMs"]
+  },
+  "predeclaredRules": [
+    {
+      "ruleId": "H2-dry-run-manipulation-check",
+      "decision": "If dryRunManipulationCheck discrimination is at chance across participants, log-derived H2 measures carry H2 and validatedExecutionConfidence is reported as exploratory.",
+      "logDerivedMeasures": ["groundingErrorCount", "staleApplicationCount", "unsafeProposalCount", "validationFailureCount", "repairAttemptCount", "rollbackCount"]
+    }
+  ],
+  "exclusions": {
+    "appliedBlindToCondition": true,
+    "unusableTrialRules": [
+      "Exclude a trial from its outcome analysis if no study_trial_started event or no terminal study_trial_ended/study_trial_partial marker can be joined.",
+      "Exclude instrument-specific outcomes when the measurement channel failed before a response could be recorded; retain other valid outcomes from that trial.",
+      "Never exclude a trial because its outcome is poor, slow, rejected, timed out, or contrary to a hypothesis."
+    ],
+    "partialTrials": "Retain completed measurements, mark the trial partial, and exclude only outcomes whose required endpoint was not reached.",
+    "timeouts": "Retain as trialEndReason=timeout and taskCompletion=false; do not recode as missing or success.",
+    "declinedQuestionnaireResponses": "Retain response='declined', score as missing for that item, and do not impute.",
+    "withdrawal": "Remove all participant-linked records when withdrawal is requested; do not replace the participant after the preregistered stopping rule unless an amendment is recorded."
+  },
+  "multiplicity": {
+    "confirmatoryFamilySize": 3,
+    "primaryRule": "Holm correction across the three confirmatory hypothesis-level p-values H1, H2, and H4 at family-wise alpha .05. H3 is excluded from the confirmatory family by its predeclared below-50%-equivalence-power rule.",
+    "secondaryRule": "Secondary measures are exploratory, carry no significance claim, and are reported with effect sizes and confidence intervals. If an explicitly named secondary family is tested, use Benjamini-Hochberg FDR at q=.05 and label it exploratory."
+  },
+  "asrGuardReporting": "Report ASR confidence, word count, and transcription-error rate by condition alongside H1. Do not add ASR confidence as a post-hoc H1 covariate."
+}

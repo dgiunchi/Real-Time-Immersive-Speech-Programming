@@ -213,7 +213,7 @@ namespace AgenticCache
         public CachePublisher cachePublisher;
         public AgenticSceneRegistry sceneRegistry;
         public AgenticXRConsentPanel consentPanel;
-        public TestRoslyn compiler;
+        public AgenticRuntimeCompiler compiler;
         public GeneratedBehaviourWatchdog executionWatchdog;
         public string sessionId = "unity-xr-session";
 
@@ -262,7 +262,7 @@ namespace AgenticCache
         {
             pending.Clear();
             localCache.ClearAllProposals();
-            compiler = FindFirstObjectByType<TestRoslyn>();
+            compiler = FindFirstObjectByType<AgenticRuntimeCompiler>();
             if (sceneRegistry != null)
             {
                 localCache.SetSceneEpoch(sceneRegistry.SceneEpoch);

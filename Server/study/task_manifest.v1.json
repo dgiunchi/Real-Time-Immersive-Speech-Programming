@@ -32,8 +32,8 @@
       "timeoutSeconds": 240,
       "requiredComponents": ["StableObjectId"],
       "variants": {
-        "A": ["study-l3-a-root", "study-l3-a-marker", "study-l3-a-button", "study-l3-a-pad-1", "study-l3-a-pad-2"],
-        "B": ["study-l3-b-root", "study-l3-b-marker", "study-l3-b-button", "study-l3-b-pad-1", "study-l3-b-pad-2"]
+        "A": ["study-l3-a-root", "study-l3-a-marker", "study-l3-a-button", "study-l3-a-pad-1", "study-l3-a-pad-2", "study-l3-a-pad-3"],
+        "B": ["study-l3-b-root", "study-l3-b-marker", "study-l3-b-button", "study-l3-b-pad-1", "study-l3-b-pad-2", "study-l3-b-pad-3"]
       }
     },
     {

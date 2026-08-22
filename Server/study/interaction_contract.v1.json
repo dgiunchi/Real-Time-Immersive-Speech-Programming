@@ -16,12 +16,44 @@
       "triggerSource": "system_opportunity",
       "states": ["observing", "opportunity_detected", "executing", "applied", "declined", "cancelled", "timed_out"],
       "terminalStates": ["applied", "declined", "cancelled", "timed_out"],
+      "transitions": [
+        { "from": "observing", "to": "opportunity_detected", "event": "opportunity_detected" },
+        { "from": "opportunity_detected", "to": "executing", "event": "execute" },
+        { "from": "opportunity_detected", "to": "declined", "event": "decline" },
+        { "from": "executing", "to": "applied", "event": "apply" },
+        { "from": "*", "to": "cancelled", "event": "cancel" },
+        { "from": "*", "to": "timed_out", "event": "timeout" }
+      ],
+      "automaticConstraints": { "maximumArtifacts": 1, "localOnly": true, "reversible": true, "persistent": false, "maximumRiskScoreExclusive": 0.3 }
+    },
+    "L2": {
+      "initialState": "observing",
+      "triggerSource": "context",
+      "states": ["observing", "region_entered", "opportunity_detected", "executing", "applied", "declined", "cancelled", "timed_out"],
+      "terminalStates": ["applied", "declined", "cancelled", "timed_out"],
+      "transitions": [
+        { "from": "observing", "to": "region_entered", "event": "region_entered" },
+        { "from": "region_entered", "to": "opportunity_detected", "event": "opportunity_detected" },
+        { "from": "opportunity_detected", "to": "executing", "event": "execute" },
+        { "from": "opportunity_detected", "to": "declined", "event": "decline" },
+        { "from": "executing", "to": "applied", "event": "apply" },
+        { "from": "*", "to": "cancelled", "event": "cancel" },
+        { "from": "*", "to": "timed_out", "event": "timeout" }
+      ],
       "automaticConstraints": { "maximumArtifacts": 1, "localOnly": true, "reversible": true, "persistent": false, "maximumRiskScoreExclusive": 0.3 }
     },
     "L3": {
       "initialState": "awaiting_request",
       "states": ["awaiting_request", "clarification_required", "awaiting_answer", "resolved", "proposing", "cancelled", "timed_out"],
       "terminalStates": ["cancelled", "timed_out"],
+      "transitions": [
+        { "from": "awaiting_request", "to": "clarification_required", "event": "request_received" },
+        { "from": "clarification_required", "to": "awaiting_answer", "event": "clarification_requested" },
+        { "from": "awaiting_answer", "to": "resolved", "event": "answer_received" },
+        { "from": "resolved", "to": "proposing", "event": "proposal_created" },
+        { "from": "*", "to": "cancelled", "event": "cancel" },
+        { "from": "*", "to": "timed_out", "event": "timeout" }
+      ],
       "maximumParticipantUtterances": 2,
       "sameCorrelationRequired": true,
       "proposalRequiresState": "resolved"
@@ -30,6 +62,17 @@
       "initialState": "awaiting_request",
       "states": ["awaiting_request", "proposing", "awaiting_decision", "revising", "approved", "rejected", "timed_out", "undone", "cancelled"],
       "terminalStates": ["approved", "rejected", "timed_out", "undone", "cancelled"],
+      "transitions": [
+        { "from": "awaiting_request", "to": "proposing", "event": "request_received" },
+        { "from": "proposing", "to": "awaiting_decision", "event": "proposal_previewed" },
+        { "from": "awaiting_decision", "to": "revising", "event": "revise" },
+        { "from": "revising", "to": "proposing", "event": "revision_received" },
+        { "from": "awaiting_decision", "to": "approved", "event": "approve" },
+        { "from": "awaiting_decision", "to": "rejected", "event": "reject" },
+        { "from": "awaiting_decision", "to": "undone", "event": "undo" },
+        { "from": "*", "to": "cancelled", "event": "cancel" },
+        { "from": "*", "to": "timed_out", "event": "timeout" }
+      ],
       "decisions": ["approve", "reject", "revise", "undo", "cancel"],
       "revisionPreservesCorrelation": true,
       "approvalRequiredBeforeCommit": true
@@ -38,6 +81,18 @@
       "initialState": "awaiting_request",
       "states": ["awaiting_request", "planning", "awaiting_revision", "revising", "awaiting_decision", "approved", "rejected", "timed_out", "undone", "cancelled"],
       "terminalStates": ["approved", "rejected", "timed_out", "undone", "cancelled"],
+      "transitions": [
+        { "from": "awaiting_request", "to": "planning", "event": "request_received" },
+        { "from": "planning", "to": "awaiting_revision", "event": "proposal_previewed" },
+        { "from": "awaiting_revision", "to": "revising", "event": "revision_received" },
+        { "from": "revising", "to": "awaiting_revision", "event": "revision_requested" },
+        { "from": "revising", "to": "awaiting_decision", "event": "revision_complete" },
+        { "from": "awaiting_decision", "to": "approved", "event": "approve" },
+        { "from": "awaiting_decision", "to": "rejected", "event": "reject" },
+        { "from": "awaiting_decision", "to": "undone", "event": "undo" },
+        { "from": "*", "to": "cancelled", "event": "cancel" },
+        { "from": "*", "to": "timed_out", "event": "timeout" }
+      ],
       "maximumParticipantUtterances": 3,
       "sameCorrelationRequired": true,
       "sameArtifactRequired": true,

@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Scenes/AgenticXRStudy.unity
+    guid: a299e19a4b2026941af6004c2587f966
+  - enabled: 1
     path: Assets/Demos/DynamicCompiler/DynamicCompiler.unity
     guid: a0e68bc371518bc49886dcaaf217899d
   m_configObjects:

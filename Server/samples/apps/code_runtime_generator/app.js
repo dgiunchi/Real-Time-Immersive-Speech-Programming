@@ -209,7 +209,8 @@ class CodeGeneration extends ApplicationController {
             if (attached && pending.artifactId) {
                 this.baselineArtifactBySession.set(sessionId, pending.artifactId);
                 const active = this.interactionSessions.active(sessionId);
-                if (active) this.interactionSessions.recordArtifact({ sessionId, artifactId: pending.artifactId });
+                if (active) this.interactionSessions.recordArtifact({ sessionId, artifactId: pending.artifactId,
+                    previousArtifactId: pending.previousArtifactId });
             }
             this.logStudyEvent({
                 eventType: "artifactresult",
@@ -311,6 +312,8 @@ class CodeGeneration extends ApplicationController {
                         correlationId: this.agenticCorrelations.get(identifier),
                         targetObjectId: this.agenticTargets.get(identifier),
                         transcriptCharacters: transcript.length,
+                        asrConfidence: Number.isFinite(timing.asrConfidence) ? timing.asrConfidence : null,
+                        asrWordCount: Number.isInteger(timing.asrWordCount) ? timing.asrWordCount : transcript.split(/\s+/).length,
                         audioDurationMs: Number.isFinite(timing.audioDurationMs) ? timing.audioDurationMs : null,
                         transcriptionDurationMs: Number.isFinite(timing.transcriptionDurationMs) ? timing.transcriptionDurationMs : null,
                         studySource: "speech_to_text",
@@ -391,7 +394,7 @@ class CodeGeneration extends ApplicationController {
             this.sendAgenticStatus(peerUUID, targetObjectId, correlationId, "failed",
                 "Speech transcription failed. Please try again.");
             this.logStudyEvent({
-                eventType: "transcription_failed",
+                eventType: "transcription_error",
                 sessionId: peerUUID,
                 correlationId,
                 targetObjectId,
@@ -407,7 +410,8 @@ class CodeGeneration extends ApplicationController {
             var response = data.toString();
             //console.log("Received text generation response from child process " + identifier);
             if (response.startsWith(">")) {
-                console.log(" -> Code:: " + response);
+                if (DEBUG_TRANSCRIPTS) console.log(" -> Code:: " + response);
+                else console.log(`[AgenticXR] generated model output characters=${response.length}`);
                 response = response.slice(1);
                 
                 this.scene.send(94, {

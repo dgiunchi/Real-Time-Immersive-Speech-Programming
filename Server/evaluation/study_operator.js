@@ -14,11 +14,19 @@ const {
     generateParticipantPlan,
 } = require("../study/protocol");
 const { validateTaskReadiness } = require("../study/task_readiness");
+const { auditDesign } = require("../study/design_audit");
+const { analyzeInteractionContract } = require("../study/study_session_machine");
+const { scanStudyControls } = require("../study/unity_control_scan");
+const { questionnaireReadiness, scoreStudySpecificResponse } = require("../study/questionnaire_scoring");
+const { verifyAnalysisPlanLock } = require("../study/analysis_plan_lock");
+const { validateModelPin, trialModelPin, pin: modelPin } = require("../study/model_pin");
+const { auditTranscriptPrivacy } = require("../study/privacy_audit");
 
 const PARTICIPANTS_ROOT = path.resolve(__dirname, "data", "participants");
 const QUESTIONNAIRE_COLUMNS = Object.freeze([
     "protocolId", "methodVersion", "questionnaireVersion", "participantId", "sessionId", "trialId",
-    "taskId", "taskVariant", "condition", "interactionMode", "itemId", "response", "answeredAtUtc",
+    "taskId", "taskVariant", "condition", "interactionMode", "itemId", "response", "scoredResponse",
+    "reverseApplied", "answeredAtUtc", "respondedAtUtc", "responseLatencyMs",
 ]);
 const RUBRIC_COLUMNS = Object.freeze([
     "protocolId", "methodVersion", "rubricVersion", "participantId", "sessionId", "trialId", "taskId", "taskVariant",
@@ -83,11 +91,28 @@ function approvalStatus() {
     return { localPath, approvals: JSON.parse(fs.readFileSync(localPath, "utf8")) };
 }
 
-function preflight(participantId, { technicalOnly = false } = {}) {
+const PREFLIGHT_MODE_ALIASES = new Map([
+    ["technical", "researcher-dry-run"],
+    ["human", "human-session"],
+]);
+const PREFLIGHT_MODES = new Set(["researcher-dry-run", "human-session", ...PREFLIGHT_MODE_ALIASES.keys()]);
+
+function normalizePreflightMode(mode) {
+    return PREFLIGHT_MODE_ALIASES.get(mode) || mode;
+}
+
+function preflight(participantId = null, { mode } = {}) {
+    if (!PREFLIGHT_MODES.has(mode)) {
+        throw new Error("--mode=technical/--mode=researcher-dry-run or --mode=human/--mode=human-session is required");
+    }
+    mode = normalizePreflightMode(mode);
+    const humanSession = mode === "human-session";
     const protocol = loadProtocol();
-    const { plan, paths } = loadPlan(participantId);
+    const effectiveParticipantId = participantId || "P900";
+    const paths = participantPaths(effectiveParticipantId);
+    const plan = participantId && fs.existsSync(paths.plan) ? loadPlan(participantId).plan : generateParticipantPlan(effectiveParticipantId);
     const checks = [];
-    const check = (ok, id, detail) => checks.push({ ok: Boolean(ok), id, detail });
+    const check = (ok, id, detail, nextAction) => checks.push({ ok: Boolean(ok), id, detail, nextAction: ok ? null : nextAction });
     check(plan.protocolId === protocol.protocolId, "protocol-plan-match", plan.protocolId);
     check(plan.methodVersion === protocol.methodVersion, "method-version-plan-match", plan.methodVersion || "missing");
     check(plan.trials.length === protocol.design.trialsPerParticipant, "trial-count", `${plan.trials.length}`);
@@ -98,33 +123,91 @@ function preflight(participantId, { technicalOnly = false } = {}) {
     check(fs.existsSync(PROTOCOL_PATH), "protocol-manifest", PROTOCOL_PATH);
     check(fs.existsSync(QUESTIONNAIRES_PATH), "questionnaire-schema", QUESTIONNAIRES_PATH);
     check(fs.existsSync(RUBRICS_PATH), "rubric-schema", RUBRICS_PATH);
+    const instrumentReadiness = questionnaireReadiness({ humanSession });
+    check(instrumentReadiness.ok, "questionnaire-approval-readiness", instrumentReadiness.ok
+        ? (humanSession ? "all wording approved for human use" : "drafted wording permitted for researcher dry-run")
+        : `pending validated=${instrumentReadiness.pendingValidated.length}, study-specific=${instrumentReadiness.pendingStudyItems.length}`,
+    "Obtain licensed instrument text and investigator approval metadata; never draft those items in code.");
+    const rubrics = JSON.parse(fs.readFileSync(RUBRICS_PATH, "utf8"));
+    const rubricsReady = !humanSession || rubrics.approved === true && rubrics.tasks.every((task) => task.approved === true);
+    check(rubricsReady, "rubric-approval-readiness", rubricsReady ? "rubrics permitted" : "rubrics remain unapproved",
+        "Investigator must approve the versioned, condition-blind rubrics.");
     const taskReadiness = validateTaskReadiness();
     check(taskReadiness.ok, "task-scene-readiness",
         taskReadiness.ok ? taskReadiness.scenePath : taskReadiness.checks.filter((item) => !item.ok).map((item) => item.id).join(","));
+    const designAudit = auditDesign({ participantCount: protocol.design.targetParticipants.maximum });
+    check(designAudit.ok, "study-design-invariants",
+        designAudit.ok ? `${designAudit.participantCount} participant plans audited` :
+            designAudit.checks.filter((item) => !item.ok).map((item) => item.id).join(","));
+    const graphAnalysis = analyzeInteractionContract();
+    check(graphAnalysis.ok, "study-state-graph", graphAnalysis.ok ? "all declared paths terminate through required gates" :
+        Object.entries(graphAnalysis.modes).filter(([, result]) => !result.ok).map(([mode]) => mode).join(","));
+    const controlScan = scanStudyControls();
+    check(controlScan.ok, "unity-study-control-bindings", controlScan.ok ? `${controlScan.scannedFiles} scene/prefab files scanned` :
+        `${controlScan.outOfBand.length} out-of-band, ${controlScan.multiplyBound.length} multiply-bound`);
+    const analysisLock = verifyAnalysisPlanLock();
+    check(analysisLock.ok, "analysis-plan-hash", analysisLock.actualSha256,
+        "Review the analysis change, create a new methodVersion if data collection has begun, then deliberately update the lock.");
+    const modelCheck = validateModelPin();
+    check(modelCheck.ok, "model-pin", modelCheck.ok ? modelPin.modelVersionString :
+        modelCheck.checks.filter((item) => !item.ok).map((item) => `${item.id}:${item.actual}`).join(", "),
+    `Set AGENTICXR_MODEL_VERSION=${modelPin.modelVersionString} only after the live endpoint reports that exact version.`);
+    const privacy = auditTranscriptPrivacy();
+    check(privacy.ok, "transcript-privacy-sweep", privacy.ok ? "default paths are metadata-only" :
+        privacy.checks.filter((item) => !item.ok).map((item) => item.id).join(", "),
+    "Gate every participant/model text sink behind STUDY_DEBUG_TRANSCRIPTS and rerun tests.");
     const projectVersionPath = path.resolve(__dirname, "..", "..", "Unity", "ProjectSettings", "ProjectVersion.txt");
     const projectVersion = fs.existsSync(projectVersionPath) ? fs.readFileSync(projectVersionPath, "utf8") : "";
     check(projectVersion.includes(protocol.apparatus.unityVersion), "unity-version", protocol.apparatus.unityVersion);
     check(Boolean(process.env.STT_HTTP_URL), "stt-url", "STT_HTTP_URL is required for live speech");
     check(Boolean(process.env.ANTHROPIC_API_KEY), "agentic-model-key", "ANTHROPIC_API_KEY is required for AgenticXR arms");
     check(Boolean(process.env.OPENAI_API_KEY), "baseline-model-key", "OPENAI_API_KEY is required for baseline arms");
+    check(["1", "true", "yes"].includes(String(process.env.STT_RETURNS_CONFIDENCE || "").toLowerCase()),
+        "stt-confidence-channel", "STT endpoint must return JSON text plus confidence",
+        "Configure and validate an STT endpoint that returns per-utterance confidence, then set STT_RETURNS_CONFIDENCE=1.");
     const transcriptDebugValue = String(process.env.STUDY_DEBUG_TRANSCRIPTS || "").toLowerCase();
-    check(!["1", "true", "yes"].includes(transcriptDebugValue),
-    "transcript-debug-off", "verbatim transcript diagnostics must be disabled");
-    check(Boolean(process.env.AGENTICXR_ARTIFACT_LOG) &&
-        path.resolve(process.env.AGENTICXR_ARTIFACT_LOG) === paths.log,
-    "participant-log-routing", `AGENTICXR_ARTIFACT_LOG must equal ${paths.log}`);
-    const active = new ArtifactLog({ filePath: paths.log }).activeTrialBySession;
-    check(active.size === 0, "no-active-trial", active.size ? `${active.size} trial(s) still active` : "none");
+    const debugEnabled = ["1", "true", "yes"].includes(transcriptDebugValue);
+    check(!humanSession || !debugEnabled, "transcript-debug-off",
+        humanSession ? "verbatim transcript diagnostics must be disabled" : "debug transcripts permitted for researcher dry-run",
+        "Unset STUDY_DEBUG_TRANSCRIPTS before a human session.");
+    if (participantId) {
+        check(Boolean(process.env.AGENTICXR_ARTIFACT_LOG) &&
+            path.resolve(process.env.AGENTICXR_ARTIFACT_LOG) === paths.log,
+        "participant-log-routing", `AGENTICXR_ARTIFACT_LOG must equal ${paths.log}`,
+        "Set AGENTICXR_ARTIFACT_LOG to the participant-specific path printed by the runtime command.");
+        const active = new ArtifactLog({ filePath: paths.log }).activeTrialBySession;
+        check(active.size === 0, "no-active-trial", active.size ? `${active.size} trial(s) still active` : "none",
+            "End or explicitly abort the active trial before starting another.");
+    } else {
+        check(true, "participant-log-routing", "deferred until --participant is supplied");
+        check(true, "no-active-trial", "deferred until --participant is supplied");
+    }
 
-    if (technicalOnly) {
-        check(Number(participantId.slice(1)) >= 900, "human-approval-gates",
-            "TECHNICAL-ONLY is restricted to reserved P900-P999 IDs; no participant may be run");
+    if (!humanSession) {
+        check(!participantId || Number(effectiveParticipantId.slice(1)) >= 900, "researcher-id-reserved",
+            "dry runs use reserved P900-P999 IDs", "Use a reserved P900-P999 participant ID for researcher dry-runs.");
     } else {
         const { localPath, approvals } = approvalStatus();
         const allApproved = approvals && protocol.humanApprovalGates.every((gate) => approvals[gate] === true);
-        check(allApproved, "human-approval-gates", approvals ? "one or more approvals are false" : `missing ${localPath}`);
+        check(allApproved, "human-approval-gates", approvals ? "one or more approvals are false" : `missing ${localPath}`,
+            "Record ethics, consent, instrument, task, rubric, and privacy approvals in approvals.local.json.");
     }
-    return { ok: checks.every((item) => item.ok), technicalOnly, participantId, artifactLog: paths.log, checks };
+    const rehearsalPath = path.resolve(__dirname, "..", "..", "docs", "vr-study-rehearsal-checklist.md");
+    const rehearsal = fs.existsSync(rehearsalPath) ? fs.readFileSync(rehearsalPath, "utf8") : "";
+    const rehearsalSigned = /Overall result:\s*`?PASS`?/i.test(rehearsal) &&
+        /Investigator sign-off:\s*(?!_+\s*$)\S+/im.test(rehearsal);
+    check(!humanSession || rehearsalSigned, "vr-rehearsal-signoff", rehearsalSigned ? "signed PASS" : "not signed for this methodVersion",
+        "Run the physical headset checklist once for this build and record PASS plus investigator sign-off.");
+    return { ok: checks.every((item) => item.ok), mode, isDryRun: !humanSession,
+        participantId: participantId || null, artifactLog: participantId ? paths.log : null, checks };
+}
+
+function printPreflight(report) {
+    console.log(`PREFLIGHT mode=${report.mode} result=${report.ok ? "PASS" : "BLOCKED"}`);
+    for (const item of report.checks) {
+        console.log(`${item.ok ? "PASS" : "BLOCK"} ${item.id}: ${item.detail}`);
+        if (!item.ok) console.log(`  NEXT: ${item.nextAction || "Resolve this check before starting."}`);
+    }
 }
 
 function appendStructuredResponse(filePath, record) {
@@ -132,7 +215,7 @@ function appendStructuredResponse(filePath, record) {
     fs.appendFileSync(filePath, JSON.stringify({ ...record, recordedAtUtc: new Date().toISOString() }) + "\n");
 }
 
-function approvedQuestionnaireResponse(itemId, rawResponse) {
+function approvedQuestionnaireResponse(itemId, rawResponse, { researcherDryRun = false } = {}) {
     const schema = JSON.parse(fs.readFileSync(QUESTIONNAIRES_PATH, "utf8"));
     const items = [
         ...schema.studySpecificItemSlots,
@@ -141,13 +224,13 @@ function approvedQuestionnaireResponse(itemId, rawResponse) {
     ];
     const item = items.find((candidate) => candidate.itemId === itemId);
     if (!item) throw new Error(`questionnaire item '${itemId}' is not in questionnaires.v1.json`);
-    if (item.approvalStatus !== "approved" || item.instrumentApprovalStatus === "pending" || !item.wording) {
+    const draftedDryRun = researcherDryRun && item.approvalStatus === "drafted-pending-investigator-approval";
+    if ((!draftedDryRun && (item.approvalStatus !== "approved" || !item.approvedBy || !item.approvedAtUtc)) ||
+        item.instrumentApprovalStatus === "pending" || !item.wording) {
         throw new Error(`questionnaire item '${itemId}' has no approved verbatim wording`);
     }
-    const numeric = Number(rawResponse);
-    if (rawResponse !== "" && Number.isFinite(numeric)) return numeric;
-    if (Array.isArray(item.anchors) && item.anchors.includes(rawResponse)) return rawResponse;
-    throw new Error(`response for '${itemId}' must be numeric or one of its approved categorical anchors`);
+    if (item.instrumentApprovalStatus) return rawResponse;
+    return scoreStudySpecificResponse(itemId, rawResponse, schema);
 }
 
 function booleanArgument(value, name) {
@@ -159,12 +242,16 @@ function booleanArgument(value, name) {
 function approvedRubricRating(taskId, args) {
     const schema = JSON.parse(fs.readFileSync(RUBRICS_PATH, "utf8"));
     const rubric = schema.tasks.find((candidate) => candidate.taskId === taskId);
-    if (!rubric || rubric.approved !== true || !rubric.rubricVersion || !rubric.qualityScale) {
+    if (!rubric || schema.approved !== true || rubric.approved !== true || !rubric.rubricVersion || !rubric.qualityScale) {
         throw new Error(`task '${taskId}' has no approved versioned rubric`);
     }
+    const scaleMatch = /^(\d+)-(\d+)$/.exec(rubric.qualityScale);
+    if (!scaleMatch) throw new Error(`task '${taskId}' has an invalid quality scale`);
+    const minimum = Number(scaleMatch[1]);
+    const maximum = Number(scaleMatch[2]);
     const qualityScore = Number(required(args, "quality-score"));
-    if (!Number.isFinite(qualityScore) || qualityScore < rubric.qualityScale.minimum || qualityScore > rubric.qualityScale.maximum) {
-        throw new Error(`--quality-score must be within the approved ${rubric.qualityScale.minimum}-${rubric.qualityScale.maximum} scale`);
+    if (!Number.isFinite(qualityScore) || qualityScore < minimum || qualityScore > maximum) {
+        throw new Error(`--quality-score must be within the approved ${rubric.qualityScale} scale`);
     }
     let dimensions;
     try { dimensions = JSON.parse(required(args, "dimension-scores-json")); }
@@ -190,6 +277,13 @@ function readOptionalJsonLines(filePath) {
 function run(argv = process.argv.slice(2)) {
     const command = argv[0];
     const args = options(argv.slice(1));
+    if (command === "preflight") {
+        const participantId = args.participant ? validateParticipantId(args.participant) : null;
+        const report = preflight(participantId, { mode: required(args, "mode") });
+        printPreflight(report);
+        if (!report.ok) process.exitCode = 1;
+        return report;
+    }
     const participantId = validateParticipantId(required(args, "participant"));
     const paths = participantPaths(participantId);
 
@@ -205,12 +299,6 @@ function run(argv = process.argv.slice(2)) {
     }
 
     const { plan } = loadPlan(participantId);
-    if (command === "preflight") {
-        const report = preflight(participantId, { technicalOnly: args["technical-only"] === "true" });
-        console.log(JSON.stringify(report, null, 2));
-        if (!report.ok) process.exitCode = 1;
-        return report;
-    }
     if (command === "status") {
         const log = new ArtifactLog({ filePath: paths.log });
         const report = { participantId, activeTrials: [...log.activeTrialBySession.values()], eventCount: log.records.length, artifactLog: paths.log };
@@ -238,7 +326,8 @@ function run(argv = process.argv.slice(2)) {
     }
     if (command === "start") {
         const trial = selectTrial(plan, args);
-        const report = preflight(participantId, { technicalOnly: args["technical-only"] === "true" });
+        const runMode = normalizePreflightMode(required(args, "mode"));
+        const report = preflight(participantId, { mode: runMode });
         if (!report.ok) {
             const failed = report.checks.filter((check) => !check.ok).map((check) => check.id).join(", ");
             throw new Error(`preflight failed: ${failed}`);
@@ -248,10 +337,16 @@ function run(argv = process.argv.slice(2)) {
             throw new Error(`AGENTICXR_MODE must be '${expectedMode}' for ${trial.trialId}; run the runtime command first`);
         }
         const log = new ArtifactLog({ filePath: paths.log });
+        const pinnedModel = trialModelPin();
         const record = log.startStudyTrial({
             ...trial,
-            correlationId: `${trial.trialId}-root`,
+            correlationId: `${participantId}-${trial.trialId}-root`,
             studySource: "study_operator",
+            runMode,
+            isDryRun: runMode === "researcher-dry-run",
+            modelId: pinnedModel.modelId,
+            modelVersionString: pinnedModel.modelVersionString,
+            modelPinHash: pinnedModel.systemPromptHash,
         });
         console.log(JSON.stringify({ record, runtimeEnvironment: { AGENTICXR_ARTIFACT_LOG: paths.log, AGENTICXR_MODE: trial.condition === "baseline" ? "legacy" : "claude" } }, null, 2));
         return record;
@@ -283,7 +378,7 @@ function run(argv = process.argv.slice(2)) {
         const record = log.endStudyTrial({
             sessionId: trial.sessionId,
             trialId: trial.trialId,
-            correlationId: args.correlation || `${trial.trialId}-root`,
+            correlationId: args.correlation || `${participantId}-${trial.trialId}-root`,
             taskCompletion: completed,
             taskSuccess: null,
             taskQualityScore: null,
@@ -296,10 +391,16 @@ function run(argv = process.argv.slice(2)) {
     if (command === "questionnaire") {
         const trial = selectTrial(plan, args);
         const itemId = required(args, "item");
-        const response = approvedQuestionnaireResponse(itemId, required(args, "response"));
+        const researcherDryRun = args["researcher-dry-run"] === "true";
+        if (researcherDryRun && Number(participantId.slice(1)) < 900)
+            throw new Error("draft questionnaire wording is restricted to reserved P900-P999 researcher dry-runs");
+        const scored = approvedQuestionnaireResponse(itemId, required(args, "response"), { researcherDryRun });
+        const responseLatencyMs = Number(required(args, "response-latency-ms"));
+        if (!Number.isFinite(responseLatencyMs) || responseLatencyMs < 0) throw new Error("--response-latency-ms must be non-negative");
         if (readOptionalJsonLines(paths.questionnaireResponses).some((row) => row.trialId === trial.trialId && row.itemId === itemId)) {
             throw new Error(`questionnaire item '${itemId}' is already recorded for ${trial.trialId}`);
         }
+        const respondedAtUtc = new Date().toISOString();
         appendStructuredResponse(paths.questionnaireResponses, {
             protocolId: plan.protocolId,
             methodVersion: plan.methodVersion,
@@ -312,8 +413,12 @@ function run(argv = process.argv.slice(2)) {
             condition: trial.condition,
             interactionMode: trial.interactionMode,
             itemId,
-            response,
-            answeredAtUtc: new Date().toISOString(),
+            response: scored.rawResponse,
+            scoredResponse: scored.scoredResponse,
+            reverseApplied: scored.reverseApplied,
+            answeredAtUtc: respondedAtUtc,
+            respondedAtUtc,
+            responseLatencyMs,
         });
         console.log(JSON.stringify({ recorded: true, trialId: trial.trialId, itemId }, null, 2));
         return;
@@ -348,10 +453,10 @@ function run(argv = process.argv.slice(2)) {
     }
     if (command === "export") {
         if (!fs.existsSync(paths.log)) throw new Error("participant artifact log does not exist");
-        const result = buildStudyExports(readJsonLines(paths.log));
+        const questionnaireRows = readOptionalJsonLines(paths.questionnaireResponses);
+        const result = buildStudyExports(readJsonLines(paths.log), { questionnaireResponses: questionnaireRows });
         writeCsv(path.join(paths.exportDirectory, "trials.csv"), TRIAL_COLUMNS, result.trialRows);
         writeCsv(path.join(paths.exportDirectory, "events.csv"), LONG_COLUMNS, result.longRows);
-        const questionnaireRows = readOptionalJsonLines(paths.questionnaireResponses);
         const rubricRows = readOptionalJsonLines(paths.rubricRatings);
         writeCsv(path.join(paths.exportDirectory, "questionnaire_responses.csv"), QUESTIONNAIRE_COLUMNS, questionnaireRows);
         writeCsv(path.join(paths.exportDirectory, "rubric_ratings.csv"), RUBRIC_COLUMNS, rubricRows);
@@ -390,4 +495,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { PARTICIPANTS_ROOT, participantPaths, preflight, run };
+module.exports = { PARTICIPANTS_ROOT, PREFLIGHT_MODES, participantPaths, preflight, printPreflight, run };

@@ -1,6 +1,8 @@
 "use strict";
 
-const SUPPORTED_MODES = new Set(["L1", "L3", "L4", "L5"]);
+const { StudySessionMachine, loadInteractionContract } = require("./study_session_machine");
+
+const SUPPORTED_MODES = new Set(Object.keys(loadInteractionContract().modes));
 const TERMINAL_DECISIONS = new Map([
     ["approve", "approved"], ["approved", "approved"],
     ["reject", "rejected"], ["rejected", "rejected"],
@@ -15,7 +17,8 @@ function requiredIdentifier(value, name) {
 class InteractionSessionStore {
     constructor({ now = () => Date.now() } = {}) {
         this.now = now;
-        this.bySession = new Map();
+        this.machine = new StudySessionMachine({ now });
+        this.bySession = this.machine.sessions;
     }
 
     begin({ sessionId, mode, correlationId, targetObjectId = null, artifactId = null }) {
@@ -30,14 +33,7 @@ class InteractionSessionStore {
             }
             return this.snapshot(existing);
         }
-        const state = {
-            sessionId, mode, correlationId, targetObjectId, artifactId,
-            previousArtifactId: null,
-            state: mode === "L1" ? "observing" : "awaiting_request",
-            utterances: [], revisionCount: 0,
-            createdAt: this.now(), updatedAt: this.now(), terminal: false,
-        };
-        this.bySession.set(sessionId, state);
+        const state = this.machine.create({ sessionId, mode, correlationId, targetObjectId, artifactId });
         return this.snapshot(state);
     }
 
@@ -62,33 +58,44 @@ class InteractionSessionStore {
         const state = this.requireActive(sessionId);
         const utterance = typeof text === "string" ? text.trim() : "";
         if (!utterance) throw new Error("utterance text is required");
-        if (state.mode === "L1") throw new Error("L1 does not accept participant speech");
-        const maximum = state.mode === "L3" ? 2 : state.mode === "L5" ? 3 : Infinity;
-        if (state.utterances.length >= maximum) throw new Error(`${state.mode} utterance budget exhausted`);
+        if (["L1", "L2"].includes(state.mode)) throw new Error(`${state.mode} does not accept participant speech`);
+        this.machine.assertUtteranceAllowed(state, state.utterances.length + 1);
+        const maximum = this.machine.graphs.get(state.mode).mode.maximumParticipantUtterances || Infinity;
         state.utterances.push(utterance);
         let action;
         if (state.mode === "L3") {
             if (state.utterances.length === 1) {
-                state.state = "awaiting_answer";
+                this.machine.transitionState(state, "clarification_required", "request_received", { correlationId: state.correlationId });
+                this.machine.transitionState(state, "awaiting_answer", "clarification_requested", { correlationId: state.correlationId });
                 action = "request_clarification";
             } else {
-                state.state = "resolved";
+                this.machine.transitionState(state, "resolved", "answer_received", { correlationId: state.correlationId });
                 action = "execute_resolved_request";
             }
         } else if (state.mode === "L5") {
             if (state.utterances.length === 1) {
-                state.state = "planning";
+                this.machine.transitionState(state, "planning", "request_received", { correlationId: state.correlationId });
+                this.machine.transitionState(state, "awaiting_revision", "proposal_previewed", { correlationId: state.correlationId });
                 action = "propose_initial";
             } else {
-                state.revisionCount += 1;
-                state.state = state.utterances.length === maximum ? "awaiting_decision" : "awaiting_revision";
+                this.machine.transitionState(state, "revising", "revision_received", { correlationId: state.correlationId });
+                this.machine.transitionState(state,
+                    state.revisionCount >= this.machine.graphs.get(state.mode).mode.requiredRevisionCount
+                        ? "awaiting_decision" : "awaiting_revision",
+                    state.revisionCount >= this.machine.graphs.get(state.mode).mode.requiredRevisionCount
+                        ? "revision_complete" : "revision_requested",
+                    { correlationId: state.correlationId });
                 action = "revise_artifact";
             }
         } else {
-            state.state = "proposing";
+            if (state.state === "awaiting_request") {
+                this.machine.transitionState(state, "proposing", "request_received");
+            } else {
+                this.machine.transitionState(state, "proposing", "revision_received");
+            }
+            this.machine.transitionState(state, "awaiting_decision", "proposal_previewed");
             action = state.revisionCount ? "revise_proposal" : "propose_initial";
         }
-        state.updatedAt = this.now();
         return { ...this.snapshot(state), action, promptContext: [...state.utterances] };
     }
 
@@ -97,49 +104,73 @@ class InteractionSessionStore {
         const normalized = String(decision || "").toLowerCase();
         if (normalized === "revise") {
             if (!new Set(["L4", "L5"]).has(state.mode)) throw new Error("revise is available only for L4/L5");
-            state.revisionCount += 1;
-            state.state = "revising";
-            state.updatedAt = this.now();
+            this.machine.transitionState(state, "revising", "revise", { correlationId: state.correlationId });
             return { ...this.snapshot(state), action: "await_revision_utterance" };
         }
         const terminalState = TERMINAL_DECISIONS.get(normalized);
         if (!terminalState) throw new Error(`unsupported decision '${decision}'`);
-        state.state = terminalState;
-        state.terminal = true;
-        state.updatedAt = this.now();
+        const decisionEvent = new Map([
+            ["approve", "approve"], ["approved", "approve"], ["reject", "reject"], ["rejected", "reject"],
+            ["timeout", "timeout"], ["undo", "undo"], ["cancel", "cancel"],
+        ]).get(normalized);
+        this.machine.transitionState(state, terminalState, decisionEvent,
+            { correlationId: state.correlationId });
         return { ...this.snapshot(state), action: "close_chain" };
     }
 
-    recordArtifact({ sessionId, artifactId }) {
+    recordArtifact({ sessionId, artifactId, previousArtifactId = null }) {
         const state = this.requireActive(sessionId);
         requiredIdentifier(artifactId, "artifactId");
-        state.previousArtifactId = state.artifactId;
-        state.artifactId = artifactId;
-        state.updatedAt = this.now();
+        this.machine.bindArtifact(state, artifactId, previousArtifactId);
         return this.snapshot(state);
     }
 
     startL1Opportunity({ sessionId, riskScore, localOnly, reversible, persistent, artifactCount = 1 }) {
         const state = this.requireActive(sessionId);
         if (state.mode !== "L1") throw new Error("system opportunity belongs to an L1 chain");
-        const eligible = Number.isFinite(riskScore) && riskScore < 0.3 && localOnly === true &&
-            reversible === true && persistent === false && artifactCount === 1;
-        state.state = eligible ? "executing" : "declined";
-        state.terminal = !eligible;
-        state.updatedAt = this.now();
+        this.machine.transitionState(state, "opportunity_detected", "opportunity_detected");
+        const limits = this.machine.graphs.get("L1").mode.automaticConstraints;
+        const eligible = Number.isFinite(riskScore) && riskScore < limits.maximumRiskScoreExclusive &&
+            localOnly === limits.localOnly && reversible === limits.reversible && persistent === limits.persistent &&
+            artifactCount <= limits.maximumArtifacts;
+        this.machine.transitionState(state, eligible ? "executing" : "declined", eligible ? "execute" : "decline");
         return { ...this.snapshot(state), action: eligible ? "execute_system_opportunity" : "decline_opportunity" };
     }
 
     markL1Applied(sessionId) {
         const state = this.requireActive(sessionId);
         if (state.mode !== "L1" || state.state !== "executing") throw new Error("L1 is not executing");
-        state.state = "applied";
-        state.terminal = true;
-        state.updatedAt = this.now();
+        this.machine.transitionState(state, "applied", "apply");
         return this.snapshot(state);
     }
 
-    reset(sessionId) { return this.bySession.delete(sessionId); }
+    startL2Context({ sessionId, eventType = "region_entered", riskScore, localOnly, reversible,
+        persistent, artifactCount = 1 }) {
+        const state = this.requireActive(sessionId);
+        if (state.mode !== "L2") throw new Error("context trigger belongs to an L2 chain");
+        if (eventType !== "region_entered") throw new Error("L2 requires a distinct region_entered event");
+        this.machine.transitionState(state, "region_entered", "region_entered");
+        this.machine.transitionState(state, "opportunity_detected", "opportunity_detected");
+        const limits = this.machine.graphs.get("L2").mode.automaticConstraints;
+        const eligible = Number.isFinite(riskScore) && riskScore < limits.maximumRiskScoreExclusive &&
+            localOnly === limits.localOnly && reversible === limits.reversible && persistent === limits.persistent &&
+            artifactCount <= limits.maximumArtifacts;
+        this.machine.transitionState(state, eligible ? "executing" : "declined", eligible ? "execute" : "decline");
+        return { ...this.snapshot(state), action: eligible ? "execute_context_opportunity" : "decline_opportunity" };
+    }
+
+    markL2Applied(sessionId) {
+        const state = this.requireActive(sessionId);
+        if (state.mode !== "L2" || state.state !== "executing") throw new Error("L2 is not executing");
+        this.machine.transitionState(state, "applied", "apply");
+        return this.snapshot(state);
+    }
+
+    assertCommitAllowed(sessionId) {
+        return this.machine.assertCommitAllowed(this.bySession.get(sessionId));
+    }
+
+    reset(sessionId) { return this.machine.reset(sessionId); }
 
     requireActive(sessionId) {
         const state = this.bySession.get(sessionId);
@@ -154,6 +185,7 @@ class InteractionSessionStore {
             previousArtifactId: state.previousArtifactId, state: state.state,
             utteranceCount: state.utterances.length, revisionCount: state.revisionCount,
             createdAt: state.createdAt, updatedAt: state.updatedAt, terminal: state.terminal,
+            transitionHistory: state.transitionHistory.map((transition) => ({ ...transition })),
         };
     }
 }

@@ -48,6 +48,17 @@ function createWavBuffer(pcmBuffer, sampleRate, channels, bitsPerSample) {
     return Buffer.concat([header, pcmBuffer]);
 }
 
+function parseSttResponse(body, contentType = "") {
+    if (contentType.includes("application/json") || /^\s*\{/.test(body)) {
+        const parsed = JSON.parse(body);
+        const text = parsed.text ?? parsed.transcript;
+        if (typeof text !== "string") throw new Error("STT JSON response is missing text/transcript");
+        const confidence = Number(parsed.confidence ?? parsed.asrConfidence);
+        return { text, confidence: Number.isFinite(confidence) ? confidence : null };
+    }
+    return { text: body, confidence: null };
+}
+
 function postWav(url, wavBuffer) {
     return new Promise((resolve, reject) => {
         const form = new FormData();
@@ -74,7 +85,8 @@ function postWav(url, wavBuffer) {
                     reject(new Error(`STT HTTP ${response.statusCode}: ${body}`));
                     return;
                 }
-                resolve(body);
+                try { resolve(parseSttResponse(body, String(response.headers["content-type"] || ""))); }
+                catch (parseError) { reject(parseError); }
             });
         });
     });
@@ -238,7 +250,8 @@ class FasterWhisperHttpSttService extends EventEmitter {
 
         try {
             const transcriptionStartedAt = Date.now();
-            const responseText = await postWav(this.url, wavBuffer);
+            const response = await postWav(this.url, wavBuffer);
+            const responseText = response.text;
             const transcriptionDurationMs = Date.now() - transcriptionStartedAt;
             const debugTranscripts = getBoolean("STUDY_DEBUG_TRANSCRIPTS", false);
             if (debugTranscripts) {
@@ -249,6 +262,8 @@ class FasterWhisperHttpSttService extends EventEmitter {
             this.emit("response", Buffer.from(responseText), peerUUID, {
                 audioDurationMs: durationMs,
                 transcriptionDurationMs,
+                asrConfidence: response.confidence,
+                asrWordCount: responseText.trim() ? responseText.trim().split(/\s+/).length : 0,
                 reason,
             });
         } catch (error) {
@@ -311,4 +326,5 @@ class FasterWhisperHttpSttService extends EventEmitter {
 module.exports = {
     FasterWhisperHttpSttService,
     SpeechToTextService: FasterWhisperHttpSttService,
+    parseSttResponse,
 };

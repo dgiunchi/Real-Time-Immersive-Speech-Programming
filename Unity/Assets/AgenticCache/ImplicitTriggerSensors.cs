@@ -6,31 +6,6 @@ using UnityEngine;
 
 namespace AgenticCache
 {
-    // Authorable in-scene trigger volume for the L2 "context" trigger path
-    // (docs/code-study-readiness-2026-08-11.md §1). Place one on a doorway, station,
-    // or target region, set regionId, and ImplicitTriggerSensors will emit discrete
-    // `locomotion` sensor events (regionId + entering/exiting) when the user's head
-    // crosses it. Uses the attached Collider's bounds when one exists, otherwise the
-    // authored `size` box centred on this transform - no Rigidbody on the XR rig is
-    // required because membership is polled, not physics-triggered.
-    public sealed class AgenticRegionVolume : MonoBehaviour
-    {
-        [Tooltip("Stable region identifier reported to Shared XR Memory, e.g. 'workshop-entrance'.")]
-        public string regionId = "region";
-
-        [Tooltip("Fallback box extents (local, metres) when no Collider is attached.")]
-        public Vector3 size = new Vector3(4f, 3f, 4f);
-
-        public bool Contains(Vector3 worldPoint)
-        {
-            var attached = GetComponent<Collider>();
-            if (attached != null) return attached.bounds.Contains(worldPoint);
-            var local = transform.InverseTransformPoint(worldPoint);
-            var half = size * 0.5f;
-            return Mathf.Abs(local.x) <= half.x && Mathf.Abs(local.y) <= half.y && Mathf.Abs(local.z) <= half.z;
-        }
-    }
-
     // Unity-side implicit-trigger emitters for L1/L2 (study readiness item 1): region
     // entry/exit (`locomotion`), user-to-object proximity enter/exit (`proximity`),
     // and head-ray gaze dwell (`gaze`). All three publish DISCRETE events onto the

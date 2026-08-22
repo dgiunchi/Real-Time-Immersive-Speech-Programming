@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "protocolId": "agenticxr-paper-study-v1",
+  "methodVersion": "method-draft-2026-08-22",
+  "conditionIndependent": true,
+  "experimenterInstruction": "Never signal that a result is wrong and never coach. Record only participant-initiated utterances after the scripted first utterance.",
+  "cards": [
+    {"taskId": "L1-proactive", "taskVariant": "A", "goal": "Finish with any loose tool resting inside any empty tray on the workbench."},
+    {"taskId": "L1-proactive", "taskVariant": "B", "goal": "Finish with any loose tool resting inside any empty tray on the workbench."},
+    {"taskId": "L2-context", "taskVariant": "A", "goal": "Finish with any loose part resting inside its matching socket at the parts station."},
+    {"taskId": "L2-context", "taskVariant": "B", "goal": "Finish with any loose part resting inside its matching socket at the parts station."},
+    {"taskId": "L3-clarify", "taskVariant": "A", "goal": "Finish with the marker resting on the middle pad, then press the done button.", "scriptedFirstUtterance": "Move the marker to the target pad.", "goalCardDetail": "The target is the middle pad.", "maximumFurtherUtterances": 1},
+    {"taskId": "L3-clarify", "taskVariant": "B", "goal": "Finish with the marker resting on the rightmost pad, then press the done button.", "scriptedFirstUtterance": "Move the marker to the target pad.", "goalCardDetail": "The target is the rightmost pad.", "maximumFurtherUtterances": 1},
+    {"taskId": "L4-confirm", "taskVariant": "A", "goal": "Finish with the practice door fully open while you are standing inside its marked approach area."},
+    {"taskId": "L4-confirm", "taskVariant": "B", "goal": "Finish with the practice door fully open while you are standing inside its marked approach area."},
+    {"taskId": "L5-converse", "taskVariant": "A", "goal": "Finish with a three-step sequence that still runs after both listed changes.", "revisionOrder": ["First change: make the steps slower.", "Second change: make the sequence reset after it finishes."]},
+    {"taskId": "L5-converse", "taskVariant": "B", "goal": "Finish with a three-step sequence that still runs after both listed changes.", "revisionOrder": ["First change: make the steps slower.", "Second change: make the sequence reset after it finishes."]}
+  ],
+  "dismissalEventType": "study_task_card_dismissed"
+}

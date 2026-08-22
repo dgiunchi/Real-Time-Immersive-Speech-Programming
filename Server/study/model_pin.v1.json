@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "protocolId": "agenticxr-paper-study-v1",
+  "methodVersion": "method-draft-2026-08-22",
+  "modelId": "claude-sonnet-4-20250514",
+  "modelVersionString": "claude-sonnet-4-20250514",
+  "temperature": null,
+  "topP": null,
+  "seed": null,
+  "unavailableParameterRationale": "The Claude Agent SDK path does not expose temperature, topP, or a deterministic seed; null is pinned and any future availability requires a method-version change.",
+  "systemPromptSource": "Server/orchestrator/app.js#SYSTEM_PROMPT",
+  "systemPromptHash": "108b78e6662d507c1a5096946c1f8bd7e920f7deb98287bcb67cf9db67a860cc",
+  "candidateCountDefault": 3,
+  "toolsetVersion": {
+    "agenticxr": "method-draft-2026-08-22",
+    "claudeAgentSdk": "0.3.207",
+    "mcpSdk": "1.29.0"
+  },
+  "changeRule": "Any model, prompt, sampling, candidate-count default, or toolset change requires a new methodVersion before another human session."
+}

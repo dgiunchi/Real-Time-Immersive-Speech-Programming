@@ -21,9 +21,9 @@ Do not run a human participant until all of the following are true:
 5. A full two-condition pilot exports ten accepted trials and zero rejected
    trials with no participant-identifying text.
 
-`--technical-only=true` bypasses only the human-approval check for reserved
-`P900`-`P999` synthetic IDs so developers can bench-test. It cannot be used with
-real participant IDs.
+Use `--mode=researcher-dry-run` with reserved `P900`-`P999` IDs for bench tests.
+Use `--mode=human-session` for participants. A mode is mandatory and there is no
+approval override.
 
 ## Supported runtime
 
@@ -78,7 +78,7 @@ mode changes:
 Run preflight in a second terminal carrying the same environment:
 
 ```powershell
-npm run study:operator -- preflight --participant=P001
+npm run study:operator -- preflight --mode=human-session --participant=P001
 ```
 
 Preflight checks protocol identity/count, Unity version, both model credentials,
@@ -88,7 +88,7 @@ human approval gates. Do not override a failed human preflight.
 Start only the planned trial:
 
 ```powershell
-npm run study:operator -- start --participant=P001 --trial=T01
+npm run study:operator -- start --mode=human-session --participant=P001 --trial=T01
 ```
 
 The command refuses overlapping trials, wrong runtime mode, incorrect log path,
@@ -154,9 +154,40 @@ cannot delete storage it does not own.
 
 ## Physical acceptance matrix
 
+Technical preflight now proves that the generated scene references the canonical Ubiq XR player,
+its tracked/controller interaction prefabs, a Teleport-tagged floor, the study-safe runtime compiler,
+the expected graspable task objects, and both controller-usable L3 buttons. This is Gate 7:
+physical executability. It closes the earlier review gap where declaration consistency could pass
+even though a participant could not inhabit or act in the scene. It does not replace headset rehearsal.
+
+Interpret the tasks conservatively. L4 uses a trial-local, non-persistent practice door and two
+scripted non-colliding proxies so the baseline remains safe; consequently its consent judgement has
+lower real shared-resource stakes than deployment consent. L5 is a standardized two-step sequential
+revision task, not unrestricted open-ended co-authoring; `priorRequirementRestatementCount` measures
+the cost of retaining the first requirement through the second revision.
+
+For H2, the paper and locked plan define grounding-error counts per trial. The export also derives
+candidate, dry-run, visible-proposal, application-attempt, commit, error-opportunity, and task-clock
+exposures from the append-only journal. Whether the confirmatory model should retain errors per trial
+or use attempted applications as an offset remains an investigator/preregistration decision; do not
+silently change the locked analysis-plan hash.
+
+The paper defines L1/L2 triggers and measures but no separate participant-facing primary activity, so
+none has been invented in the build. If the investigator wants a stronger intrusion/opportunity context,
+approve and preregister one condition-independent option before piloting: (a) a visual workshop-inspection
+checklist, noting that directed gaze may contaminate L2 gaze triggers; (b) a manual sorting/assembly task,
+noting added motor workload and competition with agent-authored object changes; or (c) anomaly monitoring,
+noting added artificial cognitive load. Each option requires revised task cards, trigger validation, timing,
+and detector/logging review rather than an informal experimenter instruction.
+
 Retain dated evidence for each item before piloting:
 
 - headset fit, tracking, controller selection, push-to-talk start/stop;
+- tracked head and both hands move correctly after entering Play Mode;
+- joystick and teleport movement can safely reach both L2 and L4 authored regions;
+- every L1 tool, L2 part, and L3 marker can be grasped, moved, released, and reset;
+- both L3 done buttons respond once to a controller use and never fire from mere proximity;
+- ray/UI interaction remains legible at the authored 2.6-4.0 m task distances;
 - correct trial identity on the first cross-process live event;
 - visible listening/transcribing/thinking/heard status and acknowledgement;
 - L1 automatic local reversible behavior and undo;

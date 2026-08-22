@@ -104,6 +104,58 @@ automatic proposal or displays the world-space Approve/Reject/Undo panel.
 
 Generated folders such as `Server/samples/venv`, `node_modules`, Unity `Library`, `Temp`, `obj`, runtime logs, and sample input/output files are ignored. If any of those are already tracked, remove them from Git with `git rm --cached` so they stay on disk but stop being pushed.
 
+### AgenticXR user study
+
+The authoritative, versioned study definitions and server runtime are in
+`Server/study/`; operator commands are implemented in
+`Server/evaluation/study_operator.js`. Unity study code is in
+`Unity/Assets/Study/`, the deterministic scene builder is
+`Unity/Assets/Editor/AgenticXRStudySceneBuilder.cs`, and its generated output is
+`Unity/Assets/Scenes/AgenticXRStudy.unity`. Follow
+`docs/EXPERIMENTER_RUNBOOK.md` for operation and
+`docs/vr-study-rehearsal-checklist.md` for physical rehearsal. Scientific-design
+changes require explicit review; commit messages and progress notes are not
+substitutes for executable behaviour and test evidence.
+
+All Node commands below run from `Server/`, **not the repository root**. Create
+the participant plan before participant-specific preflight:
+
+```powershell
+cd Server
+npm test
+npm run test:integration
+node study/pilot_harness.js
+node evaluation/study_operator.js plan --participant=P001
+node evaluation/study_operator.js preflight --mode=technical --participant=P001
+node evaluation/study_operator.js preflight --mode=human --participant=P001
+node -e "const r=require('./study/task_readiness').validateTaskReadiness(); console.log(JSON.stringify(r,null,2)); process.exit(r.ok?0:1)"
+```
+
+`technical` is the researcher dry-run preflight; `human` is the fail-closed human
+session preflight. Technical preflight checks the executable design, task scene,
+state graph, analysis lock, model pin, privacy defaults, live service settings,
+and participant log routing without accepting human-use approvals. It can still
+fail on a development machine until STT, both model credentials, model-version
+pinning, confidence output, and the participant-specific artifact-log path are
+configured. Human preflight adds the questionnaire, rubric, investigator, and
+institutional gates and is **expected to fail at present**. Never add approximate
+NASA-TLX or Jian et al. item text, weaken the analysis-plan hash lock, or widen
+the H3 equivalence margin to make it green.
+
+| Evidence level | Current expectation | Required evidence |
+| --- | --- | --- |
+| 1. Node deterministic tests | Pass | `npm test` with no assertion-count reduction. |
+| 2. Mock integration tests | Pass | `npm run test:integration`. |
+| 3. Design/task readiness and technical preflight | Static design/task readiness and pilot pass; live technical checks require the configured services and participant log path | Preserve the JSON reports and resolve every failed check before a live rehearsal. |
+| 4. Unity compilation and generated-scene inspection | Automated compilation and scene generation can pass; human Editor inspection is still required | In Unity `6000.3.9f1`, use **AgenticXR > Build Study Scene**. Rebuild twice and confirm `AgenticXRStudy.unity` is byte-identical, then open it and inspect console, hierarchy, stable IDs, XR player, hands, teleport floor, task variants, colliders, consent UI, and reset behaviour. Do not hand-edit the generated scene. |
+| 5. Physical headset rehearsal | Outstanding until performed | With a Quest over Link, rehearse tracking, controllers, push-to-talk, locomotion, reachability, grasp/use, status and consent UI, all L1-L5 routes, error recovery, abort, breaks, resume, export, and participant safety. Automated YAML checks are not a headset test. |
+| 6. Human/institutional readiness | Blocked | Add licensed validated-instrument wording through the approved process; investigator-approve the twelve study-specific items and rubrics; complete ethics/institutional, consent, safety, privacy/data-management, recruitment, and adverse-event approvals; then pass human preflight and a full physical rehearsal. |
+
+The project is therefore **not participant-ready**. Lower-level automated gates
+passing does not establish Unity visual quality, physical usability, approval, or
+human-session readiness. Local approvals, participant/operator data, recordings,
+and audit working materials are deliberately excluded from Git.
+
 ## Features
 
 Ubiq's goal is to enable your networked project. It includes message passing, room management, rendezvous and matchmaking, object spawning, shared binary blobs, multiple synchronisation models, lighweight XR interaction examples, customisable avatars and voice chat across Windows, Linux, Android, MacOS, and Javascript running in the browser.

@@ -37,6 +37,9 @@ const BRIDGE_SERVER_NAME = "unity_scene_bridge";
 // best-of-three outside a trial. This process is spawned once per turn, so reading
 // the environment at module load is per-turn configuration, not a global.
 const CANDIDATE_COUNT = Math.min(5, Math.max(1, Number(process.env.AGENTICXR_CANDIDATE_COUNT) || 3));
+const MODEL_ID = process.env.AGENTICXR_MODEL_ID || "claude-sonnet-4-20250514";
+const DEBUG_TRANSCRIPTS = ["1", "true", "yes"].includes(
+    String(process.env.STUDY_DEBUG_TRANSCRIPTS || "").toLowerCase());
 
 function bridgeTool(name) {
     return `mcp__${BRIDGE_SERVER_NAME}__${name}`;
@@ -63,7 +66,7 @@ const AGENTS = {
             "write any code.",
         tools: [bridgeTool("query_scene"), bridgeTool("query_visual_memory"), bridgeTool("query_scene_graph"), bridgeTool("query_affordances"), bridgeTool("get_script_context"), bridgeTool("get_evolution_history"), bridgeTool("get_experience_context")],
         mcpServers: [BRIDGE_SERVER_NAME],
-        model: "sonnet",
+        model: MODEL_ID,
     },
     code_generator: {
         description: `Drafts ${CANDIDATE_COUNT} distinct lifecycle candidate(s) from a grounded intent. Use after scene grounding and history retrieval.`,
@@ -90,7 +93,7 @@ const AGENTS = {
             `Output ONLY a JSON array of ${CANDIDATE_COUNT} object(s) with candidateId, operation, ` +
             "existingArtifactId, approach, experienceMode, and code (null only for remove).",
         tools: [],
-        model: "sonnet",
+        model: MODEL_ID,
     },
     validator_critic: {
         description: "Independently reviews a candidate artifact against the original intent before it is proposed to Unity. Use after code_generator, before any propose/simulate call.",
@@ -116,7 +119,7 @@ const AGENTS = {
             "\"reversible\": boolean, \"localOnly\": boolean, \"detailResolved\": boolean}. " +
             "No prose outside the JSON.",
         tools: [],
-        model: "sonnet",
+        model: MODEL_ID,
     },
     conflict_resolver: {
         description: "Checks whether the target object is already locked, owned, or otherwise unsafe for this session to modify. Use after validation passes, before propose_artifact.",
@@ -129,7 +132,7 @@ const AGENTS = {
             "the JSON.",
         tools: [bridgeTool("get_person_policy"), bridgeTool("query_scene_graph")],
         mcpServers: [BRIDGE_SERVER_NAME],
-        model: "haiku",
+        model: MODEL_ID,
     },
     version_memory: {
         description: "Commits the outcome of a completed authoring turn to the Version/Memory store. Use last, after Unity has confirmed (or rejected) an ArtifactResult.",
@@ -263,6 +266,10 @@ async function main() {
         );
         process.exit(1);
     }
+    if (process.env.AGENTICXR_MODEL_VERSION !== MODEL_ID) {
+        console.error(`[orchestrator] live model version must be reported as pinned '${MODEL_ID}' before startup`);
+        process.exit(1);
+    }
 
     const intent = process.argv[2];
     const targetObjectId = process.argv[3] || "obj-test-42";
@@ -281,7 +288,8 @@ async function main() {
     }
 
     console.log(`[orchestrator] correlationId=${correlationId} target=${targetObjectId}`);
-    console.log(`[orchestrator] intent: "${intent}"`);
+    if (DEBUG_TRANSCRIPTS) console.log(`[orchestrator] intent: "${intent}"`);
+    else console.log(`[orchestrator] intent received characters=${intent.length}`);
 
     const options = {
         systemPrompt: SYSTEM_PROMPT,
@@ -303,7 +311,7 @@ async function main() {
         // confirm/ghost-preview UI, reached through the authoringMode routing inside
         // propose_artifact/ArtifactResult, not an SDK permission prompt here.
         permissionMode: "bypassPermissions",
-        model: "sonnet",
+        model: MODEL_ID,
         cwd: __dirname,
     };
 
@@ -330,13 +338,18 @@ async function main() {
         appendEvaluationEvent({ eventType: "orchestrator_attempt_started", sessionId, correlationId, targetObjectId, attempt });
         try {
             for await (const message of query({ prompt, options })) {
+                const reportedModel = message.model || (message.message && message.message.model);
+                if (reportedModel && reportedModel !== MODEL_ID) {
+                    throw new Error(`live model drift: reported '${reportedModel}', pinned '${MODEL_ID}'`);
+                }
                 if (message.type === "assistant") {
                     for (const block of message.message.content || []) {
                         if (block.type === "tool_use" && /(?:propose_artifact|request_commit)$/.test(block.name || "")) {
                             sawMutatingToolCall = true;
                         }
                         if (block.type === "text" && block.text.trim()) {
-                            console.log(`[router] ${block.text.trim()}`);
+                            if (DEBUG_TRANSCRIPTS) console.log(`[router] ${block.text.trim()}`);
+                            else console.log(`[router] model output received characters=${block.text.trim().length}`);
                         }
                     }
                 } else if (message.type === "result") {
@@ -381,7 +394,11 @@ function isTransientAnthropicError(error) {
     return ["econnreset", "etimedout", "eai_again", "socket hang up", "rate limit", "overloaded", "temporarily unavailable"].some((token) => text.includes(token));
 }
 
-main().catch((err) => {
-    console.error("[orchestrator] fatal error:", err);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((err) => {
+        console.error("[orchestrator] fatal error:", err);
+        process.exit(1);
+    });
+}
+
+module.exports = { SYSTEM_PROMPT, MODEL_ID, CANDIDATE_COUNT, main, isTransientAnthropicError };

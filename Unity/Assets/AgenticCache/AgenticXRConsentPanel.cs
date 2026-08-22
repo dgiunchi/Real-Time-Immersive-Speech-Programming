@@ -1,3 +1,4 @@
+using AgenticXR.Study;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR;
@@ -15,10 +16,14 @@ namespace AgenticCache
         private MicrophoneCapture microphoneCapture;
         private string pendingCorrelationId;
         private bool leftPrimaryWasPressed;
+        private bool decisionLocked;
+        public StudyQuestionnairePresenter questionnairePresenter;
 
         public void Initialize(CacheExchangeManager owner)
         {
             manager = owner;
+            if (questionnairePresenter == null) questionnairePresenter = FindFirstObjectByType<StudyQuestionnairePresenter>();
+            if (questionnairePresenter != null) questionnairePresenter.ImmediateItemCompleted += UnlockDecision;
             BuildWorldSpacePanel();
             ShowStatus("ready", "Point at an object and hold the left trigger to speak.");
         }
@@ -40,6 +45,8 @@ namespace AgenticCache
             string candidateComparison)
         {
             pendingCorrelationId = correlationId;
+            decisionLocked = questionnairePresenter != null && questionnairePresenter.RequiresImmediateProposalItem();
+            if (decisionLocked) questionnairePresenter.BeginImmediateProposalItem();
             if (proposalText != null)
                 proposalText.text = "Claude proposes a behaviour for " + targetName + ":\n" + intent +
                     "\n\nVerification: " + (string.IsNullOrEmpty(validationSummary) ? "compiled on staging clone" : validationSummary) +
@@ -55,6 +62,7 @@ namespace AgenticCache
         public void HideProposal()
         {
             pendingCorrelationId = null;
+            decisionLocked = false;
             if (proposalText != null) proposalText.text = "";
         }
 
@@ -77,19 +85,24 @@ namespace AgenticCache
 
         private void Approve()
         {
+            if (decisionLocked) return;
             if (!string.IsNullOrEmpty(pendingCorrelationId)) manager.ApprovePending(pendingCorrelationId);
         }
 
         private void Reject()
         {
+            if (decisionLocked) return;
             if (!string.IsNullOrEmpty(pendingCorrelationId)) manager.RejectPending(pendingCorrelationId, "user_rejected");
             else manager.CancelActiveRequest();
         }
 
         private void Revise()
         {
+            if (decisionLocked) return;
             if (!string.IsNullOrEmpty(pendingCorrelationId)) manager.RevisePending(pendingCorrelationId);
         }
+
+        private void UnlockDecision() => decisionLocked = false;
 
         private void Undo() => manager.UndoLatest();
 
