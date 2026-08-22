@@ -855,6 +855,7 @@ equal(new ArtifactLog({ filePath: studyLogPath }).getStudyContext({ sessionId: "
 
 const unityManager = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CacheExchangeManager.cs"), "utf8");
 const consentPanel = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "AgenticXRConsentPanel.cs"), "utf8");
+const baselineUnityManager = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "CodeGenerationManager.cs"), "utf8");
 const unityPublisher = fs.readFileSync(path.join(root, "..", "Unity", "Assets", "AgenticCache", "CachePublisher.cs"), "utf8");
 const runtimeAppSource = fs.readFileSync(path.join(root, "samples", "apps", "code_runtime_generator", "app.js"), "utf8");
 const sttServiceSource = fs.readFileSync(path.join(root, "samples", "services", "speech_to_text", "service.js"), "utf8");
@@ -870,10 +871,16 @@ ok(runtimeAppSource.includes('payload.status !== "trial_reset"'),
     "the server clears prior artifacts only after Unity confirms a complete reset");
 ok(runtimeAppSource.includes("InteractionSessionStore"),
     "speech runtime uses the deterministic multi-turn interaction state");
+ok(runtimeAppSource.includes('baselineRevisionRule = "baseline-l5-replace-v1"'),
+    "baseline runtime stamps the frozen L5 replacement rule on every revision");
 ok(runtimeAppSource.includes('eventType: "clarification_turn"'),
     "L3 surfaces and records a clarification before execution");
 ok(consentPanel.includes('"Revise"') && unityManager.includes("RevisePending"),
     "Unity exposes a real revise control without approving the proposal");
+ok(baselineUnityManager.includes("activeBaselineProxy.Dispose()"),
+    "baseline Unity replaces its prior active generated script after a successful revision");
+ok(unityManager.includes("ResetGeneratedStudyBehaviour"),
+    "trial reset removes the baseline generated script before acknowledging completion");
 const continuousMonitorSource = fs.readFileSync(path.join(root, "orchestrator", "continuous_monitor.js"), "utf8");
 ok(continuousMonitorSource.includes('? "system_opportunity" : "context"'),
     "continuous monitor has a distinct executable L1 system-opportunity route");

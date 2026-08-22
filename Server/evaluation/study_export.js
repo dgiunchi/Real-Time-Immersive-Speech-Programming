@@ -53,7 +53,7 @@ const LONG_COLUMNS = Object.freeze([
     "selectedCandidateScore", "studySource", "goalId", "goalIteration",
     "verificationLevel", "goalStatus", "boundExhausted",
     "resolutionLatencyMs", "speculative", "authoringMode", "consentRoute",
-    "validationState", "verificationBypassed",
+    "validationState", "verificationBypassed", "operation", "previousArtifactId", "baselineRevisionRule",
     "audioDurationMs", "transcriptionDurationMs", "clientRenderDurationMs",
 ]);
 
@@ -470,6 +470,9 @@ function longRow(event) {
         consentRoute: event.consentRoute || "",
         validationState: event.validationState || "",
         verificationBypassed: event.verificationBypassed ?? "",
+        operation: event.operation || "",
+        previousArtifactId: event.previousArtifactId || "",
+        baselineRevisionRule: event.baselineRevisionRule || "",
         audioDurationMs: event.audioDurationMs ?? "",
         transcriptionDurationMs: event.transcriptionDurationMs ?? "",
         clientRenderDurationMs: event.clientRenderDurationMs ?? "",

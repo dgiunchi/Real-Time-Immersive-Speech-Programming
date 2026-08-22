@@ -814,6 +814,8 @@ namespace AgenticCache
             activeByObjectId.Clear();
             appliedByArtifactId.Clear();
             latestArtifactId = null;
+            var baselineManager = FindFirstObjectByType<CodeGenerationManager>();
+            if (baselineManager != null) baselineManager.ResetGeneratedStudyBehaviour();
             try
             {
                 if (File.Exists(CheckpointPath)) File.Delete(CheckpointPath);

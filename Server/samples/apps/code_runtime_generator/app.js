@@ -81,6 +81,7 @@ class CodeGeneration extends ApplicationController {
         this.idlePredictionRuns = new Map();
         this.lastIdlePredictionAt = new Map();
         this.baselinePending = null;
+        this.baselineArtifactBySession = new Map();
         this.agenticTurnTimeoutMs = Number(process.env.AGENTICXR_TURN_TIMEOUT_MS) || 180000;
         this.artifactLog = new ArtifactLog({ filePath: process.env.AGENTICXR_ARTIFACT_LOG });
         this.interactionSessions = new InteractionSessionStore();
@@ -182,6 +183,7 @@ class CodeGeneration extends ApplicationController {
                     this.interactionSessions.reset(sessionId);
                     this.agenticCorrelations.delete(sessionId);
                 }
+                this.baselineArtifactBySession.clear();
                 console.log(`[AgenticXR] trial reset synchronized artifacts=${active.length}`);
             }
         });
@@ -204,11 +206,20 @@ class CodeGeneration extends ApplicationController {
             try { payload = JSON.parse(message.data || "{}"); }
             catch (_) { /* status stays unknown; logged as error below */ }
             const attached = payload.status === "attached";
+            if (attached && pending.artifactId) {
+                this.baselineArtifactBySession.set(sessionId, pending.artifactId);
+                const active = this.interactionSessions.active(sessionId);
+                if (active) this.interactionSessions.recordArtifact({ sessionId, artifactId: pending.artifactId });
+            }
             this.logStudyEvent({
                 eventType: "artifactresult",
                 sessionId,
                 correlationId: pending.correlationId,
                 targetObjectId: pending.targetObjectId,
+                artifactId: pending.artifactId,
+                previousArtifactId: pending.previousArtifactId,
+                operation: pending.operation,
+                baselineRevisionRule: pending.baselineRevisionRule,
                 status: attached ? "committed" : "error",
                 commitAttachDurationMs: Number.isFinite(payload.commitAttachDurationMs)
                     ? payload.commitAttachDurationMs : null,
@@ -331,7 +342,32 @@ class CodeGeneration extends ApplicationController {
                         this.isGenerating = true;
                         const correlationId = this.agenticCorrelations.get(identifier) || randomUUID();
                         const targetObjectId = this.agenticTargets.get(identifier) || null;
-                        this.baselinePending = { sessionId: identifier, correlationId, targetObjectId };
+                        let baselineOperation = "create";
+                        let baselineRevisionRule = null;
+                        const previousArtifactId = this.baselineArtifactBySession.get(identifier) || null;
+                        try {
+                            const studyContext = this.artifactLog.claimRuntimeSession({
+                                runtimeSessionId: identifier, correlationId, studySource: "baseline_runtime",
+                            });
+                            if (studyContext && studyContext.interactionMode === "L5") {
+                                this.interactionSessions.begin({
+                                    sessionId: identifier, mode: "L5", correlationId, targetObjectId,
+                                });
+                                const turn = this.interactionSessions.recordUtterance({ sessionId: identifier, text: transcript });
+                                baselineOperation = turn.utteranceCount === 1 ? "create" : "edit";
+                                baselineRevisionRule = "baseline-l5-replace-v1";
+                                this.logStudyEvent({ eventType: "baseline_revision_turn", sessionId: identifier,
+                                    correlationId, targetObjectId, operation: baselineOperation,
+                                    revisionCount: turn.revisionCount, baselineRevisionRule });
+                            }
+                        } catch (error) {
+                            this.isGenerating = false;
+                            this.failClosedStudyIdentity(identifier, targetObjectId, correlationId, error);
+                            return;
+                        }
+                        const artifactId = `baseline-${correlationId}-${baselineOperation === "create" ? "v1" : "revision"}`;
+                        this.baselinePending = { sessionId: identifier, correlationId, targetObjectId,
+                            operation: baselineOperation, artifactId, previousArtifactId, baselineRevisionRule };
                         this.logStudyEvent({
                             eventType: "intent_captured",
                             sessionId: identifier,
@@ -384,15 +420,11 @@ class CodeGeneration extends ApplicationController {
                         ...this.baselinePending,
                         eventType: "propose_artifact",
                         status: "sent_unvalidated",
-                        operation: "create",
                         studySource: "baseline_runtime",
                     });
                     // Remember the trial identity so Unity's CodeAttachResult can
                     // close this turn with a validated-execution event.
-                    this.lastBaselineAttach.set(this.baselinePending.sessionId, {
-                        correlationId: this.baselinePending.correlationId,
-                        targetObjectId: this.baselinePending.targetObjectId,
-                    });
+                    this.lastBaselineAttach.set(this.baselinePending.sessionId, { ...this.baselinePending });
                     this.baselinePending = null;
                 }
                 this.isGenerating = false;

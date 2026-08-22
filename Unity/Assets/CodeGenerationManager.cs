@@ -11,6 +11,7 @@ using System.Text;
 using Ubiq.Samples;
 using Ubiq.Voip;
 using Ubiq.Voip.Implementations;
+using RoslynCSharp;
 
 public class CodeGenerationManager : MonoBehaviour
 {
@@ -37,6 +38,7 @@ public class CodeGenerationManager : MonoBehaviour
 
     public GameObject targetObject;
     public GameObject sceneController;
+    private ScriptProxy activeBaselineProxy;
 
     [Serializable]
     private struct Message
@@ -94,7 +96,16 @@ public class CodeGenerationManager : MonoBehaviour
         // timestamp comparable to the agentic path's ArtifactResult.
         var target = targetObject != null ? targetObject : sceneController;
         var startedAt = Time.realtimeSinceStartupAsDouble;
-        var attached = testRoslyn.TryCompileAndAttach(target, message.data.ToString(), out _, out var error);
+        var attached = testRoslyn.TryCompileAndAttach(target, message.data.ToString(), out var replacement, out var error);
+        if (attached)
+        {
+            // Frozen baseline-l5-replace-v1 semantics: a later successful direct
+            // speech-to-code result replaces the active study script instead of
+            // silently accumulating another behaviour. Compile failure leaves the
+            // prior working script in place and is logged as a failed revision.
+            if (activeBaselineProxy != null) activeBaselineProxy.Dispose();
+            activeBaselineProxy = replacement;
+        }
         var durationMs = (Time.realtimeSinceStartupAsDouble - startedAt) * 1000.0;
         if (!attached) Debug.LogError("[Baseline] attach failed: " + error);
         SendAttachResult(message.peer, attached, durationMs, error);
@@ -111,6 +122,13 @@ public class CodeGenerationManager : MonoBehaviour
         var outgoing = ReferenceCountedSceneGraphMessage.Rent(bytes.Length);
         bytes.CopyTo(new Span<byte>(outgoing.bytes, outgoing.start, bytes.Length));
         context.Send(outgoing);
+    }
+
+    public void ResetGeneratedStudyBehaviour()
+    {
+        if (activeBaselineProxy == null) return;
+        activeBaselineProxy.Dispose();
+        activeBaselineProxy = null;
     }
 
     private static string EscapeJson(string value)
