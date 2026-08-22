@@ -20,6 +20,7 @@ const { SharedMemory } = require("../memory");
 const { FutureGoalPredictor } = require("../orchestrator/future_goal_predictor");
 const { TRIAL_COLUMNS, LONG_COLUMNS, buildStudyExports, writeCsv } = require("../evaluation/study_export");
 const { EXPLICIT_TASK_ORDERS, generateParticipantPlan } = require("../study/protocol");
+const { InteractionSessionStore } = require("../study/interaction_session_store");
 
 const root = path.resolve(__dirname, "..");
 let assertions = 0;
@@ -57,6 +58,47 @@ equal(interactionContract.modes.L5.requiredRevisionCount, 2,
     "L5 contract requires both planned conversational revisions");
 equal(interactionContract.baseline.L5MultiTurnRule, "replace-active-study-artifact",
     "baseline L5 replacement semantics are frozen and auditable");
+
+const interactionSessions = new InteractionSessionStore({ now: (() => { let at = 100; return () => ++at; })() });
+interactionSessions.begin({ sessionId: "l3-session", mode: "L3", correlationId: "l3-chain", targetObjectId: "marker" });
+const l3Question = interactionSessions.recordUtterance({ sessionId: "l3-session", text: "move this marker to the target" });
+equal(l3Question.action, "request_clarification", "L3 first ambiguous utterance requests clarification without executing");
+const l3Answer = interactionSessions.recordUtterance({ sessionId: "l3-session", text: "the green target" });
+equal(l3Answer.action, "execute_resolved_request", "L3 second utterance resolves the request");
+equal(l3Answer.correlationId, l3Question.correlationId, "L3 clarification and answer share one correlation chain");
+assert.throws(() => interactionSessions.recordUtterance({ sessionId: "l3-session", text: "a forbidden third turn" }),
+    /budget exhausted/, "L3 enforces the two-utterance study budget");
+assertions += 1;
+
+interactionSessions.begin({ sessionId: "l4-session", mode: "L4", correlationId: "l4-chain", targetObjectId: "door" });
+interactionSessions.recordUtterance({ sessionId: "l4-session", text: "make the door open" });
+const l4Revise = interactionSessions.recordDecision({ sessionId: "l4-session", decision: "revise" });
+equal(l4Revise.action, "await_revision_utterance", "L4 revise does not approve or commit the proposal");
+equal(interactionSessions.correlationFor("l4-session"), "l4-chain", "L4 revise preserves proposal correlation");
+
+interactionSessions.begin({ sessionId: "l5-session", mode: "L5", correlationId: "l5-chain", targetObjectId: "console" });
+const l5Initial = interactionSessions.recordUtterance({ sessionId: "l5-session", text: "make a three-step inspection" });
+const l5RevisionOne = interactionSessions.recordUtterance({ sessionId: "l5-session", text: "make each step four seconds" });
+const l5RevisionTwo = interactionSessions.recordUtterance({ sessionId: "l5-session", text: "reset after three seconds" });
+equal(l5Initial.action, "propose_initial", "L5 begins with an initial artifact proposal");
+equal(l5RevisionOne.action, "revise_artifact", "L5 second utterance is an artifact revision");
+equal(l5RevisionTwo.revisionCount, 2, "L5 records both required revisions");
+equal(l5RevisionTwo.correlationId, "l5-chain", "all L5 turns preserve conversational identity");
+interactionSessions.recordArtifact({ sessionId: "l5-session", artifactId: "artifact-v1" });
+const l5ArtifactEdit = interactionSessions.recordArtifact({ sessionId: "l5-session", artifactId: "artifact-v2" });
+equal(l5ArtifactEdit.previousArtifactId, "artifact-v1", "L5 artifact revisions preserve predecessor identity");
+
+interactionSessions.begin({ sessionId: "l1-session", mode: "L1", correlationId: "l1-chain", targetObjectId: "bench-anchor" });
+const l1Eligible = interactionSessions.startL1Opportunity({ sessionId: "l1-session", riskScore: 0.2,
+    localOnly: true, reversible: true, persistent: false, artifactCount: 1 });
+equal(l1Eligible.action, "execute_system_opportunity", "eligible L1 system opportunity may enter execution");
+interactionSessions.markL1Applied("l1-session");
+interactionSessions.begin({ sessionId: "l1-risky", mode: "L1", correlationId: "l1-risky-chain" });
+const l1Declined = interactionSessions.startL1Opportunity({ sessionId: "l1-risky", riskScore: 0.4,
+    localOnly: true, reversible: true, persistent: false, artifactCount: 1 });
+equal(l1Declined.action, "decline_opportunity", "L1 fails closed when automatic constraints are not met");
+equal(interactionSessions.reset("l5-session"), true, "trial reset clears transient conversational state");
+equal(interactionSessions.active("l5-session"), null, "no conversational state leaks into the next trial");
 for (const plan of studyPlans) {
     equal(plan.methodVersion, "method-draft-2026-08-22", "every plan pins the exact study method version");
     equal(plan.trials.length, 10, "paper protocol generates two arms for each of five tasks");
