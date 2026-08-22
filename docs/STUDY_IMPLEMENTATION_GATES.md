@@ -92,3 +92,10 @@ multi-turn conversational state.
 Every logical change is a local commit on `codex/paper-study-implementation`. No
 remote update is incorporated automatically, and no local implementation commit is
 evidence of participant readiness until the higher gates pass.
+
+## Acceptance-contract checkpoint
+
+`Server/study/interaction_contract.v1.json` freezes the engineering acceptance
+states for L1, L3, L4, L5 and the baseline L5 replacement rule. Its presence closes
+only the contract-definition part of step 2. A gate remains open until executable
+state transitions, integration evidence, and the physical pass named above exist.

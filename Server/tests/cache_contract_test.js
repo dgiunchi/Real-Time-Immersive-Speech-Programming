@@ -43,6 +43,20 @@ for (const file of walk(root)) {
 
 const studyPlans = Array.from({ length: 24 }, (_, index) =>
     generateParticipantPlan(`P${String(index + 1).padStart(3, "0")}`));
+const interactionContract = JSON.parse(fs.readFileSync(
+    path.join(root, "study", "interaction_contract.v1.json"), "utf8"));
+equal(interactionContract.methodVersion, "method-draft-2026-08-22",
+    "interaction contract is pinned to the same method version as participant plans");
+equal(interactionContract.modes.L1.triggerSource, "system_opportunity",
+    "L1 contract cannot collapse into the L2 context trigger");
+equal(interactionContract.modes.L3.sameCorrelationRequired, true,
+    "L3 answer must retain the clarification correlation chain");
+ok(interactionContract.modes.L4.decisions.includes("revise"),
+    "L4 contract includes a real revise decision");
+equal(interactionContract.modes.L5.requiredRevisionCount, 2,
+    "L5 contract requires both planned conversational revisions");
+equal(interactionContract.baseline.L5MultiTurnRule, "replace-active-study-artifact",
+    "baseline L5 replacement semantics are frozen and auditable");
 for (const plan of studyPlans) {
     equal(plan.methodVersion, "method-draft-2026-08-22", "every plan pins the exact study method version");
     equal(plan.trials.length, 10, "paper protocol generates two arms for each of five tasks");

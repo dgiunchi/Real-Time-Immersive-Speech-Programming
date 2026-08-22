@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "1.0",
+  "protocolId": "agenticxr-paper-study-v1",
+  "methodVersion": "method-draft-2026-08-22",
+  "status": "engineering-contract-pending-physical-validation",
+  "global": {
+    "cancelTerminal": true,
+    "timeoutTerminal": true,
+    "resetClearsPendingState": true,
+    "correlationScope": "one logical interaction chain",
+    "artifactIdentityRequiredForEdits": true
+  },
+  "modes": {
+    "L1": {
+      "initialState": "observing",
+      "triggerSource": "system_opportunity",
+      "states": ["observing", "opportunity_detected", "executing", "applied", "declined", "cancelled", "timed_out"],
+      "terminalStates": ["applied", "declined", "cancelled", "timed_out"],
+      "automaticConstraints": { "maximumArtifacts": 1, "localOnly": true, "reversible": true, "persistent": false, "maximumRiskScoreExclusive": 0.3 }
+    },
+    "L3": {
+      "initialState": "awaiting_request",
+      "states": ["awaiting_request", "clarification_required", "awaiting_answer", "resolved", "proposing", "cancelled", "timed_out"],
+      "terminalStates": ["cancelled", "timed_out"],
+      "maximumParticipantUtterances": 2,
+      "sameCorrelationRequired": true,
+      "proposalRequiresState": "resolved"
+    },
+    "L4": {
+      "initialState": "awaiting_request",
+      "states": ["awaiting_request", "proposing", "awaiting_decision", "revising", "approved", "rejected", "timed_out", "undone", "cancelled"],
+      "terminalStates": ["approved", "rejected", "timed_out", "undone", "cancelled"],
+      "decisions": ["approve", "reject", "revise", "undo", "cancel"],
+      "revisionPreservesCorrelation": true,
+      "approvalRequiredBeforeCommit": true
+    },
+    "L5": {
+      "initialState": "awaiting_request",
+      "states": ["awaiting_request", "planning", "awaiting_revision", "revising", "awaiting_decision", "approved", "rejected", "timed_out", "undone", "cancelled"],
+      "terminalStates": ["approved", "rejected", "timed_out", "undone", "cancelled"],
+      "maximumParticipantUtterances": 3,
+      "sameCorrelationRequired": true,
+      "sameArtifactRequired": true,
+      "requiredRevisionCount": 2,
+      "approvalRequiredBeforeCommit": true
+    }
+  },
+  "baseline": {
+    "L5MultiTurnRule": "replace-active-study-artifact",
+    "ruleVersion": "baseline-l5-replace-v1",
+    "description": "Each later L5 utterance replaces the active generated study artifact on the same target; it never silently accumulates another active study script.",
+    "logFields": ["baselineRevisionRule", "artifactId", "previousArtifactId", "operation"]
+  }
+}
