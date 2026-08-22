@@ -13,6 +13,7 @@ const {
     validateParticipantId,
     generateParticipantPlan,
 } = require("../study/protocol");
+const { validateTaskReadiness } = require("../study/task_readiness");
 
 const PARTICIPANTS_ROOT = path.resolve(__dirname, "data", "participants");
 const QUESTIONNAIRE_COLUMNS = Object.freeze([
@@ -97,6 +98,9 @@ function preflight(participantId, { technicalOnly = false } = {}) {
     check(fs.existsSync(PROTOCOL_PATH), "protocol-manifest", PROTOCOL_PATH);
     check(fs.existsSync(QUESTIONNAIRES_PATH), "questionnaire-schema", QUESTIONNAIRES_PATH);
     check(fs.existsSync(RUBRICS_PATH), "rubric-schema", RUBRICS_PATH);
+    const taskReadiness = validateTaskReadiness();
+    check(taskReadiness.ok, "task-scene-readiness",
+        taskReadiness.ok ? taskReadiness.scenePath : taskReadiness.checks.filter((item) => !item.ok).map((item) => item.id).join(","));
     const projectVersionPath = path.resolve(__dirname, "..", "..", "Unity", "ProjectSettings", "ProjectVersion.txt");
     const projectVersion = fs.existsSync(projectVersionPath) ? fs.readFileSync(projectVersionPath, "utf8") : "";
     check(projectVersion.includes(protocol.apparatus.unityVersion), "unity-version", protocol.apparatus.unityVersion);

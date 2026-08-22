@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "1.0",
+  "protocolId": "agenticxr-paper-study-v1",
+  "methodVersion": "method-draft-2026-08-22",
+  "scenePath": "Unity/Assets/Scenes/AgenticXRStudy.unity",
+  "trainingSceneObjectsSeparate": true,
+  "variants": ["A", "B"],
+  "tasks": [
+    {
+      "taskId": "L1-proactive",
+      "interactionMode": "L1",
+      "timeoutSeconds": 180,
+      "requiredComponents": ["StableObjectId", "AgenticInertAnchor"],
+      "variants": {
+        "A": ["study-l1-a-root", "study-l1-a-bench-anchor", "study-l1-a-tool-1", "study-l1-a-tool-2", "study-l1-a-tool-3", "study-l1-a-tray-1", "study-l1-a-tray-2", "study-l1-a-tray-3"],
+        "B": ["study-l1-b-root", "study-l1-b-bench-anchor", "study-l1-b-tool-1", "study-l1-b-tool-2", "study-l1-b-tool-3", "study-l1-b-tray-1", "study-l1-b-tray-2", "study-l1-b-tray-3"]
+      }
+    },
+    {
+      "taskId": "L2-context",
+      "interactionMode": "L2",
+      "timeoutSeconds": 240,
+      "requiredComponents": ["StableObjectId", "AgenticInertAnchor", "AgenticRegionVolume"],
+      "variants": {
+        "A": ["study-l2-a-root", "study-l2-a-station-region", "study-l2-a-guide-anchor", "study-l2-a-part-1", "study-l2-a-part-2", "study-l2-a-part-3", "study-l2-a-socket-1", "study-l2-a-socket-2", "study-l2-a-socket-3"],
+        "B": ["study-l2-b-root", "study-l2-b-station-region", "study-l2-b-guide-anchor", "study-l2-b-part-1", "study-l2-b-part-2", "study-l2-b-part-3", "study-l2-b-socket-1", "study-l2-b-socket-2", "study-l2-b-socket-3"]
+      }
+    },
+    {
+      "taskId": "L3-clarify",
+      "interactionMode": "L3",
+      "timeoutSeconds": 240,
+      "requiredComponents": ["StableObjectId"],
+      "variants": {
+        "A": ["study-l3-a-root", "study-l3-a-marker", "study-l3-a-button", "study-l3-a-pad-1", "study-l3-a-pad-2"],
+        "B": ["study-l3-b-root", "study-l3-b-marker", "study-l3-b-button", "study-l3-b-pad-1", "study-l3-b-pad-2"]
+      }
+    },
+    {
+      "taskId": "L4-confirm",
+      "interactionMode": "L4",
+      "timeoutSeconds": 300,
+      "requiredComponents": ["StableObjectId", "AgenticRegionVolume"],
+      "safety": ["non-colliding-door", "not-a-real-exit", "trial-local-shared-proxy"],
+      "variants": {
+        "A": ["study-l4-a-root", "study-l4-a-training-door", "study-l4-a-approach-region", "study-l4-a-avatar-1", "study-l4-a-avatar-2"],
+        "B": ["study-l4-b-root", "study-l4-b-training-door", "study-l4-b-approach-region", "study-l4-b-avatar-1", "study-l4-b-avatar-2"]
+      }
+    },
+    {
+      "taskId": "L5-converse",
+      "interactionMode": "L5",
+      "timeoutSeconds": 420,
+      "requiredComponents": ["StableObjectId"],
+      "variants": {
+        "A": ["study-l5-a-root", "study-l5-a-console", "study-l5-a-start-button", "study-l5-a-marker-1", "study-l5-a-marker-2", "study-l5-a-marker-3"],
+        "B": ["study-l5-b-root", "study-l5-b-console", "study-l5-b-start-button", "study-l5-b-marker-1", "study-l5-b-marker-2", "study-l5-b-marker-3"]
+      }
+    }
+  ],
+  "physicalAcceptanceRequired": true
+}

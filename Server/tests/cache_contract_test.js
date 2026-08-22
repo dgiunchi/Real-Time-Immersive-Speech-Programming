@@ -21,6 +21,7 @@ const { FutureGoalPredictor } = require("../orchestrator/future_goal_predictor")
 const { TRIAL_COLUMNS, LONG_COLUMNS, buildStudyExports, writeCsv } = require("../evaluation/study_export");
 const { EXPLICIT_TASK_ORDERS, generateParticipantPlan } = require("../study/protocol");
 const { InteractionSessionStore } = require("../study/interaction_session_store");
+const { validateTaskReadiness } = require("../study/task_readiness");
 
 const root = path.resolve(__dirname, "..");
 let assertions = 0;
@@ -58,6 +59,12 @@ equal(interactionContract.modes.L5.requiredRevisionCount, 2,
     "L5 contract requires both planned conversational revisions");
 equal(interactionContract.baseline.L5MultiTurnRule, "replace-active-study-artifact",
     "baseline L5 replacement semantics are frozen and auditable");
+const taskReadiness = validateTaskReadiness({ repositoryRoot: path.resolve(root, "..") });
+equal(taskReadiness.ok, false, "study readiness fails closed while the dedicated task scene is absent");
+ok(taskReadiness.checks.some((item) => item.id === "study-scene-authored" && !item.ok),
+    "readiness report identifies the missing authored study scene explicitly");
+ok(taskReadiness.checks.filter((item) => item.id.startsWith("task-objects-")).every((item) => item.ok),
+    "every L1-L5 mode has explicit A/B object contracts before scene authoring");
 
 const interactionSessions = new InteractionSessionStore({ now: (() => { let at = 100; return () => ++at; })() });
 interactionSessions.begin({ sessionId: "l3-session", mode: "L3", correlationId: "l3-chain", targetObjectId: "marker" });
