@@ -69,7 +69,7 @@ case "${1:-}" in
     echo
     # Standalone TCP listener mode: do NOT set DCVR_UBIQ_ADDR (that is Quest mode).
     unset DCVR_UBIQ_ADDR
-    exec env DCVR_MODE=baseline  \
+    exec env DCVR_MODE=secure  \
          DCVR_ADMIN_PORT=7878 DCVR_ADMIN_BIND=127.0.0.1 \
          ./target/debug/dreamcodevr-server
     ;;
@@ -87,7 +87,7 @@ case "${1:-}" in
     echo "  └────────────────────────────────────────────────────────────────┘"
     echo
     exec env DCVR_EMBED_ROOMSERVER=true \
-         DCVR_MODE=baseline  \
+         DCVR_MODE=secure  \
          DCVR_ADMIN_PORT=7878 DCVR_ADMIN_BIND=127.0.0.1 \
          ./target/debug/dreamcodevr-server
     ;;
