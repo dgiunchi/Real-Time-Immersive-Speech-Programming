@@ -28,6 +28,7 @@ const { randomUUID } = require("crypto");
 require("../scripts/load-local-env");
 
 const { appendEvaluationEvent } = require("../evaluation/event_logger");
+const { appendTokenActivity } = require("../evaluation/token_activity_logger");
 
 const BRIDGE_SERVER_PATH = path.join(__dirname, "..", "mcp", "unity_scene_bridge", "server.js");
 const BRIDGE_SERVER_NAME = "unity_scene_bridge";
@@ -335,6 +336,7 @@ async function main() {
     let sawMutatingToolCall = false;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const attemptStartedAt = Date.now();
         appendEvaluationEvent({ eventType: "orchestrator_attempt_started", sessionId, correlationId, targetObjectId, attempt });
         try {
             for await (const message of query({ prompt, options })) {
@@ -356,8 +358,9 @@ async function main() {
                         }
                     }
                 } else if (message.type === "result") {
+                    const latencyMs = Date.now() - attemptStartedAt;
                     console.log(`[orchestrator] finished (subtype=${message.subtype})`);
-                    appendEvaluationEvent({
+                    const resultEvent = {
                         eventType: "orchestrator_result",
                         sessionId,
                         correlationId,
@@ -366,6 +369,21 @@ async function main() {
                         subtype: message.subtype || null,
                         usage: message.usage || null,
                         totalCostUsd: message.total_cost_usd ?? null,
+                        latencyMs,
+                        model: MODEL_ID,
+                        interactionMode: process.env.AGENTICXR_INTERACTION_MODE || "infer-from-request",
+                        triggerSource: process.env.AGENTICXR_TRIGGER_SOURCE || "explicit_request",
+                        experienceMode: process.env.AGENTICXR_EXPERIENCE_MODE || "not-provided",
+                        candidateCount: CANDIDATE_COUNT,
+                    };
+                    appendEvaluationEvent(resultEvent);
+                    // The CSV is intentionally a second, analysis-oriented view
+                    // of this same terminal SDK result, not a separate source of truth.
+                    appendTokenActivity({
+                        ...resultEvent,
+                        activity: "agentic_orchestrator_turn",
+                        resultSubtype: resultEvent.subtype,
+                        outcome: resultEvent.subtype,
                     });
                 }
             }
