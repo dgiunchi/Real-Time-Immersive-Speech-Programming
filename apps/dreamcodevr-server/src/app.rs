@@ -67,6 +67,7 @@ struct BackendResponse<'a> {
 /// across connection tasks via `Arc`.
 #[derive(Clone)]
 pub struct Services {
+    pub mode: dcvr_config::RunMode,
     pub stt: Arc<dyn SttClient>,
     pub llm: Arc<dyn LlmClient>,
     pub stt_timeout: Duration,

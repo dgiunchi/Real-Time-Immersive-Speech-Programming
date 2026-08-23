@@ -123,6 +123,7 @@ pub fn services_from_settings(settings: Settings) -> Services {
     };
     let personalizer = Arc::new(Personalizer::new(store.clone(), embedder));
     Services {
+        mode: settings.mode,
         stt,
         llm,
         stt_timeout: Duration::from_millis(settings.stt_timeout_ms),
@@ -276,7 +277,11 @@ pub async fn run_ubiq_peer(
         let bus = services.bus.clone();
         let personalizer = services.personalizer.clone();
         Arc::new(move || {
-            let mut r = Router::new().with_bus(bus.clone());
+            let router_mode = match services.mode {
+                dcvr_config::RunMode::Baseline => dcvr_command_router::Mode::Baseline,
+                dcvr_config::RunMode::Secure => dcvr_command_router::Mode::Secure,
+            };
+            let mut r = Router::new().with_mode(router_mode).with_bus(bus.clone());
             if let Some(p) = &personalizer {
                 r = r.with_personalizer(p.clone());
             }
@@ -949,7 +954,13 @@ impl ServerHooks {
     }
 
     pub fn new(services: Services) -> Self {
-        let mut router = Router::new().with_bus(services.bus.clone());
+        let router_mode = match services.mode {
+            dcvr_config::RunMode::Baseline => dcvr_command_router::Mode::Baseline,
+            dcvr_config::RunMode::Secure => dcvr_command_router::Mode::Secure,
+        };
+        let mut router = Router::new()
+            .with_mode(router_mode)
+            .with_bus(services.bus.clone());
         if let Some(p) = &services.personalizer {
             router = router.with_personalizer(p.clone());
         }

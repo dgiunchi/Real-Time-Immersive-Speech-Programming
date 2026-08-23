@@ -118,6 +118,11 @@ impl Router {
     }
 
     /// Attach the runtime control bus (live config: RAG on/off, C# size limits).
+    pub fn with_mode(mut self, mode: crate::request::Mode) -> Self {
+        self.mode = mode;
+        self
+    }
+
     pub fn with_bus(mut self, bus: ControlBus) -> Self {
         self.bus = Some(bus);
         self
