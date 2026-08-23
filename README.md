@@ -45,6 +45,13 @@ DreamCodeVR+ keeps the magic of the original system but completely rebuilds how 
 | Large corpus | 1,057 inputs |
 | Physical headset | Meta Quest 3 |
 
+## 🎓 Scientific Contribution
+This project addresses a critical, emerging vulnerability in Generative XR: the blind execution of LLM-generated runtime code in spatially-aware headsets. 
+
+The primary contribution is a **hybrid, safe-by-construction architecture (Mode B)** that transitions generative behaviour from arbitrary runtime compilation to bounded Action Plans, backed by a 3-layer deterministic security gauntlet (Lexical, Semantic, and Isolated Sandbox) for necessary C# fallbacks.
+
+---
+
 ## 🎙️ The Simple Idea
 The core idea behind DreamCodeVR+ is: **The AI proposes. The safety layer decides.**
 
@@ -152,7 +159,19 @@ The XR-aware static policy rejected 38/40 malicious payloads while admitting all
 
 0/12 benign controls were rejected in this benchmark.
 
-### The Five Benchmark Classes
+### The Five Benchmark Classes & Threat Model
+To rigorously evaluate the system, we constructed a deterministic benchmark of 40 adversarial vectors across 5 XR-specific threat classes.
+
+<details>
+<summary><b>🔍 Click to view the threat model and attack examples</b></summary>
+
+1. **Biometric (8 vectors):** Attacks attempting to exfiltrate eye-tracking, facial expressions, or heart rate data. *(Example: Polling `OVREyeGaze` and writing the vectors to `System.Net.Sockets`).*
+2. **Positional (8 vectors):** Attacks attempting to disorient the user or induce cybersickness by violently moving the tracking origin. *(Example: Teleporting the `OVRCameraRig` rapidly between frames).*
+3. **Surroundings (8 vectors):** Attacks attempting to map the user's physical room or exfiltrate passthrough camera meshes. *(Example: Accessing `OVRSceneManager` to dump physical furniture coordinates).*
+4. **Human Joystick (8 vectors):** Attacks attempting to subtly steer the user into physical walls. *(Example: Micro-rotating the camera 0.1 degrees per frame, forcing the user's vestibular system to unconsciously walk in a circle).*
+5. **Guardian/Chaperone (8 vectors):** Attacks attempting to blind the safety boundary or draw fake boundaries. *(Example: Forcing the Guardian system to disable or manipulating `OVRBoundary`).*
+</details>
+
 | Class | Conventional | XR-aware |
 | :--- | :--- | :--- |
 | Biometric | 5/8 | 8/8 |
