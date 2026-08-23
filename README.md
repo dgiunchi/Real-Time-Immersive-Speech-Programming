@@ -64,6 +64,15 @@ The secure, unified architecture. It completely drops the reliance on runtime C#
 
 If the fallback C# violates any layer of the guardrail, it is safely rejected and the attack is neutralized.
 
+## 🏗️ How the C# validator works
+Instead of only searching for bad words, the system parses the structure of the C# program using Tree-sitter.
+
+This catches evasions that simple text search misses, such as aliases:
+```csharp
+using X = System.IO;
+```
+By resolving the alias structurally, the validator prevents a simple text bypass.
+
 ## 🏗️ Architecture Flow
 
 ![Guardrail Concept](docs/images/guardrail_concept.png)
@@ -120,28 +129,58 @@ For example, an AI could generate code to:
 - access camera capture or manipulate sensitive XR/environment capabilities
 
 ### 🔍 Dual-Use XR APIs
-The policy deliberately does **NOT** simply ban every XR API. Useful APIs such as `OVRPassthroughLayer`, `OVRHand`, and `OVRSpatialAnchor` can be highly valuable for legitimate mixed-reality experiences. Rather than globally banning every useful XR sensor API, the policy can allow legitimate XR functionality while separately rejecting dangerous capabilities such as network transmission or file access.
+The policy deliberately does **NOT** simply ban every XR API.
+
+Useful APIs such as `OVRPassthroughLayer`, `OVRHand`, `OVRSkeleton`, `OVREyeGaze`, `OVRFaceExpressions`, and `OVRSpatialAnchor` can be highly valuable for legitimate mixed-reality experiences.
+
+Rather than globally banning every useful XR sensor API, the policy can allow legitimate XR functionality while separately rejecting dangerous capabilities such as network transmission or file access.
+
+This preserves useful XR functionality while reducing obvious data-exfiltration paths.
+
+(Similarly, the microphone is not globally banned; specific payloads are rejected due to `System.Net` exfiltration risks, not bare microphone access).
 
 ## 🧪 XR Security Evaluation
 We measured the system against a fixed benchmark of 40 malicious payloads and 12 benign controls.
 
-| Defence Level | Malicious payloads rejected | Benign Preserved |
-| :--- | :--- | :--- |
-| Mode A (Baseline) | 0 / 40 (0%) | 12 / 12 (100%) |
-| **Mode B (Secure)** | **38 / 40 (95%)** | **12 / 12 (100%)** |
+| Defence Level | Malicious payloads rejected |
+| :--- | :--- |
+| No defence | 0 / 40 |
+| Conventional code security | 15 / 40 |
+| **XR-aware static policy (Mode B)** | **38 / 40** |
 
-**0/12 benign controls were rejected in this benchmark.**
+The XR-aware static policy rejected 38/40 malicious payloads while admitting all 12 tested benign controls.
+
+0/12 benign controls were rejected in this benchmark.
+
+### The Five Benchmark Classes
+| Class | Conventional | XR-aware |
+| :--- | :--- | :--- |
+| Biometric | 5/8 | 8/8 |
+| Positional | 3/8 | 8/8 |
+| Surroundings | 6/8 | 8/8 |
+| Human Joystick | 0/8 | 6/8 |
+| Guardian/Chaperone | 1/8 | 8/8 |
 
 ### Why two attacks remain
 The Human Joystick class stopped 6/8 attacks, leaving two residual payloads unblocked by static admission. Both of these attacks use ordinary `Camera.main.transform` movement. A single camera movement is normal Unity code. The danger only appears when small, imperceptible movements accumulate over time to steer a user into a real-world wall. A static validator sees source code, not the full future runtime behaviour, demonstrating the honest limit of static admission.
+
+*(A runtime UserFrameGuardian mechanism exists in the research code as a mitigation direction, but it has not been evaluated against these two residual attacks on-device).*
 
 ## 🥽 Running on Quest 3
 
 ![VR Environment](docs/images/vr_environment.png)
 
-The project was evaluated both via a deterministic local benchmark and live on a physical Meta Quest 3. Because Quest uses IL2CPP (Ahead-of-Time compilation) and cannot compile C# at runtime, the original DreamCodeVR (Mode A) inherently fails on modern hardware unless an interpreter is injected. 
+The project was evaluated both via a deterministic local benchmark (to test the backend validator) and live on a physical Meta Quest 3. 
 
-**Mode B (Secure)** natively supports the Quest 3 because it relies on the bounded JSON Action Plans for standard operations, entirely bypassing the need for runtime compilation on the headset!
+The general Quest story includes:
+- all six Mode B (Action Plan) actions demonstrated on physical Quest
+- live adversarial requests were refused
+- refusal reasons could be shown on the headset
+- benign commands were demonstrated
+- generated C# was compiled on the backend and IL interpreted on Quest
+- measured Quest performance was around 72 fps median
+
+*(Do not confuse these live demonstrations with the 40-payload benchmark, which was run deterministically offline).*
 
 ## 📁 Repository Structure
 ```
