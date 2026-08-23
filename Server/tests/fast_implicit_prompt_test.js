@@ -29,6 +29,9 @@ assert.strictEqual(isFastImplicitMode({
 assert.ok(FAST_IMPLICIT_SYSTEM_PROMPT.length < SYSTEM_PROMPT.length / 3,
     "fast implicit prompt stays materially smaller than the full route");
 assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /exactly one minimal ASCII-only C# MonoBehaviour/);
+assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /cyan-to-magenta color pulse/);
+assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /originalScale \* 1\.08/);
+assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /Do not choose or/);
 assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /validator_critic once/);
 assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /simulate_artifact/);
 assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /propose_artifact/);

@@ -263,16 +263,20 @@ expected outcome, not a failure of the router.`;
 // independent validation, Verification Space, freshness, ranking and the Unity
 // proposal gate while removing unrelated exploration and candidate generation.
 const FAST_IMPLICIT_SYSTEM_PROMPT = `You are the bounded AgenticXR router for one low-risk implicit L1/L2 turn.
-Work only on the supplied target. Produce at most one small visible cue and finish.
+Work only on the supplied target. The assistance behavior is already decided: create exactly one continuous,
+high-contrast cyan-to-magenta color pulse combined with a subtle 1.00-to-1.08 scale pulse. Do not choose or
+invent another behavior.
 
 Required sequence:
 1. Call ${bridgeTool("record_intent")} with the supplied intent, sessionId and correlationId.
 2. Call ${bridgeTool("query_scene")} for only the supplied target using the same sessionId and correlationId.
    Stop if the target or authoritative scene metadata is unavailable.
-3. Draft exactly one minimal ASCII-only C# MonoBehaviour. It may only make a reversible local visual change
-   through UnityEngine Renderer/Light/Transform APIs. Prefer a color, light, or small scale pulse. Do not spawn
-   objects, inspect unrelated objects, use input APIs, networking, files, reflection, or shared-material mutation.
-   Capture original values and restore them idempotently in OnDisable and OnDestroy. Use operation=create.
+3. Draft exactly one minimal ASCII-only C# MonoBehaviour implementing that fixed pulse with UnityEngine Renderer
+   and Transform APIs. Use unscaled Time time, Color.Lerp(Color.cyan, Color.magenta, ping-pong), and scale from
+   the captured original scale to originalScale * 1.08. Use MaterialPropertyBlock so no shared Material is changed.
+   Capture the target's original property block and scale, then restore them idempotently in both OnDisable and
+   OnDestroy. Do not spawn objects, inspect unrelated objects, use input APIs, networking, files, or reflection.
+   Use operation=create. If the target has no Renderer, stop; do not substitute a different behavior.
 4. Call validator_critic once for an independent compact verdict. Stop unless it passes, riskScore is below 0.3,
    and it confirms reversible=true and localOnly=true. Do not repair or generate a second candidate.
 5. Call ${bridgeTool("simulate_artifact")} once with a derived simulation correlationId, then call
@@ -283,8 +287,9 @@ Required sequence:
    validation fields, authoringMode=automatic, operation=create, reversible=true, localOnly=true, and the selected
    candidate. Never propose if the target changed or any preceding step failed.
 
-No broad scene exploration, history/profile/speculation lookup, clarification, alternatives, goals, repair loops,
-or narrative. Use short status text only. One candidate, one validation, one simulation, one proposal maximum.`;
+No broad scene exploration, behavioral choice, history/profile/speculation lookup, clarification, alternatives,
+goals, repair loops, or narrative. Use short status text only. One candidate, one validation, one simulation,
+one proposal maximum.`;
 
 function isFastImplicitMode(env = process.env) {
     if (String(env.AGENTICXR_FAST_IMPLICIT_PROMPT || "true").toLowerCase() === "false") return false;

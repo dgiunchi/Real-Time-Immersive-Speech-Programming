@@ -86,10 +86,10 @@ memory.activity.on("assist_worthy", (opportunity) => {
     // determines whether a cue is useful, but the live model is not asked to
     // explore unrelated objects or invent a complex interaction.
     const triggerSource = studyContext && studyContext.interactionMode === "L1" ? "system_opportunity" : "context";
-    const objective = `Check one low-risk ${studyContext && studyContext.interactionMode || "L2"} assistance opportunity ` +
-        `for the current target ${opportunity.targetObjectId}. Signals: ${opportunity.signalTypes.join(", ")}. ` +
-        `Context: ${memory.describeContext(opportunity)}. If justified, add one simple, clearly visible, reversible ` +
-        "cue on this target only (prefer a color, light, or small scale pulse). Otherwise stop without proposing.";
+    const objective = `Apply the fixed ${studyContext && studyContext.interactionMode || "L2"} visual guidance cue ` +
+        `to ${opportunity.targetObjectId}. Signals: ${opportunity.signalTypes.join(", ")}. ` +
+        "Make this target pulse continuously between cyan and magenta while scaling from its original size to 1.08x. " +
+        "Restore its exact original color and scale when disabled or destroyed. Do not choose another behaviour.";
     bridge.sendAgentStatus({
         sessionId: opportunity.sessionId,
         correlationId: opportunity.triggerId,
