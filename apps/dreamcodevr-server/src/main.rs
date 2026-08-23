@@ -169,7 +169,7 @@ async fn main() {
         return;
     }
 
-    // Standalone TCP listener mode (offline testing with fake-quest-client).
+    // Standalone TCP listener mode (offline testing with test-quest-client).
     eprintln!("standalone listener on {listen_addr}");
     let listener = match tokio::net::TcpListener::bind(listen_addr).await {
         Ok(l) => l,

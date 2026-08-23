@@ -20,7 +20,7 @@ members = [
     "crates/admin",
     "crates/roomserver",
     "apps/dreamcodevr-server",
-    "apps/fake-quest-client",
+    "apps/test-quest-client",
     "apps/ubiq-probe",
     "apps/xr-security-eval",
     "tests",

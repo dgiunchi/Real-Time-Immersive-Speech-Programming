@@ -12,7 +12,7 @@ use dcvr_protocol::{
 };
 
 #[tokio::test]
-async fn fake_quest_roundtrip_produces_nid94_response() {
+async fn test_quest_roundtrip_produces_nid94_response() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let services =

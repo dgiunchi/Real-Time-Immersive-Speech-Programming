@@ -119,7 +119,7 @@ fi
 head2 "Live system (embedded RoomServer, mocks, no headset)"
 PORT_RS=18109; PORT_ADMIN=17979
 pkill -f 'target/debug/dreamcodevr-server' >/dev/null 2>&1; sleep 1
-cargo build -q -p dreamcodevr-server -p fake-quest-client 2>/dev/null
+cargo build -q -p dreamcodevr-server -p test-quest-client 2>/dev/null
 LOG="$(mktemp)"
 DCVR_EMBED_ROOMSERVER=true DCVR_ROOMSERVER_BIND=127.0.0.1:$PORT_RS \
 DCVR_ADMIN_PORT=$PORT_ADMIN DCVR_ADMIN_TOKEN=verify-token \
@@ -134,7 +134,7 @@ if grep -q 'embedded. Rust RoomServer listening' "$LOG" 2>/dev/null || grep -q '
 else bad "embedded Rust RoomServer starts (no Node.js)"; fi
 grep -q 'joined Ubiq room' "$LOG" 2>/dev/null && ok "pipeline joins its own room" || bad "pipeline joins its own room"
 
-RT="$(./target/debug/fake-quest-client --ubiq 127.0.0.1:$PORT_RS \
+RT="$(./target/debug/test-quest-client --ubiq 127.0.0.1:$PORT_RS \
       6765c52b-3ad6-4fb0-9030-2c9a05dc4731 "make a small red house" 2>&1)"
 # Mode A answers with {"type":"code"}; Mode C with an ApproveActionPlan. Either
 # proves the whole loop ran and the guardrail approved the result.

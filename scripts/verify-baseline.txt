@@ -1,5 +1,5 @@
 # DreamCodeVR+ known-good baseline — regenerate with scripts/verify-all.sh --baseline
-# recorded: 2026-08-23T16:13:25Z  commit: 41fe14d
+# recorded: 2026-08-23T19:17:39Z  commit: 220e718
 attacks_blocked=38
 campaign_vectors=1057
 corpus_vectors=1057
