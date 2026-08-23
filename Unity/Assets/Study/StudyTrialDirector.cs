@@ -168,7 +168,13 @@ namespace AgenticXR.Study
             if (activeBinding == null || ActiveAssignment == null || questionnairePauseStartedAt >= 0f) return;
             TryEmitT0();
             if (!t1Requested && t0Emitted && Time.unscaledTime - activatedAt >= activeBinding.timeoutSeconds)
+            {
                 RequestTrialEnd("timeout", "{}");
+                // RequestTrialEnd deactivates the binding and clears the
+                // assignment synchronously. Do not dereference either below
+                // in the same Update frame.
+                return;
+            }
             if (ActiveAssignment.interactionMode == "L2" && activeBinding.l2Region != null && Camera.main != null)
             {
                 var inside = activeBinding.l2Region.Contains(Camera.main.transform.position);
