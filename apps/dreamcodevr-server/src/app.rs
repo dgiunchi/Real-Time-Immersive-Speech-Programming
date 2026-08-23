@@ -70,6 +70,7 @@ pub struct Services {
     pub mode: dcvr_config::RunMode,
     pub stt: Arc<dyn SttClient>,
     pub llm: Arc<dyn LlmClient>,
+    pub sandbox: Option<std::sync::Arc<dyn dcvr_sandbox::SandboxRunner>>,
     pub stt_timeout: Duration,
     pub llm_timeout: Duration,
     /// Optional overall per-utterance deadline (belt-and-suspenders umbrella over the

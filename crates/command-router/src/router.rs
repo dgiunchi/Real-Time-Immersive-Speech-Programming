@@ -8,6 +8,7 @@ use dcvr_behaviour_dsl::bounds::MAX_TOTAL_SPAWNED_PER_SESSION;
 use dcvr_behaviour_dsl::{Action, ActionPlan, Target};
 use dcvr_code_policy::{validate_plan, Decision, PolicyOutcome};
 use dcvr_control::{ControlBus, PipelineEvent, Stage};
+use dcvr_sandbox::{SandboxJob, ResourceLimits, SandboxRunner};
 use dcvr_csharp_policy::{
     validate_csharp_freeform_limited_profile, CsharpDecision, HardeningProfile, MAX_LEN,
 };
@@ -84,6 +85,7 @@ pub struct Router {
     bus: Option<ControlBus>,
     /// Personalization / RAG. When `None`, no context is injected.
     personalizer: Option<Arc<Personalizer>>,
+    sandbox: Option<std::sync::Arc<dyn SandboxRunner>>,
     /// Upper bound on a RAG embedding round-trip (fail-open on elapse). Defaults to
     /// [`RAG_EMBED_TIMEOUT`]; overridable for tests via [`Router::with_rag_embed_timeout`].
     rag_embed_timeout: Duration,
@@ -113,6 +115,7 @@ impl Router {
             mode: Mode::Secure,
             bus: None,
             personalizer: None,
+            sandbox: None,
             rag_embed_timeout: RAG_EMBED_TIMEOUT,
         }
     }
@@ -137,6 +140,11 @@ impl Router {
     }
 
     /// Attach the personalization engine (RAG).
+    pub fn with_sandbox(mut self, s: std::sync::Arc<dyn SandboxRunner>) -> Self {
+        self.sandbox = Some(s);
+        self
+    }
+
     pub fn with_personalizer(mut self, p: Arc<Personalizer>) -> Self {
         self.personalizer = Some(p);
         self
@@ -953,7 +961,7 @@ impl Router {
             let mut violations: Vec<String> =
                 verdict.violations.iter().map(|v| v.to_string()).collect();
 
-            let roslyn_ok = if lexical_ok {
+            let mut roslyn_ok = if lexical_ok {
                 match roslyn.analyze(&cs).await {
                     Ok(v) => {
                         if !v.approved {
@@ -968,6 +976,26 @@ impl Router {
             } else {
                 false
             };
+
+            // Sandbox step (Phase 4 final check)
+            if lexical_ok && roslyn_ok {
+                if let Some(sb) = &self.sandbox {
+                    let job = SandboxJob {
+                        id: rid.clone(),
+                        language: "csharp".to_string(),
+                        code: cs.clone(),
+                    };
+                    let limits = ResourceLimits {
+                        wall_clock: std::time::Duration::from_secs(10),
+                    };
+                    let report = sb.run(job, limits).await;
+                    // If the sandbox explicitly rejected it (timeout/crash) but it wasn't just a Unity missing-assembly error
+                    if !matches!(report.outcome, dcvr_sandbox::SandboxOutcome::Completed { .. }) {
+                        roslyn_ok = false;
+                        violations.push(format!("sandbox rejected: {:?}", report.outcome));
+                    }
+                }
+            }
 
             Some(CsharpResult {
                 candidate: cs,
@@ -1157,7 +1185,7 @@ impl Router {
             let lexical_ok = verdict.decision == CsharpDecision::ApproveForResearch;
             let mut violations: Vec<String> =
                 verdict.violations.iter().map(|v| v.to_string()).collect();
-            let roslyn_ok = if lexical_ok {
+            let mut roslyn_ok = if lexical_ok {
                 match roslyn.analyze(&cs).await {
                     Ok(v) => {
                         if !v.approved {
@@ -1175,6 +1203,25 @@ impl Router {
             } else {
                 false
             };
+
+            // Sandbox step (Phase 4 final check)
+            if lexical_ok && roslyn_ok {
+                if let Some(sb) = &self.sandbox {
+                    let job = SandboxJob {
+                        id: rid.clone(),
+                        language: "csharp".to_string(),
+                        code: cs.clone(),
+                    };
+                    let limits = ResourceLimits {
+                        wall_clock: std::time::Duration::from_secs(10),
+                    };
+                    let report = sb.run(job, limits).await;
+                    if !matches!(report.outcome, dcvr_sandbox::SandboxOutcome::Completed { .. }) {
+                        roslyn_ok = false;
+                        violations.push(format!("sandbox rejected: {:?}", report.outcome));
+                    }
+                }
+            }
             Some(CsharpResult {
                 candidate: cs,
                 approved: lexical_ok && roslyn_ok,

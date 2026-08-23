@@ -218,6 +218,7 @@ dependencies = [
  "dcvr-observability",
  "dcvr-personalization",
  "dcvr-roslyn-client",
+ "dcvr-sandbox",
  "dcvr-stt-client",
  "serde_json",
  "thiserror 1.0.69",
@@ -409,6 +410,7 @@ dependencies = [
  "dcvr-protocol",
  "dcvr-roomserver",
  "dcvr-roslyn-client",
+ "dcvr-sandbox",
  "dcvr-stt-client",
  "dcvr-unity-transport",
  "secrecy",
@@ -1245,6 +1247,14 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
+name = "sandbox-runner"
+version = "0.1.0"
+dependencies = [
+ "dcvr-sandbox",
+ "tokio",
+]
 
 [[package]]
 name = "secrecy"
