@@ -1,5 +1,7 @@
 # DreamCodeVR+ (Secure Architecture)
 
+![DreamCodeVR+ Banner](docs/images/hero_banner.png)
+
 **DreamCodeVR+** is a secure, prompt-to-scene architecture for in-headset creative programming. 
 
 When users speak or type creative commands in VR, the backend translates them into actions within the virtual world. Because generated code from an LLM can be malicious, this project implements a rigorous, layered security boundary to keep headsets safe from arbitrary code execution.
@@ -29,6 +31,8 @@ If the fallback C# violates any layer of the guardrail, it is safely rejected an
 ---
 
 ## 🏗️ Architecture
+
+![Guardrail Concept](docs/images/guardrail_concept.png)
 
 
 ```mermaid
@@ -128,6 +132,8 @@ The `run.sh` script automates the full launch sequence for the various targets:
 ```
 
 ## 🥽 On a Meta Quest 3
+
+![VR Environment](docs/images/vr_environment.png)
 
 DreamCodeVR+ runs on a physical Quest 3. Because Quest uses IL2CPP (Ahead-of-Time compilation) and cannot compile C# at runtime, the original DreamCodeVR (Mode A) would inherently fail on modern hardware. 
 
