@@ -30,7 +30,6 @@ async fn main() {
         } else {
             "openai"
         },
-
     );
 
     // Pull out values needed before `settings` is consumed by services_from_settings.

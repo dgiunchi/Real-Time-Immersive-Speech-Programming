@@ -23,14 +23,8 @@ fn defaults_select_offline_mock_clients() {
 
 #[test]
 fn mode_parser_accepts_known_and_rejects_unknown() {
-    assert_eq!(
-        RunMode::from_token("baseline").unwrap(),
-        RunMode::Baseline
-    );
-    assert_eq!(
-        RunMode::from_token("secure").unwrap(),
-        RunMode::Secure
-    );
+    assert_eq!(RunMode::from_token("baseline").unwrap(), RunMode::Baseline);
+    assert_eq!(RunMode::from_token("secure").unwrap(), RunMode::Secure);
     assert!(RunMode::from_token("arbitrary_csharp").is_err());
 }
 

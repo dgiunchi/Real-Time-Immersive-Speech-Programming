@@ -98,7 +98,6 @@ async fn process_audio_empty_audio_is_rejected() {
 // Phase 3: dual path returns a statically-validated (approved) C# candidate.
 #[tokio::test]
 async fn process_audio_returns_validated_csharp() {
-    
     use dcvr_stt_client::{AudioUtterance, MockSttClient};
     use std::time::Duration;
     let mut router = Router::new();
@@ -544,7 +543,7 @@ impl dcvr_llm_client::LlmClient for MockInvalidPlanLlm {
     async fn generate_plan(
         &self,
         request_id: &str,
-        transcript: &str,
+        _transcript: &str,
     ) -> Result<dcvr_behaviour_dsl::ActionPlan, dcvr_llm_client::LlmError> {
         Ok(dcvr_behaviour_dsl::ActionPlan {
             schema_version: "1.0".to_string(),
@@ -560,7 +559,9 @@ impl dcvr_llm_client::LlmClient for MockInvalidPlanLlm {
     ) -> Result<dcvr_llm_client::Generation, dcvr_llm_client::LlmError> {
         Ok(dcvr_llm_client::Generation {
             plan: self.generate_plan(request_id, transcript).await?,
-            csharp_candidate: Some(dcvr_llm_client::template_csharp(&self.generate_plan(request_id, transcript).await?)),
+            csharp_candidate: Some(dcvr_llm_client::template_csharp(
+                &self.generate_plan(request_id, transcript).await?,
+            )),
         })
     }
 }

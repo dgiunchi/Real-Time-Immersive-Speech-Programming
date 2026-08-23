@@ -116,10 +116,7 @@ fn every_settings_env_var_reaches_its_field() {
             .to_string(),
         "127.0.0.1:9111"
     );
-    assert_eq!(
-        with("DCVR_MODE", "baseline").mode.as_str(),
-        "baseline"
-    );
+    assert_eq!(with("DCVR_MODE", "baseline").mode.as_str(), "baseline");
     assert_eq!(
         with("DCVR_STT_HTTP_URL", "https://stt.example.com/x")
             .stt_http_url
@@ -244,7 +241,6 @@ fn every_settings_env_var_reaches_its_field() {
 /// The documented boolean grammar: `true/TRUE/1/yes` (any case, whitespace-tolerant)
 /// is true and ANYTHING else is false — so a typo fails safe (off) rather than
 /// silently enabling a control.
-
 /// A malformed value must not silently become something surprising: numeric and
 /// address fields keep their default rather than half-parsing.
 #[test]

@@ -743,8 +743,22 @@ impl Router {
         llm_timeout: Duration,
     ) -> AudioOutcome {
         match self.mode {
-            Mode::Baseline => self.process_audio_baseline(peer_id, audio, stt, llm, stt_timeout, llm_timeout).await,
-            Mode::Secure => self.process_audio_secure(peer_id, audio, stt, llm, roslyn, stt_timeout, llm_timeout).await,
+            Mode::Baseline => {
+                self.process_audio_baseline(peer_id, audio, stt, llm, stt_timeout, llm_timeout)
+                    .await
+            }
+            Mode::Secure => {
+                self.process_audio_secure(
+                    peer_id,
+                    audio,
+                    stt,
+                    llm,
+                    roslyn,
+                    stt_timeout,
+                    llm_timeout,
+                )
+                .await
+            }
         }
     }
 
@@ -760,21 +774,35 @@ impl Router {
         let t_received = epoch_millis(SystemTime::now());
         let request_id = RequestId::new();
         let rid = request_id.as_str().to_string();
-        let _ = self.session_mut(peer_id).transition_to(SessionState::Receiving);
+        let _ = self
+            .session_mut(peer_id)
+            .transition_to(SessionState::Receiving);
 
-        let transcript = match self.stt_step(peer_id, &audio, stt, stt_timeout, &rid, t_received).await {
+        let transcript = match self
+            .stt_step(peer_id, &audio, stt, stt_timeout, &rid, t_received)
+            .await
+        {
             Ok(t) => t,
             Err(outcome) => return outcome,
         };
 
-        let _ = self.session_mut(peer_id).transition_to(SessionState::Generating);
+        let _ = self
+            .session_mut(peer_id)
+            .transition_to(SessionState::Generating);
         let t_stt = epoch_millis(SystemTime::now());
-        self.emit_ev(PipelineEvent::new(&rid, peer_id, Stage::Transcript, transcript.clone()).ms(t_stt.saturating_sub(t_received)));
+        self.emit_ev(
+            PipelineEvent::new(&rid, peer_id, Stage::Transcript, transcript.clone())
+                .ms(t_stt.saturating_sub(t_received)),
+        );
 
         let generation = match timeout(llm_timeout, llm.generate_dual(&rid, &transcript)).await {
             Ok(Ok(g)) => g,
-            Ok(Err(e)) => return self.error_outcome(peer_id, rid, t_received, "llm_unavailable".to_string()),
-            Err(_) => return self.error_outcome(peer_id, rid, t_received, "llm_timeout".to_string()),
+            Ok(Err(e)) => {
+                return self.error_outcome(peer_id, rid, t_received, "llm_unavailable".to_string())
+            }
+            Err(_) => {
+                return self.error_outcome(peer_id, rid, t_received, "llm_timeout".to_string())
+            }
         };
 
         let csharp = generation.csharp_candidate.map(|cs| CsharpResult {
@@ -827,20 +855,30 @@ impl Router {
         let t_received = epoch_millis(SystemTime::now());
         let request_id = RequestId::new();
         let rid = request_id.as_str().to_string();
-        let _ = self.session_mut(peer_id).transition_to(SessionState::Receiving);
+        let _ = self
+            .session_mut(peer_id)
+            .transition_to(SessionState::Receiving);
 
         if let Some(reason) = self.admit(peer_id, &rid, t_received) {
             return self.error_outcome(peer_id, rid, t_received, reason.to_string());
         }
 
-        let transcript = match self.stt_step(peer_id, &audio, stt, stt_timeout, &rid, t_received).await {
+        let transcript = match self
+            .stt_step(peer_id, &audio, stt, stt_timeout, &rid, t_received)
+            .await
+        {
             Ok(t) => t,
             Err(outcome) => return outcome,
         };
 
-        let _ = self.session_mut(peer_id).transition_to(SessionState::Generating);
+        let _ = self
+            .session_mut(peer_id)
+            .transition_to(SessionState::Generating);
         let t_stt = epoch_millis(SystemTime::now());
-        self.emit_ev(PipelineEvent::new(&rid, peer_id, Stage::Transcript, transcript.clone()).ms(t_stt.saturating_sub(t_received)));
+        self.emit_ev(
+            PipelineEvent::new(&rid, peer_id, Stage::Transcript, transcript.clone())
+                .ms(t_stt.saturating_sub(t_received)),
+        );
 
         if crate::reset::is_full_clear(&transcript) {
             return self.full_clear_outcome(peer_id, rid, t_received, transcript);
@@ -855,7 +893,11 @@ impl Router {
         }
 
         let screen_reason = match timeout(llm_timeout, llm.screen_intent(&rid, &transcript)).await {
-            Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() { v.category } else { v.reason }),
+            Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() {
+                v.category
+            } else {
+                v.reason
+            }),
             _ => None,
         };
         if let Some(reason) = screen_reason {
@@ -863,14 +905,23 @@ impl Router {
         }
 
         let augmented = self.augment(peer_id, &transcript).await;
-        self.emit(&rid, peer_id, Stage::PromptSent, "sent to the AI — generating the code…");
+        self.emit(
+            &rid,
+            peer_id,
+            Stage::PromptSent,
+            "sent to the AI — generating the code…",
+        );
         let t_llm0 = epoch_millis(SystemTime::now());
         self.push_llm_tuning();
 
         let generation = match timeout(llm_timeout, llm.generate_dual(&rid, &augmented)).await {
             Ok(Ok(g)) => g,
-            Ok(Err(e)) => return self.error_outcome(peer_id, rid, t_received, "llm_unavailable".to_string()),
-            Err(_) => return self.error_outcome(peer_id, rid, t_received, "llm_timeout".to_string()),
+            Ok(Err(e)) => {
+                return self.error_outcome(peer_id, rid, t_received, "llm_unavailable".to_string())
+            }
+            Err(_) => {
+                return self.error_outcome(peer_id, rid, t_received, "llm_timeout".to_string())
+            }
         };
 
         let mut plan = generation.plan;
@@ -882,34 +933,57 @@ impl Router {
 
         // Secure Mode: We PREFER the JSON action plan.
         // If it's empty/invalid/rejected AND there's a C# candidate, fallback to C#.
-        
+
         let csharp = if !plan.actions.is_empty() && policy.decision == Decision::ApproveActionPlan {
             None // Use the valid JSON plan!
         } else if let Some(cs) = generation.csharp_candidate {
             let (max_chars, max_lines) = self.csharp_limits();
-            let verdict = validate_csharp_freeform_limited_profile(&cs, max_chars, max_lines, self.hardening_profile());
+            let verdict = validate_csharp_freeform_limited_profile(
+                &cs,
+                max_chars,
+                max_lines,
+                self.hardening_profile(),
+            );
             let lexical_ok = verdict.decision == CsharpDecision::ApproveForResearch;
-            let mut violations: Vec<String> = verdict.violations.iter().map(|v| v.to_string()).collect();
+            let mut violations: Vec<String> =
+                verdict.violations.iter().map(|v| v.to_string()).collect();
 
             let roslyn_ok = if lexical_ok {
                 match roslyn.analyze(&cs).await {
                     Ok(v) => {
-                        if !v.approved { for d in &v.diagnostics { violations.push(format!("roslyn: {d}")); } }
+                        if !v.approved {
+                            for d in &v.diagnostics {
+                                violations.push(format!("roslyn: {d}"));
+                            }
+                        }
                         v.approved
                     }
                     Err(e) => false,
                 }
-            } else { false };
+            } else {
+                false
+            };
 
-            Some(CsharpResult { candidate: cs, approved: lexical_ok && roslyn_ok, violations })
-        } else { None };
+            Some(CsharpResult {
+                candidate: cs,
+                approved: lexical_ok && roslyn_ok,
+                violations,
+            })
+        } else {
+            None
+        };
 
         let final_decision = if let Some(cs) = &csharp {
-            if cs.approved { Decision::ApproveCSharpResearchMode } else { Decision::RejectUnsafe }
+            if cs.approved {
+                Decision::ApproveCSharpResearchMode
+            } else {
+                Decision::RejectUnsafe
+            }
         } else {
             policy.decision
         };
-        let (decision, budget_errors) = self.commit(peer_id, final_decision, policy.spawned_in_plan);
+        let (decision, budget_errors) =
+            self.commit(peer_id, final_decision, policy.spawned_in_plan);
         let t_sent = epoch_millis(SystemTime::now());
         let spawned_count = self.session_mut(peer_id).spawned_count;
         let mut errors: Vec<String> = policy.violations.iter().map(|e| e.to_string()).collect();
@@ -938,10 +1012,31 @@ impl Router {
             None => timing.errors.clone(),
         };
 
-        self.emit_result(&rid, peer_id, timing.t_validated.saturating_sub(t_llm0), validation_ms, &csharp, plan.actions.len(), approved, &violations);
-        self.emit_ev(PipelineEvent::new(&rid, peer_id, Stage::Info, if approved { "ready ✓" } else { "rejected" }).ms(timing.t_sent.saturating_sub(timing.t_received)).ok(approved));
+        self.emit_result(
+            &rid,
+            peer_id,
+            timing.t_validated.saturating_sub(t_llm0),
+            validation_ms,
+            &csharp,
+            plan.actions.len(),
+            approved,
+            &violations,
+        );
+        self.emit_ev(
+            PipelineEvent::new(
+                &rid,
+                peer_id,
+                Stage::Info,
+                if approved { "ready ✓" } else { "rejected" },
+            )
+            .ms(timing.t_sent.saturating_sub(timing.t_received))
+            .ok(approved),
+        );
 
-        let result_summary = csharp.as_ref().map(|c| c.candidate.clone()).unwrap_or_else(|| format!("action_plan: {} action(s)", plan.actions.len()));
+        let result_summary = csharp
+            .as_ref()
+            .map(|c| c.candidate.clone())
+            .unwrap_or_else(|| format!("action_plan: {} action(s)", plan.actions.len()));
         self.record(peer_id, &transcript, &result_summary).await;
 
         AudioOutcome {

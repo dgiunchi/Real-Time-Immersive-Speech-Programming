@@ -159,7 +159,8 @@ impl<W: Write> App<W> {
             // NID 98 body = PCM audio. The mock STT decodes it as UTF-8 text, so a
             // keyless local demo works; the HTTP STT transcribes real PCM.
             let audio = AudioUtterance::new_16k_mono(pp.body);
-                        let outcome = self.router
+            let outcome = self
+                .router
                 .process_audio(
                     &pp.peer_uuid,
                     audio,

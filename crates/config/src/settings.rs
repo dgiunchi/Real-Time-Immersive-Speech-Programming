@@ -124,11 +124,11 @@ pub struct Settings {
     /// Env `DCVR_PER_PEER_ROUTING`.
     pub per_peer_routing: bool,
     /// Dev/research only: allow the validated-C# (Mode B) path. Default false.
-    
+
     /// Mode A (original DreamCodeVR): instead of the action-plan reply, send the
     /// VALIDATED generated C# to the original Unity `CodeGenerationManager`
     /// (NID 94 `{type,peer,data}`) for runtime RoslynCSharp compilation. Default false.
-    
+
     /// If set, run as a Ubiq SERVICE PEER: connect to this RoomServer addr and
     /// JOIN `room_guid`, instead of running the standalone TCP listener.
     pub ubiq_addr: Option<String>,
@@ -209,8 +209,7 @@ impl Default for Settings {
             utterance_timeout_ms: 0, // disabled by default (legacy byte-identical)
             max_inflight_per_peer: 8, // generous: never trips a single human speaker
             per_peer_routing: false, // one shared router (legacy byte-identical)
-            
-            
+
             ubiq_addr: None,
             room_guid: "6765c52b-3ad6-4fb0-9030-2c9a05dc4731".to_string(),
             embed_roomserver: false,
@@ -340,7 +339,7 @@ impl Settings {
         if let Ok(v) = env::var("DCVR_PER_PEER_ROUTING") {
             s.per_peer_routing = parse_bool_flag(&v);
         }
-        
+
         if let Ok(a) = env::var("DCVR_UBIQ_ADDR") {
             if !a.trim().is_empty() {
                 s.ubiq_addr = Some(a);
