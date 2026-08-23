@@ -113,7 +113,7 @@ if [ "$CREATIVE" = "1" ]; then
     done
   fi
   if [ "$ANALYZER_UP" = "1" ]; then
-    MODE_A_ENV=(DCVR_MODE_A=true DCVR_CSHARP_RESEARCH=true
+    MODE_A_ENV=(DCVR_MODE=baseline 
                 "DCVR_ROSLYN_URL=http://127.0.0.1:$ANALYZER_PORT/analyze")
   else
     echo "[demo] analyzer did NOT start — staying in Mode C (see $LOGDIR/analyzer.log)"

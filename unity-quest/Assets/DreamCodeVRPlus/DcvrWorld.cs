@@ -9,7 +9,7 @@
 // emissive or unlit, so there is exactly one realtime light and no shadow casters —
 // the cheapest way to look deliberate on a standalone headset.
 //
-// STAGE 1 of the visual ladder (see CLAUDE.md): sky, floor, platform, rings, world-space
+// STAGE 1 of the visual ladder (see project documentation): sky, floor, platform, rings, world-space
 // UI, accept/block feedback, materialization. Stage 2 effects layer on top of the same
 // objects rather than replacing them.
 

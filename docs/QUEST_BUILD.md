@@ -1,7 +1,6 @@
 # DreamCodeVR+ — Quest 3 demo runbook
 
 Everything needed to build, install, run and demonstrate the Meta Quest 3 client.
-Written so a new machine (or a new session) can resume without this chat.
 
 **Status honesty:** §9 lists exactly what has been verified on the physical headset and
 what has not. Do not present an unverified row as working.

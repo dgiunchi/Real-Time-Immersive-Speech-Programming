@@ -55,13 +55,14 @@ async fn process_audio_happy_path_approves() {
     use dcvr_stt_client::{AudioUtterance, MockSttClient};
     use std::time::Duration;
     let mut router = Router::new();
-    let audio = AudioUtterance::new_16k_mono(b"make this cube red".to_vec());
+    let audio = AudioUtterance::new_16k_mono(b"spawn a new red cube".to_vec());
     let out = router
         .process_audio(
             "peer-1",
             audio,
             &MockSttClient,
             &MockLlmClient,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
             Duration::from_secs(5),
             Duration::from_secs(5),
         )
@@ -84,6 +85,7 @@ async fn process_audio_empty_audio_is_rejected() {
             AudioUtterance::new_16k_mono(vec![]),
             &MockSttClient,
             &MockLlmClient,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
             Duration::from_secs(5),
             Duration::from_secs(5),
         )
@@ -95,24 +97,24 @@ async fn process_audio_empty_audio_is_rejected() {
 
 // Phase 3: dual path returns a statically-validated (approved) C# candidate.
 #[tokio::test]
-async fn process_audio_dual_returns_validated_csharp() {
-    use dcvr_llm_client::MockLlmClient;
+async fn process_audio_returns_validated_csharp() {
+    
     use dcvr_stt_client::{AudioUtterance, MockSttClient};
     use std::time::Duration;
     let mut router = Router::new();
     let audio = AudioUtterance::new_16k_mono(b"make this cube red and bigger".to_vec());
     let out = router
-        .process_audio_dual(
+        .process_audio(
             "p",
             audio,
             &MockSttClient,
-            &MockLlmClient,
+            &MockInvalidPlanLlm,
             &dcvr_roslyn_client::MockRoslynAnalyzer,
             Duration::from_secs(5),
             Duration::from_secs(5),
         )
         .await;
-    assert_eq!(out.decision, Decision::ApproveActionPlan);
+    assert_eq!(out.decision, Decision::ApproveCSharpResearchMode);
     let cs = out.csharp.expect("dual path returns csharp");
     assert!(
         cs.approved,
@@ -147,6 +149,7 @@ async fn stt_error_detail_does_not_leak_into_outcome_or_timing() {
             AudioUtterance::new_16k_mono(b"hi".to_vec()),
             &LeakySttClient,
             &dcvr_llm_client::MockLlmClient,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
             Duration::from_secs(5),
             Duration::from_secs(5),
         )
@@ -452,6 +455,7 @@ async fn session_spawn_budget_enforced_cumulatively() {
             a(),
             &MockSttClient,
             &llm,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
             Duration::from_secs(5),
             Duration::from_secs(5),
         )
@@ -467,6 +471,7 @@ async fn session_spawn_budget_enforced_cumulatively() {
             a(),
             &MockSttClient,
             &llm,
+            &dcvr_roslyn_client::MockRoslynAnalyzer,
             Duration::from_secs(5),
             Duration::from_secs(5),
         )
@@ -530,4 +535,32 @@ async fn age_minor_forces_hardened_csharp_gate() {
         out2.csharp.expect("csharp").approved,
         "age gating off must be byte-identical legacy freedom"
     );
+}
+
+#[derive(Clone, Default)]
+struct MockInvalidPlanLlm;
+#[async_trait::async_trait]
+impl dcvr_llm_client::LlmClient for MockInvalidPlanLlm {
+    async fn generate_plan(
+        &self,
+        request_id: &str,
+        transcript: &str,
+    ) -> Result<dcvr_behaviour_dsl::ActionPlan, dcvr_llm_client::LlmError> {
+        Ok(dcvr_behaviour_dsl::ActionPlan {
+            schema_version: "1.0".to_string(),
+            request_id: request_id.to_string(),
+            target: dcvr_behaviour_dsl::Target::SelectedObject,
+            actions: vec![],
+        })
+    }
+    async fn generate_dual(
+        &self,
+        request_id: &str,
+        transcript: &str,
+    ) -> Result<dcvr_llm_client::Generation, dcvr_llm_client::LlmError> {
+        Ok(dcvr_llm_client::Generation {
+            plan: self.generate_plan(request_id, transcript).await?,
+            csharp_candidate: Some(dcvr_llm_client::template_csharp(&self.generate_plan(request_id, transcript).await?)),
+        })
+    }
 }

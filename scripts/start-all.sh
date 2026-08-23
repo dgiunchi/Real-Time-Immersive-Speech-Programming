@@ -27,7 +27,7 @@ for i in $(seq 1 60); do ss -ltn 2>/dev/null | grep -q ':8009' && break; sleep 0
 echo "[start-all] starting backend + admin panel (:7878), joining Ubiq…"
 # DCVR_STT_OPENAI=true -> REAL speech-to-text (OpenAI Whisper, key from .env). The VR
 # client is mic-only (left-trigger push-to-talk), so mock STT would make it deaf.
-setsid nohup env DCVR_MODE_A=true DCVR_CSHARP_RESEARCH=true DCVR_STT_OPENAI=true \
+setsid nohup env DCVR_MODE=baseline  DCVR_STT_OPENAI=true \
   DCVR_ADMIN_PORT=7878 DCVR_ADMIN_BIND=0.0.0.0 \
   scripts/run-backend.sh > .run-logs/backend.log 2>&1 < /dev/null &
 for i in $(seq 1 180); do ss -ltn 2>/dev/null | grep -q ':7878' && break; sleep 0.5; done

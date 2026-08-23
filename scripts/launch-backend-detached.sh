@@ -14,8 +14,8 @@ pkill -9 -f '[t]arget/debug/dreamcodevr-server' 2>/dev/null || true
 sleep 1
 
 setsid env \
-  DCVR_MODE_A=true \
-  DCVR_CSHARP_RESEARCH=true \
+  DCVR_MODE=baseline \
+   \
   DCVR_STT_OPENAI=true \
   DCVR_ADMIN_PORT=7878 \
   DCVR_ADMIN_BIND=0.0.0.0 \

@@ -123,7 +123,7 @@ cargo build -q -p dreamcodevr-server -p fake-quest-client 2>/dev/null
 LOG="$(mktemp)"
 DCVR_EMBED_ROOMSERVER=true DCVR_ROOMSERVER_BIND=127.0.0.1:$PORT_RS \
 DCVR_ADMIN_PORT=$PORT_ADMIN DCVR_ADMIN_TOKEN=verify-token \
-DCVR_MODE_A=true DCVR_CSHARP_RESEARCH=true \
+DCVR_MODE=baseline  \
 DCVR_PERSONALIZATION_DIR="$(mktemp -d)" \
   ./target/debug/dreamcodevr-server >"$LOG" 2>&1 &
 SRV=$!

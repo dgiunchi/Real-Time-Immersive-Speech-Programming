@@ -27,23 +27,15 @@ impl Default for RequestId {
 /// Phase 1 only uses `ActionPlanFast`; the rest are wired in later phases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// C: action-plan -> validate -> Unity ActionPlanExecutor (Quest-safe default).
-    ActionPlanFast,
-    /// B: validated C# -> Roslyn (research/dev).
-    ValidatedCSharpResearch,
-    /// A: original DreamCodeVR Roslyn pipeline (baseline/control).
-    OriginalRoslynBaseline,
-    /// D: risky C# -> isolated sandbox worker.
-    Sandbox,
+    Baseline,
+    Secure,
 }
 
 impl Mode {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Mode::ActionPlanFast => "action_plan_fast",
-            Mode::ValidatedCSharpResearch => "validated_csharp_research",
-            Mode::OriginalRoslynBaseline => "original_roslyn_baseline",
-            Mode::Sandbox => "sandbox",
+            Mode::Baseline => "baseline",
+            Mode::Secure => "secure",
         }
     }
 }

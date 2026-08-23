@@ -7,7 +7,7 @@ fn sample() -> TimingEvent {
     TimingEvent {
         request_id: "req-1".to_string(),
         peer_id: "peer-1".to_string(),
-        mode: "action_plan_fast".to_string(),
+        mode: "baseline".to_string(),
         decision: "ApproveActionPlan".to_string(),
         t_received: 1,
         t_validated: 2,

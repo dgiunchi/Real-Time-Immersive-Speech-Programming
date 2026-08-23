@@ -80,11 +80,7 @@ pub struct Services {
     /// Opt-in: give each peer its own router so peers don't serialise on one lock.
     /// Default false = one shared router (legacy byte-identical). Env `DCVR_PER_PEER_ROUTING`.
     pub per_peer_routing: bool,
-    /// Dev/research only: route NID 98 through the validated-C# (Mode B) path.
-    pub csharp_research: bool,
-    /// Mode A: emit the validated generated C# (NID 94 `{type,peer,data}`) to the
-    /// original Unity `CodeGenerationManager` for runtime RoslynCSharp compilation.
-    pub mode_a: bool,
+
     pub roslyn: Arc<dyn RoslynAnalyzer>,
     /// Runtime control plane (admin-panel config + live event bus).
     pub bus: ControlBus,
@@ -114,8 +110,8 @@ impl Services {
     /// switch runtime code dispatch ON in a process that was started without it —
     /// that would widen the trust surface at runtime — but they must be able to
     /// switch it OFF instantly, which is the whole point of having the toggle.
-    pub fn mode_a_live(&self) -> bool {
-        self.mode_a && self.bus.config().enable_mode_a
+    pub fn is_baseline(&self) -> bool {
+        self.bus.config().enable_mode_a
     }
 }
 
@@ -125,7 +121,6 @@ impl std::fmt::Debug for Services {
             .field("stt_timeout", &self.stt_timeout)
             .field("llm_timeout", &self.llm_timeout)
             .field("utterance_timeout", &self.utterance_timeout)
-            .field("csharp_research", &self.csharp_research)
             .finish()
     }
 }
@@ -164,30 +159,17 @@ impl<W: Write> App<W> {
             // NID 98 body = PCM audio. The mock STT decodes it as UTF-8 text, so a
             // keyless local demo works; the HTTP STT transcribes real PCM.
             let audio = AudioUtterance::new_16k_mono(pp.body);
-            let outcome = if self.services.csharp_research {
-                self.router
-                    .process_audio_dual(
-                        &pp.peer_uuid,
-                        audio,
-                        self.services.stt.as_ref(),
-                        self.services.llm.as_ref(),
-                        self.services.roslyn.as_ref(),
-                        self.services.stt_timeout,
-                        self.services.llm_timeout,
-                    )
-                    .await
-            } else {
-                self.router
-                    .process_audio(
-                        &pp.peer_uuid,
-                        audio,
-                        self.services.stt.as_ref(),
-                        self.services.llm.as_ref(),
-                        self.services.stt_timeout,
-                        self.services.llm_timeout,
-                    )
-                    .await
-            };
+                        let outcome = self.router
+                .process_audio(
+                    &pp.peer_uuid,
+                    audio,
+                    self.services.stt.as_ref(),
+                    self.services.llm.as_ref(),
+                    self.services.roslyn.as_ref(),
+                    self.services.stt_timeout,
+                    self.services.llm_timeout,
+                )
+                .await;
             self.jsonl.write_event(&outcome.timing)?;
             let json = backend_decision_json(&outcome)?;
             let bytes = encode_frame(NID_BACKEND_OUTPUT, json.as_bytes())?;

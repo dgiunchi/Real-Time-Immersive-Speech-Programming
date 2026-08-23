@@ -14,7 +14,7 @@ async fn main() {
         }
     };
     eprintln!(
-        "dreamcodevr-server: mode={} stt={} llm={} csharp_research={}",
+        "dreamcodevr-server: mode={} stt={} llm={}",
         settings.mode.as_str(),
         // Mirror the actual client construction in services_from_settings: the OpenAI
         // Whisper path (DCVR_STT_OPENAI + key) takes precedence over the HTTP endpoint.
@@ -30,7 +30,7 @@ async fn main() {
         } else {
             "openai"
         },
-        settings.csharp_research_dev,
+
     );
 
     // Pull out values needed before `settings` is consumed by services_from_settings.

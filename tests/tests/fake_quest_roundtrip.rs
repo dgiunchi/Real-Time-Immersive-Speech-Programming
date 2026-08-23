@@ -39,7 +39,7 @@ async fn fake_quest_roundtrip_produces_nid94_response() {
         .write_all(
             &encode_frame(
                 NID_AUDIO_INPUT,
-                &join_peer_payload(peer, b"make this cube red"),
+                &join_peer_payload(peer, b"spawn a new red cube"),
             )
             .unwrap(),
         )

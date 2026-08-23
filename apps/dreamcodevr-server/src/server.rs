@@ -99,7 +99,7 @@ pub fn services_from_settings(settings: Settings) -> Services {
 
     let cfg = RuntimeConfig {
         model,
-        enable_mode_a: settings.mode_a,
+        enable_mode_a: settings.mode == dcvr_config::RunMode::Baseline,
         max_generations_per_min: settings.max_generations_per_min,
         personal_space_radius_m: settings.personal_space_radius_m,
         min_plan_interval_ms: settings.min_plan_interval_ms,
@@ -132,8 +132,6 @@ pub fn services_from_settings(settings: Settings) -> Services {
             .then(|| Duration::from_millis(settings.utterance_timeout_ms)),
         max_inflight_per_peer: settings.max_inflight_per_peer,
         per_peer_routing: settings.per_peer_routing,
-        csharp_research: settings.csharp_research_dev,
-        mode_a: settings.mode_a,
         roslyn,
         bus,
         personalizer: Some(personalizer),
@@ -555,7 +553,6 @@ fn spawn_utterance(
         *services.last_client_peer.write().await = Some(peer_id.clone());
         let audio = AudioUtterance::new_16k_mono(bytes);
         // Mode A and Mode B both need the dual path (to generate + validate the C#).
-        let need_csharp = services.csharp_research || services.mode_a;
         // Optional overall deadline (None = legacy, byte-identical). On elapse we fail
         // closed: log and return before any NID-94 send, so a wedged utterance can
         // never hold the shared router lock forever. tokio's Mutex does not poison on
@@ -563,28 +560,16 @@ fn spawn_utterance(
         // limit recorded before work; spawn budget only after success).
         let outcome = match bounded_utterance(services.utterance_timeout, async {
             let mut r = router.lock().await;
-            if need_csharp {
-                r.process_audio_dual(
-                    &peer_id,
-                    audio,
-                    services.stt.as_ref(),
-                    services.llm.as_ref(),
-                    services.roslyn.as_ref(),
-                    services.stt_timeout,
-                    services.llm_timeout,
-                )
-                .await
-            } else {
-                r.process_audio(
-                    &peer_id,
-                    audio,
-                    services.stt.as_ref(),
-                    services.llm.as_ref(),
-                    services.stt_timeout,
-                    services.llm_timeout,
-                )
-                .await
-            }
+            r.process_audio(
+                &peer_id,
+                audio,
+                services.stt.as_ref(),
+                services.llm.as_ref(),
+                services.roslyn.as_ref(),
+                services.stt_timeout,
+                services.llm_timeout,
+            )
+            .await
         })
         .await
         {
@@ -625,7 +610,7 @@ fn spawn_utterance(
         }
 
         // Live toggle: the admin panel can disable dispatch without a restart.
-        if services.mode_a_live() {
+        if services.is_baseline() {
             // Mode A (original DreamCodeVR): hand the VALIDATED generated C# to the
             // original Unity `CodeGenerationManager` (NID 94 `{type,peer,data}`) for
             // runtime RoslynCSharp compilation. Fail-closed: only send if it passed
@@ -1084,7 +1069,7 @@ impl dcvr_admin::AdminHooks for ServerHooks {
         // Nothing is weakened. The candidate is still validated, still rejected, and still
         // never dispatched; Mode A dispatch remains gated on `cs.approved` below. Only the
         // reported verdict changes, so it reflects the path that actually ran.
-        if !self.services.mode_a_live() {
+        if !self.services.is_baseline() {
             if let Some(plan) = &outcome.plan {
                 let delivered = self.dispatch_plan(&outcome).await;
                 let note = match &outcome.csharp {
@@ -1124,7 +1109,7 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                 // small lie that costs an hour of debugging on the device.
                 let mut mode_a_form = "validated C#";
                 let mut compiler_refused = false;
-                if self.services.mode_a_live() {
+                if self.services.is_baseline() {
                     if let Some(sender) = self.services.ubiq_sender.read().await.clone() {
                         let target = self
                             .services
@@ -1180,7 +1165,7 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                 // not be driven from the admin panel at all: the demo validated the
                 // command and the headset never moved. Send the bounded action plan on
                 // the same NID-94 route the audio flow uses.
-                if !delivered && !self.services.mode_a_live() {
+                if !delivered && !self.services.is_baseline() {
                     if let Some(sender) = self.services.ubiq_sender.read().await.clone() {
                         if let Ok(json) = crate::app::backend_decision_json(&outcome) {
                             let target = self
@@ -1207,7 +1192,7 @@ impl dcvr_admin::AdminHooks for ServerHooks {
                 }
 
                 if delivered {
-                    let how = if self.services.mode_a_live() {
+                    let how = if self.services.is_baseline() {
                         mode_a_form
                     } else {
                         "bounded action plan (Mode C)"

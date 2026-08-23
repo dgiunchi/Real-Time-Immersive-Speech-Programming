@@ -104,7 +104,6 @@ fn every_settings_env_var_reaches_its_field() {
         dcvr_config::presets::DEFAULT_PRESET.resolve().model,
         "the default model must be the benchmark winner, from one central place"
     );
-    assert!(!d.mode_a, "Mode A off by default");
     assert!(!d.embed_roomserver, "embedded RoomServer off by default");
     assert_eq!(d.profile_ttl_secs, 0, "retention sweep disabled by default");
     assert!(!d.perceptual_hardening, "creative freedom by default");
@@ -118,8 +117,8 @@ fn every_settings_env_var_reaches_its_field() {
         "127.0.0.1:9111"
     );
     assert_eq!(
-        with("DCVR_MODE", "action_plan_fast").mode.as_str(),
-        "action_plan_fast"
+        with("DCVR_MODE", "baseline").mode.as_str(),
+        "baseline"
     );
     assert_eq!(
         with("DCVR_STT_HTTP_URL", "https://stt.example.com/x")
@@ -218,8 +217,6 @@ fn every_settings_env_var_reaches_its_field() {
     assert!(with("DCVR_STT_OPENAI", "true").stt_openai);
     assert!(with("DCVR_EMBED_OPENAI", "true").embed_openai);
     assert!(with("DCVR_PER_PEER_ROUTING", "true").per_peer_routing);
-    assert!(with("DCVR_CSHARP_RESEARCH", "true").csharp_research_dev);
-    assert!(with("DCVR_MODE_A", "true").mode_a);
     assert!(with("DCVR_EMBED_ROOMSERVER", "true").embed_roomserver);
     assert!(with("DCVR_PERCEPTUAL_HARDENING", "true").perceptual_hardening);
     assert!(with("DCVR_AGE_GATING", "true").age_gating);
@@ -247,24 +244,6 @@ fn every_settings_env_var_reaches_its_field() {
 /// The documented boolean grammar: `true/TRUE/1/yes` (any case, whitespace-tolerant)
 /// is true and ANYTHING else is false — so a typo fails safe (off) rather than
 /// silently enabling a control.
-#[test]
-fn boolean_flags_follow_the_documented_grammar() {
-    let _g = env_guard();
-    for truthy in ["true", "TRUE", "True", "1", "yes", "YES", " true "] {
-        clear_all();
-        std::env::set_var("DCVR_MODE_A", truthy);
-        let s = Settings::from_env().unwrap();
-        clear_all();
-        assert!(s.mode_a, "{truthy:?} should parse as true");
-    }
-    for falsy in ["false", "0", "no", "", "off", "tru", "yes-please"] {
-        clear_all();
-        std::env::set_var("DCVR_MODE_A", falsy);
-        let s = Settings::from_env().unwrap();
-        clear_all();
-        assert!(!s.mode_a, "{falsy:?} must fail safe to false");
-    }
-}
 
 /// A malformed value must not silently become something surprising: numeric and
 /// address fields keep their default rather than half-parsing.

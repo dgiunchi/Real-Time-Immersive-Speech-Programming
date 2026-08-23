@@ -8,20 +8,23 @@ use crate::errors::ConfigError;
 /// Run mode. Phase 1/2 use the action-plan fast path; the enum extends later.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunMode {
-    ActionPlanFast,
+    Baseline,
+    Secure,
 }
 
 impl RunMode {
     pub fn as_str(&self) -> &'static str {
         match self {
-            RunMode::ActionPlanFast => "action_plan_fast",
+            RunMode::Baseline => "baseline",
+            RunMode::Secure => "secure",
         }
     }
 
     /// Parse a mode token (public so it is unit-testable without env mutation).
     pub fn from_token(s: &str) -> Result<Self, ConfigError> {
         match s {
-            "action_plan_fast" => Ok(RunMode::ActionPlanFast),
+            "baseline" => Ok(RunMode::Baseline),
+            "secure" => Ok(RunMode::Secure),
             other => Err(ConfigError::InvalidMode(other.to_string())),
         }
     }
@@ -121,11 +124,11 @@ pub struct Settings {
     /// Env `DCVR_PER_PEER_ROUTING`.
     pub per_peer_routing: bool,
     /// Dev/research only: allow the validated-C# (Mode B) path. Default false.
-    pub csharp_research_dev: bool,
+    
     /// Mode A (original DreamCodeVR): instead of the action-plan reply, send the
     /// VALIDATED generated C# to the original Unity `CodeGenerationManager`
     /// (NID 94 `{type,peer,data}`) for runtime RoslynCSharp compilation. Default false.
-    pub mode_a: bool,
+    
     /// If set, run as a Ubiq SERVICE PEER: connect to this RoomServer addr and
     /// JOIN `room_guid`, instead of running the standalone TCP listener.
     pub ubiq_addr: Option<String>,
@@ -185,7 +188,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             listen_addr: SocketAddr::from(([127, 0, 0, 1], 9098)),
-            mode: RunMode::ActionPlanFast,
+            mode: RunMode::Secure,
             security_profile: SecurityProfile::Legacy,
             stt_http_url: None,
             openai_api_key: None,
@@ -206,8 +209,8 @@ impl Default for Settings {
             utterance_timeout_ms: 0, // disabled by default (legacy byte-identical)
             max_inflight_per_peer: 8, // generous: never trips a single human speaker
             per_peer_routing: false, // one shared router (legacy byte-identical)
-            csharp_research_dev: false,
-            mode_a: false,
+            
+            
             ubiq_addr: None,
             room_guid: "6765c52b-3ad6-4fb0-9030-2c9a05dc4731".to_string(),
             embed_roomserver: false,
@@ -337,12 +340,7 @@ impl Settings {
         if let Ok(v) = env::var("DCVR_PER_PEER_ROUTING") {
             s.per_peer_routing = parse_bool_flag(&v);
         }
-        if let Ok(v) = env::var("DCVR_CSHARP_RESEARCH") {
-            s.csharp_research_dev = parse_bool_flag(&v);
-        }
-        if let Ok(v) = env::var("DCVR_MODE_A") {
-            s.mode_a = parse_bool_flag(&v);
-        }
+        
         if let Ok(a) = env::var("DCVR_UBIQ_ADDR") {
             if !a.trim().is_empty() {
                 s.ubiq_addr = Some(a);
@@ -452,9 +450,9 @@ impl Settings {
             // Fail-closed C# validation (Phase 3): Mode A in hardened mode must not
             // silently fall back to the approve-all mock analyzer — require a real
             // semantic analyzer endpoint.
-            if self.mode_a && self.roslyn_url.is_none() {
+            if self.mode == RunMode::Secure && self.roslyn_url.is_none() {
                 return Err(ConfigError::HardenedMissingControl(
-                    "roslyn_url (hardened Mode A requires a real semantic analyzer)",
+                    "roslyn_url (hardened Secure mode requires a real semantic analyzer)",
                 ));
             }
             // Transport confidentiality for the provider hops: any CUSTOM external
@@ -620,6 +618,7 @@ mod tests {
             security_profile: SecurityProfile::Hardened,
             peer_auth_secret: Some("s".to_string()),
             backend_signing_seed_hex: Some("aa".repeat(32)),
+            roslyn_url: Some("https://127.0.0.1:5099".to_string()),
             stt_http_url: Some("http://transcribe.example.com/stt".to_string()),
             ..Default::default()
         };
@@ -711,6 +710,7 @@ mod tests {
             require_peer_auth: false,
             peer_auth_secret: Some("deterministic-test-secret".to_string()),
             backend_signing_seed_hex: Some("aa".repeat(32)),
+            roslyn_url: Some("https://127.0.0.1:5099".to_string()),
             ..Default::default()
         };
         let s = s
@@ -741,6 +741,7 @@ mod tests {
             perceptual_hardening: false,
             peer_auth_secret: Some("deterministic-test-secret".to_string()),
             backend_signing_seed_hex: Some("aa".repeat(32)),
+            roslyn_url: Some("https://127.0.0.1:5099".to_string()),
             ..Default::default()
         }
         .enforce_profile_invariants()
@@ -753,13 +754,13 @@ mod tests {
     }
 
     #[test]
-    fn hardened_mode_a_without_real_analyzer_fails_closed() {
-        // Phase 3: hardened Mode A must not run on the approve-all mock analyzer.
+    fn hardened_secure_mode_without_real_analyzer_fails_closed() {
+        // Phase 3: hardened Secure mode must not run on the approve-all mock analyzer.
         let s = Settings {
             security_profile: SecurityProfile::Hardened,
             peer_auth_secret: Some("s".to_string()),
             backend_signing_seed_hex: Some("aa".repeat(32)),
-            mode_a: true,
+            mode: RunMode::Secure,
             roslyn_url: None,
             ..Default::default()
         };
@@ -770,12 +771,12 @@ mod tests {
     }
 
     #[test]
-    fn hardened_mode_a_with_real_analyzer_ok() {
+    fn hardened_secure_mode_with_real_analyzer_ok() {
         let s = Settings {
             security_profile: SecurityProfile::Hardened,
             peer_auth_secret: Some("s".to_string()),
             backend_signing_seed_hex: Some("aa".repeat(32)),
-            mode_a: true,
+            mode: RunMode::Secure,
             roslyn_url: Some("http://127.0.0.1:5099".to_string()),
             ..Default::default()
         };

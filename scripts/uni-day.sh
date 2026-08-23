@@ -66,7 +66,7 @@ case "${1:-probe}" in
     echo "== Pointing the Rust backend at the remote RoomServer $HOST:$PORT =="
     cd "$HERE"
     if [ -f .env ]; then set -a; . ./.env; set +a; fi
-    export DCVR_UBIQ_ADDR="$HOST:$PORT" DCVR_MODE_A=true DCVR_CSHARP_RESEARCH=true \
+    export DCVR_UBIQ_ADDR="$HOST:$PORT" DCVR_MODE=baseline  \
            DCVR_STT_OPENAI=true DCVR_ADMIN_PORT=7878
     echo "  llm=$([ -n "${OPENAI_API_KEY:-}" ] && echo OpenAI || echo mock)  ubiq=$DCVR_UBIQ_ADDR"
     echo "  Now open the genie app on the headset (same wifi). Ctrl-C to stop."

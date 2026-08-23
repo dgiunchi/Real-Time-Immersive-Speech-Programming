@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -108,7 +110,7 @@ impl Router {
     pub fn new() -> Self {
         Self {
             sessions: HashMap::new(),
-            mode: Mode::ActionPlanFast,
+            mode: Mode::Secure,
             bus: None,
             personalizer: None,
             rag_embed_timeout: RAG_EMBED_TIMEOUT,
@@ -729,7 +731,24 @@ impl Router {
     /// step bounded by a timeout. Fail-closed: any STT/LLM error/timeout yields a
     /// `RejectUnsafe` outcome with no plan. External error DETAIL never crosses
     /// into the outcome/timing (privacy): only a fixed reason code does.
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_audio(
+        &mut self,
+        peer_id: &str,
+        audio: AudioUtterance,
+        stt: &dyn SttClient,
+        llm: &dyn LlmClient,
+        roslyn: &dyn RoslynAnalyzer,
+        stt_timeout: Duration,
+        llm_timeout: Duration,
+    ) -> AudioOutcome {
+        match self.mode {
+            Mode::Baseline => self.process_audio_baseline(peer_id, audio, stt, llm, stt_timeout, llm_timeout).await,
+            Mode::Secure => self.process_audio_secure(peer_id, audio, stt, llm, roslyn, stt_timeout, llm_timeout).await,
+        }
+    }
+
+    async fn process_audio_baseline(
         &mut self,
         peer_id: &str,
         audio: AudioUtterance,
@@ -741,75 +760,50 @@ impl Router {
         let t_received = epoch_millis(SystemTime::now());
         let request_id = RequestId::new();
         let rid = request_id.as_str().to_string();
-        let _ = self
-            .session_mut(peer_id)
-            .transition_to(SessionState::Receiving);
-        if let Some(reason) = self.admit(peer_id, &rid, t_received) {
-            return self.error_outcome(peer_id, rid, t_received, reason.to_string());
-        }
+        let _ = self.session_mut(peer_id).transition_to(SessionState::Receiving);
 
-        let transcript = match self
-            .stt_step(peer_id, &audio, stt, stt_timeout, &rid, t_received)
-            .await
-        {
+        let transcript = match self.stt_step(peer_id, &audio, stt, stt_timeout, &rid, t_received).await {
             Ok(t) => t,
             Err(outcome) => return outcome,
         };
 
-        let _ = self
-            .session_mut(peer_id)
-            .transition_to(SessionState::Generating);
-        let augmented = self.augment(peer_id, &transcript).await;
-        self.push_llm_tuning();
-        let mut plan = match timeout(llm_timeout, llm.generate_plan(&rid, &augmented)).await {
-            Ok(Ok(p)) => p,
-            Ok(Err(e)) => {
-                eprintln!("[router] llm error (peer={peer_id}, req={rid}): {e}");
-                return self.error_outcome(peer_id, rid, t_received, "llm_unavailable".to_string());
-            }
-            Err(_) => {
-                return self.error_outcome(peer_id, rid, t_received, "llm_timeout".to_string())
-            }
+        let _ = self.session_mut(peer_id).transition_to(SessionState::Generating);
+        let t_stt = epoch_millis(SystemTime::now());
+        self.emit_ev(PipelineEvent::new(&rid, peer_id, Stage::Transcript, transcript.clone()).ms(t_stt.saturating_sub(t_received)));
+
+        let generation = match timeout(llm_timeout, llm.generate_dual(&rid, &transcript)).await {
+            Ok(Ok(g)) => g,
+            Ok(Err(e)) => return self.error_outcome(peer_id, rid, t_received, "llm_unavailable".to_string()),
+            Err(_) => return self.error_outcome(peer_id, rid, t_received, "llm_timeout".to_string()),
         };
 
-        // Anti-vection: clamp rotate magnitude before validation so the validated
-        // plan that reaches the client is already comfort-bounded.
-        self.clamp_comfort_rotate(&mut plan);
-        let stage = StageTiming::start();
-        let policy = validate_plan(&plan);
-        let validation_ms = stage.elapsed_ms();
-        let t_validated = epoch_millis(SystemTime::now());
-        let (decision, budget_errors) =
-            self.commit(peer_id, policy.decision, policy.spawned_in_plan);
-        let t_sent = epoch_millis(SystemTime::now());
-        let spawned_count = self.session_mut(peer_id).spawned_count;
+        let csharp = generation.csharp_candidate.map(|cs| CsharpResult {
+            candidate: cs,
+            approved: true, // Baseline: blindly approve
+            violations: vec![],
+        });
 
-        let mut errors: Vec<String> = policy.violations.iter().map(|e| e.to_string()).collect();
-        errors.extend(budget_errors);
+        let t_validated = epoch_millis(SystemTime::now());
+        let t_sent = epoch_millis(SystemTime::now());
         let timing = TimingEvent {
             request_id: rid.clone(),
             peer_id: peer_id.to_string(),
-            mode: self.mode.as_str().to_string(),
-            decision: format!("{decision:?}"),
+            mode: "baseline".to_string(),
+            decision: "ApproveCSharp".to_string(),
             t_received,
             t_validated,
             t_sent,
-            validation_ms,
-            errors,
-            action_count: plan.actions.len(),
-            spawned_count,
+            validation_ms: 0,
+            errors: vec![],
+            action_count: 0,
+            spawned_count: 0,
         };
-        self.record(
-            peer_id,
-            &transcript,
-            &format!("action_plan: {} action(s)", plan.actions.len()),
-        )
-        .await;
+
         AudioOutcome {
             request_id: rid,
-            decision,
-            plan: Some(plan),
-            csharp: None,
+            decision: Decision::ApproveActionPlan,
+            plan: None,
+            csharp,
             error: None,
             transcript: Some(transcript),
             target_peer: Some(peer_id.to_string()),
@@ -819,10 +813,8 @@ impl Router {
         }
     }
 
-    /// Phase-3 dual path (dev/research only): STT -> LLM dual output -> validate
-    /// plan AND statically validate the C# candidate against that plan.
     #[allow(clippy::too_many_arguments)]
-    pub async fn process_audio_dual(
+    async fn process_audio_secure(
         &mut self,
         peer_id: &str,
         audio: AudioUtterance,
@@ -835,160 +827,98 @@ impl Router {
         let t_received = epoch_millis(SystemTime::now());
         let request_id = RequestId::new();
         let rid = request_id.as_str().to_string();
-        let _ = self
-            .session_mut(peer_id)
-            .transition_to(SessionState::Receiving);
+        let _ = self.session_mut(peer_id).transition_to(SessionState::Receiving);
+
         if let Some(reason) = self.admit(peer_id, &rid, t_received) {
             return self.error_outcome(peer_id, rid, t_received, reason.to_string());
         }
 
-        let transcript = match self
-            .stt_step(peer_id, &audio, stt, stt_timeout, &rid, t_received)
-            .await
-        {
+        let transcript = match self.stt_step(peer_id, &audio, stt, stt_timeout, &rid, t_received).await {
             Ok(t) => t,
             Err(outcome) => return outcome,
         };
 
-        let _ = self
-            .session_mut(peer_id)
-            .transition_to(SessionState::Generating);
+        let _ = self.session_mut(peer_id).transition_to(SessionState::Generating);
         let t_stt = epoch_millis(SystemTime::now());
-        self.emit_ev(
-            PipelineEvent::new(&rid, peer_id, Stage::Transcript, transcript.clone())
-                .ms(t_stt.saturating_sub(t_received)),
-        );
-        // "remove everything" is handled deterministically — the model is banned
-        // from Destroy, so removal is the server's job, not the LLM's.
+        self.emit_ev(PipelineEvent::new(&rid, peer_id, Stage::Transcript, transcript.clone()).ms(t_stt.saturating_sub(t_received)));
+
         if crate::reset::is_full_clear(&transcript) {
             return self.full_clear_outcome(peer_id, rid, t_received, transcript);
         }
-        // LAYER 1 SECURITY SCREEN — inspect the raw command BEFORE generation: a fast
-        // keyword pre-filter plus a dedicated LLM classifier that catches intents the
-        // keywords miss (camera/mic/screen access, tap automation, memory reads,
-        // exfiltration). Either flags -> the request is CAUGHT, counted, and answered
-        // with a harmless visual; the malicious command never reaches the generator.
-        // The local keyword screen ALWAYS runs, and it runs before anything else can
-        // claim the command. It costs nothing, so there is no reason to order it second.
+
         if let Some(reason) = classify_intent(&transcript) {
             return self.neutralized_outcome(peer_id, rid, t_received, transcript, reason);
         }
 
-        // FAST PATH. An object edit is bookkeeping, not creativity: "delete Saturn" and
-        // "make this red" have exactly one meaning, and asking a model to restate it
-        // costs a round trip and a few cents per command.
-        //
-        // ORDERING IS DELIBERATE, and it is the one judgement call in this module. The
-        // local screen above has already run; what the fast path skips is the *LLM* intent
-        // screen, which is fail-open by design and is not the hard gate. It is safe to
-        // skip here because of what these operations can reach: the device resolves every
-        // target against its own generated-content registry, so the worst outcome of a
-        // mis-parse is that the user's own creation is edited or removed. There is no
-        // reachable capability — no sensor, no network, no filesystem — because none of
-        // those is expressible as an object operation at all.
-        //
-        // A phrasing that is NOT plainly one of these operations falls through to the
-        // full path unchanged, which is why `ops::parse` is written to decline when
-        // unsure rather than to guess.
         if let Some(op) = crate::ops::parse(&transcript) {
             return self.device_op_outcome(peer_id, rid, t_received, transcript, op);
         }
 
-        // The LLM screen is fail-OPEN by design (the C# validator is the hard gate).
-        // Bound it with llm_timeout so a hung classifier cannot hold the router lock
-        // forever; a timeout maps to the SAME `None` as a screen error today.
         let screen_reason = match timeout(llm_timeout, llm.screen_intent(&rid, &transcript)).await {
-            Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() {
-                v.category
-            } else {
-                v.reason
-            }),
+            Ok(Ok(v)) if v.malicious => Some(if v.reason.is_empty() { v.category } else { v.reason }),
             _ => None,
         };
         if let Some(reason) = screen_reason {
             return self.neutralized_outcome(peer_id, rid, t_received, transcript, reason);
         }
+
         let augmented = self.augment(peer_id, &transcript).await;
-        self.emit(
-            &rid,
-            peer_id,
-            Stage::PromptSent,
-            "sent to the AI — generating the code…",
-        );
+        self.emit(&rid, peer_id, Stage::PromptSent, "sent to the AI — generating the code…");
         let t_llm0 = epoch_millis(SystemTime::now());
         self.push_llm_tuning();
+
         let generation = match timeout(llm_timeout, llm.generate_dual(&rid, &augmented)).await {
             Ok(Ok(g)) => g,
-            Ok(Err(e)) => {
-                eprintln!("[router] llm error (peer={peer_id}, req={rid}): {e}");
-                return self.error_outcome(peer_id, rid, t_received, "llm_unavailable".to_string());
-            }
-            Err(_) => {
-                return self.error_outcome(peer_id, rid, t_received, "llm_timeout".to_string())
-            }
+            Ok(Err(e)) => return self.error_outcome(peer_id, rid, t_received, "llm_unavailable".to_string()),
+            Err(_) => return self.error_outcome(peer_id, rid, t_received, "llm_timeout".to_string()),
         };
+
         let mut plan = generation.plan;
         self.clamp_comfort_rotate(&mut plan);
-
         let stage = StageTiming::start();
         let policy = validate_plan(&plan);
         let validation_ms = stage.elapsed_ms();
         let t_validated = epoch_millis(SystemTime::now());
 
-        let csharp = if let Some(cs) = generation.csharp_candidate {
-            // Mode-A creative path: full freedom, gated only by the security/size
-            // guardrails (no malicious APIs, no over-large code) — NOT by plan-consistency.
-            // Size/line limits are live-tunable from the admin panel.
+        // Secure Mode: We PREFER the JSON action plan.
+        // If it's empty/invalid/rejected AND there's a C# candidate, fallback to C#.
+        
+        let csharp = if !plan.actions.is_empty() && policy.decision == Decision::ApproveActionPlan {
+            None // Use the valid JSON plan!
+        } else if let Some(cs) = generation.csharp_candidate {
             let (max_chars, max_lines) = self.csharp_limits();
-            let verdict = validate_csharp_freeform_limited_profile(
-                &cs,
-                max_chars,
-                max_lines,
-                self.hardening_profile(),
-            );
+            let verdict = validate_csharp_freeform_limited_profile(&cs, max_chars, max_lines, self.hardening_profile());
             let lexical_ok = verdict.decision == CsharpDecision::ApproveForResearch;
-            let mut violations: Vec<String> =
-                verdict.violations.iter().map(|v| v.to_string()).collect();
-            // Deeper semantic allow-list (.NET Roslyn) only if the lexical layer passed.
-            // Fail-closed: an analyzer error means NOT approved.
+            let mut violations: Vec<String> = verdict.violations.iter().map(|v| v.to_string()).collect();
+
             let roslyn_ok = if lexical_ok {
                 match roslyn.analyze(&cs).await {
                     Ok(v) => {
-                        if !v.approved {
-                            for d in &v.diagnostics {
-                                violations.push(format!("roslyn: {d}"));
-                            }
-                        }
+                        if !v.approved { for d in &v.diagnostics { violations.push(format!("roslyn: {d}")); } }
                         v.approved
                     }
-                    Err(e) => {
-                        eprintln!("[router] roslyn analyzer error: {e}");
-                        false
-                    }
+                    Err(e) => false,
                 }
-            } else {
-                false
-            };
-            Some(CsharpResult {
-                candidate: cs,
-                approved: lexical_ok && roslyn_ok,
-                violations,
-            })
-        } else {
-            None
-        };
+            } else { false };
 
-        let (decision, budget_errors) =
-            self.commit(peer_id, policy.decision, policy.spawned_in_plan);
+            Some(CsharpResult { candidate: cs, approved: lexical_ok && roslyn_ok, violations })
+        } else { None };
+
+        let final_decision = if let Some(cs) = &csharp {
+            if cs.approved { Decision::ApproveCSharpResearchMode } else { Decision::RejectUnsafe }
+        } else {
+            policy.decision
+        };
+        let (decision, budget_errors) = self.commit(peer_id, final_decision, policy.spawned_in_plan);
         let t_sent = epoch_millis(SystemTime::now());
         let spawned_count = self.session_mut(peer_id).spawned_count;
-
         let mut errors: Vec<String> = policy.violations.iter().map(|e| e.to_string()).collect();
         errors.extend(budget_errors);
+
         let timing = TimingEvent {
             request_id: rid.clone(),
             peer_id: peer_id.to_string(),
-            mode: "csharp_research".to_string(),
+            mode: "secure".to_string(),
             decision: format!("{decision:?}"),
             t_received,
             t_validated,
@@ -998,6 +928,7 @@ impl Router {
             action_count: plan.actions.len(),
             spawned_count,
         };
+
         let approved = match &csharp {
             Some(cs) => cs.approved,
             None => timing.decision.contains("Approve"),
@@ -1006,39 +937,17 @@ impl Router {
             Some(cs) => cs.violations.clone(),
             None => timing.errors.clone(),
         };
-        self.emit_result(
-            &rid,
-            peer_id,
-            timing.t_validated.saturating_sub(t_llm0),
-            validation_ms,
-            &csharp,
-            plan.actions.len(),
-            approved,
-            &violations,
-        );
-        self.emit_ev(
-            PipelineEvent::new(
-                &rid,
-                peer_id,
-                Stage::Info,
-                if approved {
-                    "ready ✓ — sent to Unity to compile"
-                } else {
-                    "finished (rejected)"
-                },
-            )
-            .ms(timing.t_sent.saturating_sub(timing.t_received))
-            .ok(approved),
-        );
-        let result_summary = csharp
-            .as_ref()
-            .map(|c| c.candidate.clone())
-            .unwrap_or_else(|| format!("action_plan: {} action(s)", plan.actions.len()));
+
+        self.emit_result(&rid, peer_id, timing.t_validated.saturating_sub(t_llm0), validation_ms, &csharp, plan.actions.len(), approved, &violations);
+        self.emit_ev(PipelineEvent::new(&rid, peer_id, Stage::Info, if approved { "ready ✓" } else { "rejected" }).ms(timing.t_sent.saturating_sub(timing.t_received)).ok(approved));
+
+        let result_summary = csharp.as_ref().map(|c| c.candidate.clone()).unwrap_or_else(|| format!("action_plan: {} action(s)", plan.actions.len()));
         self.record(peer_id, &transcript, &result_summary).await;
+
         AudioOutcome {
             request_id: rid,
             decision,
-            plan: Some(plan),
+            plan: if csharp.is_some() { None } else { Some(plan) }, // If C# fallback is used, omit JSON plan
             csharp,
             error: None,
             transcript: Some(transcript),
@@ -1049,8 +958,6 @@ impl Router {
         }
     }
 
-    /// Like [`process_audio_dual`] but starting from already-transcribed text (used
-    /// by the admin panel's manual command box). Same RAG + validation + outcome.
     pub async fn process_text_dual(
         &mut self,
         peer_id: &str,
