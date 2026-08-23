@@ -211,18 +211,24 @@ DreamCodeVR+/
 
 1. Clone the repository.
 2. (Optional) Copy `.env.example` to `.env` and add your own `OPENAI_API_KEY`.
-3. Start the system via the helper script:
+
+### macOS Easy Launch
+For macOS users, the repository includes double-clickable launcher scripts that automatically boot the required systems:
+- **`Start-DreamCodeVR.command`**: Boots the live backend (in Secure Mode B) and embedded RoomServer, providing the IP address to enter into your Quest headset.
+- **`Run-Security-Benchmark.command`**: Runs the 40-attack deterministic XR security benchmark.
+- **`Test-And-Verify-All.command`**: Runs the massive 377-test suite and verifies the integrity of the entire pipeline.
+
+### CLI Launch
+Alternatively, you can run the system manually via the terminal:
 
 ```bash
-# Start the full local pipeline with the embedded RoomServer
-./run.sh local
-
 # Start the pipeline ready for a Quest 3 connection
-./run.sh quest
-```
+./run.sh embedded
 
-**To verify the entire workspace and security constraints natively:**
-```bash
+# Run the deterministic security benchmark
+cargo run --release -p xr-security-eval
+
+# Verify the entire workspace natively
 bash scripts/verify-all.sh
 ```
 
