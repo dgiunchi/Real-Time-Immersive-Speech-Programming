@@ -17,6 +17,14 @@ const SENSOR_WEIGHTS = Object.freeze({
 // requires at least two of these inside the window before predicting engagement.
 const DIRECTED_SENSOR_TYPES = Object.freeze(["gaze", "proximity", "handTracking", "gesture"]);
 
+function isAuthorableActivityTarget(value) {
+    if (typeof value !== "string" || !value.trim()) return false;
+    const id = value.trim().toLowerCase();
+    return !id.startsWith("sensor:") &&
+        !id.startsWith("xr-user-") &&
+        !id.startsWith("avatar:");
+}
+
 class ActivityMonitor extends EventEmitter {
     constructor({
         threshold = 1.1,
@@ -63,8 +71,13 @@ class ActivityMonitor extends EventEmitter {
                 String(event.sensorType || "").startsWith("study_")) &&
             !payload.focus && !payload.changedSince && stateIsEmpty;
         if (studyTelemetryOnly) return null;
-        const targetObjectId = envelope.targetObjectId || focus.id ||
-            (sensorEvents.find((event) => event && event.targetObjectId) || {}).targetObjectId || null;
+        // Sensor publishers may address a SceneDelta to the HMD/hand sensor
+        // itself while its payload focuses on an authorable scene object. Never
+        // spend a model turn attempting to attach a MonoBehaviour to that sensor.
+        const targetObjectId = [focus.id, envelope.targetObjectId,
+            ...sensorEvents.map((event) => event && event.targetObjectId)]
+            .find(isAuthorableActivityTarget) || null;
+        if (!targetObjectId) return null;
         const key = `${sessionId}:${targetObjectId || "activity"}`;
         const observations = [];
 
@@ -170,4 +183,4 @@ class ActivityMonitor extends EventEmitter {
     }
 }
 
-module.exports = { ActivityMonitor, SENSOR_WEIGHTS, DIRECTED_SENSOR_TYPES };
+module.exports = { ActivityMonitor, SENSOR_WEIGHTS, DIRECTED_SENSOR_TYPES, isAuthorableActivityTarget };

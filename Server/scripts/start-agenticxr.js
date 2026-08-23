@@ -21,6 +21,12 @@ process.env.AGENTICXR_MODEL_VERSION = process.env.AGENTICXR_MODEL_VERSION || pro
 // this per turn through their explicit candidateTarget (for example N=3).
 if (!process.env.AGENTICXR_CANDIDATE_COUNT) process.env.AGENTICXR_CANDIDATE_COUNT = "1";
 if (!process.env.AGENTICXR_TURN_TIMEOUT_MS) process.env.AGENTICXR_TURN_TIMEOUT_MS = "300000";
+// Implicit L1/L2 uses its own monitor watchdog. Keep it aligned with the live
+// turn timeout so a successful validation at ~120s is not killed just before
+// rank/propose completes.
+if (!process.env.AGENTICXR_CONTINUOUS_ASSIST_TIMEOUT_MS) {
+    process.env.AGENTICXR_CONTINUOUS_ASSIST_TIMEOUT_MS = process.env.AGENTICXR_TURN_TIMEOUT_MS;
+}
 console.log(`[AgenticXR] runtime config candidates=${process.env.AGENTICXR_CANDIDATE_COUNT} timeoutMs=${process.env.AGENTICXR_TURN_TIMEOUT_MS}`);
 let monitor = null;
 let monitorTimer = null;

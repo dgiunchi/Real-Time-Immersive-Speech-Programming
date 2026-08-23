@@ -17,7 +17,7 @@ const { PersonPolicyStore } = require("../memory/person_policy");
 const { ExperienceContextStore } = require("../memory/experience_context");
 const { ArtifactLog, validateCandidateTarget } = require("../memory/artifact_log");
 const { CheckpointStore } = require("../memory/checkpoint_store");
-const { ActivityMonitor } = require("../memory/activity_monitor");
+const { ActivityMonitor, isAuthorableActivityTarget } = require("../memory/activity_monitor");
 const { SharedMemory } = require("../memory");
 const { FutureGoalPredictor } = require("../orchestrator/future_goal_predictor");
 const { TRIAL_COLUMNS, LONG_COLUMNS, buildStudyExports, writeCsv } = require("../evaluation/study_export");
@@ -635,6 +635,26 @@ const activityOpportunity = activity.observeSceneDelta({
 ok(activityOpportunity && activityOpportunity.triggerSource === "context",
     "combined monitored activity crossing the threshold emits a context trigger");
 equal(activityOpportunity.targetObjectId, "activity-object", "activity trigger retains the stable target");
+ok(!isAuthorableActivityTarget("sensor:xr-user-head"), "HMD sensor ids are never authoring targets");
+ok(isAuthorableActivityTarget("study-l1-a-tray-2"), "study objects remain authoring targets");
+const sensorAddressedOpportunity = new ActivityMonitor({ threshold: 0.5, now: () => activityNow })
+    .observeSceneDelta({
+        sessionId: "sensor-addressed-session",
+        targetObjectId: "sensor:xr-user-head",
+        timestamp: activityNow,
+        payload: {
+            focus: { id: "study-l1-a-tray-2" },
+            sensorEvents: [{ sensorType: "collision", targetObjectId: "sensor:xr-user-head", confidence: 1 }],
+        },
+    });
+equal(sensorAddressedOpportunity.targetObjectId, "study-l1-a-tray-2",
+    "authorable focus wins over a sensor-addressed envelope");
+equal(new ActivityMonitor({ threshold: 0.5, now: () => activityNow }).observeSceneDelta({
+    sessionId: "sensor-only-session",
+    targetObjectId: "sensor:xr-user-head",
+    timestamp: activityNow,
+    payload: { sensorEvents: [{ sensorType: "collision", targetObjectId: "sensor:xr-user-head", confidence: 1 }] },
+}), null, "sensor-only activity cannot launch an implicit model turn");
 equal(activity.observeSceneDelta({
     sessionId: "activity-session",
     timestamp: activityNow + 1000,
