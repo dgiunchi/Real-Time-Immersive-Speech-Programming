@@ -31,7 +31,7 @@ DreamCodeVR+ keeps the magic of the original system but completely rebuilds how 
 | **Generated C# validation** | — | ✅ |
 | **Docker Sandbox Isolation** | — | ✅ |
 | **XR-specific safety rules** | — | ✅ |
-| **Quest 3 execution** | Sideloaded Quest 1/2 only | ✅ Interpreted via ILRuntime |
+| **Quest 3 execution** | Sideloaded Quest 1/2 only | ✅ Sideloaded on Quest 3 (via ILRuntime) |
 | **Deterministic security benchmark** | — | ✅ |
 
 ## 🔢 Project at a Glance
