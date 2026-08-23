@@ -82,16 +82,14 @@ memory.activity.on("assist_worthy", (opportunity) => {
     }
 
     const experience = memory.experienceContext.get(opportunity.sessionId);
-    // The environmental context supplies raw ingredients only - the agents must
-    // derive WHAT function fits from it (the study's variability requirement;
-    // docs/code-implicit-proactive-showcase-2026-08-13.md §2). No trigger->
-    // function mapping exists here or anywhere else in code.
+    // Keep implicit study turns deliberately narrow. The scene context still
+    // determines whether a cue is useful, but the live model is not asked to
+    // explore unrelated objects or invent a complex interaction.
     const triggerSource = studyContext && studyContext.interactionMode === "L1" ? "system_opportunity" : "context";
-    const objective = `${triggerSource === "system_opportunity" ? "A low-risk system opportunity" : "Monitored activity"} ` +
-        `crossed the assistance threshold for ${opportunity.targetObjectId} ` +
-        `(signals: ${opportunity.signalTypes.join(", ")}). Environmental context - ${memory.describeContext(opportunity)}. ` +
-        "Derive from this context what reversible, local, clearly VISIBLE assistance (light, motion, or a spawned " +
-        "child object) would genuinely help here, if any. Do nothing if no useful low-risk assistance exists.";
+    const objective = `Check one low-risk ${studyContext && studyContext.interactionMode || "L2"} assistance opportunity ` +
+        `for the current target ${opportunity.targetObjectId}. Signals: ${opportunity.signalTypes.join(", ")}. ` +
+        `Context: ${memory.describeContext(opportunity)}. If justified, add one simple, clearly visible, reversible ` +
+        "cue on this target only (prefer a color, light, or small scale pulse). Otherwise stop without proposing.";
     bridge.sendAgentStatus({
         sessionId: opportunity.sessionId,
         correlationId: opportunity.triggerId,

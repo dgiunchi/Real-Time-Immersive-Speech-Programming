@@ -257,6 +257,43 @@ rejects, or times out, stop immediately and explain the reason in plain language
 instead of guessing or proceeding anyway - a stalled or rejected turn is a correct,
 expected outcome, not a failure of the router.`;
 
+// L1/L2 are low-risk implicit assistance modes. Their old route injected the
+// complete general-purpose authoring prompt and called four specialist agents,
+// even for a single visual cue. This bounded route preserves grounding,
+// independent validation, Verification Space, freshness, ranking and the Unity
+// proposal gate while removing unrelated exploration and candidate generation.
+const FAST_IMPLICIT_SYSTEM_PROMPT = `You are the bounded AgenticXR router for one low-risk implicit L1/L2 turn.
+Work only on the supplied target. Produce at most one small visible cue and finish.
+
+Required sequence:
+1. Call ${bridgeTool("record_intent")} with the supplied intent, sessionId and correlationId.
+2. Call ${bridgeTool("query_scene")} for only the supplied target using the same sessionId and correlationId.
+   Stop if the target or authoritative scene metadata is unavailable.
+3. Draft exactly one minimal ASCII-only C# MonoBehaviour. It may only make a reversible local visual change
+   through UnityEngine Renderer/Light/Transform APIs. Prefer a color, light, or small scale pulse. Do not spawn
+   objects, inspect unrelated objects, use input APIs, networking, files, reflection, or shared-material mutation.
+   Capture original values and restore them idempotently in OnDisable and OnDestroy. Use operation=create.
+4. Call validator_critic once for an independent compact verdict. Stop unless it passes, riskScore is below 0.3,
+   and it confirms reversible=true and localOnly=true. Do not repair or generate a second candidate.
+5. Call ${bridgeTool("simulate_artifact")} once with a derived simulation correlationId, then call
+   ${bridgeTool("rank_artifact_candidates")} with exactly that one candidate and the main correlationId.
+   A registered no-verification study condition may return skipped_no_verification; preserve that status.
+6. Call ${bridgeTool("query_scene")} once more for the same target and main correlationId. Use metadata from this
+   refresh in ${bridgeTool("propose_artifact")}. Pass candidateCount=1, the frozen L1/L2 mode, trigger source,
+   validation fields, authoringMode=automatic, operation=create, reversible=true, localOnly=true, and the selected
+   candidate. Never propose if the target changed or any preceding step failed.
+
+No broad scene exploration, history/profile/speculation lookup, clarification, alternatives, goals, repair loops,
+or narrative. Use short status text only. One candidate, one validation, one simulation, one proposal maximum.`;
+
+function isFastImplicitMode(env = process.env) {
+    if (String(env.AGENTICXR_FAST_IMPLICIT_PROMPT || "true").toLowerCase() === "false") return false;
+    if (String(env.AGENTICXR_SPECULATIVE_ONLY || "false").toLowerCase() === "true") return false;
+    const mode = String(env.AGENTICXR_INTERACTION_MODE || "").toUpperCase();
+    const trigger = String(env.AGENTICXR_TRIGGER_SOURCE || "").toLowerCase();
+    return ["L1", "L2"].includes(mode) && ["system_opportunity", "context"].includes(trigger);
+}
+
 async function main() {
     if (!process.env.ANTHROPIC_API_KEY) {
         console.error(
@@ -292,9 +329,12 @@ async function main() {
     if (DEBUG_TRANSCRIPTS) console.log(`[orchestrator] intent: "${intent}"`);
     else console.log(`[orchestrator] intent received characters=${intent.length}`);
 
+    const fastImplicit = isFastImplicitMode();
+    const runtimeCandidateCount = fastImplicit ? 1 : CANDIDATE_COUNT;
+    console.log(`[orchestrator] route=${fastImplicit ? "fast-implicit" : "full"} candidates=${runtimeCandidateCount}`);
     const options = {
-        systemPrompt: SYSTEM_PROMPT,
-        agents: AGENTS,
+        systemPrompt: fastImplicit ? FAST_IMPLICIT_SYSTEM_PROMPT : SYSTEM_PROMPT,
+        agents: fastImplicit ? { validator_critic: AGENTS.validator_critic } : AGENTS,
         mcpServers: {
             [BRIDGE_SERVER_NAME]: {
                 type: "stdio",
@@ -314,6 +354,7 @@ async function main() {
         permissionMode: "bypassPermissions",
         model: MODEL_ID,
         cwd: __dirname,
+        ...(fastImplicit ? { maxTurns: Math.max(8, Number(process.env.AGENTICXR_FAST_IMPLICIT_MAX_TURNS) || 14) } : {}),
     };
 
     const prompt =
@@ -374,14 +415,15 @@ async function main() {
                         interactionMode: process.env.AGENTICXR_INTERACTION_MODE || "infer-from-request",
                         triggerSource: process.env.AGENTICXR_TRIGGER_SOURCE || "explicit_request",
                         experienceMode: process.env.AGENTICXR_EXPERIENCE_MODE || "not-provided",
-                        candidateCount: CANDIDATE_COUNT,
+                        candidateCount: runtimeCandidateCount,
+                        orchestratorRoute: fastImplicit ? "fast-implicit" : "full",
                     };
                     appendEvaluationEvent(resultEvent);
                     // The CSV is intentionally a second, analysis-oriented view
                     // of this same terminal SDK result, not a separate source of truth.
                     appendTokenActivity({
                         ...resultEvent,
-                        activity: "agentic_orchestrator_turn",
+                        activity: fastImplicit ? "fast_implicit_orchestrator_turn" : "agentic_orchestrator_turn",
                         resultSubtype: resultEvent.subtype,
                         outcome: resultEvent.subtype,
                     });
@@ -422,4 +464,7 @@ if (require.main === module) {
     });
 }
 
-module.exports = { SYSTEM_PROMPT, MODEL_ID, CANDIDATE_COUNT, main, isTransientAnthropicError };
+module.exports = {
+    SYSTEM_PROMPT, FAST_IMPLICIT_SYSTEM_PROMPT, MODEL_ID, CANDIDATE_COUNT,
+    isFastImplicitMode, main, isTransientAnthropicError,
+};
