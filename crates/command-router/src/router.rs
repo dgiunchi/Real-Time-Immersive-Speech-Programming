@@ -8,7 +8,6 @@ use dcvr_behaviour_dsl::bounds::MAX_TOTAL_SPAWNED_PER_SESSION;
 use dcvr_behaviour_dsl::{Action, ActionPlan, Target};
 use dcvr_code_policy::{validate_plan, Decision, PolicyOutcome};
 use dcvr_control::{ControlBus, PipelineEvent, Stage};
-use dcvr_sandbox::{SandboxJob, ResourceLimits, SandboxRunner};
 use dcvr_csharp_policy::{
     validate_csharp_freeform_limited_profile, CsharpDecision, HardeningProfile, MAX_LEN,
 };
@@ -16,6 +15,7 @@ use dcvr_llm_client::LlmClient;
 use dcvr_observability::{epoch_millis, StageTiming, TimingEvent};
 use dcvr_personalization::Personalizer;
 use dcvr_roslyn_client::RoslynAnalyzer;
+use dcvr_sandbox::{ResourceLimits, SandboxJob, SandboxRunner};
 use dcvr_stt_client::{AudioUtterance, SttClient};
 use tokio::time::timeout;
 
@@ -990,7 +990,10 @@ impl Router {
                     };
                     let report = sb.run(job, limits).await;
                     // If the sandbox explicitly rejected it (timeout/crash) but it wasn't just a Unity missing-assembly error
-                    if !matches!(report.outcome, dcvr_sandbox::SandboxOutcome::Completed { .. }) {
+                    if !matches!(
+                        report.outcome,
+                        dcvr_sandbox::SandboxOutcome::Completed { .. }
+                    ) {
                         roslyn_ok = false;
                         violations.push(format!("sandbox rejected: {:?}", report.outcome));
                     }
@@ -1216,7 +1219,10 @@ impl Router {
                         wall_clock: std::time::Duration::from_secs(10),
                     };
                     let report = sb.run(job, limits).await;
-                    if !matches!(report.outcome, dcvr_sandbox::SandboxOutcome::Completed { .. }) {
+                    if !matches!(
+                        report.outcome,
+                        dcvr_sandbox::SandboxOutcome::Completed { .. }
+                    ) {
                         roslyn_ok = false;
                         violations.push(format!("sandbox rejected: {:?}", report.outcome));
                     }

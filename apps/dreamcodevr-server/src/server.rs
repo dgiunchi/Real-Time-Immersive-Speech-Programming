@@ -140,7 +140,10 @@ pub fn services_from_settings(settings: Settings) -> Services {
         ubiq_sender: Arc::new(tokio::sync::RwLock::new(None)),
         last_client_peer: Arc::new(tokio::sync::RwLock::new(None)),
         auth,
-        sandbox: Some(std::sync::Arc::new(dcvr_sandbox::DockerSandboxRunner::new("dcvr-sandbox-harness:local", Vec::new()))),
+        sandbox: Some(std::sync::Arc::new(dcvr_sandbox::DockerSandboxRunner::new(
+            "dcvr-sandbox-harness:local",
+            Vec::new(),
+        ))),
     }
 }
 
