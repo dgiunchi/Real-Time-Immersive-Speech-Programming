@@ -141,7 +141,7 @@ namespace DreamCodeVRPlus
 
                 // Already-safe materials still get their ROLE applied — a URP material with
                 // the right colour but plastic-flat shading is exactly the "everything looks
-                // the same" complaint, and Mode C produces those.
+                // the same" complaint, and Mode B produces those.
                 r.sharedMaterial = DcvrMaterialSystem.Resolve(new DcvrMaterialDescriptor
                 {
                     Role = role,

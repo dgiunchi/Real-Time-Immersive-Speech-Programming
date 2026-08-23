@@ -213,7 +213,7 @@ namespace DreamCodeVRPlus
             {
                 // Nothing to act on yet. The pipeline still runs; commands simply have no
                 // target until the world provides one.
-                Debug.LogWarning("[ModeC-Net] no target object available at Start()");
+                Debug.LogWarning("[SecureMode-Net] no target object available at Start()");
             }
             _monitor.confinementRoot = _cube != null ? _cube.transform : transform;
             _monitor.drift = gameObject.AddComponent<UserDisplacementTracker>();
@@ -303,7 +303,7 @@ namespace DreamCodeVRPlus
             string found = _discoveredHost;
             if (!string.IsNullOrEmpty(found) && found != _host)
             {
-                Debug.Log("[ModeC-Net] auto-discovered backend at " + found + ":" + Port);
+                Debug.Log("[SecureMode-Net] auto-discovered backend at " + found + ":" + Port);
                 _hostEdit = found;
                 ApplyHost(found);
             }
@@ -350,14 +350,14 @@ namespace DreamCodeVRPlus
                 // Otherwise another peer's decision could drive our scene.
                 if (!IsForThisPeer(json))
                 {
-                    Debug.Log("[ModeC-Net] NID 94 decision targeted another peer; ignoring.");
+                    Debug.Log("[SecureMode-Net] NID 94 decision targeted another peer; ignoring.");
                     continue;
                 }
 
-                // Mode A (DCVR_MODE_A=true): backend sends VALIDATED C# as {type:"code",data:...}.
+                // Mode A (Baseline): backend sends VALIDATED C# as {type:"code",data:...}.
                 // Compile it at runtime (Roslyn) and attach it to the cube — the original
                 // DreamCodeVR path, but the C# was already vetted by the Rust gate.
-                // Otherwise (Mode C, the default): apply the safe action plan, no compilation.
+                // Otherwise (Mode B, the secure default): apply the safe action plan, no compilation.
                 string mtype = TryGetType(json);
                 if (mtype == "code")
                 {
@@ -386,7 +386,7 @@ namespace DreamCodeVRPlus
                 }
                 else if (mtype == "assembly")
                 {
-                    // Mode A on hardware that cannot compile. The backend validated the C#,
+                    // Baseline C# on hardware that cannot compile. The backend validated the C#,
                     // compiled it on the laptop, and sent IL; we interpret it. Same
                     // confirmation gate as source — what is being confirmed is "run this
                     // generated behaviour", and that is identical either way.
@@ -422,7 +422,7 @@ namespace DreamCodeVRPlus
                     // headset would show a blocked attack as a successful build — the
                     // single most misleading thing this demo could do. Show the barrier
                     // and the reason instead, and do not apply the placeholder.
-                    Debug.Log($"[ModeC-Net] backend BLOCKED the request: {caught}");
+                    Debug.Log($"[SecureMode-Net] backend BLOCKED the request: {caught}");
                     _preview?.Finish();
                     _hud?.SetBlocked(caught, DcvrStage.Intent);
                     DcvrVoiceOverlay.Ensure().Set(DcvrVoiceState.Blocked, caught);
@@ -442,7 +442,7 @@ namespace DreamCodeVRPlus
                     // resolved its target to the spawn anchor — or, when that was null, to
                     // nothing at all, and the executor correctly refused. The executor was
                     // never the problem; the caller was.
-                    // Mode C creates into a GROUP too, so a bounded plan and an interpreted
+                    // Mode B creates into a GROUP too, so a bounded plan and an interpreted
                     // assembly produce content the authoring system treats identically —
                     // same registry, same names, same spatial fitting, same deletion. Two
                     // creative routes that produced two different kinds of object would
@@ -458,7 +458,7 @@ namespace DreamCodeVRPlus
                     GameObject selected = content.PointedObject != null ? content.PointedObject : _cube;
                     bool ok = _exec.Execute(json, selectedObject: selected,
                                             sceneRoot: group.Root.gameObject);
-                    Debug.Log($"[ModeC-Net] applied backend NID 94 -> {(ok ? "applied" : "rejected")}");
+                    Debug.Log($"[SecureMode-Net] applied backend NID 94 -> {(ok ? "applied" : "rejected")}");
                     if (ok)
                     {
                         _starter?.RetireOnFirstCreation();
@@ -533,7 +533,7 @@ namespace DreamCodeVRPlus
                 case "rotate": op = DcvrOp.Rotate; break;
                 case "set_material": op = DcvrOp.SetMaterial; break;
                 default:
-                    Debug.LogWarning($"[ModeC-Net] unknown device op '{opName}'; ignoring.");
+                    Debug.LogWarning($"[SecureMode-Net] unknown device op '{opName}'; ignoring.");
                     return;
             }
 
@@ -913,7 +913,7 @@ namespace DreamCodeVRPlus
                 {
                     // Clean, non-spammy status; one info line (not a scary error dump).
                     _status = "disconnected — reconnecting…  (start the RoomServer + backend; it auto-recovers)";
-                    Debug.Log("[ModeC-Net] link dropped (" + e.Message + ") — reconnecting");
+                    Debug.Log("[SecureMode-Net] link dropped (" + e.Message + ") — reconnecting");
                 }
                 CloseSocket();
                 // Backoff before reconnecting; wake promptly if Play stops.

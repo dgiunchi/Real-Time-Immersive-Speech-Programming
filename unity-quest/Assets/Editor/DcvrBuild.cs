@@ -8,7 +8,7 @@
 //   Unity -batchmode -quit -projectPath <proj> -buildTarget Android \
 //         -executeMethod DcvrBuild.BuildQuest -logFile -
 //
-// Mode C is the deployable architecture: the backend sends a bounded action plan, the
+// Mode B is the deployable architecture: the backend sends a bounded action plan, the
 // device executes it through ActionPlanExecutor, and NO C# is compiled at runtime.
 // RuntimeCSharpCompiler stays behind the DCVR_ROSLYN_ENABLED define (unset here), so
 // Roslyn never enters an IL2CPP build — that path is editor/desktop research only.
@@ -252,7 +252,7 @@ public static class DcvrBuild
         // The client dials the backend over TCP and probes UDP for discovery.
         PlayerSettings.Android.forceInternetPermission = true;
 
-        // RECORD_AUDIO for push-to-talk is emitted by Unity because ModeCNetworkedDemo
+        // RECORD_AUDIO for push-to-talk is emitted by Unity because SecureModeNetworkedDemo
         // references the Microphone API. That inference is verified against the built APK
         // in scripts/build-quest.sh rather than assumed here.
 
@@ -271,7 +271,7 @@ public static class DcvrBuild
     }
 
     /// <summary>Guarantee a buildable scene exists and is the one enabled in build settings.
-    /// ModeCNetworkedDemo self-instantiates via RuntimeInitializeOnLoadMethod, so a scene
+    /// SecureModeNetworkedDemo self-instantiates via RuntimeInitializeOnLoadMethod, so a scene
     /// with just a camera and light is enough for the functional smoke test.</summary>
     public static string EnsureMainScene()
     {

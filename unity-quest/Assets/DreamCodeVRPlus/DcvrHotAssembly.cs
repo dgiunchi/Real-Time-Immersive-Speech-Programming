@@ -17,8 +17,8 @@
 //
 // HONEST SCOPE. This path executes arbitrary validated code, so its safety rests entirely
 // on the guardrail catching what it is shown — the "attack detected" posture, not the
-// "attack unrepresentable" one. Mode C (bounded action plans) remains the safe-by-
-// construction path and stays the default; this is the Mode-A arm that Mode C is measured
+// "attack unrepresentable" one. Mode B (bounded action plans) remains the safe-by-
+// construction path and stays the default; this is the Mode-A arm that Mode B is measured
 // against, and it is inert unless the backend chooses to send an assembly at all.
 
 using System;

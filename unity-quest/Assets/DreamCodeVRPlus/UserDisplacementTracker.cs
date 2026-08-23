@@ -8,7 +8,7 @@ namespace DreamCodeVRPlus
     /// not any single out-of-bounds value: Optical Marionette (Ishii 2016), the Human
     /// Joystick (Casey 2021), and Tseng's (2022) walking-puppetry.
     ///
-    /// Mode C has no verb that can move the user's frame, so this cannot be the
+    /// Mode B has no verb that can move the user's frame, so this cannot be the
     /// ATTACKER here — its job is to MONITOR. After a plan that animates/moves content
     /// is applied, we watch the real head pose for a short window; if the user's body
     /// drifts more than <see cref="ProtocolModels.UserDriftDisclosureThresholdM"/> while

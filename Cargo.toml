@@ -21,7 +21,6 @@ members = [
     "apps/dreamcodevr-server",
     "apps/fake-quest-client",
     "apps/ubiq-probe",
-    "apps/sandbox-runner",
     "apps/xr-security-eval",
     "tests",
 ]

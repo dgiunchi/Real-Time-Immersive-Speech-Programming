@@ -182,7 +182,7 @@ namespace DreamCodeVRPlus
 
         /// <summary>
         /// MODE-A/B provenance: stamp <see cref="MarkGenerated"/> on a whole hierarchy.
-        /// Mode C marks each spawn as it is created, but arbitrary generated C# (Mode A/B)
+        /// Mode B marks each spawn as it is created, but arbitrary generated C# (Mode A)
         /// builds objects directly, so after a compile the host calls this on the target /
         /// generated root to give every produced piece the same visible synthetic
         /// provenance (SP-02; defeats Fujita 2023 disguise / Tseng 2022 false-affordance

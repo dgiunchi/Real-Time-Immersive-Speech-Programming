@@ -5,9 +5,9 @@ namespace DreamCodeVRPlus
 {
     /// <summary>
     /// MODE-AGNOSTIC perceptual monitor (TRACK U2). The Mode-C executor validates an
-    /// action plan BEFORE it touches the scene; but arbitrary generated C# (Mode A/B)
+    /// action plan BEFORE it touches the scene; but arbitrary generated C# (Mode A)
     /// builds objects directly, so the same perceptual concerns must be checked on the
-    /// RESULT. After a compile (Mode A/B) or plan (Mode C), the host calls
+    /// RESULT. After a compile (Mode A) or plan (Mode B), the host calls
     /// <see cref="ScanGenerated"/>; this walks every provenance-marked
     /// (<see cref="GeneratedMarker"/>) object and DISCLOSES any that:
     ///   - sits inside the head personal-space sphere (body-horror; Tseng user-frame),
