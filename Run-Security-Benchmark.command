@@ -13,7 +13,7 @@ echo "  ╚═══════════════════════
 echo "  Running the 40-attack deterministic XR security benchmark..."
 echo
 
-cargo run --release -p xr-security-eval
+cargo run --release -p xr-security-eval --bin xr-security-eval
 
 echo
 echo "Press any key to close this window..."
