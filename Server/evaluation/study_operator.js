@@ -20,6 +20,7 @@ const { scanStudyControls } = require("../study/unity_control_scan");
 const { questionnaireReadiness, scoreStudySpecificResponse } = require("../study/questionnaire_scoring");
 const { verifyAnalysisPlanLock } = require("../study/analysis_plan_lock");
 const { validateModelPin, trialModelPin, pin: modelPin } = require("../study/model_pin");
+const { trialBackendPin } = require("../study/backend_equivalence");
 const { auditTranscriptPrivacy } = require("../study/privacy_audit");
 
 const PARTICIPANTS_ROOT = path.resolve(__dirname, "data", "participants");
@@ -338,6 +339,13 @@ function run(argv = process.argv.slice(2)) {
         }
         const log = new ArtifactLog({ filePath: paths.log });
         const pinnedModel = trialModelPin();
+        // Baseline trials run the legacy DreamCodeVR path, which is not an
+        // agentic backend, so they carry no backend comparison record. Every
+        // agentic trial does, and trialBackendPin throws rather than emitting
+        // one if the comparison contract no longer holds.
+        const pinnedBackend = trial.condition === "baseline"
+            ? null
+            : trialBackendPin(process.env.AGENTICXR_BACKEND_ID || "claude-sonnet-4");
         const record = log.startStudyTrial({
             ...trial,
             correlationId: `${participantId}-${trial.trialId}-root`,
@@ -347,6 +355,10 @@ function run(argv = process.argv.slice(2)) {
             modelId: pinnedModel.modelId,
             modelVersionString: pinnedModel.modelVersionString,
             modelPinHash: pinnedModel.systemPromptHash,
+            backendId: pinnedBackend ? pinnedBackend.backendId : null,
+            comparisonId: pinnedBackend ? pinnedBackend.comparisonId : null,
+            heldConstantDigest: pinnedBackend ? pinnedBackend.heldConstantDigest : null,
+            toolSurfaceDigest: pinnedBackend ? pinnedBackend.toolSurfaceDigest : null,
         });
         console.log(JSON.stringify({ record, runtimeEnvironment: { AGENTICXR_ARTIFACT_LOG: paths.log, AGENTICXR_MODE: trial.condition === "baseline" ? "legacy" : "claude" } }, null, 2));
         return record;
