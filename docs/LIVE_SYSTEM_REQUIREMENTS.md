@@ -423,7 +423,107 @@ Not required for the Claude AgenticXR path:
 - MCP API key;
 - a legacy Python virtual environment.
 
-## 14. Related documentation
+## 14. macOS server host
+
+Sections 3, 4 and 5 assume a Windows server PC and PowerShell. This section covers an
+Apple Silicon Mac. Verified on macOS `26.5.1`, `arm64`, Node `18.20.8`, npm `10.8.2`,
+against branch `agenticxr/study`.
+
+### 14.1 The repository path must not contain a colon
+
+- [ ] No directory in the absolute path to the repository contains `:`.
+
+npm prepends `node_modules/.bin` to `PATH`, and `PATH` is colon delimited, so a colon
+anywhere in the path splits that entry and every package build script fails with
+`command not found`. Reproduced with two otherwise identical empty projects:
+`.../hci:ai proj/` fails, `.../hci-ai proj/` succeeds. Rename the directory; there is
+no workaround that keeps the colon.
+
+### 14.2 wrtc does not build on Apple Silicon
+
+- [ ] `wrtc` is absent from `Server/vendor/ubiq/package.json` dependencies.
+
+`wrtc@0.4.7` publishes no `darwin-arm64` prebuilt, so its install script 404s on
+`https://node-webrtc.s3.amazonaws.com/wrtc/v0.4.7/Release/darwin-arm64.tar.gz` and
+aborts the whole install before the Claude Agent SDK is fetched. It is referenced only
+by `vendor/ubiq/samples/rtcpeerconnection/app.js`, a Ubiq sample this project never
+runs. Removed from the vendored dependency list.
+
+### 14.3 Environment and commands
+
+Node 18 is sufficient; the Claude Agent SDK declares `engines.node >= 18.0.0`. Replace
+the PowerShell `$env:` form with `export`, and run all Node commands from `Server/`.
+
+```bash
+cd "/path/to/agenticXR/Server"
+npm install
+export AGENTICXR_MODE="claude"
+export STT_HTTP_URL="http://STT-HOST:50101/stt/transcribe"
+npm run doctor
+npm test
+npm run test:integration
+node study/pilot_harness.js
+```
+
+### 14.4 Firewall and LAN
+
+macOS has no `New-NetFirewallRule`. The application firewall is off by default, in
+which case inbound TCP `8009` needs no rule.
+
+```bash
+/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+/usr/libexec/ApplicationFirewall/socketfilterfw --add "$(which node)"
+/usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$(which node)"
+```
+
+Get the address Unity and the Quest must target with `ipconfig getifaddr en0`, falling
+back to `en1`. Do not use `localhost`.
+
+- [ ] If the Mac is on an institutional or campus network, confirm client isolation is
+      disabled. Managed subnets frequently block traffic between wireless clients,
+      which stops the Quest reaching the Mac even when both hold valid addresses.
+
+### 14.5 Unity version is exact, not approximate
+
+- [ ] Unity `6000.3.9f1` is installed through Unity Hub.
+- [ ] Android Build Support, SDK, NDK and OpenJDK are installed for that exact editor.
+
+`6000.3.19f1` is not a substitute. The determinism gate requires two byte identical
+builds from the pinned editor, so any other version invalidates the evidence. Batch
+mode:
+
+```bash
+"/Applications/Unity/Hub/Editor/6000.3.9f1/Unity.app/Contents/MacOS/Unity" \
+  -batchmode -nographics -quit -projectPath "$(pwd)/Unity" \
+  -executeMethod AgenticXRStudySceneBuilder.BuildStudyScene \
+  -logFile /tmp/unity_build.log
+```
+
+Check Unity's own exit status, not a pipeline's. Piping to `tail` masks it and reports
+success when the editor never launched.
+
+### 14.6 Verified state on macOS
+
+Confirmed after 14.1 and 14.2 are satisfied:
+
+- [x] `npm install` completes.
+- [x] `npm test` passes, **1255 assertions**, including all ten counterbalancing
+      assertions.
+- [x] `npm run test:integration` ends with `[mock_integration] PASS`, real local Ubiq
+      room server and real MCP sessions, study export 117 trial columns across both
+      condition arms.
+- [x] `node study/pilot_harness.js` passes: `ok`, `scientificState.ok`,
+      `coverageComplete`, all four export guards, and the realized design audit.
+- [x] Static task readiness passes 104/104 checks.
+
+Not yet verified from a macOS host, blocked on the pinned editor rather than on the
+platform:
+
+- [ ] Deterministic study scene rebuild and byte identical comparison.
+- [ ] Human Unity Editor inspection of the generated scene.
+- [ ] Any Quest, live model, or headset rehearsal item.
+
+## 15. Related documentation
 
 - `docs/SETUP_INSTRUCTIONS.md`
 - `docs/continuous-human-centered-runtime.md`
