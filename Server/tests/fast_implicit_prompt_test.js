@@ -26,8 +26,11 @@ assert.strictEqual(isFastImplicitMode({
     AGENTICXR_SPECULATIVE_ONLY: "true",
 }), false);
 
-assert.ok(FAST_IMPLICIT_SYSTEM_PROMPT.length < SYSTEM_PROMPT.length / 3,
-    "fast implicit prompt stays materially smaller than the full route");
+// This is now the opt-out fallback route. The default L1/L2 route uses the much
+// smaller direct pair-selection prompt in fast_implicit_pipeline.mjs, while this
+// Agent SDK prompt remains available for comparison and rollback.
+assert.ok(FAST_IMPLICIT_SYSTEM_PROMPT.length < SYSTEM_PROMPT.length * 0.6,
+    "Agent SDK fallback prompt stays materially smaller than the full route");
 assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /exactly one minimal ASCII-only C# MonoBehaviour/);
 assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /cyan-to-magenta color pulse/);
 assert.match(FAST_IMPLICIT_SYSTEM_PROMPT, /originalScale \* 1\.08/);

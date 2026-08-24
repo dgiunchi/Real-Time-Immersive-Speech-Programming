@@ -419,6 +419,8 @@ namespace AgenticCache
         {
             var previewStartedAt = Time.realtimeSinceStartupAsDouble;
             var payload = Parse<ArtifactProposalPayload>(envelope.payload);
+            if (consentPanel != null)
+                consentPanel.ShowPipelineEvent("proposal_received", payload != null ? payload.intent : "Malformed proposal payload.");
             var target = sceneRegistry != null ? sceneRegistry.Find(envelope.targetObjectId) : null;
             var operation = payload != null && !string.IsNullOrEmpty(payload.operation) ? payload.operation : "create";
             var removes = string.Equals(operation, "remove", StringComparison.OrdinalIgnoreCase);
@@ -475,6 +477,10 @@ namespace AgenticCache
                 DestroyIsolatedRendererMaterials(clone);
                 Destroy(clone);
                 envelope.verificationDurationMs = (Time.realtimeSinceStartupAsDouble - verificationStartedAt) * 1000.0;
+                if (consentPanel != null)
+                    consentPanel.ShowPipelineEvent(staged ? "verification_passed" : "compile_failed",
+                        (staged ? "Staging clone compiled successfully in " : (stageError ?? "Staging compilation failed.") + " Duration ") +
+                        envelope.verificationDurationMs.ToString("0") + " ms.");
                 if (!staged)
                 {
                     SendArtifactResult(envelope, "error", null, stageError ?? "Staging compilation failed.");
@@ -582,7 +588,10 @@ namespace AgenticCache
                 RejectForCommit(correlationId, proposal, commitRequest, "target_changed_before_approval");
                 return;
             }
-            if (!string.IsNullOrEmpty(localCache.SelectedObjectId) && localCache.SelectedObjectId != proposal.envelope.targetObjectId)
+            var requiresSelectionContinuity = !string.Equals(
+                proposal.envelope.authoringMode, "automatic", StringComparison.OrdinalIgnoreCase);
+            if (requiresSelectionContinuity && !string.IsNullOrEmpty(localCache.SelectedObjectId) &&
+                localCache.SelectedObjectId != proposal.envelope.targetObjectId)
             {
                 RejectForCommit(correlationId, proposal, commitRequest, "selection_changed_before_approval");
                 return;
@@ -615,6 +624,9 @@ namespace AgenticCache
                 return;
             }
             proposal.envelope.commitAttachDurationMs = (Time.realtimeSinceStartupAsDouble - commitAttachStartedAt) * 1000.0;
+            if (consentPanel != null)
+                consentPanel.ShowPipelineEvent("attached", "Runtime component attached in " +
+                    proposal.envelope.commitAttachDurationMs.ToString("0") + " ms.");
 
             activeByObjectId.TryGetValue(proposal.envelope.targetObjectId, out var previous);
             if (previous != null && previous.proxy != null && previous.proxy.MonoBehaviourInstance != null)
@@ -956,6 +968,9 @@ namespace AgenticCache
 
         private void SendArtifactResult(CacheEnvelope request, string status, string artifactId, string error)
         {
+            if (consentPanel != null && (!string.IsNullOrEmpty(error) || status == "error" || status == "rejected"))
+                consentPanel.ShowPipelineEvent(status == "error" ? "artifact_error" : "artifact_" + status,
+                    !string.IsNullOrEmpty(error) ? error : "Unity returned " + status + ".");
             var payload = new StringBuilder("{\"status\":\"").Append(AgenticSceneRegistry.Escape(status)).Append('"');
             if (!string.IsNullOrEmpty(artifactId)) payload.Append(",\"artifactId\":\"").Append(AgenticSceneRegistry.Escape(artifactId)).Append('"');
             if (!string.IsNullOrEmpty(error)) payload.Append(",\"error\":\"").Append(AgenticSceneRegistry.Escape(error)).Append('"');

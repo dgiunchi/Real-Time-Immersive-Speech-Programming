@@ -32,6 +32,13 @@ const allowDuringStudy = String(process.env.AGENTICXR_STUDY_ALLOW_CONTINUOUS_ASS
 const allowSpeculationDuringStudy = String(process.env.AGENTICXR_STUDY_ALLOW_SPECULATION || "false").toLowerCase() === "true";
 const turnTimeoutMs = Math.max(30000, Number(process.env.AGENTICXR_CONTINUOUS_ASSIST_TIMEOUT_MS) || 120000);
 
+function isStudyGuidanceFocus(targetObjectId, interactionMode) {
+    const id = String(targetObjectId || "").toLowerCase();
+    if (interactionMode === "L1") return /-(?:tool|tray)-\d+$/.test(id);
+    if (interactionMode === "L2") return /-(?:part|socket)-\d+$/.test(id);
+    return false;
+}
+
 function appendSuppressed(opportunity, reason) {
     memory.artifactLog.append({
         eventType: "activity_assist_suppressed",
@@ -68,6 +75,10 @@ memory.activity.on("assist_worthy", (opportunity) => {
         appendSuppressed(opportunity, "stable_target_missing");
         return;
     }
+    if (debugImplicitStudy && !isStudyGuidanceFocus(opportunity.targetObjectId, studyContext.interactionMode)) {
+        appendSuppressed(opportunity, "study_guidance_focus_not_box_or_destination");
+        return;
+    }
     if (running.has(opportunity.sessionId)) {
         appendSuppressed(opportunity, "continuous_assist_already_running");
         return;
@@ -86,10 +97,12 @@ memory.activity.on("assist_worthy", (opportunity) => {
     // determines whether a cue is useful, but the live model is not asked to
     // explore unrelated objects or invent a complex interaction.
     const triggerSource = studyContext && studyContext.interactionMode === "L1" ? "system_opportunity" : "context";
-    const objective = `Apply the fixed ${studyContext && studyContext.interactionMode || "L2"} visual guidance cue ` +
-        `to ${opportunity.targetObjectId}. Signals: ${opportunity.signalTypes.join(", ")}. ` +
-        "Make this target pulse continuously between cyan and magenta while scaling from its original size to 1.08x. " +
-        "Restore its exact original color and scale when disabled or destroyed. Do not choose another behaviour.";
+    const objective = `Use ${opportunity.targetObjectId} as the observed study focus for a fixed ` +
+        `${studyContext && studyContext.interactionMode || "L2"} source-to-destination visual guidance cue. ` +
+        `Signals: ${opportunity.signalTypes.join(", ")}. Ground the scene, classify the focus as a manipulable source ` +
+        "or compatible destination, select the missing counterpart from scene context, and pulse both continuously " +
+        "between cyan and magenta while scaling from their original sizes to 1.08x. Restore both exact original " +
+        "colors and scales when disabled or destroyed. Do not choose another behaviour.";
     bridge.sendAgentStatus({
         sessionId: opportunity.sessionId,
         correlationId: opportunity.triggerId,

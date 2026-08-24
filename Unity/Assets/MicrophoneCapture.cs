@@ -221,6 +221,17 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             loggedFirstAudioChunk = false;
         }
 
+        var panel = FindFirstObjectByType<AgenticXRConsentPanel>();
+        if (panel != null)
+        {
+            panel.SetPanelVisible(true);
+            panel.ShowStatus(
+                recording ? "RECORDING" : "sending speech",
+                recording
+                    ? "Listening... Release the LEFT TRIGGER to send."
+                    : "Recording complete. Sending it to speech recognition...");
+        }
+
         if (logRecordingState)
         {
             Debug.Log($"[MicrophoneCapture] recording {(recording ? "start" : "stop")}");

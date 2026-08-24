@@ -240,7 +240,18 @@ namespace AgenticCache
         {
             sb.Append("{\"id\":\"").Append(Escape(stable.Value)).Append("\",\"name\":\"")
                 .Append(Escape(obj.name)).Append("\",\"tag\":\"").Append(Escape(obj.tag))
-                .Append("\",\"type\":\"").Append(obj.isStatic ? "static" : "dynamic").Append("\"}");
+                .Append("\",\"type\":\"").Append(obj.isStatic ? "static" : "dynamic").Append("\",\"transform\":");
+            AppendTransform(sb, obj.transform);
+            sb.Append(",\"components\":[");
+            var first = true;
+            foreach (var component in obj.GetComponents<Component>())
+            {
+                if (component == null) continue;
+                if (!first) sb.Append(',');
+                first = false;
+                sb.Append('"').Append(Escape(component.GetType().Name)).Append('"');
+            }
+            sb.Append("]}");
         }
 
         private static void AppendTransform(StringBuilder sb, Transform t)

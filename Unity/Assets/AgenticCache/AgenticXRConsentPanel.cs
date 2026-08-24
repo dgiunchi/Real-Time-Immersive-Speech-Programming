@@ -1,4 +1,6 @@
 using AgenticXR.Study;
+using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR;
@@ -10,14 +12,30 @@ namespace AgenticCache
     {
         private CacheExchangeManager manager;
         private Canvas canvas;
+        private Canvas pipelineCanvas;
         private Text statusText;
         private Text transcriptText;
         private Text proposalText;
+        private Text pipelineHeaderText;
+        private Text pipelineBodyText;
+        private Text pipelineFooterText;
         private MicrophoneCapture microphoneCapture;
         private string pendingCorrelationId;
         private bool leftPrimaryWasPressed;
         private bool decisionLocked;
+        private readonly List<PipelineStep> pipelineSteps = new List<PipelineStep>();
+        private double pipelineStartedAt = -1.0;
+        private double pipelineFinishedAt = -1.0;
+        private float nextPipelineRefresh;
         public StudyQuestionnairePresenter questionnairePresenter;
+
+        private sealed class PipelineStep
+        {
+            public string state;
+            public string detail;
+            public double startedAt;
+            public double duration = -1.0;
+        }
 
         public void Initialize(CacheExchangeManager owner)
         {
@@ -36,6 +54,44 @@ namespace AgenticCache
         {
             if (statusText != null) statusText.text = "AgentiXR: " + (state ?? "") + "\n" + (detail ?? "");
             if (state == "listening" && transcriptText != null) transcriptText.text = "";
+            ShowPipelineEvent(state, detail);
+        }
+
+        public void ShowPipelineEvent(string state, string detail)
+        {
+            state = string.IsNullOrWhiteSpace(state) ? "working" : state.Trim();
+            detail = string.IsNullOrWhiteSpace(detail) ? "Waiting for a response." : detail.Trim();
+            var now = Time.realtimeSinceStartupAsDouble;
+            if (state == "ready")
+            {
+                pipelineSteps.Clear();
+                pipelineStartedAt = -1.0;
+                pipelineFinishedAt = -1.0;
+                RefreshPipelinePanel(now);
+                return;
+            }
+            var startsTurn = state == "listening" || state == "context_detected";
+            if (pipelineStartedAt < 0.0 || (startsTurn && (pipelineFinishedAt >= 0.0 || pipelineSteps.Count == 0)))
+            {
+                pipelineSteps.Clear();
+                pipelineStartedAt = now;
+                pipelineFinishedAt = -1.0;
+            }
+            if (pipelineSteps.Count > 0 && pipelineSteps[pipelineSteps.Count - 1].state == state)
+            {
+                pipelineSteps[pipelineSteps.Count - 1].detail = detail;
+                RefreshPipelinePanel(now);
+                return;
+            }
+            if (pipelineSteps.Count > 0)
+            {
+                var previous = pipelineSteps[pipelineSteps.Count - 1];
+                if (previous.duration < 0.0) previous.duration = now - previous.startedAt;
+            }
+            pipelineSteps.Add(new PipelineStep { state = state, detail = detail, startedAt = now });
+            if (pipelineSteps.Count > 10) pipelineSteps.RemoveAt(0);
+            if (IsTerminalState(state)) pipelineFinishedAt = now;
+            RefreshPipelinePanel(now);
         }
 
         public void ShowTranscript(string transcript)
@@ -74,10 +130,17 @@ namespace AgenticCache
         public void SetPanelVisible(bool visible)
         {
             if (canvas != null) canvas.gameObject.SetActive(visible);
+            if (pipelineCanvas != null) pipelineCanvas.gameObject.SetActive(visible);
         }
 
         private void Update()
         {
+            if (Time.unscaledTime >= nextPipelineRefresh)
+            {
+                nextPipelineRefresh = Time.unscaledTime + 0.1f;
+                RefreshPipelinePanel(Time.realtimeSinceStartupAsDouble);
+            }
+
             // Editor/desktop fallback; the buttons remain available to the XR UI ray.
             if (!string.IsNullOrEmpty(pendingCorrelationId) && Input.GetKeyDown(KeyCode.Return)) Approve();
             if (Input.GetKeyDown(KeyCode.Escape)) Reject();
@@ -168,6 +231,84 @@ namespace AgenticCache
             CreateButton(root.transform, "Reject", new Vector2(90, -205), new Color(0.65f, 0.2f, 0.2f), Reject, new Vector2(150, 65));
             CreateButton(root.transform, "Undo", new Vector2(270, -205), new Color(0.25f, 0.35f, 0.65f), Undo, new Vector2(150, 65));
             CreateButton(root.transform, "Reset Trial", new Vector2(0, -280), new Color(0.45f, 0.3f, 0.55f), ResetTrial, new Vector2(240, 55));
+
+            BuildPipelinePanel(cameraTransform);
+        }
+
+        private void BuildPipelinePanel(Transform cameraTransform)
+        {
+            var root = new GameObject("AgenticXR Pipeline Panel", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(XRUICanvas), typeof(Image));
+            root.transform.SetParent(transform, false);
+            pipelineCanvas = root.GetComponent<Canvas>();
+            pipelineCanvas.renderMode = RenderMode.WorldSpace;
+            pipelineCanvas.worldCamera = Camera.main;
+            var rect = root.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(620, 590);
+            root.GetComponent<Image>().color = new Color(0.025f, 0.035f, 0.055f, 0.95f);
+
+            if (cameraTransform != null)
+            {
+                root.transform.SetParent(cameraTransform, false);
+                root.transform.localPosition = new Vector3(0.86f, -0.15f, 1.35f);
+                root.transform.localRotation = Quaternion.identity;
+                root.transform.localScale = Vector3.one * 0.0012f;
+            }
+
+            pipelineHeaderText = CreateText(root.transform, "Pipeline Header", new Vector2(0, 255), new Vector2(570, 50), 25, TextAnchor.MiddleLeft);
+            pipelineBodyText = CreateText(root.transform, "Pipeline Steps", new Vector2(0, 15), new Vector2(570, 420), 19, TextAnchor.UpperLeft);
+            pipelineFooterText = CreateText(root.transform, "Pipeline Response", new Vector2(0, -245), new Vector2(570, 70), 18, TextAnchor.UpperLeft);
+            pipelineHeaderText.text = "PIPELINE  waiting";
+            pipelineBodyText.text = "No active request.";
+            pipelineFooterText.text = "Latest response: -";
+        }
+
+        private void RefreshPipelinePanel(double now)
+        {
+            if (pipelineHeaderText == null || pipelineBodyText == null || pipelineFooterText == null) return;
+            if (pipelineStartedAt < 0.0 || pipelineSteps.Count == 0)
+            {
+                pipelineHeaderText.text = "PIPELINE  waiting";
+                pipelineBodyText.text = "No active request.";
+                pipelineFooterText.text = "Latest response: -";
+                return;
+            }
+
+            var end = pipelineFinishedAt >= 0.0 ? pipelineFinishedAt : now;
+            pipelineHeaderText.text = "PIPELINE  total " + FormatSeconds(end - pipelineStartedAt);
+            var builder = new StringBuilder();
+            for (var i = 0; i < pipelineSteps.Count; i++)
+            {
+                var step = pipelineSteps[i];
+                var isCurrent = i == pipelineSteps.Count - 1 && pipelineFinishedAt < 0.0;
+                var duration = step.duration >= 0.0 ? step.duration : end - step.startedAt;
+                builder.Append(isCurrent ? "[>] " : "[x] ")
+                    .Append(step.state).Append("  ").Append(FormatSeconds(duration)).Append('\n')
+                    .Append("    ").Append(Shorten(step.detail, 92)).Append('\n');
+            }
+            pipelineBodyText.text = builder.ToString();
+            var latest = pipelineSteps[pipelineSteps.Count - 1];
+            pipelineFooterText.text = "Latest response: " + Shorten(latest.detail, 145);
+        }
+
+        private static bool IsTerminalState(string state)
+        {
+            return state == "committed" || state == "removed" || state == "rejected" || state == "failed" ||
+                state == "timed_out" || state == "cancelled" || state == "trial_reset" || state == "trial_reset_failed" ||
+                state == "watchdog_disabled" || state == "artifact_error" || state == "compile_failed";
+        }
+
+        private static string FormatSeconds(double seconds)
+        {
+            if (seconds < 0.0) seconds = 0.0;
+            if (seconds >= 60.0) return ((int)(seconds / 60.0)) + "m " + (seconds % 60.0).ToString("0.0") + "s";
+            return seconds.ToString("0.0") + "s";
+        }
+
+        private static string Shorten(string value, int limit)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "-";
+            value = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            return value.Length <= limit ? value : value.Substring(0, limit - 3) + "...";
         }
 
         private static Text CreateText(Transform parent, string name, Vector2 position, Vector2 size, int fontSize, TextAnchor alignment)

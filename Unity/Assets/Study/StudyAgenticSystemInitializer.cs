@@ -37,6 +37,12 @@ namespace AgenticXR.Study
             implicitSensors.sceneRegistry = sceneRegistry;
             watchdog.manager = exchange;
             consentPanel.Initialize(exchange);
+            // AgenticXRStudy is a standalone authored scene and does not inherit
+            // the MicrophoneCapture component from DynamicCompiler. Ensure the
+            // spoken L3-L5 modes always have the left-trigger recorder available.
+            var microphoneCapture = GetComponent<MicrophoneCapture>();
+            if (microphoneCapture == null) microphoneCapture = gameObject.AddComponent<MicrophoneCapture>();
+            microphoneCapture.sendToServer = true;
             var roomClient = GetComponent<RoomClient>();
             if (roomClient == null)
                 throw new System.InvalidOperationException("AgenticXR study system requires a RoomClient.");

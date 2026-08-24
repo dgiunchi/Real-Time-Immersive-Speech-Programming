@@ -91,6 +91,9 @@ const AGENTS = {
             "Every create/edit candidate must be genuinely reversible: capture every pre-existing value it mutates before " +
             "the first mutation, restore those values idempotently in both OnDisable and OnDestroy, and destroy any child " +
             "objects it spawned. Never restore shared state by mutating a shared Material asset. " +
+            "For visual changes, do not assume the root Renderer is the visible one: select the first enabled Renderer " +
+            "from GetComponentsInChildren<Renderer>(true), because study objects may keep a disabled authored Renderer " +
+            "on the root and display an active child visual. Stop safely if no enabled Renderer exists. " +
             `Output ONLY a JSON array of ${CANDIDATE_COUNT} object(s) with candidateId, operation, ` +
             "existingArtifactId, approach, experienceMode, and code (null only for remove).",
         tools: [],
@@ -104,9 +107,11 @@ const AGENTS = {
             "code, the original intent, the scene grounding summary, and how this turn was triggered: " +
             "(1) check it only uses UnityEngine APIs and none of the denied namespaces (System.IO, System.Net, " +
             "System.Diagnostics, reflection); (2) check it plausibly matches the stated intent and the object " +
-            "it targets; (3) assign a riskScore from 0 (cosmetic, reversible, single-object) to 1 (destructive, " +
+            "it targets; (3) assign a riskScore from 0 (cosmetic, reversible, single-object or one deterministic " +
+            "study guidance pair) to 1 (destructive, " +
             "persistent, shared-state, multi-object); (4) recommend authoringMode: 'automatic' only if " +
-            "riskScore < 0.3 AND the change is cosmetic/parametric on a single object AND interactionMode is L1 or L2, otherwise " +
+            "riskScore < 0.3 AND the change is cosmetic/parametric on a single object, or on one explicitly matched " +
+            "task-local source/destination guidance pair, AND interactionMode is L1 or L2, otherwise " +
             "'semi_auto_confirm'. L4 and L5 always use 'semi_auto_confirm'; (5) classify interactionMode using the paper's five modes (main.tex tab:modes) " +
             "- these describe who INITIATED this turn, separate from authoringMode's execution gate: " +
             "'L1' if the system itself proposed this from a low-risk opportunity with no explicit user request; " +
@@ -263,27 +268,43 @@ expected outcome, not a failure of the router.`;
 // independent validation, Verification Space, freshness, ranking and the Unity
 // proposal gate while removing unrelated exploration and candidate generation.
 const FAST_IMPLICIT_SYSTEM_PROMPT = `You are the bounded AgenticXR router for one low-risk implicit L1/L2 turn.
-Work only on the supplied target. The assistance behavior is already decided: create exactly one continuous,
-high-contrast cyan-to-magenta color pulse combined with a subtle 1.00-to-1.08 scale pulse. Do not choose or
-invent another behavior.
+Treat the supplied target as an observed focus, which may be either a manipulable source or a compatible destination.
+Work only on the one source/destination pair grounded from that focus. The assistance behavior is already decided:
+create exactly one continuous, high-contrast cyan-to-magenta color pulse on BOTH the source object and
+its matching destination, combined with a subtle 1.00-to-1.08 scale pulse. This two-object pair is one local,
+reversible guidance cue. The destination must be chosen from the grounded scene data, never from a fixed naming
+suffix, index, or prewritten object pair. Do not choose or invent another behavior.
 
 Required sequence:
 1. Call ${bridgeTool("record_intent")} with the supplied intent, sessionId and correlationId.
-2. Call ${bridgeTool("query_scene")} for only the supplied target using the same sessionId and correlationId.
-   Stop if the target or authoritative scene metadata is unavailable.
-3. Draft exactly one minimal ASCII-only C# MonoBehaviour implementing that fixed pulse with UnityEngine Renderer
-   and Transform APIs. Use unscaled Time time, Color.Lerp(Color.cyan, Color.magenta, ping-pong), and scale from
-   the captured original scale to originalScale * 1.08. Use MaterialPropertyBlock so no shared Material is changed.
-   Capture the target's original property block and scale, then restore them idempotently in both OnDisable and
-   OnDestroy. Do not spawn objects, inspect unrelated objects, use input APIs, networking, files, or reflection.
-   Use operation=create. If the target has no Renderer, stop; do not substitute a different behavior.
-4. Call validator_critic once for an independent compact verdict. Stop unless it passes, riskScore is below 0.3,
-   and it confirms reversible=true and localOnly=true. Do not repair or generate a second candidate.
-5. Call ${bridgeTool("simulate_artifact")} once with a derived simulation correlationId, then call
+2. Call ${bridgeTool("query_scene")} for only the supplied observed focus using the same sessionId and correlationId.
+   Classify that focus from its semantic name and component types. If it is manipulable, use it as the source and
+   choose one compatible destination/receptacle/drop location from the halo. If it is a destination, use it as the
+   destination and choose one compatible manipulable source from the halo. Use task affordance and spatial proximity;
+   prefer the nearest compatible counterpart when several are equivalent. Preserve the exact selected source and
+   destination ids and names. Stop if either side or authoritative scene metadata is unavailable or genuinely ambiguous.
+   Never derive either side from a numeric suffix or hard-coded source/destination mapping.
+3. Draft exactly one minimal ASCII-only C# MonoBehaviour implementing that fixed paired pulse with UnityEngine
+   Renderer and Transform APIs. The generated component will be attached to the selected SOURCE, not necessarily the
+   originally observed focus. Embed the exact destination name selected from grounding and find only that exact active
+   GameObject at runtime; do not derive it from the source name or from a prewritten naming convention.
+   The study roots can have disabled Renderers while their visible geometry is an active child: on BOTH source and
+   destination use GetComponentsInChildren<Renderer>(true) and select the first enabled Renderer; never use an
+   inactive root Renderer. Use unscaled Time, Color.Lerp(Color.cyan, Color.magenta, ping-pong), and scale both from
+   their captured original scales to originalScale * 1.08. Use separate MaterialPropertyBlocks so no shared Material
+   is changed. Capture both original property blocks and scales, then restore both idempotently in OnDisable and
+   OnDestroy. Do not spawn objects, inspect unrelated objects beyond that exact paired destination, use input APIs,
+   networking, files, or reflection. Use operation=create. If either visible Renderer or the exact destination is
+   absent, stop safely; do not substitute another object or behavior.
+4. Call validator_critic once for an independent compact verdict. Treat the exact source/destination study pair as
+   one bounded local cue. Stop unless it passes, riskScore is below 0.3, and it confirms reversible=true and
+   localOnly=true. Do not repair or generate a second candidate.
+5. Call ${bridgeTool("simulate_artifact")} once against the selected SOURCE with a derived simulation correlationId, then call
    ${bridgeTool("rank_artifact_candidates")} with exactly that one candidate and the main correlationId.
    A registered no-verification study condition may return skipped_no_verification; preserve that status.
-6. Call ${bridgeTool("query_scene")} once more for the same target and main correlationId. Use metadata from this
-   refresh in ${bridgeTool("propose_artifact")}. Pass candidateCount=1, the frozen L1/L2 mode, trigger source,
+6. Call ${bridgeTool("query_scene")} once more for the selected SOURCE and main correlationId. Use metadata from this
+   refresh in ${bridgeTool("propose_artifact")} and set targetObjectId to that selected source. Pass candidateCount=1,
+   the frozen L1/L2 mode, trigger source,
    validation fields, authoringMode=automatic, operation=create, reversible=true, localOnly=true, and the selected
    candidate. Never propose if the target changed or any preceding step failed.
 
@@ -321,8 +342,6 @@ async function main() {
         process.exit(1);
     }
 
-    const { query } = await import("@anthropic-ai/claude-agent-sdk");
-
     const correlationId = process.argv[5] || randomUUID();
     const sessionId = process.argv[4];
     if (!sessionId) {
@@ -336,7 +355,22 @@ async function main() {
 
     const fastImplicit = isFastImplicitMode();
     const runtimeCandidateCount = fastImplicit ? 1 : CANDIDATE_COUNT;
-    console.log(`[orchestrator] route=${fastImplicit ? "fast-implicit" : "full"} candidates=${runtimeCandidateCount}`);
+    const directFastImplicit = fastImplicit &&
+        String(process.env.AGENTICXR_FAST_IMPLICIT_DIRECT || "true").toLowerCase() !== "false";
+    console.log(`[orchestrator] route=${directFastImplicit ? "direct-fast-implicit" : fastImplicit ? "fast-implicit" : "full"} candidates=${runtimeCandidateCount}`);
+    if (directFastImplicit) {
+        const { runFastImplicitPipeline } = await import("./fast_implicit_pipeline.mjs");
+        await runFastImplicitPipeline({
+            intent,
+            targetObjectId,
+            sessionId,
+            correlationId,
+            model: MODEL_ID,
+        });
+        return;
+    }
+
+    const { query } = await import("@anthropic-ai/claude-agent-sdk");
     const options = {
         systemPrompt: fastImplicit ? FAST_IMPLICIT_SYSTEM_PROMPT : SYSTEM_PROMPT,
         agents: fastImplicit ? { validator_critic: AGENTS.validator_critic } : AGENTS,

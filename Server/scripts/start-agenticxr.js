@@ -21,13 +21,24 @@ process.env.AGENTICXR_MODEL_VERSION = process.env.AGENTICXR_MODEL_VERSION || pro
 // this per turn through their explicit candidateTarget (for example N=3).
 if (!process.env.AGENTICXR_CANDIDATE_COUNT) process.env.AGENTICXR_CANDIDATE_COUNT = "1";
 if (!process.env.AGENTICXR_TURN_TIMEOUT_MS) process.env.AGENTICXR_TURN_TIMEOUT_MS = "300000";
+if (!process.env.AGENTICXR_FAST_IMPLICIT_DIRECT) process.env.AGENTICXR_FAST_IMPLICIT_DIRECT = "true";
+if (!process.env.AGENTICXR_FAST_IMPLICIT_MODEL_PAIRING) process.env.AGENTICXR_FAST_IMPLICIT_MODEL_PAIRING = "true";
+if (!process.env.AGENTICXR_FAST_IMPLICIT_ALLOW_PAIR_FALLBACK) process.env.AGENTICXR_FAST_IMPLICIT_ALLOW_PAIR_FALLBACK = "false";
+if (!process.env.AGENTICXR_FAST_IMPLICIT_BUDGET_MS) process.env.AGENTICXR_FAST_IMPLICIT_BUDGET_MS = "55000";
+if (!process.env.AGENTICXR_FAST_IMPLICIT_MODEL_TIMEOUT_MS) process.env.AGENTICXR_FAST_IMPLICIT_MODEL_TIMEOUT_MS = "22000";
 // Implicit L1/L2 uses its own monitor watchdog. Keep it aligned with the live
-// turn timeout so a successful validation at ~120s is not killed just before
-// rank/propose completes.
+// route. The direct bounded route owns a strict sub-minute budget; retain the
+// longer general turn timeout only when the Agent SDK fallback is requested.
 if (!process.env.AGENTICXR_CONTINUOUS_ASSIST_TIMEOUT_MS) {
-    process.env.AGENTICXR_CONTINUOUS_ASSIST_TIMEOUT_MS = process.env.AGENTICXR_TURN_TIMEOUT_MS;
+    process.env.AGENTICXR_CONTINUOUS_ASSIST_TIMEOUT_MS =
+        String(process.env.AGENTICXR_FAST_IMPLICIT_DIRECT).toLowerCase() === "true"
+            ? String(Number(process.env.AGENTICXR_FAST_IMPLICIT_BUDGET_MS) + 3000)
+            : process.env.AGENTICXR_TURN_TIMEOUT_MS;
 }
-console.log(`[AgenticXR] runtime config candidates=${process.env.AGENTICXR_CANDIDATE_COUNT} timeoutMs=${process.env.AGENTICXR_TURN_TIMEOUT_MS}`);
+console.log(`[AgenticXR] runtime config candidates=${process.env.AGENTICXR_CANDIDATE_COUNT} ` +
+    `timeoutMs=${process.env.AGENTICXR_TURN_TIMEOUT_MS} directImplicit=${process.env.AGENTICXR_FAST_IMPLICIT_DIRECT} ` +
+    `modelPairing=${process.env.AGENTICXR_FAST_IMPLICIT_MODEL_PAIRING} ` +
+    `implicitBudgetMs=${process.env.AGENTICXR_FAST_IMPLICIT_BUDGET_MS}`);
 let monitor = null;
 let monitorTimer = null;
 const startMonitor = () => {

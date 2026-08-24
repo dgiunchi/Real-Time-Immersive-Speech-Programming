@@ -147,6 +147,17 @@ new Listener(CHANNELS.SCENE_QUERY, (envelope) => {
     // Legacy/default: SceneQuery (docs/agentic-xr-architecture.md)
     envelope = fromWireFormat(envelope);
     console.log(`[mock_unity_peer] SceneQuery received (correlationId ${envelope.correlationId}, target ${envelope.targetObjectId || envelope.payload.filter})`);
+    const focusId = envelope.targetObjectId || "obj-mock-0001";
+    const isL1StudyFocus = /-tool-\d+$/i.test(focusId);
+    const isL2StudyFocus = /-part-\d+$/i.test(focusId);
+    const focusName = isL1StudyFocus ? "Mock Study Tool" : isL2StudyFocus ? "Mock Study Part" : "MockSphere";
+    const halo = isL1StudyFocus
+        ? [{ id: "study-l1-a-tray-1", name: "Mock Study Tray", tag: "game", type: "static",
+            transform: { pos: [1, 1, 0], rot: [0, 0, 0, 1], scale: [1, 1, 1] }, components: ["BoxCollider", "StableObjectId"] }]
+        : isL2StudyFocus
+            ? [{ id: "study-l2-a-socket-1", name: "Mock Study Socket", tag: "game", type: "static",
+                transform: { pos: [1, 1, 0], rot: [0, 0, 0, 1], scale: [1, 1, 1] }, components: ["BoxCollider", "StableObjectId"] }]
+            : [{ id: "obj-mock-0002", name: "MockTable", tag: "game", type: "static" }];
     const reply = makeEnvelope({
         type: "SceneDelta",
         correlationId: envelope.correlationId,
@@ -154,13 +165,13 @@ new Listener(CHANNELS.SCENE_QUERY, (envelope) => {
         originAgent: "mock_unity_peer",
         payload: {
             focus: {
-                id: envelope.targetObjectId || "obj-mock-0001",
-                name: "MockSphere",
+                id: focusId,
+                name: focusName,
                 tag: "game",
                 transform: { pos: [0, 1, 0], rot: [0, 0, 0, 1], scale: [1, 1, 1] },
                 components: [{ type: "MeshRenderer", fields: { "material.color": "#FFFFFF" } }],
             },
-            halo: [{ id: "obj-mock-0002", name: "MockTable", tag: "game", type: "static" }],
+            halo,
             changedSince: null,
             // Synthetic sensor events (docs/shared-memory-and-experimental-space.md
             // "sensors" concept) - stands in for Unity-side proximity/gaze/collision
@@ -169,14 +180,14 @@ new Listener(CHANNELS.SCENE_QUERY, (envelope) => {
                 {
                     sensorType: "proximity",
                     sourceObjectId: "obj-mock-user-hand",
-                    targetObjectId: envelope.targetObjectId || "obj-mock-0001",
+                    targetObjectId: focusId,
                     value: 0.4,
                     confidence: 0.9,
                 },
                 {
                     sensorType: "gaze",
                     sourceObjectId: "obj-mock-user-head",
-                    targetObjectId: envelope.targetObjectId || "obj-mock-0001",
+                    targetObjectId: focusId,
                     value: true,
                     confidence: 0.8,
                 },

@@ -6345,7 +6345,7 @@ MonoBehaviour:
     interactionMode: L1
     taskVariant: A
     root: {fileID: 1505121860}
-    timeoutSeconds: 180
+    timeoutSeconds: 1200
     detector: {fileID: 1505121862}
     resetBody: {fileID: 0}
     resetLocalPosition: {x: 0, y: 0, z: 0}
@@ -6359,7 +6359,7 @@ MonoBehaviour:
     interactionMode: L1
     taskVariant: B
     root: {fileID: 431986903}
-    timeoutSeconds: 180
+    timeoutSeconds: 1200
     detector: {fileID: 431986905}
     resetBody: {fileID: 0}
     resetLocalPosition: {x: 0, y: 0, z: 0}
@@ -6373,7 +6373,7 @@ MonoBehaviour:
     interactionMode: L2
     taskVariant: A
     root: {fileID: 1957039687}
-    timeoutSeconds: 240
+    timeoutSeconds: 1200
     detector: {fileID: 1957039689}
     resetBody: {fileID: 0}
     resetLocalPosition: {x: 0, y: 0, z: 0}
@@ -6387,7 +6387,7 @@ MonoBehaviour:
     interactionMode: L2
     taskVariant: B
     root: {fileID: 1126490132}
-    timeoutSeconds: 240
+    timeoutSeconds: 1200
     detector: {fileID: 1126490134}
     resetBody: {fileID: 0}
     resetLocalPosition: {x: 0, y: 0, z: 0}
@@ -6401,7 +6401,7 @@ MonoBehaviour:
     interactionMode: L3
     taskVariant: A
     root: {fileID: 751144757}
-    timeoutSeconds: 240
+    timeoutSeconds: 1200
     detector: {fileID: 751144759}
     resetBody: {fileID: 1555884793}
     resetLocalPosition: {x: 0, y: 0.45, z: 1.3}
@@ -6415,7 +6415,7 @@ MonoBehaviour:
     interactionMode: L3
     taskVariant: B
     root: {fileID: 2004856127}
-    timeoutSeconds: 240
+    timeoutSeconds: 1200
     detector: {fileID: 2004856129}
     resetBody: {fileID: 1045401048}
     resetLocalPosition: {x: 0, y: 0.45, z: 1.3}
@@ -6429,7 +6429,7 @@ MonoBehaviour:
     interactionMode: L4
     taskVariant: A
     root: {fileID: 793397517}
-    timeoutSeconds: 300
+    timeoutSeconds: 1200
     detector: {fileID: 793397519}
     resetBody: {fileID: 0}
     resetLocalPosition: {x: 0, y: 0, z: 0}
@@ -6443,7 +6443,7 @@ MonoBehaviour:
     interactionMode: L4
     taskVariant: B
     root: {fileID: 459501748}
-    timeoutSeconds: 300
+    timeoutSeconds: 1200
     detector: {fileID: 459501750}
     resetBody: {fileID: 0}
     resetLocalPosition: {x: 0, y: 0, z: 0}
@@ -6457,7 +6457,7 @@ MonoBehaviour:
     interactionMode: L5
     taskVariant: A
     root: {fileID: 933249616}
-    timeoutSeconds: 420
+    timeoutSeconds: 1200
     detector: {fileID: 933249618}
     resetBody: {fileID: 0}
     resetLocalPosition: {x: 0, y: 0, z: 0}
@@ -6480,7 +6480,7 @@ MonoBehaviour:
     interactionMode: L5
     taskVariant: B
     root: {fileID: 11015699}
-    timeoutSeconds: 420
+    timeoutSeconds: 1200
     detector: {fileID: 11015701}
     resetBody: {fileID: 0}
     resetLocalPosition: {x: 0, y: 0, z: 0}

@@ -358,7 +358,7 @@ class CodeGeneration extends ApplicationController {
                             this.agenticTargets.get(identifier),
                             this.agenticCorrelations.get(identifier),
                             "heard",
-                            `Request transcribed (${transcript.length} characters).`
+                            transcript
                         );
                         if (/^(cancel|stop)(\s+(request|generation|claude))?[.!?]*$/i.test(transcript)) {
                             this.cancelAgenticTurn(identifier, null, "voice_cancel");
