@@ -1,0 +1,102 @@
+{
+  "schemaVersion": "1.0",
+  "comparisonId": "agenticxr-backend-comparison-v1",
+  "methodVersion": "method-draft-2026-08-22",
+  "protocolId": "agenticxr-paper-study-v1",
+  "rationale": "study/model_pin.v1.json freezes a single model so one study is reproducible. It cannot express a comparison, because its changeRule invalidates the method version as soon as the model changes. This contract states what must be identical across backends for a multi backend result to be a controlled comparison rather than several separate studies reported together.",
+  "heldConstant": {
+    "artifacts": [
+      "protocol.v1.json",
+      "task_cards.v1.json",
+      "task_manifest.v1.json",
+      "rubrics.v1.json",
+      "questionnaires.v1.json",
+      "interaction_contract.v1.json",
+      "analysis_plan.v1.json"
+    ],
+    "runtime": [
+      "agent tool surface: identical tool names, identical arity",
+      "candidate count default for the H4 best of N manipulation",
+      "L1 to L5 interaction contract and consent routing",
+      "trial sequencing, counterbalancing and A/B variant assignment",
+      "generated study scene and its stable object identifiers"
+    ],
+    "scoring": [
+      "rubric scoring",
+      "questionnaire scoring",
+      "blinded rater packet construction",
+      "locked analysis plan"
+    ]
+  },
+  "mayVary": [
+    "providerId",
+    "modelId",
+    "modelVersionString",
+    "systemPromptHash",
+    "toolInvocationMechanism",
+    "tokenizer",
+    "samplingParameterAvailability"
+  ],
+  "invariants": {
+    "candidateCountDefault": 3
+  },
+  "heldConstantDigest": "8d55e2e6c9c86899cddf0a397246f86c7de31c4f971a9d1598844fad1b75a9ea",
+  "toolSurfaceDigest": "614109cb69dae535f86ed60ebc2022caec5c5d48353799c658ccb3ad3be3abd2",
+  "backends": [
+    {
+      "backendId": "claude-sonnet-4",
+      "providerId": "anthropic",
+      "status": "registered",
+      "methodVersion": "method-draft-2026-08-22",
+      "modelId": "claude-sonnet-4-20250514",
+      "modelVersionString": "claude-sonnet-4-20250514",
+      "systemPromptHash": "108b78e6662d507c1a5096946c1f8bd7e920f7deb98287bcb67cf9db67a860cc",
+      "candidateCountDefault": 3,
+      "toolInvocationMechanism": "claude-agent-sdk-query",
+      "samplingParameterAvailability": "none",
+      "toolsetVersion": {
+        "agenticxr": "method-draft-2026-08-22",
+        "claudeAgentSdk": "0.3.207",
+        "mcpSdk": "1.29.0"
+      },
+      "note": "Mirrors study/model_pin.v1.json, which remains the authority for the single backend run."
+    },
+    {
+      "backendId": "UNREGISTERED-openai",
+      "providerId": "openai",
+      "status": "declared",
+      "methodVersion": null,
+      "modelId": null,
+      "modelVersionString": null,
+      "systemPromptHash": null,
+      "candidateCountDefault": null,
+      "toolInvocationMechanism": null,
+      "samplingParameterAvailability": null,
+      "toolsetVersion": null,
+      "note": "Placeholder only. Whoever runs this backend must fill every required field and set status to registered before any of its trials may be exported or analysed."
+    },
+    {
+      "backendId": "UNREGISTERED-google",
+      "providerId": "google",
+      "status": "declared",
+      "methodVersion": null,
+      "modelId": null,
+      "modelVersionString": null,
+      "systemPromptHash": null,
+      "candidateCountDefault": null,
+      "toolInvocationMechanism": null,
+      "samplingParameterAvailability": null,
+      "toolsetVersion": null,
+      "note": "Placeholder only. Whoever runs this backend must fill every required field and set status to registered before any of its trials may be exported or analysed."
+    }
+  ],
+  "equivalenceRules": [
+    "Every backend runs the identical held constant artifact set, proven by heldConstantDigest.",
+    "Every backend is offered the identical agent tool surface, proven by toolSurfaceDigest.",
+    "Every backend uses the same candidate count default, so the H4 best of N manipulation means the same thing in each arm.",
+    "A backend whose status is not registered may not contribute trials to any analysis.",
+    "Differences between backends are admissible only if the differing field is listed in mayVary.",
+    "A per backend systemPromptHash difference is expected and permitted, because prompt formats differ between providers. It is recorded per trial so a prompt change within a backend is still detectable."
+  ],
+  "changeRule": "Adding or removing a held constant artifact, changing the tool surface, or changing the candidate count default requires a new comparison version and re-locking heldConstantDigest and toolSurfaceDigest. Registering a new backend does not, provided every invariant still matches."
+}
