@@ -11,6 +11,7 @@
     "start:orchestrator": "node orchestrator/app.js",
     "test": "node tests/cache_contract_test.js && node tests/backend_equivalence_test.js",
     "test:backends": "node tests/backend_equivalence_test.js",
+    "verify:scene-determinism": "node scripts/verify-scene-determinism.js",
     "test:integration": "node tests/run_mock_integration.js",
     "test:study-transport": "node tests/debug_trial_transport_test.js",
     "test:token-log": "node tests/token_activity_logger_test.js",
