@@ -124,11 +124,19 @@ fi
 # ---- start the backend (one binary: RoomServer + pipeline + admin) -----------
 # Mode C (bounded action plans) is the default: safe by construction, and the
 # architecture the dissertation argues for. --creative switches on the Mode A arm.
-env DCVR_EMBED_ROOMSERVER=true \
-    DCVR_ADMIN_PORT=$ADMIN_PORT DCVR_ADMIN_BIND=127.0.0.1 \
-    "${MODE_A_ENV[@]}" \
-  ./target/debug/dreamcodevr-server > "$BACKEND_LOG" 2>&1 &
+
+if [ "$CREATIVE" = "1" ]; then
+  env DCVR_EMBED_ROOMSERVER=true \
+      DCVR_ADMIN_PORT=$ADMIN_PORT DCVR_ADMIN_BIND=127.0.0.1 \
+      "${MODE_A_ENV[@]}" \
+    ./target/debug/dreamcodevr-server > "$BACKEND_LOG" 2>&1 &
+else
+  env DCVR_EMBED_ROOMSERVER=true \
+      DCVR_ADMIN_PORT=$ADMIN_PORT DCVR_ADMIN_BIND=127.0.0.1 \
+    ./target/debug/dreamcodevr-server > "$BACKEND_LOG" 2>&1 &
+fi
 BACKEND_PID=$!
+
 
 # ---- wait for it to actually listen -----------------------------------------
 BACKEND_UP=0
