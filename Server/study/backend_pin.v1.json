@@ -40,7 +40,7 @@
   "invariants": {
     "candidateCountDefault": 3
   },
-  "heldConstantDigest": "8d55e2e6c9c86899cddf0a397246f86c7de31c4f971a9d1598844fad1b75a9ea",
+  "heldConstantDigest": "a684f0a5436523e39505cb321efe06879e7c7a61014c5a94c55fe6224868a424",
   "toolSurfaceDigest": "614109cb69dae535f86ed60ebc2022caec5c5d48353799c658ccb3ad3be3abd2",
   "backends": [
     {
@@ -98,5 +98,13 @@
     "Differences between backends are admissible only if the differing field is listed in mayVary.",
     "A per backend systemPromptHash difference is expected and permitted, because prompt formats differ between providers. It is recorded per trial so a prompt change within a backend is still detectable."
   ],
-  "changeRule": "Adding or removing a held constant artifact, changing the tool surface, or changing the candidate count default requires a new comparison version and re-locking heldConstantDigest and toolSurfaceDigest. Registering a new backend does not, provided every invariant still matches."
+  "changeRule": "Adding or removing a held constant artifact, changing the tool surface, or changing the candidate count default requires a new comparison version and re-locking heldConstantDigest and toolSurfaceDigest. Registering a new backend does not, provided every invariant still matches.",
+  "lockHistory": [
+    {
+      "previousDigest": "8d55e2e6c9c86899cddf0a397246f86c7de31c4f971a9d1598844fad1b75a9ea",
+      "newDigest": "a684f0a5436523e39505cb321efe06879e7c7a61014c5a94c55fe6224868a424",
+      "reason": "Youngbin changed task_manifest.v1.json: every task timeoutSeconds raised from its calibrated per-task value (L1 180, L2 240, L3 240, L4 300) to a uniform 1200. Re-locked because no participant data has been collected. Flagged for review: ten trials at up to 1200s each exceeds the ~120 minute session target recorded in docs/vr-study-rehearsal-checklist.md, and the per-task calibration is lost.",
+      "relockedBy": "abyyworld"
+    }
+  ]
 }
