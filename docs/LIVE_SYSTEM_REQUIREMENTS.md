@@ -13,8 +13,9 @@ hardware requirement, configuration step, or acceptance check.
 
 Record these before live integration:
 
-- [ ] Quest model:
-- [ ] Quest OS/version:
+- [x] Quest model: Quest 3 (`eureka`), validated 2026-08-25
+- [x] Quest OS/version: Android 14, build `UP1A.231005.007.A1`, branch
+      `releases-oculus-14.0-v207`, SDK 34
 - [ ] Server PC operating system:
 - [ ] Server PC LAN IPv4 address:
 - [ ] Quest and server PC are on the same non-isolated LAN:
@@ -180,6 +181,42 @@ $env:AGENTICXR_ANTICIPATION_COOLDOWN_MS="60000"
 The world-space button/ray interaction is not yet live-validated. If the panel
 renders but buttons cannot be selected, inspect the tracked-device UI input module,
 event camera, raycaster, and Quest controller bindings.
+
+## 6b. Headset network validation, and an idle latency trap
+
+Validated on 2026-08-25 with a Quest 3 tethered by USB and a macOS host, both on
+the same domestic `/24`:
+
+- [x] Developer mode and USB debugging working, `adb devices` shows the headset
+      authorized.
+- [x] Quest and host on the same subnet, no client isolation. 0% packet loss in
+      both directions.
+- [x] Quest can open a TCP connection to the host on `8009`.
+- [x] The Ubiq room server accepts real connections from the headset. Verified by
+      `RoomServer: Client Connection from ::ffff:<quest-ip>` in its log, not by
+      assuming reachability from a ping.
+
+### Measure latency with the headset worn, never sitting on a desk
+
+Round trip time between headset and host differs by more than an order of
+magnitude depending on whether the headset is being worn:
+
+| Headset state | min | avg | max |
+|---|---|---|---|
+| Worn and active | 5.1 ms | 14.2 ms | 41.0 ms |
+| Idle on a desk | 25.9 ms | 521.4 ms | 1834.7 ms |
+
+Worn, the link sits inside the 10 to 50 ms XR interaction timeline the design
+assumes. Idle, the Wi-Fi radio dozes and spikes past 1.8 seconds.
+
+Two consequences for the protocol:
+
+- [ ] Take every latency baseline with the headset worn. A baseline captured from
+      a desk makes the network look like the bottleneck when it is not.
+- [ ] Treat the first measurements after a break as suspect. If a participant
+      removes the headset between trials, the radio may still be waking when the
+      next trial starts, which lands on acknowledgement latency and perceived
+      synchronicity, both of which are measured outcomes.
 
 ## 7. Continuous and predictive features
 
