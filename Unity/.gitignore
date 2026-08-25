@@ -79,3 +79,11 @@ crashlytics-build.properties
 Recordings/
 
 .vsconfig
+
+# Unity Performance Testing artifacts. The project docs list these among the
+# things never to commit. They must come after the "!/[Aa]ssets/**/*.meta"
+# negation above, which would otherwise force-include their .meta files.
+/[Aa]ssets/Resources/PerformanceTestRunInfo.json
+/[Aa]ssets/Resources/PerformanceTestRunInfo.json.meta
+/[Aa]ssets/Resources/PerformanceTestRunSettings.json
+/[Aa]ssets/Resources/PerformanceTestRunSettings.json.meta
