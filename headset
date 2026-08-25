@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Build, install and run the study on a tethered Quest, pointed at this machine.
+#
+#   ./headset            build, install, launch
+#   ./headset --no-build install and launch the existing APK (fast)
+#   ./headset --logs     just tail the headset log
+#
+# Works from anywhere in the repo. Starts the Ubiq server if it is not running,
+# and finds this machine's LAN address itself, so the headset never tries to
+# reach "localhost", which on a standalone headset means the headset.
+set -uo pipefail
+cd "$(dirname "$0")"
+
+PKG=com.DefaultCompany.ubiqgenie
+ACTIVITY="$PKG/com.unity3d.player.UnityPlayerActivity"
+APK="Unity/Build/Quest/AgenticXRStudy.apk"
+
+lan_ip() {
+  case "$(uname -s)" in
+    Darwin) ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null ;;
+    *) hostname -I 2>/dev/null | awk '{print $1}' ;;
+  esac
+}
+
+if [ "${1:-}" = "--logs" ]; then
+  exec adb logcat -s Unity:V
+fi
+
+command -v adb >/dev/null || { echo "adb not found. Install Android platform tools."; exit 1; }
+adb get-state >/dev/null 2>&1 || { echo "No headset detected. Connect it and approve USB debugging."; exit 1; }
+
+IP="$(lan_ip)"
+[ -n "$IP" ] || { echo "Could not determine this machine's LAN address."; exit 1; }
+
+if [ "${1:-}" != "--no-build" ]; then
+  EDITOR="${AGENTICXR_UNITY_VERSION_OVERRIDE:-$(grep -o 'm_EditorVersion: .*' Unity/ProjectSettings/ProjectVersion.txt | awk '{print $2}')}"
+  UNITY="/Applications/Unity/Hub/Editor/$EDITOR/Unity.app/Contents/MacOS/Unity"
+  [ -x "$UNITY" ] || UNITY="/Applications/Unity/Hub/Editor/$EDITOR-arm64/Unity.app/Contents/MacOS/Unity"
+  [ -x "$UNITY" ] || { echo "Unity $EDITOR not installed. Set AGENTICXR_UNITY_VERSION_OVERRIDE to one that is."; exit 1; }
+  echo "==> Building APK with $EDITOR (first build is slow, later ones are cached)"
+  rm -f Unity/Temp/UnityLockfile
+  # Log to a file, never a pipe: piping loses Unity's exit status.
+  "$UNITY" -batchmode -nographics -quit -projectPath "$PWD/Unity" \
+    -executeMethod AgenticXRQuestBuild.Build -logFile /tmp/agenticxr_quest_build.log
+  status=$?
+  [ $status -eq 0 ] || { echo "Build failed (exit $status). See /tmp/agenticxr_quest_build.log"; exit $status; }
+fi
+
+[ -f "$APK" ] || { echo "No APK at $APK. Run without --no-build first."; exit 1; }
+
+if ! lsof -nP -iTCP:8009 -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "==> Starting the Ubiq server on 8009"
+  ( cd Server && nohup node node_modules/ubiq/app.js > /tmp/agenticxr_ubiq.log 2>&1 & )
+  sleep 3
+fi
+
+echo "==> Installing"
+adb install -r "$APK" | tail -1
+
+echo "==> Launching, pointed at $IP:8009"
+adb shell am force-stop "$PKG"
+adb logcat -c
+adb shell am start -e ubiqHost "$IP:8009" -n "$ACTIVITY" >/dev/null
+
+echo
+echo "Put the headset on. Server log: /tmp/agenticxr_ubiq.log"
+echo "Headset log:  ./headset --logs"
