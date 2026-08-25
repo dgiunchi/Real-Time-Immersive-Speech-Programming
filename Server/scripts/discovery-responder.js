@@ -17,7 +17,7 @@
 const dgram = require("dgram");
 const os = require("os");
 
-const DISCOVERY_PORT = 8010;
+const DISCOVERY_PORT = 8011; // 8010 is a Ubiq room server port
 const PROBE = "AGENTICXR_DISCOVER";
 const REPLY_PREFIX = "AGENTICXR_HOST ";
 

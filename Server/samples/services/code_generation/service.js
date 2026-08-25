@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { spawnSync } = require("child_process");
 const path = require("path");
 const { ServiceController } = require("ubiq-genie-components");
 
@@ -16,7 +17,16 @@ function getPythonCommand() {
     }
 
     console.warn("[CodeGenerationService] Python venv not found or incomplete. Recreate it with: cd Server\\samples; py -3.10 -m venv .\\venv; .\\venv\\Scripts\\Activate.ps1; python -m pip install --upgrade pip setuptools wheel; pip install -r requirements.txt");
-    return "python";
+    // "python" exists on Windows but not on macOS or most Linux distributions,
+    // where the interpreter is "python3". Falling back to "python" there fails
+    // with "spawn python ENOENT" after speech has already been transcribed, so
+    // the turn dies silently between recognition and generation.
+    const fallbacks = process.platform === "win32" ? ["python", "python3"] : ["python3", "python"];
+    for (const candidate of fallbacks) {
+        const probe = spawnSync(candidate, ["--version"], { stdio: "ignore" });
+        if (!probe.error) return candidate;
+    }
+    return fallbacks[0];
 }
 
 class CodeGenerationService extends ServiceController {
