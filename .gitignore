@@ -114,3 +114,7 @@ _audit_context/
 Unity/.utmp/
 Unity/Unity.slnx
 Unity/Build/
+
+# Unity Performance Testing artifacts (docs say never commit these)
+Unity/Assets/Resources/PerformanceTestRunInfo.json*
+Unity/Assets/Resources/PerformanceTestRunSettings.json*

@@ -146,8 +146,9 @@ PlayerSettings:
   tvOSBundleVersion: 1.0
   bundleVersion: 0.1
   preloadedAssets:
-  - {fileID: 6551549846587846071, guid: aca5af57aef1d8543a6b6b0e10f8d14b, type: 2}
-  - {fileID: -4431768625557925855, guid: 439f65bef99b36f428a681eefa9240bf, type: 2}
+  - {fileID: 6812818638055829977, guid: aca5af57aef1d8543a6b6b0e10f8d14b, type: 2}
+  - {fileID: 11400000, guid: e1eb9fdf2c7a1d74ea67c4398a2e6350, type: 2}
+  - {fileID: -5191382958484707144, guid: 439f65bef99b36f428a681eefa9240bf, type: 2}
   metroInputSource: 0
   wsaTransparentSwapchain: 0
   m_HolographicPauseOnTrackingLoss: 1
@@ -514,7 +515,8 @@ PlayerSettings:
   enableCrashReportAPI: 0
   cameraUsageDescription: 
   locationUsageDescription: 
-  microphoneUsageDescription: AgenticXR records speech only while you hold the push-to-talk control, to turn spoken requests into scene behaviour.
+  microphoneUsageDescription: AgenticXR records speech only while you hold the push-to-talk
+    control, to turn spoken requests into scene behaviour.
   bluetoothUsageDescription: 
   macOSTargetOSVersion: 12.0
   switchNMETAOverride: 
