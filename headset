@@ -35,7 +35,21 @@ adb get-state >/dev/null 2>&1 || { echo "No headset detected. Connect it and app
 IP="$(lan_ip)"
 [ -n "$IP" ] || { echo "Could not determine this machine's LAN address."; exit 1; }
 
-if [ "${1:-}" != "--no-build" ]; then
+# Unity holds an exclusive lock on the project, so a batch build cannot run while
+# the Editor is open. Rather than failing, skip the build and use the APK already
+# on disk, and say plainly how old it is: a stale APK is the single most
+# confusing failure here, because the server looks healthy and the headset still
+# behaves like none of the recent fixes exist.
+SKIP_BUILD=0
+[ "${1:-}" = "--no-build" ] && SKIP_BUILD=1
+if [ "$SKIP_BUILD" = "0" ] && pgrep -f "Unity.app/Contents/MacOS/Unity" >/dev/null 2>&1; then
+  echo "==> Unity is open, so I cannot batch build. Using the APK already on disk."
+  echo "    To build a fresh one: AgenticXR > Build Quest APK in the Editor,"
+  echo "    or close Unity and run this again."
+  SKIP_BUILD=1
+fi
+
+if [ "$SKIP_BUILD" = "0" ]; then
   EDITOR="${AGENTICXR_UNITY_VERSION_OVERRIDE:-$(grep -o 'm_EditorVersion: .*' Unity/ProjectSettings/ProjectVersion.txt | awk '{print $2}')}"
   # Unity Hub lays editors out differently per platform, and on Apple Silicon it
   # may suffix the directory with -arm64. Checked in order rather than assumed,
@@ -60,16 +74,27 @@ if [ "${1:-}" != "--no-build" ]; then
   [ $status -eq 0 ] || { echo "Build failed (exit $status). See /tmp/agenticxr_quest_build.log"; exit $status; }
 fi
 
-[ -f "$APK" ] || { echo "No APK at $APK. Run without --no-build first."; exit 1; }
+[ -f "$APK" ] || { echo "No APK at $APK. Close Unity and run this again to build one."; exit 1; }
+
+APK_AGE="$(date -r "$APK" '+%H:%M' 2>/dev/null || echo unknown)"
+echo "==> APK on disk was built at $APK_AGE"
 
 if ! lsof -nP -iTCP:8009 -sTCP:LISTEN >/dev/null 2>&1; then
   echo "==> Starting the Ubiq server on 8009"
-  ( cd Server && nohup node node_modules/ubiq/app.js > /tmp/agenticxr_ubiq.log 2>&1 & )
+  # start-room-server also brings up discovery and the scene bridge. The bridge
+  # is what answers trial registration; without it the headset joins the room and
+  # then times out saying the server did not acknowledge the trial.
+  ( cd Server && nohup node scripts/start-room-server.js > /tmp/agenticxr_ubiq.log 2>&1 & )
   sleep 3
 fi
 
 echo "==> Installing"
 adb install -r "$APK" | tail -1
+# Unity's own Build and Run can report success without deploying, leaving an old
+# build on the headset while every change looks like it did nothing. Confirm the
+# install timestamp actually moved.
+INSTALLED="$(adb shell dumpsys package "$PKG" 2>/dev/null | grep lastUpdateTime | head -1 | sed 's/.*=//' | tr -d '\r')"
+echo "    installed on headset: $INSTALLED"
 
 echo "==> Launching, pointed at $IP:8009"
 adb shell am force-stop "$PKG"
