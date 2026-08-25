@@ -40,6 +40,7 @@ async function main() {
     const persistContinuityCheckpoint = () => {
         try {
             memory.checkpoints.save({
+                artifactSourceStore: memory.artifactSources,
                 artifactLog: memory.artifactLog,
                 personPolicy: memory.personPolicy,
                 experienceContext: memory.experienceContext,
@@ -323,6 +324,18 @@ async function main() {
                     verificationState: verificationBypassed ? "unverified" : undefined,
                 });
                 memory.personPolicy.recordEvent({ sessionId, eventType: `propose_artifact:${result.payload && result.payload.status}`, targetObjectId, at: Date.now() });
+                // The only point at which the artifact's source is known. Without
+                // capturing it here the journal keeps the fact of the commit but
+                // not the code, so nothing can be reattached after a scene reset.
+                // A remove has no source and is skipped by the store itself.
+                if (result.payload && result.payload.artifactId && args.code) {
+                    memory.artifactSources.record({
+                        artifactId: result.payload.artifactId,
+                        targetObjectId, source: args.code,
+                        artifactVersion: args.artifactVersion || "1",
+                        correlationId: args.correlationId || null,
+                    });
+                }
                 return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
             } catch (err) {
                 appendStudyIfActive(args, {
@@ -1165,7 +1178,7 @@ async function main() {
             description: "Persists active artifact references, consented profiles, and experience contexts. Live code attachment is independently checkpointed by Unity.",
             inputSchema: {},
         },
-        async () => ({ content: [{ type: "text", text: JSON.stringify(memory.checkpoints.save({ artifactLog: memory.artifactLog, personPolicy: memory.personPolicy, experienceContext: memory.experienceContext, sceneEpoch: cacheExchange.workingCache.getSceneEpoch() }), null, 2) }] })
+        async () => ({ content: [{ type: "text", text: JSON.stringify(memory.checkpoints.save({ artifactLog: memory.artifactLog, personPolicy: memory.personPolicy, experienceContext: memory.experienceContext, artifactSourceStore: memory.artifactSources, sceneEpoch: cacheExchange.workingCache.getSceneEpoch() }), null, 2) }] })
     );
 
     server.registerTool(

@@ -15,6 +15,7 @@ const { RegionStore } = require("./region_store");
 const { IntentStore } = require("./intent_store");
 const { ExperienceContextStore } = require("./experience_context");
 const { CheckpointStore } = require("./checkpoint_store");
+const { ArtifactSourceStore } = require("./artifact_source_store");
 const { appendEvaluationEvent } = require("../evaluation/event_logger");
 const { STUDY_ID_PATTERN } = require("./artifact_log");
 const { GoalVerifier } = require("../orchestrator/goal_verifier");
@@ -33,6 +34,10 @@ class SharedMemory {
         this.intent = new IntentStore();
         this.experienceContext = new ExperienceContextStore({ filePath: experienceContextPath });
         this.checkpoints = new CheckpointStore({ filePath: checkpointPath });
+        // Holds the C# of committed artifacts so a checkpoint can actually
+        // restore them. The journal records that an artifact was committed but
+        // never its code, so without this nothing is reattachable after a reset.
+        this.artifactSources = new ArtifactSourceStore();
         this.goalLoops = new GoalLoopController({
             artifactLog: this.artifactLog,
             verifier: new GoalVerifier({
