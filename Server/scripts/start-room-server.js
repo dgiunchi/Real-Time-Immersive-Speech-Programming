@@ -22,3 +22,28 @@ try {
 
 // Loaded after discovery so a discovery failure cannot stop the room server.
 require(path.join(__dirname, "..", "node_modules", "ubiq", "app.js"));
+
+// The room server only relays. StudyDebugLauncher sends its trial registration
+// on Ubiq channel 100 and waits for Node to acknowledge, and it is the Unity
+// Scene Bridge that joins the room and answers. Without it the headset connects
+// to the room and then times out with "Server did not acknowledge the trial",
+// which reads like a networking problem and is not one.
+//
+// Started as a child process rather than required, because the bridge chdir's
+// into its own directory and speaks MCP on stdio, neither of which should happen
+// inside this process.
+const { spawn } = require("child_process");
+
+setTimeout(() => {
+    const bridge = spawn(process.execPath, [path.join(__dirname, "start-unity-scene-bridge.js")], {
+        cwd: path.join(__dirname, ".."),
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    bridge.stdout.on("data", (chunk) => process.stdout.write(`[bridge] ${chunk}`));
+    bridge.stderr.on("data", (chunk) => process.stdout.write(`[bridge] ${chunk}`));
+    bridge.on("exit", (code) => console.log(`[bridge] exited with code ${code}`));
+    process.on("exit", () => { try { bridge.kill(); } catch { /* already gone */ } });
+    // Delayed so the room server is listening before the bridge tries to join it;
+    // the bridge joins an existing room and does not host one.
+}, 2000);
