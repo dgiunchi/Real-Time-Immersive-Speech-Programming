@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Connects the headset to this machine. Nothing else.
+#
+#   ./connect
+#
+# Does not build, does not install, does not touch Unity. Run it whenever, before
+# or after a Build and Run.
+set -uo pipefail
+cd "$(dirname "$0")"
+
+PKG=com.DefaultCompany.ubiqgenie
+ACTIVITY="$PKG/com.unity3d.player.UnityPlayerActivity"
+
+lan_ip() {
+  case "$(uname -s)" in
+    Darwin) ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null ;;
+    MINGW*|MSYS*|CYGWIN*) ipconfig 2>/dev/null | grep -i "IPv4" | head -1 | awk -F: '{gsub(/ /,"",$2); print $2}' ;;
+    *) hostname -I 2>/dev/null | awk '{print $1}' ;;
+  esac
+}
+
+IP="$(lan_ip)"
+[ -n "$IP" ] || { echo "Could not find this machine's LAN address."; exit 1; }
+
+# A server from an earlier run holds the port, and the next start dies with
+# EADDRINUSE, which reads like a broken setup rather than a leftover one.
+pkill -f "start-room-server" 2>/dev/null
+pkill -f "ubiq/app.js" 2>/dev/null
+pkill -f "unity_scene_bridge" 2>/dev/null
+sleep 1
+
+# Room server, LAN discovery and the scene bridge. The bridge is what answers
+# trial registration; without it the headset joins the room and then times out.
+( cd Server && nohup node scripts/start-room-server.js > /tmp/agenticxr_server.log 2>&1 & )
+sleep 4
+grep -q "RoomServer port" /tmp/agenticxr_server.log 2>/dev/null \
+  || { echo "Server failed to start. See /tmp/agenticxr_server.log"; exit 1; }
+echo "server up on $IP:8009"
+
+adb get-state >/dev/null 2>&1 || { echo "No headset connected."; exit 1; }
+
+adb shell am force-stop "$PKG" >/dev/null 2>&1
+adb logcat -c >/dev/null 2>&1
+adb shell am start -e ubiqHost "$IP:8009" -n "$ACTIVITY" >/dev/null 2>&1
+echo "launched on the headset"
+echo
+echo "put the headset on. watch: tail -f /tmp/agenticxr_server.log"
