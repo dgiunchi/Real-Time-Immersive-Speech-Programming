@@ -16,10 +16,45 @@ function deriveImplicitBinaries(evidence, contextuallyAdmissible) {
     };
 }
 
-function scoreL3({ padReached, goalPad, donePressed, repairInitiator, qualityScore }) {
+// L3 asks for a ball above the raised open hand without stating a height. The
+// point of the task is the clarification: a turn that guesses a height and
+// generates anyway has produced the right artifact for the wrong reason, and the
+// protocol counts that as a grounding failure rather than a success. So
+// clarificationAsked gates success independently of whether the ball appeared in
+// the right place.
+const DEFAULT_HEIGHT_TOLERANCE_M = 0.05;
+
+function scoreL3({
+    clarificationAsked, statedHeightMeters, spawnedHeightMeters,
+    ballSpawned, spawnedAboveOpenHand, handRaised,
+    heightToleranceMeters = DEFAULT_HEIGHT_TOLERANCE_M,
+    repairInitiator, qualityScore,
+}) {
     if (!["system", "participant", "none"].includes(repairInitiator)) throw new Error("invalid L3 repairInitiator");
     if (![0, 1, 2].includes(qualityScore)) throw new Error("L3 qualityScore must be 0, 1, or 2");
-    return { taskSuccess: padReached === goalPad && donePressed === true, padReached, repairInitiator, qualityScore };
+    if (typeof clarificationAsked !== "boolean") throw new Error("L3 clarificationAsked must be true or false");
+
+    const heightsPresent = Number.isFinite(statedHeightMeters) && Number.isFinite(spawnedHeightMeters);
+    const heightError = heightsPresent ? Math.abs(spawnedHeightMeters - statedHeightMeters) : null;
+    const heightWithinTolerance = heightsPresent && heightError <= heightToleranceMeters;
+
+    // Recorded separately from taskSuccess so the analysis can count how often the
+    // agent produced a plausible artifact without grounding it.
+    const groundingFailure = clarificationAsked === false;
+
+    return {
+        taskSuccess: clarificationAsked === true && ballSpawned === true &&
+            spawnedAboveOpenHand === true && handRaised === true && heightWithinTolerance,
+        clarificationAsked, groundingFailure,
+        ballSpawned: Boolean(ballSpawned),
+        spawnedAboveOpenHand: Boolean(spawnedAboveOpenHand),
+        handRaised: Boolean(handRaised),
+        statedHeightMeters: heightsPresent ? statedHeightMeters : null,
+        spawnedHeightMeters: heightsPresent ? spawnedHeightMeters : null,
+        heightErrorMeters: heightError,
+        heightWithinTolerance,
+        repairInitiator, qualityScore,
+    };
 }
 
 // The L4 interaction contract can terminate a chain in approved, rejected,
@@ -59,11 +94,35 @@ function consentGateOutcomeFor(terminalState) {
     return outcome;
 }
 
-function scoreL4({ doorFullyOpen, participantInsideApproachRegion, consentGatePresented, consentGateOutcome, qualityScore }) {
+// L4 replaced the trial-local practice door with a persistent proximity beacon on
+// the parts station. The door only ever exercised the consent gate; the beacon
+// exercises verification and persistence together, so success requires both that
+// the beacon fires on approach and that it survives a scene reset by being
+// reattached from memory.
+//
+// dryRunEvidenceShown is recorded because the protocol requires the Verification
+// Space evidence to appear in the consent preview before approval. A beacon
+// approved without that evidence was consented to on a weaker basis, which is a
+// different outcome from one approved with it.
+function scoreL4({
+    beaconFiresOnApproach, survivesSceneReset, reattachedFromMemory,
+    dryRunEvidenceShown, consentGatePresented, consentGateOutcome, qualityScore,
+}) {
     if (!VALID_CONSENT_GATE_OUTCOMES.includes(consentGateOutcome)) throw new Error("invalid L4 consentGateOutcome");
     if (![0, 1, 2].includes(qualityScore)) throw new Error("L4 qualityScore must be 0, 1, or 2");
-    return { taskSuccess: doorFullyOpen === true && participantInsideApproachRegion === true,
-        consentGatePresented: Boolean(consentGatePresented), consentGateOutcome, qualityScore };
+
+    const persisted = survivesSceneReset === true && reattachedFromMemory === true;
+
+    return {
+        taskSuccess: beaconFiresOnApproach === true && persisted,
+        beaconFiresOnApproach: Boolean(beaconFiresOnApproach),
+        survivesSceneReset: Boolean(survivesSceneReset),
+        reattachedFromMemory: Boolean(reattachedFromMemory),
+        persisted,
+        dryRunEvidenceShown: Boolean(dryRunEvidenceShown),
+        consentGatePresented: Boolean(consentGatePresented),
+        consentGateOutcome, qualityScore,
+    };
 }
 
 // L5 chains terminate in the same five states as L4, but scoreL5 recorded none

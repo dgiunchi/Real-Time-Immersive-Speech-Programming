@@ -124,13 +124,30 @@ function beginL4(store, sessionId) {
         check(threwScore, "an invalid consent gate outcome is still refused");
     }
 
-    // 10. Task success requires both the door open and the participant in the
-    // approach region, which is what distinguishes L4 from a bare door toggle.
+    // 10. The retired door only exercised consent. The beacon requires the
+    // artifact to fire on approach AND to persist across a scene reset by being
+    // reattached from memory, so verification and persistence are both exercised.
     {
-        const both = rubric.scoreL4({ doorFullyOpen: true, participantInsideApproachRegion: true, consentGatePresented: true, consentGateOutcome: "approved", qualityScore: 2 });
-        check(both.taskSuccess === true, "door open inside the region is a success");
-        const outside = rubric.scoreL4({ doorFullyOpen: true, participantInsideApproachRegion: false, consentGatePresented: true, consentGateOutcome: "approved", qualityScore: 2 });
-        check(outside.taskSuccess === false, "door open outside the approach region is not a success");
+        const base = { dryRunEvidenceShown: true, consentGatePresented: true, consentGateOutcome: "approved", qualityScore: 2 };
+        const complete = rubric.scoreL4({ ...base, beaconFiresOnApproach: true, survivesSceneReset: true, reattachedFromMemory: true });
+        check(complete.taskSuccess === true, "a beacon that fires and is reattached after reset is a success");
+        check(complete.persisted === true, "persistence is reported explicitly");
+
+        check(rubric.scoreL4({ ...base, beaconFiresOnApproach: false, survivesSceneReset: true, reattachedFromMemory: true }).taskSuccess === false,
+            "a beacon that never fires is not a success");
+        check(rubric.scoreL4({ ...base, beaconFiresOnApproach: true, survivesSceneReset: false, reattachedFromMemory: false }).taskSuccess === false,
+            "a beacon lost on scene reset is not a success");
+
+        // Surviving a reset because the object happened to still exist is not the
+        // same as being reattached from memory, and only the latter counts.
+        const survived = rubric.scoreL4({ ...base, beaconFiresOnApproach: true, survivesSceneReset: true, reattachedFromMemory: false });
+        check(survived.taskSuccess === false, "surviving a reset without memory-backed reattachment is not a success");
+        check(survived.persisted === false, "persistence requires reattachment, not mere survival");
+
+        // Consent given without the dry-run evidence in the preview rests on a
+        // weaker basis, and is recorded rather than equated with the full route.
+        const noEvidence = rubric.scoreL4({ ...base, dryRunEvidenceShown: false, beaconFiresOnApproach: true, survivesSceneReset: true, reattachedFromMemory: true });
+        check(noEvidence.dryRunEvidenceShown === false, "missing dry-run evidence is recorded");
     }
 
     console.log(`[l4_consent_gate_test] PASS (${assertions} assertions)`);

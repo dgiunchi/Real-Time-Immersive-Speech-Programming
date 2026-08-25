@@ -172,9 +172,20 @@ const implicitScore = deriveImplicitBinaries({ targetInCurrentTaskRegion: true, 
 equal(implicitScore.taskSuccess, true, "implicit task success requires all four binaries");
 equal(deriveImplicitBinaries({ ...implicitScore, targetInCurrentTaskRegion: false }, true).taskSuccess, false,
     "a failed log-derived implicit binary prevents task success");
-equal(scoreL3({ padReached: "middle", goalPad: "middle", donePressed: true, repairInitiator: "system", qualityScore: 2 }).taskSuccess,
-    true, "L3 success combines named pad and explicit done commitment");
-const baselineL4 = scoreL4({ doorFullyOpen: true, participantInsideApproachRegion: true,
+// L3 is the ball-above-the-open-hand clarification task: success requires the
+// clarification to have been asked, not merely a correctly placed ball.
+equal(scoreL3({ clarificationAsked: true, statedHeightMeters: 0.3, spawnedHeightMeters: 0.3,
+    ballSpawned: true, spawnedAboveOpenHand: true, handRaised: true,
+    repairInitiator: "system", qualityScore: 2 }).taskSuccess,
+    true, "L3 success combines the asked clarification with a correctly placed ball");
+equal(scoreL3({ clarificationAsked: false, statedHeightMeters: 0.3, spawnedHeightMeters: 0.3,
+    ballSpawned: true, spawnedAboveOpenHand: true, handRaised: true,
+    repairInitiator: "none", qualityScore: 2 }).groundingFailure,
+    true, "L3 records a guessed height as a grounding failure even when the ball lands correctly");
+// L4 is the persistent proximity beacon: the trial-local door is retired, so
+// success now requires firing on approach and surviving a reset via memory.
+const baselineL4 = scoreL4({ beaconFiresOnApproach: true, survivesSceneReset: true,
+    reattachedFromMemory: true, dryRunEvidenceShown: false,
     consentGatePresented: false, consentGateOutcome: "none", qualityScore: 2 });
 equal(baselineL4.taskSuccess, true, "L4 baseline success does not normalize the intentionally absent consent gate");
 const partialL5 = scoreL5({ slowerStepsRevision: 2, resetAfterFinishRevision: 0,
