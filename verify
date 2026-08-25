@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Runs the full verification from anywhere in the repo, so it does not matter
+# whether you are at the root or in Server/. Identical on macOS and Windows
+# (use `bash verify` on Windows, or run the npm script directly).
+#
+#   ./verify              everything available
+#   ./verify --node       Node only, about 50 seconds
+#   ./verify --unity-only Unity only
+set -euo pipefail
+cd "$(dirname "$0")/Server"
+exec node scripts/verify-all.js "$@"

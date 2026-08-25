@@ -12,7 +12,7 @@
 //
 // Exits non-zero if anything fails, so it can gate a commit or a handover.
 
-const { spawnSync } = require("child_process");
+const { spawnSync, execSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -112,6 +112,23 @@ function runUnitySmokeTest() {
 // A skipped check is not a passed check. Reporting "all checks passed" when
 // everything was skipped is the same false confidence this script exists to
 // prevent elsewhere, so a skip is always named and never counted as success.
+// Returns the pid holding a TCP port, or null. Best effort and platform aware;
+// a failure to determine it is treated as "free" rather than blocking the run.
+function portOccupant(port) {
+    try {
+        if (process.platform === "win32") {
+            const out = execSync(`netstat -ano -p TCP | findstr LISTENING | findstr :${port}`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+            const match = /\s(\d+)\s*$/m.exec(out.trim());
+            return match ? match[1] : null;
+        }
+        const out = execSync(`lsof -nP -iTCP:${port} -sTCP:LISTEN -t`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+        const pid = out.trim().split(/\s+/)[0];
+        return pid || null;
+    } catch {
+        return null;
+    }
+}
+
 function summarise() {
     const failed = results.filter((item) => item.ok === false);
     const passed = results.filter((item) => item.ok === true);
@@ -144,6 +161,18 @@ function main() {
     }
 
     console.log("Node");
+
+    // A leftover process on the Ubiq port makes the integration test fail with no
+    // usable explanation. Say so up front rather than letting it look like a code
+    // failure, since the cause is environmental and the fix is one command.
+    const portHolder = portOccupant(8009);
+    if (portHolder) {
+        record("ubiq port 8009 is free", false,
+            `held by pid ${portHolder}; stop it first: kill ${portHolder}`);
+    } else {
+        record("ubiq port 8009 is free", true);
+    }
+
     const npm = process.platform === "win32" ? "npm.cmd" : "npm";
     for (const [name, script] of [
         ["deterministic suites", "test"],

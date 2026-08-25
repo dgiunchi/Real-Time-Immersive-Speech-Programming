@@ -109,3 +109,8 @@ Unity/Recordings/
 
 # Local study-audit materials (prompts, working papers, and reviewer context)
 _audit_context/
+
+# Unity editor scratch and generated build output
+Unity/.utmp/
+Unity/Unity.slnx
+Unity/Build/
