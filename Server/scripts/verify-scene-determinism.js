@@ -66,7 +66,7 @@ function installLooksComplete(dir) {
 
 function editorPath(version) {
     const base = editorBase();
-    const candidates = [version, `${version}-arm64`, `${version}-x86_64`]
+    const candidates = [version, `${version}-arm64`, `${version}-x86_64`, ...(process.env.AGENTICXR_UNITY_VERSION_OVERRIDE ? [process.env.AGENTICXR_UNITY_VERSION_OVERRIDE] : [])]
         .map((name) => path.join(base, name))
         .filter((dir) => fs.existsSync(binaryFor(dir)))
         // An interrupted Hub download leaves the binary and the modules in place
@@ -165,9 +165,14 @@ function main() {
     const committedSha = gitShaOfScene();
     const beforeSha = fs.existsSync(SCENE_PATH) ? sha256(SCENE_PATH) : null;
 
-    // Delete the scene so a build that does not run cannot pass by leaving the
-    // previous file in place.
-    if (fs.existsSync(SCENE_PATH)) fs.unlinkSync(SCENE_PATH);
+    // The scene is deliberately NOT deleted between builds. AgenticXRStudySceneBuilder
+    // registers the scene in EditorBuildSettings by its imported asset GUID, and
+    // deleting the asset destroys that GUID, so the builder throws
+    // "The study scene was not registered first, enabled, and with its imported GUID."
+    //
+    // A build that never ran is detected instead by the scene's modification time
+    // being unchanged, which catches the same failure without breaking the build.
+    const mtimeBefore = fs.existsSync(SCENE_PATH) ? fs.statSync(SCENE_PATH).mtimeMs : 0;
 
     const buildOne = runBuild(binary, path.join(logDir, "build1.log"));
     checks.push({
@@ -183,10 +188,18 @@ function main() {
         actual: fs.existsSync(SCENE_PATH) ? "written" : "absent",
     });
 
-    if (!fs.existsSync(SCENE_PATH)) {
+    const rewrittenOne = fs.existsSync(SCENE_PATH) && fs.statSync(SCENE_PATH).mtimeMs !== mtimeBefore;
+    checks.push({ id: "build-1-rewrote-scene", ok: rewrittenOne, expected: "scene rewritten",
+        actual: rewrittenOne ? "rewritten" : "unchanged; the build did not write it" });
+
+    // Stop here on a failed build. Hashing the artefacts of a build that threw
+    // would compare partial output and could report a determinism failure that
+    // is really a build failure.
+    if (buildOne.status !== 0 || !rewrittenOne) {
         const restored = restoreSceneFromGit();
         checks.push({ id: "scene-restored-after-failure", ok: restored, expected: "restored from git", actual: restored ? "restored" : "FAILED, restore by hand" });
-        result.remedy = `Build 1 did not produce a scene. Inspect ${path.join(logDir, "build1.log")}.`;
+        result.remedy = `Build 1 failed (exit ${buildOne.status}). Determinism was not evaluated, because comparing the output of a failed build is meaningless. Inspect ${path.join(logDir, "build1.log")}.`;
+        result.checks = checks;
         console.log(JSON.stringify(result, null, 2));
         process.exit(1);
     }
@@ -195,7 +208,7 @@ function main() {
     const errorsOne = compileErrors(path.join(logDir, "build1.log"));
     checks.push({ id: "build-1-no-compile-errors", ok: errorsOne === 0, expected: 0, actual: errorsOne });
 
-    fs.unlinkSync(SCENE_PATH);
+    const mtimeAfterOne = fs.statSync(SCENE_PATH).mtimeMs;
     const buildTwo = runBuild(binary, path.join(logDir, "build2.log"));
     checks.push({
         id: "build-2-exit-status",
@@ -204,11 +217,15 @@ function main() {
         actual: buildTwo.timedOut ? "timed out after 30m" : (buildTwo.error || buildTwo.status),
     });
 
-    if (!fs.existsSync(SCENE_PATH)) {
+    const rewrittenTwo = fs.existsSync(SCENE_PATH) && fs.statSync(SCENE_PATH).mtimeMs !== mtimeAfterOne;
+    checks.push({ id: "build-2-rewrote-scene", ok: rewrittenTwo, expected: "scene rewritten",
+        actual: rewrittenTwo ? "rewritten" : "unchanged; the build did not write it" });
+
+    if (buildTwo.status !== 0 || !rewrittenTwo) {
         const restored = restoreSceneFromGit();
-        checks.push({ id: "build-2-produced-scene", ok: false, expected: "scene written", actual: "absent" });
         checks.push({ id: "scene-restored-after-failure", ok: restored, expected: "restored from git", actual: restored ? "restored" : "FAILED, restore by hand" });
-        result.remedy = `Build 2 did not produce a scene. Inspect ${path.join(logDir, "build2.log")}.`;
+        result.remedy = `Build 2 failed (exit ${buildTwo.status}). Determinism was not evaluated. Inspect ${path.join(logDir, "build2.log")}.`;
+        result.checks = checks;
         console.log(JSON.stringify(result, null, 2));
         process.exit(1);
     }

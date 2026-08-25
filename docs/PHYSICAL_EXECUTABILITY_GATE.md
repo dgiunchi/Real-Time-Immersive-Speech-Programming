@@ -47,3 +47,52 @@ closed on the three ways a hand run produces a false PASS:
 It also compares the rebuild against the committed scene, so a rebuild that is
 self consistent but differs from what is in the repository is reported rather
 than silently accepted.
+
+## First recorded run
+
+Run on macOS with editor `6000.3.19f1` and `--allow-version-mismatch`, because the
+pinned `6000.3.9f1` was not installable at the time. The result is therefore
+recorded as `gateValid: false` and is not evidence for the pinned method version.
+
+| Check | Result |
+|---|---|
+| build 1 exit status | 0 |
+| build 1 rewrote the scene | yes |
+| build 1 compile errors | 0 |
+| build 2 exit status | 0 |
+| build 2 rewrote the scene | yes |
+| two builds byte identical | **yes** |
+| rebuild matches the committed scene | **no** |
+
+Two things follow.
+
+The builder is deterministic within a run: two consecutive builds produced
+identical bytes. That part of the gate holds.
+
+The rebuild does not reproduce the committed scene. The committed scene was
+generated on Windows with `6000.3.9f1`; this rebuild used macOS with
+`6000.3.19f1`. Editor version, host platform, and the possibility that the
+committed scene predates the current builder source are all plausible causes, and
+they cannot be separated without the pinned editor. Re-run the gate with
+`6000.3.9f1` installed before drawing any conclusion. If it still differs there,
+the committed scene is stale relative to the builder and should be regenerated.
+
+### Two ways this check can lie, both now handled
+
+The builder registers the scene in `EditorBuildSettings` by its **imported asset
+GUID**. Deleting the scene before a build to prove the build really ran destroys
+that GUID, and the builder throws:
+
+```
+InvalidOperationException: The study scene was not registered first, enabled,
+and with its imported GUID.
+```
+
+So the script does not delete the scene. It records the modification time and
+requires the file to have been rewritten, which detects a build that never ran
+without breaking the build.
+
+A build that throws still leaves a partial scene on disk. Hashing that and
+comparing it to another partial scene compares two failures and can report a
+determinism problem that is really a build problem. The script now treats a
+non-zero exit as fatal and stops before any comparison.
