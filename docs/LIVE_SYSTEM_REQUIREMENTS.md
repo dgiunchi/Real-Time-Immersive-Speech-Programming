@@ -218,6 +218,41 @@ Two consequences for the protocol:
       next trial starts, which lands on acknowledgement latency and perceived
       synchronicity, both of which are measured outcomes.
 
+## 6c. The study target is Windows, and that excludes a macOS host
+
+`Unity/Assets/Editor/AgenticXRStudyBuildSetup.cs` states the target in its own
+summary and configures it accordingly:
+
+> The initial study target is Windows x64 with a Quest headset over Link/Air Link.
+
+It assigns the OpenXR loader to `BuildTargetGroup.Standalone`. The rehearsal
+checklist matches: one of its rows is "Link cable disconnect / Air Link drop".
+
+Meta Quest Link has no macOS client. A Mac therefore cannot drive a Quest from
+the Unity Editor or from a standalone player, so **no row of
+`docs/vr-study-rehearsal-checklist.md` can be completed on a macOS host**,
+regardless of Unity version, disk space or Android modules.
+
+What a Mac can still do, and has done:
+
+- [x] Run the full Node suite, the mock integration and the synthetic pilot.
+- [x] Run the scene builder and the two build determinism check in batch mode.
+- [x] Reach the Quest over the LAN, open TCP `8009`, and have the Ubiq room
+      server accept connections from the headset (section 6b).
+
+What requires a Windows host:
+
+- [ ] Every physical rehearsal row.
+- [ ] Any live L1 to L5 interaction in the headset.
+- [ ] Quest microphone, push to talk, and the world space consent panel.
+
+There is an `Assets/XR/Loaders/OculusLoader.asset` in the project, so a
+standalone Android build is not structurally impossible. It is not configured,
+has no build entry point, and switching the study to a standalone target would
+change the platform the protocol was validated on. That is a scientific design
+decision, not a packaging change, and it would need the scene, determinism and
+latency evidence regenerated on the new target.
+
 ## 7. Continuous and predictive features
 
 The long-lived activity observer starts by default. Proactive model calls and idle
