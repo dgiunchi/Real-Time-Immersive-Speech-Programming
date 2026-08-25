@@ -66,14 +66,38 @@ function scoreL4({ doorFullyOpen, participantInsideApproachRegion, consentGatePr
         consentGatePresented: Boolean(consentGatePresented), consentGateOutcome, qualityScore };
 }
 
-function scoreL5({ slowerStepsRevision, resetAfterFinishRevision, sequenceRuns, priorRequirementRestatementCount }) {
+// L5 chains terminate in the same five states as L4, but scoreL5 recorded none
+// of them. A trial that timed out, one the participant rejected and one that was
+// cancelled all scored identically, with sequenceRuns: false as the only signal.
+// That conflates "the agent produced a sequence that does not run" with "the
+// session ended before it produced one", which are different outcomes for H1's
+// task success measure across L3 to L5.
+//
+// The outcome is recorded rather than folded into taskSuccess. Whether a trial
+// that never reached a decision can still count as a success is a scientific
+// design decision, so reachedDecision is reported alongside and the existing
+// success rule is left exactly as it was.
+function scoreL5({ slowerStepsRevision, resetAfterFinishRevision, sequenceRuns, priorRequirementRestatementCount,
+    conversationTerminalState = null }) {
     for (const score of [slowerStepsRevision, resetAfterFinishRevision])
         if (![0, 1, 2].includes(score)) throw new Error("each L5 revision score must be 0, 1, or 2");
     if (!Number.isInteger(priorRequirementRestatementCount) || priorRequirementRestatementCount < 0)
         throw new Error("priorRequirementRestatementCount must be a non-negative integer");
+    // The raw terminal state is taken, not a pre-mapped outcome. timed_out maps
+    // to rejected for scoring, so mapping first would make a timeout
+    // indistinguishable from a participant who actively rejected, and
+    // reachedDecision would wrongly report true for a silence.
+    const conversationOutcome = conversationTerminalState === null
+        ? "none"
+        : consentGateOutcomeFor(conversationTerminalState);
     return {
         taskSuccess: slowerStepsRevision >= 1 && resetAfterFinishRevision >= 1 && sequenceRuns === true,
         slowerStepsRevision, resetAfterFinishRevision, sequenceRuns: Boolean(sequenceRuns), priorRequirementRestatementCount,
+        conversationTerminalState, conversationOutcome,
+        // True only when the participant actually decided. A timeout, a cancel
+        // and an undo are not decisions, and an analysis that treats them as
+        // rejections should do so explicitly rather than by accident.
+        reachedDecision: conversationTerminalState === "approved" || conversationTerminalState === "rejected",
     };
 }
 
