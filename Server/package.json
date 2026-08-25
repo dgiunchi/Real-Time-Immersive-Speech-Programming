@@ -10,6 +10,8 @@
     "dev:mock-unity-peer": "node mcp/unity_scene_bridge/mock_unity_peer.js",
     "start:orchestrator": "node orchestrator/app.js",
     "test": "node tests/cache_contract_test.js && node tests/backend_equivalence_test.js && node tests/provider_tool_surface_test.js && node tests/agent_loop_test.js && node tests/provider_adapters_test.js && node tests/l4_consent_gate_test.js && node tests/conflict_policy_test.js && node tests/object_ownership_test.js && node tests/pipeline_policy_test.js && node tests/l5_conversation_test.js",
+    "verify:all": "node scripts/verify-all.js",
+    "verify:unity": "node scripts/verify-all.js --unity-only",
     "test:backends": "node tests/backend_equivalence_test.js",
     "test:providers": "node tests/provider_tool_surface_test.js",
     "test:agent-loop": "node tests/agent_loop_test.js",

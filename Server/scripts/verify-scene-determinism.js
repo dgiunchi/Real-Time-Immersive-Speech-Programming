@@ -253,4 +253,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { pinnedEditorVersion, editorPath, installedEditors, sha256 };
+module.exports = { pinnedEditorVersion, editorPath, installedEditors, installLooksComplete, sha256 };
