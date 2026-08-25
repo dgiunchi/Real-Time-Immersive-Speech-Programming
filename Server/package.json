@@ -4,6 +4,7 @@
   "description": "Ubiq-Genie",
   "scripts": {
     "doctor": "node scripts/check-local-setup.js",
+    "start:room": "node scripts/start-room-server.js",
     "start:agenticxr": "node scripts/start-agenticxr.js",
     "start:code-runtime-generator": "node scripts/start-code-runtime-generator.js",
     "start:unity-scene-bridge": "node scripts/start-unity-scene-bridge.js",

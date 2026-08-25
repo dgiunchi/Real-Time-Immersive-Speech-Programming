@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using Ubiq.Networking;
 using Ubiq.Rooms;
 using UnityEngine;
@@ -72,6 +75,49 @@ namespace AgenticCache
         // file is simply not found. The launch intent crosses that boundary
         // reliably:
         //   adb shell am start -e ubiqHost 192.168.1.5:8009 -n <pkg>/<activity>
+        private const int DiscoveryPort = 8010;
+        private const string DiscoveryProbe = "AGENTICXR_DISCOVER";
+        private const string DiscoveryReplyPrefix = "AGENTICXR_HOST ";
+        private const int DiscoveryTimeoutMs = 1200;
+
+        // Broadcasts a probe and takes the first answer. Bounded by a short
+        // timeout so a network without a host costs a moment at startup rather
+        // than hanging the scene, and any failure is treated as "not found"
+        // rather than propagated: the scene can still fall back to what it was
+        // built with.
+        private static string FromLanDiscovery()
+        {
+            UdpClient client = null;
+            try
+            {
+                client = new UdpClient { EnableBroadcast = true };
+                client.Client.ReceiveTimeout = DiscoveryTimeoutMs;
+                var probe = Encoding.UTF8.GetBytes(DiscoveryProbe);
+                client.Send(probe, probe.Length, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort));
+
+                var deadline = DateTime.UtcNow.AddMilliseconds(DiscoveryTimeoutMs);
+                while (DateTime.UtcNow < deadline)
+                {
+                    var remote = new IPEndPoint(IPAddress.Any, 0);
+                    var response = Encoding.UTF8.GetString(client.Receive(ref remote)).Trim();
+                    if (response.StartsWith(DiscoveryReplyPrefix, StringComparison.Ordinal))
+                    {
+                        return response.Substring(DiscoveryReplyPrefix.Length).Trim();
+                    }
+                }
+                return null;
+            }
+            catch (Exception exception)
+            {
+                Debug.Log($"{Tag} no host answered on the local network ({exception.GetType().Name})");
+                return null;
+            }
+            finally
+            {
+                try { client?.Close(); } catch { /* closing is best effort */ }
+            }
+        }
+
         private static string FromLaunchIntent()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -108,6 +154,17 @@ namespace AgenticCache
             {
                 source = "launch intent extra 'ubiqHost'";
                 return fromIntent.Trim();
+            }
+
+            // Last, and the one that needs no configuration: ask the network.
+            // Baking an address in at build time works until the network changes
+            // and then fails silently, so discovery is preferred over any stored
+            // value and only an explicit override beats it.
+            var discovered = FromLanDiscovery();
+            if (!string.IsNullOrWhiteSpace(discovered))
+            {
+                source = "LAN discovery";
+                return discovered.Trim();
             }
 
             try
