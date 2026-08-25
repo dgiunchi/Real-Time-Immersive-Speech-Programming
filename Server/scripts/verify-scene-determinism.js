@@ -37,14 +37,52 @@ function pinnedEditorVersion() {
     return match[1];
 }
 
+function editorBase() {
+    if (process.platform === "darwin") return "/Applications/Unity/Hub/Editor";
+    if (process.platform === "win32") return "C:\\Program Files\\Unity\\Hub\\Editor";
+    return path.join(os.homedir(), "Unity/Hub/Editor");
+}
+
+function binaryFor(dir) {
+    if (process.platform === "darwin") return path.join(dir, "Unity.app/Contents/MacOS/Unity");
+    if (process.platform === "win32") return path.join(dir, "Editor", "Unity.exe");
+    return path.join(dir, "Editor", "Unity");
+}
+
+// Unity Hub installs the Apple Silicon editor under a "-arm64" suffixed directory,
+// so the pinned version can be present under more than one directory name. They
+// are the same editor version; only the installed modules differ. Prefer a variant
+// that actually has build modules, since an editor missing the project's build
+// target can prompt a platform switch on open.
+function installLooksComplete(dir) {
+    if (process.platform !== "darwin") return true;
+    const frameworks = path.join(dir, "Unity.app/Contents/Frameworks");
+    try {
+        return fs.readdirSync(frameworks).includes("libRadeonRays.dylib");
+    } catch {
+        return false;
+    }
+}
+
 function editorPath(version) {
-    if (process.platform === "darwin") {
-        return path.join("/Applications/Unity/Hub/Editor", version, "Unity.app/Contents/MacOS/Unity");
-    }
-    if (process.platform === "win32") {
-        return path.join("C:\\Program Files\\Unity\\Hub\\Editor", version, "Editor", "Unity.exe");
-    }
-    return path.join(os.homedir(), "Unity/Hub/Editor", version, "Editor", "Unity");
+    const base = editorBase();
+    const candidates = [version, `${version}-arm64`, `${version}-x86_64`]
+        .map((name) => path.join(base, name))
+        .filter((dir) => fs.existsSync(binaryFor(dir)))
+        // An interrupted Hub download leaves the binary and the modules in place
+        // while the editor frameworks are incomplete. Unity then dies at dynamic
+        // link time before it can write a log file, which reads as a null exit
+        // status and an empty log rather than as a broken install. Skip those.
+        .filter((dir) => installLooksComplete(dir));
+    if (candidates.length === 0) return path.join(base, version, process.platform === "darwin" ? "Unity.app/Contents/MacOS/Unity" : "Unity");
+    const withModules = candidates.find((dir) => {
+        try {
+            return fs.readdirSync(path.join(dir, "PlaybackEngines")).length > 0;
+        } catch {
+            return false;
+        }
+    });
+    return binaryFor(withModules || candidates[0]);
 }
 
 function installedEditors() {
