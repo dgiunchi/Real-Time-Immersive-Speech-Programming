@@ -629,16 +629,31 @@ function renderPlan(res) {
   if (!el) return;
   const plan = res && res.plan;
   if (!plan || !plan.length) { el.innerHTML = ""; return; }
+  // One condition per participant, read from the allocation the server actually
+  // committed rather than from the dropdown, which is a request and not a fact.
+  //
+  // This used to render "N conditions in order A -> B -> C" from two variables,
+  // `order` and `ci`, that are declared nowhere in this file - leftovers from an
+  // earlier within-subjects design. Reading them threw a ReferenceError on every
+  // call, which rejected loadPlan() before it reached the lines that snap the
+  // condition dropdown back to the participant's real allocation and log
+  // "already assigned condition X - keeping it".
+  //
+  // So the panel went on showing whichever condition had just been picked while
+  // the server kept sending the committed one to the headset, and the plan box
+  // stayed permanently blank. That is the "it says it switched but the headset
+  // is still on B" report.
+  var alloc = (res && res.allocation) || {};
+  var shown = alloc.condition || plan[0].condition;
   el.innerHTML =
     '<div class="sub" style="margin-bottom:6px;">Session for <b>' + res.participantId +
-      '</b> \u2014 ' + order.length + ' conditions in order ' +
-      order.map(function (c, i) {
-        return '<span class="pill ' + c + '" style="' +
-          (i === ci ? '' : 'opacity:.4;') + '">' + c + '</span>';
-      }).join(' \u2192 ') +
+      '</b> \u2014 condition ' +
+      '<span class="pill ' + shown + '">' + shown + '</span>' +
+      (alloc.existing
+        ? ' <b style="color:var(--warn);">already assigned \u2014 cannot be changed</b>'
+        : '') +
     '</div>' +
-    '<div class="sub" style="margin-bottom:6px;">Now running condition <b>' +
-      (order[ci] || plan[0].condition) + '</b>, tasks in this order:</div>' +
+    '<div class="sub" style="margin-bottom:6px;">Tasks in this order:</div>' +
     plan.map(function (p) {
       return '<div style="font-size:13px;padding:6px 0;border-top:1px solid var(--line);">' +
         '<b>' + p.block + '. ' + p.taskName + '</b> \u00b7 ' + p.variant.toUpperCase() +
