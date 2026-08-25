@@ -20,6 +20,10 @@ class PersonPolicyStore {
         this.filePath = filePath || path.join(__dirname, "data", "person_profiles.json");
         this.sessions = new Map();
         this.profiles = new Map();
+        // objectId -> sessionId of the session that first claimed it. Kept in
+        // memory only: ownership is meaningful within a run, and persisting it
+        // would let a stale claim from an earlier run block a later session.
+        this.objectOwners = new Map();
         this._load();
     }
 
@@ -89,14 +93,66 @@ class PersonPolicyStore {
         return binding.persistenceConsent && binding.personKey ? this.profiles.get(binding.personKey) : null;
     }
 
-    getPolicy({ sessionId } = {}) {
+    // Ownership is claimed by the first session to author an object and is not
+    // transferable, so a later session cannot take over another session's work
+    // by acting on it. Objects nobody has claimed stay unowned and any session
+    // may claim them, which is what makes a single participant session behave
+    // exactly as before.
+    claimObject({ sessionId, objectId }) {
+        if (!sessionId || !objectId) throw new Error("claimObject requires sessionId and objectId");
+        const existing = this.objectOwners.get(objectId);
+        if (existing && existing !== sessionId) {
+            return { claimed: false, objectId, ownerSessionId: existing };
+        }
+        this.objectOwners.set(objectId, sessionId);
+        return { claimed: true, objectId, ownerSessionId: sessionId };
+    }
+
+    ownerOf(objectId) {
+        return this.objectOwners.get(objectId) || null;
+    }
+
+    // OWNER_PERMISSIONS is what the stub previously granted unconditionally.
+    // A session acting on another session's object keeps the read and its own
+    // undo, but cannot confirm or persist over someone else's work.
+    roleFor({ sessionId, targetObjectId }) {
+        if (!targetObjectId) return "owner";
+        const owner = this.objectOwners.get(targetObjectId);
+        if (!owner || owner === sessionId) return "owner";
+        return "observer";
+    }
+
+    permissionsFor(role) {
+        return role === "owner"
+            ? ["select", "confirm", "reject", "undo", "persist"]
+            : ["select", "reject"];
+    }
+
+    // Throws rather than returning, for the committing path.
+    assertObjectPermission({ sessionId, targetObjectId, permission }) {
+        const role = this.roleFor({ sessionId, targetObjectId });
+        const permitted = this.permissionsFor(role);
+        if (!permitted.includes(permission)) {
+            const owner = this.ownerOf(targetObjectId);
+            throw new Error(
+                `session '${sessionId}' has role '${role}' on '${targetObjectId}' and may not '${permission}'` +
+                (owner ? `; it is owned by '${owner}'` : "")
+            );
+        }
+        return { role, permission, targetObjectId, ownerSessionId: this.ownerOf(targetObjectId) };
+    }
+
+    getPolicy({ sessionId, targetObjectId = null } = {}) {
         const session = this._sessionPolicy(sessionId);
         const persistent = this._profileForSession(sessionId);
+        const role = this.roleFor({ sessionId, targetObjectId });
+        const ownerSessionId = targetObjectId ? this.ownerOf(targetObjectId) : null;
         return {
             sessionId: sessionId || "default", personKey: session.personKey || null,
             persistenceConsent: !!session.persistenceConsent,
-            role: "owner", permissions: ["select", "confirm", "reject", "undo", "persist"],
-            consent: { sharedObjectMutation: true, crossSessionLearning: !!session.persistenceConsent },
+            targetObjectId, ownerSessionId,
+            role, permissions: this.permissionsFor(role),
+            consent: { sharedObjectMutation: role === "owner", crossSessionLearning: !!session.persistenceConsent },
             priorDecisions: session.priorDecisions,
             learned: persistent ? persistent.learned : session.learned,
             retentionUntil: persistent ? persistent.retentionUntil : null,
