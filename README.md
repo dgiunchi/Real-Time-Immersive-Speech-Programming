@@ -375,3 +375,49 @@ General Aspects to be tackled
 <img width="556" height="488" alt="스크린샷 2026-08-21 230044" src="https://github.com/user-attachments/assets/bc18394f-c7b4-4a22-b157-546e3c1fcf6d" />
 <img width="537" height="421" alt="스크린샷 2026-08-21 230022" src="https://github.com/user-attachments/assets/12d7afb2-ca3f-4b28-998d-d129bb5d3507" />
 
+
+## Verifying the project
+
+One command runs everything that does not need an API key, a headset, or a
+network beyond localhost. It works the same on macOS and Windows.
+
+```bash
+cd Server
+npm install
+npm run verify:all
+```
+
+| Flag | What it runs | Roughly |
+|---|---|---|
+| (none) | Node suites, mock integration, synthetic pilot, task readiness, Unity smoke test | 1 to 2 minutes |
+| `-- --node` | everything except Unity | 50 seconds |
+| `-- --unity-only` | the Unity smoke test alone | 20 seconds warm |
+
+It prints one line per check and a single verdict, and exits non-zero if anything
+failed or if nothing ran. A skipped check is never reported as a pass.
+
+The Unity check compiles generated C# and attaches it to a live GameObject, then
+confirms the capability allowlist blocks `System.IO`, `System.Net`,
+`System.Reflection` and `System.Diagnostics`. Roslyn needs a JIT, so it runs in
+the Editor where Mono provides one. It is not evidence about a standalone IL2CPP
+build, where an assembly cannot be loaded at runtime at all.
+
+If the pinned editor is not installed, the Unity check is skipped rather than
+failed. To run it against a different installed editor, knowing the result is not
+evidence for the pinned version:
+
+```bash
+AGENTICXR_UNITY_VERSION_OVERRIDE=6000.3.19f1 npm run verify:all
+```
+
+The command also checks that `ProjectVersion.txt` still matches what is
+committed. Opening the project with a newer editor rewrites it, which silently
+changes what "the pinned version" means and would invalidate any determinism
+evidence taken afterwards.
+
+### Platform note
+
+Everything above runs identically on macOS and Windows. The physical VR
+rehearsal in `docs/vr-study-rehearsal-checklist.md` does not: the study targets
+Windows x64 with the Quest over Link, and Quest Link has no macOS client. See
+`docs/LIVE_SYSTEM_REQUIREMENTS.md` section 6c.
