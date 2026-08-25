@@ -75,7 +75,12 @@ namespace AgenticXR.Study
             if (Camera.main != null)
             {
                 root.transform.SetParent(Camera.main.transform, false);
-                root.transform.localPosition = new Vector3(0f, 0f, 1.4f);
+                // Raised clear of the consent panel, which sits at y -0.15 and
+                // z 1.35, five centimetres nearer the eye. All three world-space
+                // panels toggle independently, so the card and the consent panel
+                // can be visible at once; at the same height the nearer one
+                // simply occludes the card and the task text becomes unreadable.
+                root.transform.localPosition = new Vector3(0f, 0.42f, 1.7f);
                 root.transform.localScale = Vector3.one * 0.0012f;
             }
             cardText = CreateText(root.transform, "Card", new Vector2(0, 50), new Vector2(790, 470), 29);
