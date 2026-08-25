@@ -6,8 +6,9 @@
 //
 // Nothing here needs an API key, a headset, or a network beyond localhost.
 //
-//   npm run verify:all              run everything available
-//   npm run verify:all -- --node    skip Unity (fast, a few seconds)
+//   npm run verify:all                    run everything available
+//   npm run verify:all -- --node          Node only, about 50 seconds
+//   npm run verify:all -- --unity-only    Unity only
 //
 // Exits non-zero if anything fails, so it can gate a commit or a handover.
 
@@ -38,23 +39,54 @@ function runNode(name, args) {
     return result.status === 0;
 }
 
-function pinnedEditorVersion() {
-    const match = /m_EditorVersion:\s*(\S+)/.exec(fs.readFileSync(PROJECT_VERSION, "utf8"));
+function readEditorVersion(text) {
+    const match = /m_EditorVersion:\s*(\S+)/.exec(text || "");
     return match ? match[1] : null;
+}
+
+function pinnedEditorVersion() {
+    return readEditorVersion(fs.readFileSync(PROJECT_VERSION, "utf8"));
+}
+
+// Opening the project with a newer editor silently rewrites ProjectVersion.txt,
+// so "the pinned version" quietly becomes whatever was last used. Every check
+// afterwards then reports success against the wrong editor, and committing that
+// file loses the pin for everyone. Compare the working tree against what is
+// committed and say so loudly.
+function committedEditorVersion() {
+    const shown = spawnSync("git", ["show", "HEAD:Unity/ProjectSettings/ProjectVersion.txt"],
+        { cwd: SERVER, encoding: "utf8" });
+    return shown.status === 0 ? readEditorVersion(shown.stdout) : null;
 }
 
 function runUnitySmokeTest() {
     const pinned = pinnedEditorVersion();
+    const committed = committedEditorVersion();
     const override = process.env.AGENTICXR_UNITY_VERSION_OVERRIDE;
+
+    if (committed && pinned !== committed) {
+        record("unity editor pin is intact", false,
+            `ProjectVersion.txt says ${pinned} but ${committed} is committed; a newer editor rewrote it. ` +
+            "Restore it with: git checkout -- Unity/ProjectSettings/ProjectVersion.txt");
+        return false;
+    }
+    record("unity editor pin is intact", true, `${pinned}`);
+
     const binary = editorPath(pinned);
+
+    // .../<editor>/Unity.app/Contents/MacOS/Unity -> .../<editor>
+    const editorDir = process.platform === "darwin"
+        ? path.dirname(path.dirname(path.dirname(path.dirname(binary))))
+        : path.dirname(path.dirname(binary));
 
     if (!fs.existsSync(binary)) {
         record("unity runtime compile and attach", null,
-            `no usable editor for ${pinned}; set AGENTICXR_UNITY_VERSION_OVERRIDE to an installed one`);
+            `editor ${override || pinned} is not installed; install it, or set AGENTICXR_UNITY_VERSION_OVERRIDE to one that is`);
         return null;
     }
-    if (!override && !installLooksComplete(path.dirname(path.dirname(path.dirname(binary))))) {
-        record("unity runtime compile and attach", null, "the installed editor looks incomplete");
+    if (!installLooksComplete(editorDir)) {
+        record("unity runtime compile and attach", null,
+            `the install at ${editorDir} is incomplete; reinstall it through Unity Hub`);
         return null;
     }
 
@@ -77,9 +109,39 @@ function runUnitySmokeTest() {
     return ok;
 }
 
+// A skipped check is not a passed check. Reporting "all checks passed" when
+// everything was skipped is the same false confidence this script exists to
+// prevent elsewhere, so a skip is always named and never counted as success.
+function summarise() {
+    const failed = results.filter((item) => item.ok === false);
+    const passed = results.filter((item) => item.ok === true);
+    const skipped = results.filter((item) => item.ok === null);
+
+    console.log("");
+    if (failed.length > 0) {
+        console.log(`${failed.length} CHECK(S) FAILED, ${passed.length} passed${skipped.length ? `, ${skipped.length} skipped` : ""}`);
+    } else if (passed.length === 0) {
+        console.log(`NOTHING WAS VERIFIED: every check was skipped (${skipped.length})`);
+    } else if (skipped.length > 0) {
+        console.log(`${passed.length} passed, ${skipped.length} SKIPPED, so this is not a full verification`);
+        for (const item of skipped) console.log(`  skipped: ${item.name} (${item.detail})`);
+    } else {
+        console.log(`ALL ${passed.length} CHECKS PASSED`);
+    }
+    // A skip is not a failure, but a run where nothing ran must not exit 0.
+    process.exit(failed.length === 0 && passed.length > 0 ? 0 : 1);
+}
+
 function main() {
     const nodeOnly = process.argv.includes("--node");
+    const unityOnly = process.argv.includes("--unity-only");
     console.log("AgenticXR verification\n");
+
+    if (unityOnly) {
+        console.log("Unity");
+        runUnitySmokeTest();
+        summarise();
+    }
 
     console.log("Node");
     const npm = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -105,11 +167,7 @@ function main() {
         console.log("\nUnity\n  SKIP  --node was passed");
     }
 
-    const failed = results.filter((item) => item.ok === false);
-    const skipped = results.filter((item) => item.ok === null);
-    console.log(`\n${failed.length === 0 ? "ALL CHECKS PASSED" : `${failed.length} CHECK(S) FAILED`}` +
-        `${skipped.length ? `, ${skipped.length} skipped` : ""}`);
-    process.exit(failed.length === 0 ? 0 : 1);
+    summarise();
 }
 
 if (require.main === module) main();
