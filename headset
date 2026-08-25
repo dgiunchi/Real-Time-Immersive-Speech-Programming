@@ -18,6 +18,9 @@ APK="Unity/Build/Quest/AgenticXRStudy.apk"
 lan_ip() {
   case "$(uname -s)" in
     Darwin) ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null ;;
+    MINGW*|MSYS*|CYGWIN*)
+      # Git Bash on Windows: ipconfig is the Windows one, not the macOS one.
+      ipconfig 2>/dev/null | grep -A4 -i "wireless\|ethernet" | grep -i "IPv4" | head -1 | awk -F: '{gsub(/ /,"",$2); print $2}' ;;
     *) hostname -I 2>/dev/null | awk '{print $1}' ;;
   esac
 }
@@ -34,9 +37,20 @@ IP="$(lan_ip)"
 
 if [ "${1:-}" != "--no-build" ]; then
   EDITOR="${AGENTICXR_UNITY_VERSION_OVERRIDE:-$(grep -o 'm_EditorVersion: .*' Unity/ProjectSettings/ProjectVersion.txt | awk '{print $2}')}"
-  UNITY="/Applications/Unity/Hub/Editor/$EDITOR/Unity.app/Contents/MacOS/Unity"
-  [ -x "$UNITY" ] || UNITY="/Applications/Unity/Hub/Editor/$EDITOR-arm64/Unity.app/Contents/MacOS/Unity"
-  [ -x "$UNITY" ] || { echo "Unity $EDITOR not installed. Set AGENTICXR_UNITY_VERSION_OVERRIDE to one that is."; exit 1; }
+  # Unity Hub lays editors out differently per platform, and on Apple Silicon it
+  # may suffix the directory with -arm64. Checked in order rather than assumed,
+  # so this script is usable from Windows (Git Bash or WSL) as well as macOS.
+  UNITY=""
+  for candidate in \
+    "/Applications/Unity/Hub/Editor/$EDITOR/Unity.app/Contents/MacOS/Unity" \
+    "/Applications/Unity/Hub/Editor/$EDITOR-arm64/Unity.app/Contents/MacOS/Unity" \
+    "/c/Program Files/Unity/Hub/Editor/$EDITOR/Editor/Unity.exe" \
+    "/mnt/c/Program Files/Unity/Hub/Editor/$EDITOR/Editor/Unity.exe" \
+    "C:/Program Files/Unity/Hub/Editor/$EDITOR/Editor/Unity.exe" \
+    "$HOME/Unity/Hub/Editor/$EDITOR/Editor/Unity"; do
+    [ -x "$candidate" ] && { UNITY="$candidate"; break; }
+  done
+  [ -n "$UNITY" ] || { echo "Unity $EDITOR not found. Set AGENTICXR_UNITY_VERSION_OVERRIDE to an installed version."; exit 1; }
   echo "==> Building APK with $EDITOR (first build is slow, later ones are cached)"
   rm -f Unity/Temp/UnityLockfile
   # Log to a file, never a pipe: piping loses Unity's exit status.
