@@ -97,8 +97,16 @@ namespace DreamCodeVR2.SceneContext
                 ,created_by_action_id = editableObject.GetComponent<RuntimeAuthoringMetadata>()?.createdByActionId
                 ,created_during_task_id = editableObject.GetComponent<RuntimeAuthoringMetadata>()?.createdDuringTaskId
                 ,predefined_voice_commands = editableObject.GetComponent<VoiceCommandCapabilities>()?.predefinedVoiceActions
+                ,predefined_presets = editableObject.GetComponent<VoiceCommandCapabilities>()?.predefinedPresets
                 ,editable_affordances = new[] { "grabbable", "movable", "interactable", "gravity_enabled", "kinematic", "collision_enabled" }
                 ,protected_for_current_task = IsProtectedForCurrentTask(editableObject)
+                ,is_open = ResolveOpenState(editableObject)
+                ,is_locked = editableObject.GetComponent<DreamCodeVR2.Quest.QuestLockController>()?.IsLocked
+                ,required_key_id = editableObject.GetComponent<DreamCodeVR2.Quest.QuestLockController>()?.requiredKeyId
+                ,associated_target_object_id = editableObject.GetComponent<DreamCodeVR2.Quest.QuestLockController>()?.associatedTargetObjectId
+                ,is_aligned = editableObject.GetComponent<DreamCodeVR2.Quest.QuestPaintingController>()?.IsAligned
+                ,is_lamp_active = editableObject.GetComponent<DreamCodeVR2.Quest.QuestLampController>()?.IsActive
+                ,placement_anchor_ids = BuildPlacementAnchors(editableObject)
             };
         }
 
@@ -255,6 +263,18 @@ namespace DreamCodeVR2.SceneContext
             var task=FindFirstObjectByType<DreamCodeVR2.Quest.QuestRuntimeState>()?.GetCurrentTask();
             if(task?.protectedDuringTask==null)return false;
             return Array.Exists(task.protectedDuringTask,id=>id==editableObject.objectId);
+        }
+
+        private static bool? ResolveOpenState(AIEditableObject editableObject)
+        {
+            var drawer=editableObject.GetComponent<ExperimentalDrawerController>(); if(drawer) return drawer.IsOpen;
+            var door=editableObject.GetComponent<DreamCodeVR2.Quest.QuestDoorController>(); return door ? door.IsOpen : null;
+        }
+
+        private static string[] BuildPlacementAnchors(AIEditableObject editableObject)
+        {
+            var values=editableObject.GetComponentsInChildren<AuthoringAnchor>(true); if(values==null||values.Length==0)return null;
+            return values.Where(anchor=>anchor&&!string.IsNullOrWhiteSpace(anchor.anchorId)).Select(anchor=>anchor.anchorId).ToArray();
         }
 
         private static int CompareObjects(SceneObjectSummary left, SceneObjectSummary right)

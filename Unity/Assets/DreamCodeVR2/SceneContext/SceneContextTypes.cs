@@ -75,8 +75,17 @@ namespace DreamCodeVR2.SceneContext
         public string created_by_action_id;
         public string created_during_task_id;
         public string[] predefined_voice_commands;
+        public string[] predefined_presets;
         public string[] editable_affordances;
         public bool protected_for_current_task;
+        // Optional runtime world-state fields. Existing consumers can ignore them.
+        public bool? is_open;
+        public bool? is_locked;
+        public string required_key_id;
+        public string associated_target_object_id;
+        public bool? is_aligned;
+        public bool? is_lamp_active;
+        public string[] placement_anchor_ids;
     }
 
     [Serializable]

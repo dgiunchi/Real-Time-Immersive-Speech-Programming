@@ -47,7 +47,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         public string questId; public string questVariant; public string taskId; public string eventType;
         public string[] objectIds; public string actionId; public bool success; public float latency; public string numericMetadata;
     }
-    [Serializable] public class AuthoringEnvelope { public string type; public AuthoringAction action; public PredefinedVoiceCommand command; public string command_id; public string action_id; public string reason; public NextTaskSpec task; public string task_id; public string status; public bool confirmation_required; public string interpretation; public string expected_effect; public string target_object_id; }
+    [Serializable] public class AuthoringEnvelope { public string type; public AuthoringAction action; public PredefinedVoiceCommand command; public string command_id; public string action_id; public string reason; public ServerNextTaskDto task; public string task_id; public string status; public bool confirmation_required; public string interpretation; public string expected_effect; public string target_object_id; }
     [Serializable] public class PredefinedVoiceCommand
     {
         [JsonProperty("command_id")] public string commandId;
@@ -71,6 +71,60 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         [JsonProperty("protected_objects")] public string[] protectedObjects;
         [JsonProperty("allowed_authoring_scope")] public string[] allowedAuthoringScope;
         [JsonProperty("narrative_context")] public string narrativeContext;
+    }
+    // Server wire contract: success conditions are canonical strings, not runtime objects.
+    [Serializable] public class ServerNextTaskDto
+    {
+        [JsonProperty("task_id")] public string task_id;
+        public string title;
+        [JsonProperty("player_instruction")] public string player_instruction;
+        [JsonProperty("task_type")] public string task_type;
+        [JsonProperty("required_objects")] public string[] required_objects;
+        [JsonProperty("success_conditions")] public string[] success_conditions;
+        public string[] dependencies;
+        [JsonProperty("protected_objects")] public string[] protected_objects;
+        [JsonProperty("allowed_authoring_scope")] public string[] allowed_authoring_scope;
+        [JsonProperty("narrative_context")] public string narrative_context;
+    }
+    public static class NextTaskWireConverter
+    {
+        public static bool TryConvert(ServerNextTaskDto wire, out NextTaskSpec runtime, out string error)
+        {
+            runtime=null; error=null;
+            if(wire==null||string.IsNullOrWhiteSpace(wire.task_id)||string.IsNullOrWhiteSpace(wire.player_instruction)){error="Generated task is incomplete.";return false;}
+            var conditions=wire.success_conditions??Array.Empty<string>(); var converted=new RuntimeSuccessCondition[conditions.Length];
+            for(var index=0;index<conditions.Length;index++)
+            {
+                if(!TryConvertCondition(conditions[index],out converted[index])){error="Unsupported success condition: "+(conditions[index]??"<null>");return false;}
+            }
+            runtime=new NextTaskSpec{taskId=wire.task_id,title=wire.title,playerInstruction=wire.player_instruction,taskType=wire.task_type,requiredObjects=wire.required_objects,successConditions=converted,dependencies=wire.dependencies,protectedObjects=wire.protected_objects,allowedAuthoringScope=wire.allowed_authoring_scope,narrativeContext=wire.narrative_context};
+            return true;
+        }
+        private static bool TryConvertCondition(string wire,out RuntimeSuccessCondition condition)
+        {
+            condition=null;if(string.IsNullOrWhiteSpace(wire))return false;
+            var parts=wire.Split(':');if(parts.Length<2)return false;
+            var name=parts[0].Trim().ToLowerInvariant();var objectId=parts[1].Trim();if(string.IsNullOrWhiteSpace(objectId))return false;
+            string type;
+            switch(name)
+            {
+                case "interact": type="OBJECT_GRABBED";break;
+                case "painting_aligned": type="PAINTING_ALIGNED";break;
+                case "object_revealed": type="OBJECT_REVEALED";break;
+                case "object_held": type="OBJECT_HELD";break;
+                case "object_at_anchor": if(parts.Length!=3||string.IsNullOrWhiteSpace(parts[2]))return false; condition=new RuntimeSuccessCondition{type="OBJECT_AT_ANCHOR",object_id=objectId,anchor_id=parts[2].Trim()};return true;
+                case "object_open": type="OBJECT_OPEN";break;
+                case "object_closed": type="OBJECT_CLOSED";break;
+                case "lock_unlocked": type="LOCK_UNLOCKED";break;
+                case "object_active": type="OBJECT_ACTIVE";break;
+                case "object_inactive": type="OBJECT_INACTIVE";break;
+                case "door_open": type="DOOR_OPEN";break;
+                case "authoring_object_created": type="AUTHORING_OBJECT_CREATED";break;
+                case "authoring_property_set": if(parts.Length!=3)return false;condition=new RuntimeSuccessCondition{type="AUTHORING_PROPERTY_SET",object_id=objectId,value=parts[2].Trim()};return true;
+                default:return false;
+            }
+            condition=new RuntimeSuccessCondition{type=type,object_id=objectId};return true;
+        }
     }
     [Serializable] public class RuntimeSuccessCondition { public string type; public string object_id; public string anchor_id; public string value; public RuntimeSuccessCondition[] children; }
 }

@@ -23,10 +23,23 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         public string[] allowedAffordances = { "grabbable", "movable", "interactable", "gravity_enabled", "kinematic", "collision_enabled" };
         public float taskGenerationTimeoutSeconds = 15f;
         public string taskGenerationFallback = "end_playthrough";
-        [Header("Researcher tooling")]
+        [Header("Ubiq Room Server")]
+        [Tooltip("IP address or DNS name used by the existing Ubiq connection configuration.")]
+        public string ubiqServerHost = "130.136.2.161";
+        [Min(1), Tooltip("TCP Room Server port used by Ubiq.")]
+        public int ubiqServerPort = 50000;
+
+        [Header("Research Control")]
         public bool researcherMode;
-        [Tooltip("Editor defaults to localhost. Quest builds must use the LAN address of the development PC.")]
+        [Tooltip("Base URL for the Research Control HTTP API. Quest builds must use the reachable LAN address.")]
         public string researcherControlBaseUrl = "http://130.136.2.161:50001";
+        [Header("Participant UX")]
+        [Min(1f), Tooltip("Maximum time the participant UI remains in Processing while waiting for a relevant NID101 response.")]
+        public float processingResponseTimeoutSeconds = 10f;
+        [Header("Client logging")]
+        public bool enableFileLogging = true;
+        public bool logTranscripts = false;
+        public bool verboseNetworkLogging = true;
         public string ExportJson() => JsonUtility.ToJson(this, true);
     }
 }

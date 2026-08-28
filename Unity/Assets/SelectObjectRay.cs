@@ -30,6 +30,9 @@ public class SelectObjectRay : MonoBehaviour
     public MicrophoneCapture genieMicrophoneCapture;
     public bool controlMicrophoneGain = false;
     [SerializeField] private bool logSelectionDebug = true;
+    private bool researcherUiSuppressed;
+
+    public bool ResearcherUiSuppressed => researcherUiSuppressed;
 
     private new LineRenderer renderer;
 
@@ -128,7 +131,15 @@ public class SelectObjectRay : MonoBehaviour
 
     public void UpdateSelect(bool selectActivation)
     {
+        if (researcherUiSuppressed) return;
         isSelecting = selectActivation;
+    }
+
+    // The researcher panel uses Ubiq's UI ray. Keep this gameplay ray reversible and inert while that panel is open.
+    public void SetResearcherUiSuppressed(bool suppressed)
+    {
+        researcherUiSuppressed = suppressed;
+        if (renderer) renderer.enabled = !suppressed;
     }
 
     private struct SelectionHit
@@ -159,6 +170,11 @@ public class SelectObjectRay : MonoBehaviour
 
     private void Update()
     {
+        if (researcherUiSuppressed)
+        {
+            renderer.enabled = false;
+            return;
+        }
         ComputeStraightRay();
         renderer.enabled = true;
         /*if (isSelecting)

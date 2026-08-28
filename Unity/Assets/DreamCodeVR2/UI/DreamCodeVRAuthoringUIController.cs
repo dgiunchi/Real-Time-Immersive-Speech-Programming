@@ -44,6 +44,7 @@ namespace DreamCodeVR2.UI
         public TMP_Text proposalTargetText;
         public TMP_Text proposalReasonText;
         public bool experimentalAuthoringVisible = true;
+        [Range(.1f, 5f)] public float c1CommandFeedbackDuration = 1.2f;
 
         [Header("Data Sources")]
         public InteractionContextProvider interactionContextProvider;
@@ -76,6 +77,7 @@ namespace DreamCodeVR2.UI
         private bool hasPlacedUi;
         private float nextPollTime;
         private float lastFeedbackTime = float.NegativeInfinity;
+        private Coroutine proposalFeedbackRoutine;
 
         private void OnEnable()
         {
@@ -139,6 +141,7 @@ namespace DreamCodeVR2.UI
 
         public void ShowProposal(string interpretation, string targetName, string reason)
         {
+            StopProposalFeedbackRoutine();
             if (!experimentalAuthoringVisible) return;
             if (proposalText) proposalText.text = interpretation;
             if (proposalTargetText) proposalTargetText.text = string.IsNullOrWhiteSpace(targetName) ? string.Empty : targetName;
@@ -146,7 +149,38 @@ namespace DreamCodeVR2.UI
             SetCanvasGroupVisible(proposalCardGroup, true);
         }
 
-        public void HideProposal() => SetCanvasGroupVisible(proposalCardGroup, false);
+        public void HideProposal()
+        {
+            StopProposalFeedbackRoutine();
+            SetCanvasGroupVisible(proposalCardGroup, false);
+        }
+
+        // Used only by the completed C1 predefined-command execution path.
+        public void ShowC1CommandFeedback(bool success, string detail)
+        {
+            StopProposalFeedbackRoutine();
+            if (!experimentalAuthoringVisible) return;
+            if (proposalText) proposalText.text = success ? "Command confirmed" : "Command could not be applied";
+            if (proposalTargetText) proposalTargetText.text = string.Empty;
+            if (proposalReasonText) proposalReasonText.text = success ? string.Empty : detail;
+            SetCanvasGroupVisible(proposalCardGroup, true);
+            proposalFeedbackRoutine = StartCoroutine(HideC1CommandFeedbackAfterDelay(success, success ? c1CommandFeedbackDuration : Mathf.Max(c1CommandFeedbackDuration, 2f)));
+        }
+
+        private System.Collections.IEnumerator HideC1CommandFeedbackAfterDelay(bool success, float delay)
+        {
+            yield return new WaitForSecondsRealtime(delay);
+            proposalFeedbackRoutine = null;
+            SetCanvasGroupVisible(proposalCardGroup, false);
+            if (success) DreamCodeVR2.ExperimentalAuthoring.DreamCodeVR2ClientLogger.Event("participant_ui", "C1_COMMAND_SUCCESS_FEEDBACK_HIDDEN");
+        }
+
+        private void StopProposalFeedbackRoutine()
+        {
+            if (proposalFeedbackRoutine == null) return;
+            StopCoroutine(proposalFeedbackRoutine);
+            proposalFeedbackRoutine = null;
+        }
 
 
         public void SetSelectedObject(AIEditableObject obj)

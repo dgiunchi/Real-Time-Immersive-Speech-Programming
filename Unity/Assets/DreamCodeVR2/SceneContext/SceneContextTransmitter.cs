@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Text;
+using DreamCodeVR2.ExperimentalAuthoring;
 using Newtonsoft.Json;
 using Ubiq.Messaging;
 using Ubiq.Networking;
@@ -105,6 +106,14 @@ namespace DreamCodeVR2.SceneContext
             payloadBytes.CopyTo(new Span<byte>(message.bytes, message.start + peerBytes.Length, payloadBytes.Length));
 
             context.Send(message);
+            DreamCodeVR2ClientLogger.Event("network", "SCENE_CONTEXT_SENT", null, new
+            {
+                scene_version = packet.scene_version,
+                object_count = packet.objects?.Length ?? 0,
+                current_task = FindFirstObjectByType<DreamCodeVR2.Quest.QuestRuntimeState>()?.GetCurrentTask()?.step,
+                payload_bytes = totalBytes,
+                reason
+            });
 
             if (logContextSends)
             {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using DreamCodeVR2.UI;
+using DreamCodeVR2.ExperimentalAuthoring;
 using Ubiq.Messaging;
 using Ubiq.Networking;
 using Ubiq.Rooms;
@@ -53,8 +54,13 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private bool loggedNoConnections;
     private bool loggedFirstAudioChunk;
     private bool loggedMicrophonePermissionRequest;
+    private bool loggedMicrophonePermissionGranted;
+    private bool loggedMicrophonePermissionDenied;
+    private bool microphonePermissionRequestPending;
     private bool loggedNoMicrophoneDevices;
     private bool loggedMicrophoneStarted;
+    private bool researcherUiBlocked;
+    private bool pttBlockedUntilRelease;
     private float lastTriggerPressedTime;
     private float recordingStartTime;
     private float lastMicrophoneRecoveryTime = float.NegativeInfinity;
@@ -64,6 +70,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private float recordingPeak;
     private int autoMicRecoveryAttempts;
     private readonly List<InputDevice> leftControllers = new List<InputDevice>();
+    private ExperimentConditionManager conditionManager;
 
     private void Start()
     {
@@ -93,13 +100,40 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 #if UNITY_ANDROID && !UNITY_EDITOR
         if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Microphone))
         {
-            if (logRecordingState && !loggedMicrophonePermissionRequest)
+            if (!microphonePermissionRequestPending)
             {
-                Debug.Log("[MicrophoneCapture] requesting microphone permission");
+                if (logRecordingState) Debug.Log("[MicrophoneCapture] requesting microphone permission");
                 loggedMicrophonePermissionRequest = true;
+                DreamCodeVR2ClientLogger.Event("stt", "MIC_PERMISSION_REQUEST", null, new { platform = "android" });
+                microphonePermissionRequestPending = true;
+                var callbacks = new UnityEngine.Android.PermissionCallbacks();
+                callbacks.PermissionGranted += _ =>
+                {
+                    microphonePermissionRequestPending = false;
+                    if (!loggedMicrophonePermissionGranted)
+                    {
+                        loggedMicrophonePermissionGranted = true;
+                        DreamCodeVR2ClientLogger.Event("stt", "MIC_PERMISSION_GRANTED", null, new { platform = "android" });
+                    }
+                };
+                callbacks.PermissionDenied += _ =>
+                {
+                    microphonePermissionRequestPending = false;
+                    if (!loggedMicrophonePermissionDenied)
+                    {
+                        loggedMicrophonePermissionDenied = true;
+                        DreamCodeVR2ClientLogger.Warn("stt", "MIC_PERMISSION_DENIED", "Android microphone permission denied.");
+                    }
+                };
+                UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.Microphone, callbacks);
             }
-            UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.Microphone);
             return;
+        }
+
+        if (!loggedMicrophonePermissionGranted)
+        {
+            loggedMicrophonePermissionGranted = true;
+            DreamCodeVR2ClientLogger.Event("stt", "MIC_PERMISSION_GRANTED", null, new { platform = "android" });
         }
 #endif
         if (microphoneClip)
@@ -113,6 +147,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             {
                 Debug.LogWarning("[MicrophoneCapture] no microphone devices found");
                 loggedNoMicrophoneDevices = true;
+                DreamCodeVR2ClientLogger.Error("stt", "MIC_ERROR", "No microphone devices found.");
             }
 
             PublishDiagnostics("init", "no microphone devices", 0, 0f, 0f, 0, false, false, true);
@@ -130,6 +165,12 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
                 $"frequency={sampleRate} channels={microphoneClip.channels} samples={microphoneClip.samples} " +
                 $"position={lastMicPosition}");
             loggedMicrophoneStarted = true;
+            DreamCodeVR2ClientLogger.Event("stt", "MIC_START", null, new
+            {
+                sample_rate = sampleRate,
+                channels = microphoneClip.channels,
+                samples = microphoneClip.samples
+            });
         }
 
         PublishDiagnostics("init", "microphone ready", 0, 0f, 0f, 0, false, false, false);
@@ -137,7 +178,49 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 
     private void UpdateRecordingFromLeftTrigger()
     {
+        if (ResearcherUiInteractionState.IsResearcherUiInteractionActive)
+        {
+            if (!researcherUiBlocked)
+            {
+                researcherUiBlocked = true;
+                DreamCodeVR2ClientLogger.Event("stt", "PTT_BLOCKED_BY_RESEARCHER_UI");
+            }
+
+            if (isRecording)
+            {
+                DreamCodeVR2ClientLogger.Event("stt", "PTT_FORCED_STOP_PANEL_OPEN");
+                SetRecording(false);
+            }
+            return;
+        }
+        researcherUiBlocked = false;
         var triggerPressed = GetLeftTriggerPressed();
+        if (!triggerPressed)
+        {
+            pttBlockedUntilRelease = false;
+        }
+
+        if (triggerPressed && (pttBlockedUntilRelease || !HasReadyResearcherSession()))
+        {
+            if (isRecording) SetRecording(false);
+            leftTriggerState = false;
+            if (!pttBlockedUntilRelease)
+            {
+                pttBlockedUntilRelease = true;
+                var manager = conditionManager;
+                DreamCodeVR2ClientLogger.Warn("stt", "PTT_BLOCKED_NO_SESSION", "Participant PTT requires a researcher session in READY state.", new
+                {
+                    peer_uuid = roomClient?.Me?.uuid,
+                    condition = manager?.condition.ToString(),
+                    session_id = manager?.sessionId,
+                    session_started = manager?.sessionStarted,
+                    session_ready = manager?.IsResearcherSessionReady
+                });
+                FindFirstObjectByType<DreamCodeVRSpeechStatusBridge>()?.ShowNoActiveSession();
+            }
+            return;
+        }
+
         if (triggerPressed)
         {
             lastTriggerPressedTime = Time.unscaledTime;
@@ -152,7 +235,14 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         }
 
         leftTriggerState = effectivePressed;
+        DreamCodeVR2ClientLogger.Event("stt", effectivePressed ? "PTT_PRESS" : "PTT_STOP");
         SetRecording(effectivePressed);
+    }
+
+    private bool HasReadyResearcherSession()
+    {
+        if (!conditionManager) conditionManager = FindFirstObjectByType<ExperimentConditionManager>();
+        return conditionManager && conditionManager.IsResearcherSessionReady;
     }
 
     private bool GetLeftTriggerPressed()
@@ -191,6 +281,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             recordingStartTime = Time.unscaledTime;
             lastMicPosition = microphoneClip ? Microphone.GetPosition(null) : 0;
             loggedFirstAudioChunk = false;
+            DreamCodeVR2ClientLogger.Event("stt", "PTT_START", null, new { sample_rate = sampleRate, channels = microphoneClip ? microphoneClip.channels : 0 });
             PublishDiagnostics("start", "recording started", 0, 0f, 0f, 0, false, false, false);
         }
         else if (isRecording)
@@ -323,6 +414,13 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         }
 
         lastFrameStats = stats;
+        DreamCodeVR2ClientLogger.Event("stt", "STT_AUDIO_CHUNK_SENT", null, new
+        {
+            bytes = pcm.Length,
+            samples = sampleCount,
+            estimated_duration_ms = sampleRate > 0 ? sampleCount * 1000f / sampleRate : 0f,
+            running_total_bytes = recordingPcmBytes
+        });
 
         if (debugSpeechDiagnostics)
         {
@@ -345,6 +443,8 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             Debug.Log($"[MicrophoneCapture] control {controlMessage}");
         }
 
+        var eventName = controlMessage == RecordingStartMessage ? "STT_CONTROL_START_SENT" : "STT_CONTROL_STOP_SENT";
+        DreamCodeVR2ClientLogger.Event("stt", eventName);
         SendPayloadToServer(Encoding.UTF8.GetBytes(controlMessage));
     }
 
@@ -387,6 +487,14 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         payload.CopyTo(new Span<byte>(message.bytes, message.start + clientUUID.Length, payload.Length));
 
         context.Send(message);
+
+        var payloadKind = control == RecordingStartMessage ? "control_start" : control == RecordingStopMessage ? "control_stop" : "audio";
+        DreamCodeVR2ClientLogger.Event("network", "NID98_SEND", null, new
+        {
+            payload_kind = payloadKind,
+            bytes = payload.Length,
+            peer_uuid = roomClient.Me.uuid
+        });
 
         if (logRecordingState && control != null && control.StartsWith("__STT_CONTROL__:"))
         {
@@ -433,6 +541,11 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
                     : "recording captured audio";
 
         PublishDiagnostics("stop", note, recordingSampleCount, rms, recordingPeak, recordingPcmBytes, nearSilent, tooShort, emptyAudioBuffer, zeroSignal);
+
+        if (tooShort)
+        {
+            DreamCodeVR2ClientLogger.Warn("stt", "STT_RECORDING_TOO_SHORT", note, new { duration_ms = recordingMs, minimum_ms = minimumRecordingMs, bytes = recordingPcmBytes });
+        }
 
         if (zeroSignal)
         {

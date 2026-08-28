@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 063f9e2b2fb1915418a480efcab1ec02, type: 3}
+  m_Name: StudyConfiguration
+  m_EditorClassIdentifier: Assembly-CSharp::DreamCodeVR2.ExperimentalAuthoring.StudyConfiguration
+  condition: 1
+  allowedPredefinedCommands:
+  - OPEN
+  - CLOSE
+  allowedOperations:
+  - setProperty
+  - setAffordance
+  - createObject
+  - relocateObject
+  - setSemanticState
+  - rotate_continuously
+  - blink
+  - activate
+  requireConfirmation: 1
+  maximumGeneratedObjects: 4
+  maximumActiveBehaviors: 8
+  maximumProposalsPerTask: 2
+  taskTimeThresholdSeconds: 120
+  incorrectAttemptThreshold: 3
+  hintThreshold: 2
+  undoAvailable: 1
+  modificationsAllowed: 1
+  cosmeticActionsEnabled: 1
+  directTaskCompletionForbidden: 1
+  allowedAffordances:
+  - grabbable
+  - movable
+  - interactable
+  - gravity_enabled
+  - kinematic
+  - collision_enabled
+  taskGenerationTimeoutSeconds: 15
+  taskGenerationFallback: end_playthrough
+  ubiqServerHost: 130.136.2.161
+  ubiqServerPort: 50000
+  researcherMode: 1
+  researcherControlBaseUrl: http://130.136.2.161:50001
+  processingResponseTimeoutSeconds: 10
+  enableFileLogging: 1
+  logTranscripts: 0
+  verboseNetworkLogging: 1

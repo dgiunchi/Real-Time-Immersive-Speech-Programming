@@ -8,7 +8,7 @@ The only enabled study scene is `Unity/Assets/DreamCodeVR2/EscapeRoomTestbed/Dre
 
 ## Researcher session lifecycle
 
-`StudyConfiguration.researcherControlBaseUrl` supplies the control API URL; the fallback is `http://127.0.0.1:3004`. Quest must receive `http://PC_LAN_IP:3004`, never localhost. The client calls GET health/status and POST start/end/restart/reset beneath `/api/authoring/dev`, always with the peer UUID.
+`StudyConfiguration.researcherControlBaseUrl` supplies the control API URL; the deployment value is `http://130.136.2.161:50001`. The Ubiq endpoint is `130.136.2.161:50000`; STT remains server-side at `130.136.2.161:50101`. The client calls GET health/status and POST start/end/restart/reset beneath `/api/authoring/dev`, always with the peer UUID.
 
 Selecting C1/C2/C3 changes only `selectedCondition`. Pressing START during an active session uses server restart with the selected value, then performs the local reset and starts the new condition only after a valid server session ID. END and RESET reset Unity only after the matching server success response. This active-session switch/restart flow is now implemented; server E2E remains manual verification.
 
@@ -22,7 +22,7 @@ Static limitation: the server contract represents `success_conditions` as string
 
 ## XR researcher interaction
 
-The bootstrap now ensures exactly one EventSystem (with StandaloneInputModule) and adds an `XRUIRaycaster` child to each discovered Ubiq `HandController` that has none. The panel uses a world-space Canvas with `GraphicRaycaster` and `XRUICanvas`. It is researcher/debug gated; F5 is desktop fallback, while Quest uses a one-second simultaneous left/right menu-or-primary hold.
+The bootstrap ensures one EventSystem without adding an input module: the installed Ubiq `XRUIRaycaster` dispatches pointer events directly. The panel uses a world-space Canvas with `GraphicRaycaster` and `XRUICanvas`. It is researcher/debug gated; F5 is desktop fallback, while Quest uses a one-second LEFT Y hold through Unity XR `CommonUsages.secondaryButton`.
 
 While the panel is visible, `ResearcherUiInteractionState` reserves the trigger for researcher UI and forces PTT gain to zero in `SelectObjectRay`; it does not alter the grip/select mechanism. The panel now caches left/right `HandController` and `DynamicStoryTaskController` references rather than searching in update/refresh hot paths.
 
@@ -34,7 +34,7 @@ Manual verification required: EventSystem uniqueness at runtime, panel ray hover
 
 Manual Ubiq procedure: in Unity select the scene object that owns `NetworkScene`/its connection component (under `DreamCodeVR2_RuntimeServices`), set the existing connection endpoint to the PC LAN address and the vendor/server port, and save the scene/prefab. Do not change the RoomJoiner GUID unless the target room changes. If the endpoint field is unavailable, it is vendor/package-owned and must be configured in that package's normal connection asset or launcher.
 
-For HTTP `http://PC_LAN_IP:3004` on Android, confirm Player Settings or the generated Android manifest permits cleartext traffic; no project-owned manifest was found to verify it statically.
+For HTTP `http://130.136.2.161:50001` on Android, confirm Player Settings or the generated Android manifest permits cleartext traffic; no project-owned manifest was found to verify it statically.
 
 ## Required manual checks before release
 
@@ -43,6 +43,6 @@ For HTTP `http://PC_LAN_IP:3004` on Android, confirm Player Settings or the gene
 3. Test C1, C2 and C3 start/restart/end/reset against the live `/api/authoring/dev` server.
 4. Capture a 101/102 exchange for each canonical message, especially C3 generated/activation payloads.
 5. Configure the vendor Ubiq endpoint to the PC LAN address, then verify peer UUID and room join on Quest.
-6. Confirm Android cleartext/LAN networking and firewall rules for port 3004 and the Ubiq server port.
+6. Confirm Android cleartext/LAN networking and firewall rules for ports 50000 (Ubiq), 50001 (researcher API), and server-side STT port 50101.
 
 No Unity build, batch mode or Editor test was run in this pass by request.

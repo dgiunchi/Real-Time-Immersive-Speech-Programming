@@ -24,5 +24,7 @@ namespace DreamCodeVR2.Quest
         public string successState;
         public bool directCompletionForbidden = true;
         public string[] allowedAuthoringOperations;
+        // Fixed C1/C2 plans can use the same actual-world predicates as generated C3 tasks.
+        public DreamCodeVR2.ExperimentalAuthoring.RuntimeSuccessCondition[] successConditions;
     }
 }

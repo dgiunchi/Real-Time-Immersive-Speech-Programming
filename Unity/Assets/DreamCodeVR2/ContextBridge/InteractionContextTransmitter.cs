@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using DreamCodeVR2.ExperimentalAuthoring;
 using Newtonsoft.Json;
 using Ubiq.Messaging;
 using Ubiq.Networking;
@@ -102,6 +103,14 @@ namespace DreamCodeVR2.ContextBridge
             });
 
             SendJsonPayload(peerUuid, json);
+            DreamCodeVR2ClientLogger.Event("network", "INTERACTION_CONTEXT_SENT", null, new
+            {
+                selected_object_id = SummaryId(snapshot.active_selection),
+                pointed_object_id = SummaryId(snapshot.pointed_object),
+                current_task_id = snapshot.current_task_id,
+                payload_bytes = Encoding.UTF8.GetByteCount(json),
+                reason
+            });
 
             if (logContextSends)
             {

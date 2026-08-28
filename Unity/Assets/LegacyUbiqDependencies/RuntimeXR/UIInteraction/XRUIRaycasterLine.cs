@@ -6,6 +6,10 @@ namespace Ubiq.XR
     [RequireComponent(typeof(LineRenderer))]
     public class XRUIRaycasterLine : MonoBehaviour
     {
+        [Tooltip("Keep the controller ray visible at a fixed length when it is not currently over an XR UI canvas.")]
+        public bool showRayOnMiss;
+        [Min(0.05f)]
+        public float missRayDistance = 2.0f;
         private XRUIRaycaster xruiRaycaster;
         private LineRenderer lineRenderer;
 
@@ -40,7 +44,16 @@ namespace Ubiq.XR
 
         private void XRUIRaycaster_OnRaycastMiss ()
         {
-            lineRenderer.enabled = false;
+            if (!showRayOnMiss)
+            {
+                lineRenderer.enabled = false;
+                return;
+            }
+
+            lineRenderer.enabled = true;
+            lineRenderer.positionCount = 2;
+            lineRenderer.SetPosition(0, transform.position);
+            lineRenderer.SetPosition(1, transform.position + transform.forward * missRayDistance);
         }
 
     }

@@ -85,6 +85,7 @@ namespace DreamCodeVR2.Quest
             taskEntries[CurrentTaskIndex].status = QuestTaskStatus.Active;
             CurrentTaskStartTime = Time.unscaledTime;
             EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskStarted, taskEntries[CurrentTaskIndex].task.target);
+            DreamCodeVR2.ExperimentalAuthoring.DreamCodeVR2ClientLogger.Event("quest", "TASK_ACTIVATED", null, new { task_type=taskEntries[CurrentTaskIndex].task.type, target=taskEntries[CurrentTaskIndex].task.target });
             LastTaskResult = $"Started quest: {GetObjectiveLabel(taskEntries[CurrentTaskIndex].task)}";
         }
 
@@ -110,6 +111,7 @@ namespace DreamCodeVR2.Quest
             LastTaskResult = BuildTaskResultLabel(entry.task, "completed", reason);
             TaskCompleted?.Invoke(entry.task);
             EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskCompleted, entry.task.target);
+            DreamCodeVR2.ExperimentalAuthoring.DreamCodeVR2ClientLogger.Event("quest", "TASK_SUCCESS_DETECTED", reason, new { task_type=entry.task.type, target=entry.task.target });
             return true;
         }
 
@@ -143,6 +145,7 @@ namespace DreamCodeVR2.Quest
                     taskEntries[CurrentTaskIndex].status = QuestTaskStatus.Active;
                     CurrentTaskStartTime = Time.unscaledTime;
                     EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskStarted, taskEntries[CurrentTaskIndex].task.target);
+                    DreamCodeVR2.ExperimentalAuthoring.DreamCodeVR2ClientLogger.Event("quest", "TASK_ACTIVATED", null, new { task_type=taskEntries[CurrentTaskIndex].task.type, target=taskEntries[CurrentTaskIndex].task.target });
                     LastTaskResult = $"Current objective: {GetObjectiveLabel(taskEntries[CurrentTaskIndex].task)}";
                     return true;
                 }

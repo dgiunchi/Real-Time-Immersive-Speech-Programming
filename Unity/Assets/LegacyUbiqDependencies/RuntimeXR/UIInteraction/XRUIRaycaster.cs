@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -23,13 +24,29 @@ namespace Ubiq.XR
 
         public RaycastHitEvent onRaycastHit;
         public RaycastMissEvent onRaycastMiss;
+        [Tooltip("When enabled, world colliders do not truncate this controller ray before it reaches registered XR UI canvases.")]
+        public bool ignorePhysicsOcclusion;
+        [Tooltip("Keeps a UI target briefly during normal controller-tracking jitter, so a press/release remains a click.")]
+        [Min(0f)]
+        public float targetLossGraceSeconds = 0.12f;
+        public event Action<GameObject> PointerHoverEnter;
+        public event Action<GameObject> PointerHoverExit;
+        public event Action<GameObject> PointerDown;
+        public event Action<GameObject> PointerUp;
+        public event Action<GameObject> PointerClick;
 
         private PointerEventData eventData;
         private List<RaycastResult> raycastResults;
         private HandController controller;
+        private bool triggerWasPressed;
+        private float targetLastSeenTime = float.NegativeInfinity;
+
+        public GameObject CurrentTarget => eventData != null ? eventData.pointerEnter : null;
 
         private void Awake()
         {
+            onRaycastHit ??= new RaycastHitEvent();
+            onRaycastMiss ??= new RaycastMissEvent();
             raycastResults = new List<RaycastResult>();
             controller = GetComponentInParent<HandController>();
         }
@@ -55,7 +72,7 @@ namespace Ubiq.XR
             // Check if there is a 3d object between us and the canvas.
             var distance = float.PositiveInfinity;
             RaycastHit rayHit;
-            if(Physics.Raycast(ray, out rayHit, distance,
+            if(!ignorePhysicsOcclusion && Physics.Raycast(ray, out rayHit, distance,
                 Physics.DefaultRaycastLayers,QueryTriggerInteraction.Ignore))
             {
                 distance = rayHit.distance;
@@ -89,10 +106,19 @@ namespace Ubiq.XR
 
             if(!raycastResult.isValid)
             {
+                // Quest controller tracking can lose a small world-space button for a frame while
+                // the trigger is being pressed. Retain the existing Ubiq target for this short grace
+                // period rather than issuing a false exit/canceling the click.
+                if (eventData.pointerEnter != null && Time.unscaledTime - targetLastSeenTime <= targetLossGraceSeconds)
+                {
+                    return;
+                }
                 LookAway();
                 onRaycastMiss.Invoke();
                 return;
             }
+
+            targetLastSeenTime = Time.unscaledTime;
 
             onRaycastHit.Invoke(raycastResult.worldPosition,raycastResult.worldNormal);
 
@@ -110,6 +136,7 @@ namespace Ubiq.XR
             eventData.pointerCurrentRaycast = raycastResult;
 
             ExecuteEvents.ExecuteHierarchy(eventData.pointerEnter, eventData, ExecuteEvents.pointerEnterHandler);
+            PointerHoverEnter?.Invoke(eventData.pointerEnter);
         }
 
         void CheckInput()
@@ -119,30 +146,37 @@ namespace Ubiq.XR
                 return;
             }
 
-            if (controller.TriggerState && eventData.pointerEnter != null)
+            if (controller.TriggerState && !triggerWasPressed && eventData.pointerEnter != null)
             {
                 //...tell the object that we have pressed it (OnPointerDown)
                 eventData.pointerPressRaycast = eventData.pointerCurrentRaycast;
                 eventData.pressPosition = eventData.position;
                 eventData.pointerPress = eventData.pointerEnter;
                 ExecuteEvents.ExecuteHierarchy(eventData.pointerEnter, eventData, ExecuteEvents.pointerDownHandler);
+                PointerDown?.Invoke(eventData.pointerEnter);
             }
-            else if(!controller.TriggerState)
+            else if(!controller.TriggerState && triggerWasPressed)
             {
                 //...tell the object than we have stopped pressing it (OnPointerUp)
                 if (eventData.pointerPress != null)
                 {
                     ExecuteEvents.ExecuteHierarchy(eventData.pointerPress, eventData, ExecuteEvents.pointerUpHandler);
+                    PointerUp?.Invoke(eventData.pointerPress);
                 }
 
                 //...finally, if we pressed and released the same object, then we have clicked it (OnPointerClick)
-                if (eventData.pointerPress == eventData.pointerEnter)
+                // Click the pressed button when a brief tracking loss cleared pointerEnter. Moving
+                // deliberately onto a different UI target still cancels the original click.
+                if (eventData.pointerPress == eventData.pointerEnter || eventData.pointerEnter == null)
                 {
-                    ExecuteEvents.ExecuteHierarchy(eventData.pointerEnter, eventData, ExecuteEvents.pointerClickHandler);
+                    ExecuteEvents.ExecuteHierarchy(eventData.pointerPress, eventData, ExecuteEvents.pointerClickHandler);
+                    PointerClick?.Invoke(eventData.pointerPress);
                 }
 
                 eventData.pointerPress = null;
             }
+
+            triggerWasPressed = controller.TriggerState;
         }
 
         private void LookAway()
@@ -151,6 +185,7 @@ namespace Ubiq.XR
             if (eventData.pointerEnter != null)
             {
                 ExecuteEvents.ExecuteHierarchy(eventData.pointerEnter, eventData, ExecuteEvents.pointerExitHandler);
+                PointerHoverExit?.Invoke(eventData.pointerEnter);
                 eventData.pointerEnter = null;
             }
         }

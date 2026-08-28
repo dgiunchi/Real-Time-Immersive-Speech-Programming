@@ -1,4 +1,5 @@
 using System;
+using DreamCodeVR2.ExperimentalAuthoring;
 using UnityEngine;
 
 namespace DreamCodeVR2.UI
@@ -21,6 +22,16 @@ namespace DreamCodeVR2.UI
 
         private bool subscribedToMicrophone;
         private float readyAtTime = float.NegativeInfinity;
+        private float processingStartedAt = float.NegativeInfinity;
+
+        private float ProcessingTimeoutSeconds
+        {
+            get
+            {
+                var configuration = FindFirstObjectByType<ExperimentConditionManager>()?.studyConfiguration;
+                return configuration ? Mathf.Max(1f, configuration.processingResponseTimeoutSeconds) : 10f;
+            }
+        }
 
         private void OnEnable()
         {
@@ -31,14 +42,34 @@ namespace DreamCodeVR2.UI
 
         private void OnDisable()
         {
+            CancelProcessing("Speech: Cancelled", "Application/UI disabled.");
             TranscriptionCollector.TranscriptReceived -= OnTranscriptReceived;
             RemoveMicrophoneSubscription();
+        }
+
+        private void OnApplicationPause(bool pause)
+        {
+            if (pause) CancelProcessing("Speech: Cancelled", "Application paused.");
         }
 
         private void Update()
         {
             EnsureMicrophoneSubscription();
             RefreshInitializationState();
+
+            if (CurrentState == SpeechUiState.Processing && Time.unscaledTime - processingStartedAt >= ProcessingTimeoutSeconds)
+            {
+                var manager = FindFirstObjectByType<ExperimentConditionManager>();
+                DreamCodeVR2ClientLogger.Warn("participant_ui", "PROCESSING_TIMEOUT", "No relevant NID101 response arrived.", new
+                {
+                    peer_uuid = FindFirstObjectByType<AuthoringProtocolClient>()?.CurrentPeerUuid,
+                    session_id = manager?.sessionId,
+                    condition = manager?.condition.ToString(),
+                    timeout_seconds = ProcessingTimeoutSeconds,
+                    last_ui_state = CurrentState.ToString()
+                });
+                SetState(SpeechUiState.Error, "NO SERVER RESPONSE", "NO SERVER RESPONSE — CHECK SESSION / CONNECTION", DiagnosticsSummaryText);
+            }
 
             if (CurrentState == SpeechUiState.Heard && Time.unscaledTime - readyAtTime >= heardDisplaySeconds)
             {
@@ -148,6 +179,24 @@ namespace DreamCodeVR2.UI
                 BuildDiagnosticsSummary(LatestDiagnostics));
         }
 
+        public void ShowNoActiveSession()
+        {
+            SetState(SpeechUiState.Error, "NO ACTIVE SESSION", "START A SESSION FROM THE RESEARCHER PANEL", DiagnosticsSummaryText);
+        }
+
+        public void ResolveProcessingForServerResponse(string messageType)
+        {
+            if (CurrentState != SpeechUiState.Processing) return;
+            DreamCodeVR2ClientLogger.Event("participant_ui", "PROCESSING_RESOLVED", null, new { response_type = messageType });
+            SetState(SpeechUiState.Ready, "Speech: Ready", "Speech: Ready", DiagnosticsSummaryText);
+        }
+
+        public void CancelProcessing(string compactMessage, string detailMessage)
+        {
+            if (CurrentState != SpeechUiState.Processing) return;
+            SetState(SpeechUiState.Error, compactMessage, detailMessage, DiagnosticsSummaryText);
+        }
+
         private void OnDiagnosticsUpdated(SpeechCaptureDiagnostics diagnostics)
         {
             LatestDiagnostics = diagnostics;
@@ -252,6 +301,16 @@ namespace DreamCodeVR2.UI
             CompactSpeechText = compactText;
             DetailedSpeechText = detailText;
             DiagnosticsSummaryText = diagnosticsText;
+
+            if (newState == SpeechUiState.Processing && changed)
+            {
+                processingStartedAt = Time.unscaledTime;
+                DreamCodeVR2ClientLogger.Event("participant_ui", "PROCESSING_STARTED", null, new { timeout_seconds = ProcessingTimeoutSeconds });
+            }
+            else if (newState != SpeechUiState.Processing)
+            {
+                processingStartedAt = float.NegativeInfinity;
+            }
 
             if (newState == SpeechUiState.Ready || newState == SpeechUiState.Heard || IsErrorLike(newState))
             {
