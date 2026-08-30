@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using DreamCodeVR2.UI;
 
 namespace DreamCodeVR2.Quest
 {
@@ -87,6 +88,7 @@ namespace DreamCodeVR2.Quest
             EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskStarted, taskEntries[CurrentTaskIndex].task.target);
             DreamCodeVR2.ExperimentalAuthoring.DreamCodeVR2ClientLogger.Event("quest", "TASK_ACTIVATED", null, new { task_type=taskEntries[CurrentTaskIndex].task.type, target=taskEntries[CurrentTaskIndex].task.target });
             LastTaskResult = $"Started quest: {GetObjectiveLabel(taskEntries[CurrentTaskIndex].task)}";
+            RefreshParticipantUi();
         }
 
         public QuestTaskSpec GetCurrentTask()
@@ -112,6 +114,7 @@ namespace DreamCodeVR2.Quest
             TaskCompleted?.Invoke(entry.task);
             EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskCompleted, entry.task.target);
             DreamCodeVR2.ExperimentalAuthoring.DreamCodeVR2ClientLogger.Event("quest", "TASK_SUCCESS_DETECTED", reason, new { task_type=entry.task.type, target=entry.task.target });
+            RefreshParticipantUi();
             return true;
         }
 
@@ -147,6 +150,7 @@ namespace DreamCodeVR2.Quest
                     EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskStarted, taskEntries[CurrentTaskIndex].task.target);
                     DreamCodeVR2.ExperimentalAuthoring.DreamCodeVR2ClientLogger.Event("quest", "TASK_ACTIVATED", null, new { task_type=taskEntries[CurrentTaskIndex].task.type, target=taskEntries[CurrentTaskIndex].task.target });
                     LastTaskResult = $"Current objective: {GetObjectiveLabel(taskEntries[CurrentTaskIndex].task)}";
+                    RefreshParticipantUi();
                     return true;
                 }
 
@@ -155,6 +159,7 @@ namespace DreamCodeVR2.Quest
 
             CurrentTaskIndex = taskEntries.Count;
             LastTaskResult = $"Quest completed: {GetQuestDisplayTitle()}";
+            RefreshParticipantUi();
             return false;
         }
 
@@ -165,6 +170,7 @@ namespace DreamCodeVR2.Quest
             LastTaskResult = null;
             taskEntries.Clear();
             IncorrectAttempts = 0; HintCount = 0; LastIncorrectAttempt = null; discoveredClues.Clear(); recentlyInteractedObjectIds.Clear();
+            FindFirstObjectByType<DreamCodeVRAuthoringUIController>()?.ClearQuestRuntimeInfo();
         }
 
         public string GetProgressSummary()
@@ -234,12 +240,29 @@ namespace DreamCodeVR2.Quest
             CurrentTaskIndex = 0; CurrentTaskStartTime = Time.unscaledTime;
             EnsureEventBus(); eventBus?.Publish(QuestEventType.TaskStarted, task.target);
             LastTaskResult = $"Current objective: {GetObjectiveLabel(task)}";
+            RefreshParticipantUi();
+        }
+
+        // Fixed C1/C2 tasks are streamed one at a time by NetworkId 101. Preserve completed
+        // history while activating the server-approved successor instead of resetting the quest.
+        public void ActivateAppendedServerTask(QuestTaskSpec task)
+        {
+            if(task==null)return;
+            if(ActiveQuestPlan==null){StartQuest(new QuestPlan{quest_id="fixed_server_quest",tasks=new List<QuestTaskSpec>{task}});return;}
+            if(taskEntries.Any(entry=>entry.task?.taskId==task.taskId))return;
+            task.step=taskEntries.Count+1;
+            ActiveQuestPlan.tasks ??= new List<QuestTaskSpec>(); ActiveQuestPlan.tasks.Add(task);
+            taskEntries.Add(new QuestTaskRuntimeEntry{task=task,status=QuestTaskStatus.Active});
+            CurrentTaskIndex=taskEntries.Count-1;CurrentTaskStartTime=Time.unscaledTime;
+            EnsureEventBus();eventBus?.Publish(QuestEventType.TaskStarted,task.target);
+            LastTaskResult="Current objective: "+GetObjectiveLabel(task);RefreshParticipantUi();
         }
 
         public void RecordIncorrectAttempt(string objectId, string reason) { IncorrectAttempts++; LastIncorrectAttempt = reason; RegisterInteraction(objectId); EnsureEventBus(); eventBus?.Publish(QuestEventType.IncorrectAttempt, objectId, null, reason); }
         public void RecordHintRequested() { HintCount++; EnsureEventBus(); eventBus?.Publish(QuestEventType.HintRequested); }
         private void RegisterInteraction(string objectId) { if (string.IsNullOrWhiteSpace(objectId)) return; recentlyInteractedObjectIds.Remove(objectId); recentlyInteractedObjectIds.Insert(0, objectId); if (recentlyInteractedObjectIds.Count > 8) recentlyInteractedObjectIds.RemoveAt(recentlyInteractedObjectIds.Count - 1); }
         private void EnsureEventBus() { if (!eventBus) eventBus = QuestEventBus.Instance ? QuestEventBus.Instance : FindFirstObjectByType<QuestEventBus>(); }
+        private void RefreshParticipantUi(){var task=GetCurrentTask();var instruction=task==null?(IsQuestCompleted?"Quest complete.":"No active task."):(string.IsNullOrWhiteSpace(task.description)?GetObjectiveLabel(task):task.description);FindFirstObjectByType<DreamCodeVRAuthoringUIController>()?.SetParticipantQuestInfo(instruction,CompletedTaskCount);}
 
         private bool TryGetCurrentEntry(out QuestTaskRuntimeEntry entry)
         {
@@ -250,7 +273,9 @@ namespace DreamCodeVR2.Quest
             }
 
             entry = taskEntries[CurrentTaskIndex];
-            return entry != null;
+            // TaskCompleted is itself published on the event bus. Only an active entry may
+            // transition here, preventing that notification from completing the same task again.
+            return entry != null && entry.status == QuestTaskStatus.Active;
         }
 
         private static string BuildTaskResultLabel(QuestTaskSpec task, string verb, string reason)

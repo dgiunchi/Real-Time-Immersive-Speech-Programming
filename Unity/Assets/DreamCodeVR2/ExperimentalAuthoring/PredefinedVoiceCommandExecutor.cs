@@ -9,15 +9,15 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         public SceneContextTransmitter sceneContext; public ExperimentTelemetry telemetry;
         public AuthoringExecutionResult Execute(PredefinedVoiceCommand command)
         {
+            DreamCodeVR2ClientLogger.Event("c1","PREDEFINED_COMMAND_EXECUTE_LOCAL",null,new { command_id=command?.commandId,target_object_id=command?.targetObjectId,command=command?.command,preset=command?.preset,secondary_object_id=command?.secondaryObjectId });
             var target=AuthoringActionExecutor.FindEditable(command?.targetObjectId);
-            if(!target) return Fail(command,"missing_target","The selected object is unavailable.");
+            if(!target) return FailAndLog(command,"missing_target","The selected object is unavailable.");
             var capabilities=target.GetComponent<VoiceCommandCapabilities>();
-            if(!capabilities||!capabilities.Allows(command.command)) return Fail(command,"command_not_allowed","That voice command is unavailable for this object.");
+            if(!capabilities||!capabilities.Allows(command.command)) return FailAndLog(command,"command_not_allowed","That voice command is unavailable for this object.");
             switch(command.command.ToUpperInvariant())
             {
                 case "OPEN":
-                    var targetLock=DreamCodeVR2.Quest.QuestLockController.FindForTarget(target.objectId);
-                    if(targetLock&&targetLock.IsLocked) return Fail(command,"target_locked","The target is locked.");
+                    if(!DreamCodeVR2.Quest.QuestLockController.CanOpenTarget(target.objectId,out var lockError)) return Fail(command,"target_locked",lockError);
                     if(target.GetComponent<ExperimentalDrawerController>() is ExperimentalDrawerController drawer && !drawer.TryOpen(out var openError)) return Fail(command,"motion_configuration",openError);
                     if(target.GetComponent<DreamCodeVR2.Quest.QuestDoorController>() is DreamCodeVR2.Quest.QuestDoorController door && !door.TryOpen(out openError)) return Fail(command,"door_open_failed",openError);
                     if(!target.GetComponent<ExperimentalDrawerController>()&&!target.GetComponent<DreamCodeVR2.Quest.QuestDoorController>()) return Fail(command,"missing_controller","This object has no open controller."); break;
@@ -40,6 +40,8 @@ namespace DreamCodeVR2.ExperimentalAuthoring
                     if(!receptacle||!instance||!instance.AllowsC1PlaceIn(target.objectId,receptacle.objectId,out var placementAnchor)){DreamCodeVR2ClientLogger.Warn("quest","PLACE_IN_FAILED","The requested placement is not allowed by the active quest.",new { command_id=command.commandId });return Fail(command,"placement_not_allowed","The requested placement is not allowed by the active quest.");}
                     var monitor=placementAnchor.GetComponent<DreamCodeVR2.Quest.QuestPlacementMonitor>();
                     if(!monitor||!monitor.NotifyPlaced(target)){DreamCodeVR2ClientLogger.Warn("quest","PLACE_IN_FAILED","The placement region is unavailable.",new { command_id=command.commandId });return Fail(command,"missing_placement_region","The placement region is unavailable.");}
+                    target.transform.SetParent(placementAnchor.transform,true);
+                    target.transform.SetPositionAndRotation(DreamCodeVR2.Quest.QuestSoccerBall.SpawnPosition(placementAnchor,DreamCodeVR2.Quest.QuestSoccerBall.EffectiveWorldRadius(target.GetComponent<SphereCollider>())),placementAnchor.transform.rotation);
                     DreamCodeVR2ClientLogger.Event("quest","PLACE_IN_APPLIED",null,new { command_id=command.commandId,object_id=target.objectId,anchor_id=placementAnchor.anchorId });break;
                 case "USE_WITH":
                     var secondary=AuthoringActionExecutor.FindEditable(command.secondaryObjectId);
@@ -60,5 +62,6 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             return item.objectId!=null&&item.objectId.IndexOf("key",System.StringComparison.OrdinalIgnoreCase)>=0;
         }
         private static AuthoringExecutionResult Fail(PredefinedVoiceCommand command,string code,string message)=>new AuthoringExecutionResult{actionId=command?.commandId,success=false,message=message,error=new AuthoringValidationError{code=code,message=message}};
+        private static AuthoringExecutionResult FailAndLog(PredefinedVoiceCommand command,string code,string message){var result=Fail(command,code,message);DreamCodeVR2ClientLogger.Warn("c1","PREDEFINED_COMMAND_LOCAL_REJECTION",message,new { command_id=command?.commandId,target_object_id=command?.targetObjectId,command=command?.command,preset=command?.preset,code });return result;}
     }
 }

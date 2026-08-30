@@ -37,6 +37,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private TMP_Text log;
         private ResearcherPanelXrDiagnostics xrDiagnostics;
         private DynamicStoryTaskController dynamicStory;
+        private QuestInstanceController questInstanceController;
         private float controllerToggleStarted = -1f;
         private bool controllerToggleConsumed;
         private CanvasGroup participantUiGroup;
@@ -47,6 +48,11 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private readonly List<SelectObjectRayState> gameplayRayStates = new List<SelectObjectRayState>();
         private readonly List<GraphicRaycasterState> legacyRaycasterStates = new List<GraphicRaycasterState>();
         private readonly Dictionary<ExperimentCondition, Button> conditionButtons = new Dictionary<ExperimentCondition, Button>();
+        private readonly Dictionary<string, Button> questSetButtons = new Dictionary<string, Button>();
+        private readonly Dictionary<string, Button> questInstanceButtons = new Dictionary<string, Button>();
+        private Button advancedButton;
+        private GameObject questSetSection;
+        private GameObject questInstanceSection;
         private float nextUiDiagnosticRefresh;
 
         private void Start()
@@ -82,6 +88,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             if (!interaction) interaction = FindFirstObjectByType<InteractionContextProvider>();
             if (!sceneContext) sceneContext = FindFirstObjectByType<SceneContextTransmitter>();
             if (!dynamicStory) dynamicStory = FindFirstObjectByType<DynamicStoryTaskController>();
+            if (!questInstanceController) questInstanceController = FindFirstObjectByType<QuestInstanceController>();
             if (!researcherControl)
             {
                 researcherControl = GetComponent<DreamCodeVR2ResearcherControlClient>() ?? gameObject.AddComponent<DreamCodeVR2ResearcherControlClient>();
@@ -115,7 +122,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             rect.anchorMin = rect.anchorMax = new Vector2(.5f, .5f);
             rect.pivot = new Vector2(.5f, .5f);
             rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(710, 540);
+            rect.sizeDelta = new Vector2(710, 760);
             var layout = panel.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(24, 24, 20, 20);
             layout.spacing = 10;
@@ -130,9 +137,21 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             conditionButtons[ExperimentCondition.VoiceCommandBaseline] = conditionButtonRow[0];
             conditionButtons[ExperimentCondition.PlayerAuthoring] = conditionButtonRow[1];
             conditionButtons[ExperimentCondition.DynamicStorytelling] = conditionButtonRow[2];
+            questSetSection = new GameObject("QuestSetSelection", typeof(RectTransform), typeof(VerticalLayoutGroup));
+            questSetSection.transform.SetParent(panel.transform, false);
+            questSetSection.GetComponent<VerticalLayoutGroup>().spacing = 5;
+            AddHeader(questSetSection.transform, "QUEST SET");
+            var questSetRow=AddButtons(questSetSection.transform,new (string,Action)[]{("A  BALL & DRAWER",()=>SelectQuestSet("set_a_ball_and_drawer")),("B  SEARCH & LOCKS",()=>SelectQuestSet("set_b_search_and_locks")),("C  KEY + LAMP",()=>SelectQuestSet("set_c_alternate_key_relation_lamp"))},48);
+            questSetButtons["set_a_ball_and_drawer"]=questSetRow[0];questSetButtons["set_b_search_and_locks"]=questSetRow[1];questSetButtons["set_c_alternate_key_relation_lamp"]=questSetRow[2];
+            questInstanceSection = new GameObject("QuestInstanceSelection", typeof(RectTransform), typeof(VerticalLayoutGroup));
+            questInstanceSection.transform.SetParent(panel.transform, false);
+            questInstanceSection.GetComponent<VerticalLayoutGroup>().spacing = 5;
+            AddHeader(questInstanceSection.transform, "QUEST INSTANCE");
+            BuildQuestInstanceButtons();
             AddHeader(panel.transform, "STATUS");
-            status = AddText(panel.transform, "Session: NOT READY\nActive condition: --\nSelected condition: --\nPeer: NOT CONNECTED\nServer API: UNVERIFIED\nLogging: --", 17, FontStyles.Normal, 132);
-            AddButtons(panel.transform, new (string, Action)[] { ("MARK TEST", DreamCodeVR2ClientLogger.MarkTest), ("ADVANCED", ToggleAdvanced) }, 44);
+            status = AddText(panel.transform, "Session: NOT READY\nActive condition: --\nSelected condition: --\nPeer: NOT CONNECTED\nServer API: UNVERIFIED\nLogging: --", 17, FontStyles.Normal, 170);
+            var utilityButtons=AddButtons(panel.transform, new (string, Action)[] { ("MARK TEST", DreamCodeVR2ClientLogger.MarkTest), ("ADVANCED", ToggleAdvanced) }, 44);
+            advancedButton=utilityButtons[1];
 
             advancedPanel = new GameObject("Advanced", typeof(RectTransform), typeof(VerticalLayoutGroup));
             advancedPanel.transform.SetParent(panel.transform, false);
@@ -155,6 +174,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             xrDiagnostics = canvasObject.AddComponent<ResearcherPanelXrDiagnostics>();
             xrDiagnostics.panelRoot = panel.transform;
             RefreshConditionButtonVisuals();
+            RefreshQuestSelectionVisuals();
             Note("researcher console ready");
         }
 
@@ -421,6 +441,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private void ToggleAdvanced()
         {
             advancedPanel.SetActive(!advancedPanel.activeSelf);
+            ApplyButtonColors(advancedButton,advancedPanel.activeSelf);
             DreamCodeVR2ClientLogger.Event("researcher", advancedPanel.activeSelf ? "RESEARCHER_ADVANCED_OPENED" : "RESEARCHER_ADVANCED_CLOSED");
         }
 
@@ -428,29 +449,99 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         {
             conditionManager?.PrepareResearcherCondition(condition);
             DreamCodeVR2ClientLogger.Correlate(null, null, condition);
-            DreamCodeVR2ClientLogger.Event("session", "CONDITION_SELECTED", null, new { condition = DreamCodeVR2ResearcherControlClient.ServerCondition(condition) });
+            DreamCodeVR2ClientLogger.Event("researcher", "RESEARCHER_CONDITION_SELECTED", null, new { condition = DreamCodeVR2ResearcherControlClient.ServerCondition(condition) });
             Note("condition selected: " + condition + ". Press START.");
             RefreshConditionButtonVisuals();
+            RefreshQuestSelectionVisuals();
             Refresh();
+        }
+
+        private static readonly Dictionary<string, string[]> QuestInstances = new Dictionary<string, string[]>
+        {
+            { "set_a_ball_and_drawer", new[] { "set_a_instance_1", "set_a_instance_2" } },
+            { "set_b_search_and_locks", new[] { "set_b_instance_1" } },
+            { "set_c_alternate_key_relation_lamp", new[] { "set_c_instance_1" } }
+        };
+
+        private void SelectQuestSet(string setId)
+        {
+            conditionManager?.PrepareResearcherQuestSet(setId);
+            DreamCodeVR2ClientLogger.Event("researcher","RESEARCHER_QUEST_SET_SELECTED",null,new { quest_set_id=setId });
+            Note("quest set selected. Choose an instance.");BuildQuestInstanceButtons();RefreshQuestSelectionVisuals();
+        }
+
+        private void SelectQuestInstance(string instanceId)
+        {
+            var setId=conditionManager?.selectedQuestSetId;
+            if(string.IsNullOrEmpty(setId)||!QuestInstances.TryGetValue(setId,out var instances)||Array.IndexOf(instances,instanceId)<0){Note("invalid quest instance for selected set.");return;}
+            conditionManager.PrepareResearcherQuestInstance(instanceId);DreamCodeVR2ClientLogger.Event("researcher","RESEARCHER_QUEST_INSTANCE_SELECTED",null,new { quest_set_id=setId,quest_instance_id=instanceId });Note("quest instance selected: "+InstanceLabel(instanceId));RefreshQuestSelectionVisuals();
+        }
+
+        private void BuildQuestInstanceButtons()
+        {
+            if(!questInstanceSection)return;
+            for(var i=questInstanceSection.transform.childCount-1;i>=0;i--){var child=questInstanceSection.transform.GetChild(i);if(child.name=="InstanceButtons")Destroy(child.gameObject);}
+            questInstanceButtons.Clear();var setId=conditionManager?.selectedQuestSetId;
+            if(string.IsNullOrEmpty(setId)||!QuestInstances.TryGetValue(setId,out var instances))return;
+            var holder=new GameObject("InstanceButtons",typeof(RectTransform),typeof(VerticalLayoutGroup));holder.transform.SetParent(questInstanceSection.transform,false);holder.GetComponent<VerticalLayoutGroup>().spacing=5;
+            foreach(var instance in instances){var id=instance;var buttons=AddButtons(holder.transform,new (string,Action)[]{(InstanceLabel(id),()=>SelectQuestInstance(id))},42);questInstanceButtons[id]=buttons[0];}
+        }
+
+        private static string InstanceLabel(string instanceId)=>instanceId=="set_a_instance_1"?"A1":instanceId=="set_a_instance_2"?"A2":instanceId=="set_b_instance_1"?"B1":instanceId=="set_c_instance_1"?"C1":instanceId;
+
+        private void RefreshQuestSelectionVisuals()
+        {
+            var isC3=conditionManager&&conditionManager.selectedCondition==ExperimentCondition.DynamicStorytelling;
+            if(questSetSection)questSetSection.SetActive(!isC3);if(questInstanceSection)questInstanceSection.SetActive(!isC3);
+            ApplySelectionVisuals(questSetButtons,conditionManager?.selectedQuestSetId);ApplySelectionVisuals(questInstanceButtons,conditionManager?.selectedQuestInstanceId);
+        }
+
+        private static void ApplySelectionVisuals(Dictionary<string,Button> buttons,string selectedId)
+        {
+            foreach(var pair in buttons){if(!pair.Value)continue;ApplyButtonColors(pair.Value,pair.Key==selectedId);}
+        }
+
+        // Unified XR states: blue idle, dark on hover, and green when selected/active.
+        private static void ApplyButtonColors(Button button,bool persistentSelection)
+        {
+            if(!button)return;
+            var colors=button.colors;
+            colors.normalColor=persistentSelection?new Color(.13f,.62f,.34f,1f):new Color(.12f,.28f,.45f,1f);
+            colors.highlightedColor=new Color(.035f,.06f,.08f,1f);
+            colors.pressedColor=new Color(.02f,.035f,.05f,1f);
+            colors.selectedColor=new Color(.13f,.62f,.34f,1f);
+            colors.disabledColor=new Color(.08f,.10f,.12f,.55f);
+            colors.colorMultiplier=1f;colors.fadeDuration=.08f;button.colors=colors;
+            if(button.targetGraphic)button.targetGraphic.color=colors.normalColor;
         }
 
         private void StartServerSession()
         {
             var peer = protocol?.CurrentPeerUuid;
             if (string.IsNullOrEmpty(peer)) { Note("NO PEER UUID — wait for Ubiq connection."); return; }
+            if(conditionManager==null||!conditionManager.hasPendingResearcherConditionSelection){Note("Select a condition.");return;}
+            var isC3=conditionManager.selectedCondition==ExperimentCondition.DynamicStorytelling;
+            if(!isC3&&string.IsNullOrWhiteSpace(conditionManager.selectedQuestSetId)){Note("Select a quest set.");return;}
+            if(!isC3&&(!QuestInstances.TryGetValue(conditionManager.selectedQuestSetId,out var validInstances)||string.IsNullOrWhiteSpace(conditionManager.selectedQuestInstanceId)||Array.IndexOf(validInstances,conditionManager.selectedQuestInstanceId)<0)){Note("Select a quest instance.");return;}
             var restarting = conditionManager.sessionStarted;
             conditionManager.InvalidateResearcherSessionReady();
             if (restarting) FindFirstObjectByType<DreamCodeVRSpeechStatusBridge>()?.CancelProcessing("Speech: Cancelled", "Session restart requested.");
-            DreamCodeVR2ClientLogger.Event("session", restarting ? "SESSION_RESTART_REQUEST" : "SESSION_START_REQUEST", null, new { peer_uuid = peer, condition = DreamCodeVR2ResearcherControlClient.ServerCondition(conditionManager.selectedCondition) });
+            // The server can deliver NetworkId 101 activation before its HTTP reply. Reset first,
+            // otherwise the later callback erases the task that was just activated.
+            conditionManager.ResetPlaythrough();
+            var selectedSet=isC3?null:conditionManager.selectedQuestSetId;var selectedInstance=isC3?null:conditionManager.selectedQuestInstanceId;
+            DreamCodeVR2ClientLogger.Event("researcher", "RESEARCHER_SESSION_START_REQUEST", null, new { peer_uuid = peer, condition = DreamCodeVR2ResearcherControlClient.ServerCondition(conditionManager.selectedCondition), quest_set_id=selectedSet, quest_instance_id=selectedInstance, restarting });
             researcherControl.Health(health =>
             {
                 // The deployed health endpoint returns HTTP 200 but does not include the optional
                 // `healthy` JSON field. A successful request is therefore the authoritative check.
-                if (health == null || !researcherControl.IsReachable || !string.IsNullOrEmpty(health.error)) { Note("RESEARCHER API UNREACHABLE"); return; }
+                if (health == null || !researcherControl.IsReachable || !string.IsNullOrEmpty(health.error)) { DreamCodeVR2ClientLogger.Warn("researcher","RESEARCHER_SESSION_START_FAILED",health?.error,new { quest_set_id=selectedSet,quest_instance_id=selectedInstance });Note("RESEARCHER API UNREACHABLE"); return; }
                 Action<DreamCodeVR2ResearcherControlClient.Response> ready = response =>
                 {
-                    if (!string.IsNullOrEmpty(response.error) || string.IsNullOrEmpty(response.session_id)) { Note("SESSION START FAILED: " + response.error); return; }
-                    conditionManager.ResetPlaythrough(); conditionManager.sessionId = response.session_id; conditionManager.StartSession(false);
+                    if (!string.IsNullOrEmpty(response.error) || string.IsNullOrEmpty(response.session_id)) { DreamCodeVR2ClientLogger.Warn("researcher","RESEARCHER_SESSION_START_FAILED",response.error,new { quest_set_id=selectedSet,quest_instance_id=selectedInstance });Note("SESSION START FAILED: " + response.error); return; }
+                    conditionManager.sessionId = response.session_id; conditionManager.StartSession(false);
+                    if(!isC3&&questInstanceController==null){DreamCodeVR2ClientLogger.Warn("quest","QUEST_INSTANCE_APPLY_FAILED","Quest instance controller is unavailable.",new { quest_instance_id=selectedInstance });conditionManager.CompleteSession();Note("SESSION START FAILED: quest runtime unavailable");return;}
+                    conditionManager.ActivateResearcherQuestSelection();
                     DreamCodeVR2ClientLogger.Correlate(peer, response.session_id, conditionManager.condition);
                     DreamCodeVR2ClientLogger.Event("session", restarting ? "SESSION_RESTARTED" : "SESSION_STARTED_LOCAL", null, new { session_id = response.session_id });
                     sceneContext?.SendSceneContextSnapshot("session_start");
@@ -460,14 +551,14 @@ namespace DreamCodeVR2.ExperimentalAuthoring
                         {
                             DreamCodeVR2ClientLogger.Warn("session", "SESSION_STATUS_MISMATCH", serverStatus.error);
                             FindFirstObjectByType<DreamCodeVRSpeechStatusBridge>()?.CancelProcessing("Speech: Cancelled", "Session status mismatch.");
-                            conditionManager.CompleteSession(); Note("SESSION STATUS MISMATCH"); return;
+                            DreamCodeVR2ClientLogger.Warn("researcher","RESEARCHER_SESSION_START_FAILED",serverStatus.error,new { quest_set_id=selectedSet,quest_instance_id=selectedInstance });conditionManager.CompleteSession(); Note("SESSION START FAILED: " + (serverStatus.error??"status mismatch")); return;
                         }
                         conditionManager.SetResearcherSessionReady();
-                        DreamCodeVR2ClientLogger.Event("session", "SESSION_READY", null, new { session_id = conditionManager.sessionId, condition = serverStatus.condition });
+                        DreamCodeVR2ClientLogger.Event("researcher", "RESEARCHER_SESSION_READY", null, new { session_id = conditionManager.sessionId, condition = serverStatus.condition, quest_set_id=conditionManager.activeQuestSetId, quest_instance_id=conditionManager.activeQuestInstanceId });
                         Note("SESSION READY: " + conditionManager.sessionId);
                     });
                 };
-                if (restarting) researcherControl.RestartSession(conditionManager.selectedCondition, peer, ready); else researcherControl.StartSession(conditionManager.selectedCondition, peer, ready);
+                if (restarting) researcherControl.RestartSession(conditionManager.selectedCondition, peer, selectedSet, selectedInstance, ready); else researcherControl.StartSession(conditionManager.selectedCondition, peer, selectedSet, selectedInstance, ready);
             });
         }
 
@@ -502,11 +593,21 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             var session = conditionManager?.IsResearcherSessionReady == true ? "READY" : "NOT READY";
             var peer = string.IsNullOrEmpty(protocol?.CurrentPeerUuid) ? "NOT CONNECTED" : "CONNECTED";
             var api = researcherControl?.IsReachable == true ? "REACHABLE" : "UNVERIFIED / ERROR";
-            status.text = $"Session: {session}\nActive condition: {conditionManager?.condition}\nSelected condition: {conditionManager?.selectedCondition}\nPeer: {peer}\nServer API: {api}\nLogging: {(DreamCodeVR2ClientLogger.Instance?.IsActive == true ? "ACTIVE" : "ERROR")}";
+            var active=conditionManager?.condition.ToString()??"--";
+            var selection=conditionManager?.selectedCondition.ToString()??"--";
+            var questStatus=conditionManager?.IsResearcherSessionReady==true
+                ? (conditionManager.condition==ExperimentCondition.DynamicStorytelling?"Quest Progression: Dynamic":"Active Quest Set: "+(conditionManager.activeQuestSetId??"--")+"\nActive Quest Instance: "+(conditionManager.activeQuestInstanceId??"--"))
+                : "Selected Quest Set: "+(conditionManager?.selectedQuestSetId??"--")+"\nSelected Quest Instance: "+(conditionManager?.selectedQuestInstanceId??"--");
+            status.text = $"Session: {session}\nActive condition: {active}\nSelected condition: {selection}\n{questStatus}\nPeer: {peer}\nServer API: {api}\nLogging: {(DreamCodeVR2ClientLogger.Instance?.IsActive == true ? "ACTIVE" : "ERROR")}";
             if (!advancedPanel.activeSelf) return;
             var selected = interaction?.GetCurrentSelectedEditableObject()?.objectId ?? "none";
             var pointed = interaction?.GetCurrentPointedEditableObject()?.objectId ?? "none";
-            advancedStatus.text = $"Session ID: {conditionManager?.sessionId ?? "none"}\nPeer UUID: {protocol?.CurrentPeerUuid ?? "none"}\nTask: {quest?.GetCurrentTask()?.step.ToString() ?? "none"}\nSelected: {selected}\nPointed: {pointed}\nLog: {DreamCodeVR2ClientLogger.Instance?.CurrentLogFilename ?? "none"}\nWarnings/errors: {DreamCodeVR2ClientLogger.Instance?.WarningCount ?? 0}/{DreamCodeVR2ClientLogger.Instance?.ErrorCount ?? 0}";
+            var currentTask=quest?.GetCurrentTask();
+            var currentTaskId=currentTask?.taskId??(currentTask!=null?"task-"+currentTask.step:"none");
+            var fixedProgress=conditionManager?.condition==ExperimentCondition.DynamicStorytelling
+                ? "Quest Progression: Dynamic\nCurrent Task ID: "+(dynamicStory?.ActiveDynamicTask?.taskId??"none")+"\nCompleted: "+(quest?.CompletedTaskCount??0)
+                : "Current Step: "+(currentTask?.step.ToString()??"none")+"/"+(quest?.TaskEntries.Count??0)+"\nCurrent Task ID: "+currentTaskId+"\nTask type: "+(currentTask?.type??"none");
+            advancedStatus.text = $"Session ID: {conditionManager?.sessionId ?? "none"}\nPeer UUID: {protocol?.CurrentPeerUuid ?? "none"}\n{fixedProgress}\nSelected: {selected}\nPointed: {pointed}\nLog: {DreamCodeVR2ClientLogger.Instance?.CurrentLogFilename ?? "none"}\nWarnings/errors: {DreamCodeVR2ClientLogger.Instance?.WarningCount ?? 0}/{DreamCodeVR2ClientLogger.Instance?.ErrorCount ?? 0}";
         }
 
         private void Select(string id)
@@ -546,19 +647,13 @@ namespace DreamCodeVR2.ExperimentalAuthoring
 
         private void RefreshConditionButtonVisuals()
         {
-            var hasSelection = conditionManager != null;
+            var hasSelection = conditionManager != null && conditionManager.hasPendingResearcherConditionSelection;
             var selected = conditionManager ? conditionManager.selectedCondition : default;
             foreach (var pair in conditionButtons)
             {
                 if (!pair.Value) continue;
-                var color = pair.Value.colors;
                 var isSelected = hasSelection && pair.Key == selected;
-                color.normalColor = isSelected ? new Color(.13f, .62f, .34f, 1f) : new Color(.12f, .28f, .45f, 1f);
-                color.highlightedColor = isSelected ? new Color(.20f, .78f, .43f, 1f) : new Color(.18f, .42f, .67f, 1f);
-                color.pressedColor = isSelected ? new Color(.08f, .42f, .22f, 1f) : new Color(.07f, .18f, .30f, 1f);
-                color.selectedColor = color.highlightedColor;
-                pair.Value.colors = color;
-                if (pair.Value.targetGraphic) pair.Value.targetGraphic.color = color.normalColor;
+                ApplyButtonColors(pair.Value,isSelected);
             }
         }
 
@@ -598,7 +693,8 @@ namespace DreamCodeVR2.ExperimentalAuthoring
                 var captured = spec;
                 var buttonObject = CreateBox("ResearcherButton_" + captured.Item1, row.transform, new Color(.12f, .28f, .45f, 1));
                 var button = buttonObject.AddComponent<Button>(); button.targetGraphic = buttonObject.GetComponent<Image>();
-                button.onClick.AddListener(() => { ResearcherPanelXrDiagnostics.NotifyButtonDispatch(buttonObject); DreamCodeVR2ClientLogger.Event("researcher", "RESEARCHER_BUTTON_CLICK", null, new { button_id = captured.Item1 }); captured.Item2(); });
+                ApplyButtonColors(button,false);
+                button.onClick.AddListener(() => { EventSystem.current?.SetSelectedGameObject(buttonObject); ResearcherPanelXrDiagnostics.NotifyButtonDispatch(buttonObject); DreamCodeVR2ClientLogger.Event("researcher", "RESEARCHER_BUTTON_CLICK", null, new { button_id = captured.Item1 }); captured.Item2(); });
                 var label = AddText(button.transform, captured.Item1, 16, FontStyles.Bold, height);
                 label.alignment = TextAlignmentOptions.Center;
                 var labelRect = label.rectTransform; labelRect.anchorMin = Vector2.zero; labelRect.anchorMax = Vector2.one; labelRect.offsetMin = Vector2.zero; labelRect.offsetMax = Vector2.zero;

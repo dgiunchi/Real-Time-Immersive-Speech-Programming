@@ -33,6 +33,9 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         public bool researcherMode;
         [Tooltip("Base URL for the Research Control HTTP API. Quest builds must use the reachable LAN address.")]
         public string researcherControlBaseUrl = "http://130.136.2.161:50001";
+        [Header("PTT microphone")]
+        [Range(1f,4f), Tooltip("Digital gain applied before PTT PCM16 serialization; does not affect playback.")]
+        public float pttMicGain = 2f;
         [Header("Participant UX")]
         [Min(1f), Tooltip("Maximum time the participant UI remains in Processing while waiting for a relevant NID101 response.")]
         public float processingResponseTimeoutSeconds = 10f;

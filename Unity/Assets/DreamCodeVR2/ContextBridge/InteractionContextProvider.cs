@@ -25,6 +25,8 @@ namespace DreamCodeVR2.ContextBridge
         public InteractionContextSnapshot CaptureSnapshot(string peer)
         {
             EnsureRegistry();
+            EnsureQuestRuntimeState();
+            var task=questRuntimeState?.GetCurrentTask();
 
             var snapshot = new InteractionContextSnapshot
             {
@@ -34,7 +36,9 @@ namespace DreamCodeVR2.ContextBridge
                 active_selection = ResolveActiveSelection(),
                 last_action = null,
                 pending_confirmation = proposalPresenter && proposalPresenter.HasPendingProposal ? proposalPresenter.PendingProposal.actionId : null,
-                current_task_id = questRuntimeState && questRuntimeState.GetCurrentTask() != null ? questRuntimeState.GetCurrentTask().step.ToString() : null,
+                // The server contract uses the canonical task ID (for example
+                // set_a_instance_2:T1), not Unity's local numeric step.
+                current_task_id = task?.taskId ?? (task != null ? task.step.ToString() : null),
                 recently_interacted_object_ids = questRuntimeState ? questRuntimeState.RecentlyInteractedObjectIds.ToArray() : Array.Empty<string>(),
                 object_currently_held = false,
                 last_incorrect_attempt = questRuntimeState ? questRuntimeState.LastIncorrectAttempt : null,
@@ -90,6 +94,11 @@ namespace DreamCodeVR2.ContextBridge
                     }
                 }
             }
+        }
+
+        private void EnsureQuestRuntimeState()
+        {
+            if(!questRuntimeState)questRuntimeState=FindFirstObjectByType<QuestRuntimeState>();
         }
 
         private ObjectSummary ResolveActiveSelection()

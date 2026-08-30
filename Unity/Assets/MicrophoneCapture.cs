@@ -18,7 +18,8 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     public event Action<SpeechCaptureDiagnostics> DiagnosticsUpdated;
 
     public bool sendToServer = true;
-    public float gain = 1.0f;
+    [Obsolete("Use pttMicGain; retained for existing scene serialization.")] public float gain = 1.0f;
+    [Range(1f, 4f)] public float pttMicGain = 2.0f;
     public int sampleRate = 16000;
     public int microphoneBufferSeconds = 1;
     public float triggerThreshold = 0.75f;
@@ -32,6 +33,8 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     public bool restartMicrophoneOnNearSilentCapture = true;
     public int maxAutoMicRecoveryAttempts = 2;
     public float microphoneRecoveryCooldownSeconds = 1.0f;
+    [Tooltip("Time allowed for Android microphone input to settle after start/restart. Initial frames are discarded, never sent to STT.")]
+    [Range(0f, 1f)] public float microphoneWarmupSeconds = 0.35f;
     public float nearSilentRecoveryMinimumRecordingMs = 800f;
     public float nearSilentRecoveryRmsThreshold = 0.0005f;
     public float nearSilentRecoveryPeakThreshold = 0.003f;
@@ -64,10 +67,16 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
     private float lastTriggerPressedTime;
     private float recordingStartTime;
     private float lastMicrophoneRecoveryTime = float.NegativeInfinity;
+    private float microphoneStartedAt = float.NegativeInfinity;
+    private bool microphoneWarmupCompleteLogged;
     private int recordingSampleCount;
     private int recordingPcmBytes;
     private float recordingSquareSum;
     private float recordingPeak;
+    private float recordingInputSquareSum;
+    private float recordingInputPeak;
+    private int recordingClippedSampleCount;
+    private int recordingWarmupDiscardedSamples;
     private int autoMicRecoveryAttempts;
     private readonly List<InputDevice> leftControllers = new List<InputDevice>();
     private ExperimentConditionManager conditionManager;
@@ -156,6 +165,8 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
 
         microphoneClip = Microphone.Start(null, true, Mathf.Max(1, microphoneBufferSeconds), sampleRate);
         lastMicPosition = Microphone.GetPosition(null);
+        microphoneStartedAt = Time.unscaledTime;
+        microphoneWarmupCompleteLogged = false;
         loggedNoMicrophoneDevices = false;
 
         if (logRecordingState && !loggedMicrophoneStarted)
@@ -342,6 +353,26 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             return;
         }
 
+        // Meta/Android can provide stale or near-zero frames immediately after a microphone
+        // restart. Keep the stream open, but flush that short pre-roll rather than making it
+        // part of the participant's STT utterance.
+        if (Time.unscaledTime - microphoneStartedAt < Mathf.Max(0f, microphoneWarmupSeconds))
+        {
+            recordingWarmupDiscardedSamples += PendingSampleCount(lastMicPosition, currentPosition, microphoneClip.samples);
+            lastMicPosition = currentPosition;
+            return;
+        }
+
+        if (!microphoneWarmupCompleteLogged)
+        {
+            microphoneWarmupCompleteLogged = true;
+            DreamCodeVR2ClientLogger.Event("stt", "MIC_WARMUP_COMPLETE", null, new
+            {
+                warmup_ms = Mathf.Max(0f, microphoneWarmupSeconds) * 1000f,
+                discarded_samples = recordingWarmupDiscardedSamples
+            });
+        }
+
         if (currentPosition > lastMicPosition)
         {
             SendSamples(lastMicPosition, currentPosition - lastMicPosition);
@@ -385,7 +416,13 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             {
                 mixed += samples[(i * channels) + channel];
             }
-            mixed = Mathf.Clamp(mixed / channels * gain, -1f, 1f);
+            var input = mixed / channels;
+            var gainValue = Mathf.Clamp(pttMicGain, 1f, 4f);
+            mixed = ApplyPttGain(input, gainValue, out var clipped);
+            var inputAbs = Mathf.Abs(input);
+            recordingInputSquareSum += input * input;
+            if(inputAbs > recordingInputPeak) recordingInputPeak = inputAbs;
+            if(clipped) recordingClippedSampleCount++;
 
             var abs = Mathf.Abs(mixed);
             squareSum += mixed * mixed;
@@ -427,7 +464,7 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
             PublishDiagnostics("before-send", "sending pcm chunk", sampleCount, rms, peak, pcm.Length, nearSilent, false, false);
         }
 
-        Debug.Log($"[MicrophoneCapture] audio chunk pcmBytes={pcm.Length} gain={gain} avgVolume={(stats.sampleCount > 0 ? stats.volumeSum / stats.sampleCount : 0f)}");
+        Debug.Log($"[MicrophoneCapture] audio chunk pcmBytes={pcm.Length} gain={Mathf.Clamp(pttMicGain,1f,4f)} avgVolume={(stats.sampleCount > 0 ? stats.volumeSum / stats.sampleCount : 0f)}");
         SendPayloadToServer(pcm);
     }
 
@@ -513,21 +550,36 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         recordingPcmBytes = 0;
         recordingSquareSum = 0f;
         recordingPeak = 0f;
+        recordingInputSquareSum = 0f;
+        recordingInputPeak = 0f;
+        recordingClippedSampleCount = 0;
+        recordingWarmupDiscardedSamples = 0;
+    }
+
+    private static int PendingSampleCount(int previousPosition, int currentPosition, int totalSamples)
+    {
+        if (previousPosition < 0 || currentPosition < 0 || totalSamples <= 0) return 0;
+        return currentPosition >= previousPosition ? currentPosition - previousPosition : totalSamples - previousPosition + currentPosition;
     }
 
     private void PublishStopDiagnostics()
     {
         var recordingMs = Mathf.Max(0f, (Time.unscaledTime - recordingStartTime) * 1000f);
         var rms = recordingSampleCount > 0 ? Mathf.Sqrt(recordingSquareSum / recordingSampleCount) : 0f;
+        var inputRms = recordingSampleCount > 0 ? Mathf.Sqrt(recordingInputSquareSum / recordingSampleCount) : 0f;
+        DreamCodeVR2ClientLogger.Event("stt", "PTT_AUDIO_LEVEL", null, new { input_rms=inputRms, output_rms=rms, input_peak=recordingInputPeak, output_peak=recordingPeak, gain=Mathf.Clamp(pttMicGain,1f,4f), clipped_sample_count=recordingClippedSampleCount });
         var nearSilent = rms <= nearSilentRmsThreshold && recordingPeak <= nearSilentPeakThreshold;
         var emptyAudioBuffer = recordingSampleCount <= 0 || recordingPcmBytes <= 0;
         var zeroSignal = recordingSampleCount > 0 && recordingPcmBytes > 0 && Mathf.Approximately(rms, 0f) && Mathf.Approximately(recordingPeak, 0f);
         var tooShort = recordingMs > 0f && recordingMs < minimumRecordingMs;
+        // On Quest the stale Android input path can contain a non-zero but unusably quiet
+        // signal (for example RMS .0005 / peak .009). Recover whenever the normal PTT
+        // diagnostics classify a sufficiently long capture as near-silent; the former,
+        // much lower recovery thresholds never reached this path.
         var nearSilentRecoveryCandidate = !zeroSignal
             && !emptyAudioBuffer
             && recordingMs >= nearSilentRecoveryMinimumRecordingMs
-            && rms <= nearSilentRecoveryRmsThreshold
-            && recordingPeak <= nearSilentRecoveryPeakThreshold;
+            && nearSilent;
         var note = zeroSignal
             ? "all-zero microphone capture"
             : nearSilentRecoveryCandidate
@@ -563,6 +615,13 @@ public class MicrophoneCapture : MonoBehaviour, IPlaybackStatsSource
         {
             autoMicRecoveryAttempts = 0;
         }
+    }
+
+    public static float ApplyPttGain(float sample, float configuredGain, out bool clipped)
+    {
+        var scaled=sample*Mathf.Clamp(configuredGain,1f,4f);
+        clipped=scaled>1f||scaled<-1f;
+        return Mathf.Clamp(scaled,-1f,1f);
     }
 
     private void PublishDiagnostics(

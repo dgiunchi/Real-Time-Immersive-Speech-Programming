@@ -44,7 +44,7 @@ namespace DreamCodeVR2.UI
         public TMP_Text proposalTargetText;
         public TMP_Text proposalReasonText;
         public bool experimentalAuthoringVisible = true;
-        [Range(.1f, 5f)] public float c1CommandFeedbackDuration = 1.2f;
+        [Range(.1f, 5f)] public float c1CommandFeedbackDuration = 2.5f;
 
         [Header("Data Sources")]
         public InteractionContextProvider interactionContextProvider;
@@ -164,7 +164,7 @@ namespace DreamCodeVR2.UI
             if (proposalTargetText) proposalTargetText.text = string.Empty;
             if (proposalReasonText) proposalReasonText.text = success ? string.Empty : detail;
             SetCanvasGroupVisible(proposalCardGroup, true);
-            proposalFeedbackRoutine = StartCoroutine(HideC1CommandFeedbackAfterDelay(success, success ? c1CommandFeedbackDuration : Mathf.Max(c1CommandFeedbackDuration, 2f)));
+            proposalFeedbackRoutine = StartCoroutine(HideC1CommandFeedbackAfterDelay(success, success ? c1CommandFeedbackDuration : Mathf.Clamp(c1CommandFeedbackDuration, 2f, 3f)));
         }
 
         private System.Collections.IEnumerator HideC1CommandFeedbackAfterDelay(bool success, float delay)
@@ -319,7 +319,7 @@ namespace DreamCodeVR2.UI
 
             if (compactQuestText)
             {
-                compactQuestText.text = $"Current task: {safeCurrentTask} / {safeTotalTasks}";
+                compactQuestText.text = "CURRENT TASK";
             }
 
             if (compactObjectiveText)
@@ -331,6 +331,14 @@ namespace DreamCodeVR2.UI
             {
                 SetStatus(lastResult);
             }
+        }
+        public void SetParticipantQuestInfo(string instruction,int completed)
+        {
+            var objective=TruncateMultiline(string.IsNullOrWhiteSpace(instruction)?"No active task.":instruction.Trim(),90);
+            // Keep the active instruction in the always-visible compact card as well. Some
+            // scene variants hide compactObjectiveText, which previously left only the heading.
+            if(compactQuestText)compactQuestText.text="CURRENT TASK\n"+objective+"\nCompleted: "+Mathf.Max(0,completed);
+            if(compactObjectiveText)compactObjectiveText.text=objective;
         }
 
         public void ClearQuestRuntimeInfo()

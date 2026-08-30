@@ -22,36 +22,39 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             var root=GameObject.Find("ExperimentalAuthoringRuntime")??new GameObject("ExperimentalAuthoringRuntime");
             var configuration=Resources.Load<StudyConfiguration>("StudyConfiguration"); var logger=Ensure<DreamCodeVR2ClientLogger>(root);logger.Configure(configuration);DreamCodeVR2ClientLogger.Event("bootstrap","SCENE_LOADED",null,new { scene=SceneManager.GetActiveScene().name }); EnsureUbiqTcpConnection(configuration);
             var context=Object.FindFirstObjectByType<SceneContextTransmitter>(); var ui=Object.FindFirstObjectByType<DreamCodeVRAuthoringUIController>();
-            var eventBus=Ensure<QuestEventBus>(root); var state=Object.FindFirstObjectByType<QuestRuntimeState>()??Ensure<QuestRuntimeState>(root); Ensure<QuestInstanceController>(root).runtimeState=state;
+            var eventBus=Ensure<QuestEventBus>(root); var state=Object.FindFirstObjectByType<QuestRuntimeState>()??Ensure<QuestRuntimeState>(root); Ensure<QuestInstanceController>(root).runtimeState=state;Ensure<QuestObjectVisibilityController>(root);
             var undo=Ensure<AuthoringUndoManager>(root); var executor=Ensure<AuthoringActionExecutor>(root); executor.undoManager=undo;executor.sceneContextTransmitter=context;
             var protocol=Ensure<AuthoringProtocolClient>(root);protocol.executor=executor;protocol.undoManager=undo;protocol.sceneContext=context;
             var condition=Ensure<ExperimentConditionManager>(root);condition.studyConfiguration=configuration;condition.authoringUi=ui;condition.protocolClient=protocol;executor.studyConfiguration=condition.studyConfiguration;
             Ensure<DreamCodeVR2UbiqDiagnostics>(root);
             var telemetry=Ensure<ExperimentTelemetry>(root);telemetry.conditionManager=condition;telemetry.protocolClient=protocol;
-            var researcherPanel=Ensure<ExperimentalResearcherPanel>(root);researcherPanel.conditionManager=condition;researcherPanel.protocol=protocol;researcherPanel.quest=state;researcherPanel.interaction=Object.FindFirstObjectByType<InteractionContextProvider>();researcherPanel.sceneContext=context;researcherPanel.researcherMode=condition.studyConfiguration&&condition.studyConfiguration.researcherMode;
+            var interaction=Object.FindFirstObjectByType<InteractionContextProvider>();if(interaction)interaction.questRuntimeState=state;
+            var researcherPanel=Ensure<ExperimentalResearcherPanel>(root);researcherPanel.conditionManager=condition;researcherPanel.protocol=protocol;researcherPanel.quest=state;researcherPanel.interaction=interaction;researcherPanel.sceneContext=context;researcherPanel.researcherMode=condition.studyConfiguration&&condition.studyConfiguration.researcherMode;
             var presenter=Ensure<AuthoringProposalPresenter>(root);presenter.ui=ui;presenter.protocol=protocol;
             var predefined=Ensure<PredefinedVoiceCommandExecutor>(root);predefined.sceneContext=context;predefined.telemetry=telemetry;
             var reset=Ensure<ExperimentalPlaythroughReset>(root);reset.runtimeState=state;reset.undoManager=undo;reset.executor=executor;reset.protocol=protocol;
             var validator=Ensure<QuestEventDrivenValidator>(root);validator.runtimeState=state;validator.eventBus=eventBus;
-            var runtimeValidator=Ensure<RuntimeTaskValidator>(root);var dynamic=Ensure<DynamicStoryTaskController>(root);dynamic.runtimeState=state;dynamic.validator=runtimeValidator;dynamic.sceneContext=context;dynamic.protocol=protocol;dynamic.ui=ui;dynamic.eventBus=eventBus;
+            // QuestEventDrivenValidator may be enabled before this component is created;
+            // inject the dependency explicitly so the first painting event is evaluated.
+            var runtimeValidator=Ensure<RuntimeTaskValidator>(root);validator.runtimeValidator=runtimeValidator;var dynamic=Ensure<DynamicStoryTaskController>(root);dynamic.runtimeState=state;dynamic.validator=runtimeValidator;dynamic.sceneContext=context;dynamic.protocol=protocol;dynamic.ui=ui;dynamic.eventBus=eventBus;
             reset.dynamicStory=dynamic;
             protocol.conditionManager=condition;protocol.proposalPresenter=presenter;protocol.telemetry=telemetry;protocol.predefinedCommandExecutor=predefined;protocol.dynamicStoryTaskController=dynamic;
-            ConfigureVerticalSliceObjects(eventBus,context); RegisterPlacementAnchors(); StartFixedQuest(state);
+            ConfigureVerticalSliceObjects(eventBus,context); RegisterPlacementAnchors(); ValidateC1Capabilities(); StartFixedQuest(state);
         }
         private static void ConfigureVerticalSliceObjects(QuestEventBus bus,SceneContextTransmitter context)
         {
             var drawer=AuthoringActionExecutor.FindEditable("table_drawer_001");var key=AuthoringActionExecutor.FindEditable("key_001");var lockObject=AuthoringActionExecutor.FindEditable("lock_001");var door=AuthoringActionExecutor.FindEditable("door_001");
             foreach(var editable in Object.FindObjectsByType<AIEditableObject>(FindObjectsInactive.Include,FindObjectsSortMode.None)) if(editable&&editable.editable) EnsureExplicitCapabilities(editable);
             foreach(var id in new[]{"table_drawer_001","table_drawer_002","table_drawer_003","cabinet_drawer_001","cabinet_drawer_002","cabinet_drawer_003"}) ConfigureDrawer(AuthoringActionExecutor.FindEditable(id),bus,context);
-            ValidateDrawerGroup("desk",new[]{"table_drawer_001","table_drawer_002","table_drawer_003"});ValidateDrawerGroup("cabinet",new[]{"cabinet_drawer_001","cabinet_drawer_002","cabinet_drawer_003"});
-            foreach(var keyId in new[]{"key_001","key_002"}){var keyItem=AuthoringActionExecutor.FindEditable(keyId);if(!keyItem)continue;var body=keyItem.GetComponent<Rigidbody>()??keyItem.gameObject.AddComponent<Rigidbody>();body.isKinematic=false;var grab=keyItem.GetComponent<ExperimentalGrabbableAdapter>()??keyItem.gameObject.AddComponent<ExperimentalGrabbableAdapter>();grab.eventBus=bus;grab.sceneContext=context;grab.SetGrabbable(true);var voice=keyItem.GetComponent<VoiceCommandCapabilities>()??keyItem.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"USE_WITH"};}
+            ValidateDrawerGroup("desk",new[]{"table_drawer_001","table_drawer_002","table_drawer_003"});ValidateDrawerGroup("cabinet",new[]{"cabinet_drawer_001","cabinet_drawer_002","cabinet_drawer_003"});LogDrawerCapabilities();
+            foreach(var keyId in new[]{"key_001","key_002"}){var keyItem=AuthoringActionExecutor.FindEditable(keyId);if(!keyItem)continue;var body=keyItem.GetComponent<Rigidbody>()??keyItem.gameObject.AddComponent<Rigidbody>();body.isKinematic=false;var grab=keyItem.GetComponent<ExperimentalGrabbableAdapter>()??keyItem.gameObject.AddComponent<ExperimentalGrabbableAdapter>();grab.eventBus=bus;grab.sceneContext=context;grab.SetGrabbable(true);var voice=keyItem.GetComponent<VoiceCommandCapabilities>()??keyItem.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"use_with"};AddAliases(keyItem,keyId=="key_001"?"golden key,gold key":"silver key");}
             Protect(lockObject);Protect(door); ConfigureLocksAndDoor(lockObject,door,bus,context); ConfigurePaintingAndLamps(bus,context); ConfigureNotes();
         }
         private static void EnsureExplicitCapabilities(AIEditableObject editable){var caps=editable.GetComponent<AuthoringCapabilities>()??editable.gameObject.AddComponent<AuthoringCapabilities>();if(caps.allowedOperations==null||caps.allowedOperations.Length==0)caps.allowedOperations=new[]{"SET_PROPERTY"};if(caps.editableProperties==null||caps.editableProperties.Length==0)caps.editableProperties=new[]{"color"};}
         private static void ConfigureDrawer(AIEditableObject item,QuestEventBus bus,SceneContextTransmitter context)
         {
             if(!item)return;var controller=item.GetComponent<ExperimentalDrawerController>()??item.gameObject.AddComponent<ExperimentalDrawerController>();controller.eventBus=bus;controller.sceneContext=context;EnsureDrawerMotionAnchors(item,controller);
-            var voice=item.GetComponent<VoiceCommandCapabilities>()??item.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"OPEN","CLOSE"};voice.target=item.GetComponent<PredefinedVoiceCommandTarget>()??item.gameObject.AddComponent<PredefinedVoiceCommandTarget>();voice.target.drawer=controller;
+            var voice=item.GetComponent<VoiceCommandCapabilities>()??item.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"open","close"};voice.target=item.GetComponent<PredefinedVoiceCommandTarget>()??item.gameObject.AddComponent<PredefinedVoiceCommandTarget>();voice.target.drawer=controller;AddAliases(item,DrawerAliases(item.objectId));
             var caps=item.GetComponent<AuthoringCapabilities>()??item.gameObject.AddComponent<AuthoringCapabilities>();caps.allowedOperations=new[]{"SET_AFFORDANCE","SET_PROPERTY"};caps.editableProperties=new[]{"color"};caps.allowedBehaviors=new string[0];var body=item.GetComponent<Rigidbody>()??item.gameObject.AddComponent<Rigidbody>();body.isKinematic=true;var grab=item.GetComponent<ExperimentalGrabbableAdapter>()??item.gameObject.AddComponent<ExperimentalGrabbableAdapter>();grab.eventBus=bus;grab.sceneContext=context;grab.SetGrabbable(false);
         }
         private static void EnsureDrawerMotionAnchors(AIEditableObject item,ExperimentalDrawerController controller)
@@ -98,22 +101,93 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         }
         private static void RegisterPlacementAnchors()
         {
-            foreach(var pair in new[]{("table_001","desk_surface_anchor"),("table_drawer_001","drawer_inside_anchor"),("table_drawer_002","drawer_inside_anchor"),("table_drawer_003","drawer_inside_anchor"),("cabinet_drawer_001","drawer_inside_anchor"),("cabinet_drawer_002","drawer_inside_anchor"),("cabinet_drawer_003","drawer_inside_anchor"),("basket_001","basket_inside_anchor")})
-            {var owner=AuthoringActionExecutor.FindEditable(pair.Item1);var point=owner?owner.transform.Find(pair.Item2):null;if(!point)continue;var anchor=point.GetComponent<AuthoringAnchor>()??point.gameObject.AddComponent<AuthoringAnchor>();anchor.anchorId=pair.Item1+"."+pair.Item2;anchor.semanticLabel=pair.Item2;anchor.questRestricted=pair.Item1=="basket_001";var monitor=point.GetComponent<QuestPlacementMonitor>()??point.gameObject.AddComponent<QuestPlacementMonitor>();monitor.anchor=anchor;monitor.eventBus=QuestEventBus.Instance;monitor.sceneContext=Object.FindFirstObjectByType<SceneContextTransmitter>();if(pair.Item1=="basket_001"){var receptacle=point.GetComponent<BoxCollider>()??point.gameObject.AddComponent<BoxCollider>();receptacle.isTrigger=true;receptacle.size=Vector3.one*.22f;}}
+            foreach(var pair in new[]{("table_001","desk_surface_anchor"),("cabinet_001","cabinet_top_anchor"),("table_drawer_001","drawer_inside_anchor"),("table_drawer_002","drawer_inside_anchor"),("table_drawer_003","drawer_inside_anchor"),("cabinet_drawer_001","drawer_inside_anchor"),("cabinet_drawer_002","drawer_inside_anchor"),("cabinet_drawer_003","drawer_inside_anchor"),("basket_001","basket_inside_anchor")})
+            {
+                var owner=AuthoringActionExecutor.FindEditable(pair.Item1);
+                var resolution=ResolvePlacementAnchor(owner,pair.Item2,out var point);
+                if(resolution==PlacementAnchorResolution.Missing)
+                {
+                    DreamCodeVR2ClientLogger.Warn("quest","PLACEMENT_ANCHOR_MISSING","Placement anchor was not found below its canonical owner in the loaded scene.",new { object_id=pair.Item1,anchor_name=pair.Item2 });
+                    continue;
+                }
+                if(resolution==PlacementAnchorResolution.Ambiguous)
+                {
+                    DreamCodeVR2ClientLogger.Warn("quest","PLACEMENT_ANCHOR_AMBIGUOUS","More than one placement anchor with this leaf name was found below its canonical owner.",new { object_id=pair.Item1,anchor_name=pair.Item2 });
+                    continue;
+                }
+                // The ID is deliberately composed from the semantic owner, never from a
+                // Transform path. Scene anchors may be nested several levels below it.
+                var anchor=point.GetComponent<AuthoringAnchor>()??point.gameObject.AddComponent<AuthoringAnchor>();
+                anchor.anchorId=owner.objectId+"."+pair.Item2;anchor.semanticLabel=pair.Item2;anchor.questRestricted=owner.objectId=="basket_001";
+                anchor.placementMode=anchor.anchorId=="table_001.desk_surface_anchor"||anchor.anchorId=="cabinet_001.cabinet_top_anchor"?AnchorPlacementMode.Surface:AnchorPlacementMode.Center;
+                var monitor=point.GetComponent<QuestPlacementMonitor>()??point.gameObject.AddComponent<QuestPlacementMonitor>();monitor.anchor=anchor;monitor.eventBus=QuestEventBus.Instance;monitor.sceneContext=Object.FindFirstObjectByType<SceneContextTransmitter>();
+                DreamCodeVR2ClientLogger.Event("quest","PLACEMENT_ANCHOR_REGISTERED",null,new { anchor_id=anchor.anchorId,position=point.position });
+                if(owner.objectId=="basket_001")ConfigureBasketPlacementTrigger(point);
+            }
+        }
+        private static void ConfigureBasketPlacementTrigger(Transform point)
+        {
+            // The basket visual remains untouched. Its prefab is scaled to .25 in the
+            // scene, so the old .22-local trigger measured only .055 m in world space:
+            // smaller than the canonical .16 m ball. Keep a small acceptance margin.
+            var receptacle=point.GetComponent<BoxCollider>()??point.gameObject.AddComponent<BoxCollider>();receptacle.isTrigger=true;
+            var minimumWorldSide=QuestSoccerBall.CanonicalDiameterMeters*1.15f;var scale=point.lossyScale;
+            receptacle.size=new Vector3(minimumWorldSide/Mathf.Max(Mathf.Abs(scale.x),.0001f),minimumWorldSide/Mathf.Max(Mathf.Abs(scale.y),.0001f),minimumWorldSide/Mathf.Max(Mathf.Abs(scale.z),.0001f));
+            DreamCodeVR2ClientLogger.Event("quest","BASKET_PLACEMENT_TRIGGER_CONFIGURED",null,new { world_side_m=minimumWorldSide,ball_diameter_m=QuestSoccerBall.CanonicalDiameterMeters });
+        }
+        private enum PlacementAnchorResolution { Found, Missing, Ambiguous }
+        private static PlacementAnchorResolution ResolvePlacementAnchor(AIEditableObject owner,string anchorName,out Transform point)
+        {
+            point=null;
+            if(!owner)return PlacementAnchorResolution.Missing;
+            // Include inactive descendants: active hierarchy state must not change the
+            // canonical ID or prevent bootstrap registration.
+            foreach(var candidate in owner.GetComponentsInChildren<Transform>(true))
+            {
+                if(candidate.name!=anchorName)continue;
+                if(point)return PlacementAnchorResolution.Ambiguous;
+                point=candidate;
+            }
+            return point?PlacementAnchorResolution.Found:PlacementAnchorResolution.Missing;
         }
         private static void ConfigureLocksAndDoor(AIEditableObject lockObject,AIEditableObject door,QuestEventBus bus,SceneContextTransmitter context)
         {
-            foreach(var id in new[]{"lock_001","lock_002","lock_003"}){var item=AuthoringActionExecutor.FindEditable(id);if(!item)continue;var lockController=item.GetComponent<QuestLockController>()??item.gameObject.AddComponent<QuestLockController>();lockController.eventBus=bus;lockController.sceneContext=context;}
+            foreach(var id in new[]{"lock_001","lock_002","lock_003"}){var item=AuthoringActionExecutor.FindEditable(id);if(!item)continue;var lockController=item.GetComponent<QuestLockController>()??item.gameObject.AddComponent<QuestLockController>();lockController.eventBus=bus;lockController.sceneContext=context;if(id=="lock_001"||id=="lock_002")EnsureKeyInsertAnchor(item);}
             var exitLock=lockObject?lockObject.GetComponent<QuestLockController>():null;if(exitLock)exitLock.Configure("key_001","door_001");
-            if(door){var controller=door.GetComponent<QuestDoorController>()??door.gameObject.AddComponent<QuestDoorController>();controller.lockController=exitLock;controller.eventBus=bus;controller.sceneContext=context;var parent=door.transform.parent??door.transform;var closed=parent.Find("DoorClosedAnchor")??CreateAnchor(parent,"DoorClosedAnchor",door.transform);var open=parent.Find("DoorOpenAnchor")??CreateAnchor(parent,"DoorOpenAnchor",door.transform);controller.closedAnchor=closed;controller.openAnchor=open;var voice=door.GetComponent<VoiceCommandCapabilities>()??door.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"OPEN","CLOSE"};}
+            if(door){var controller=door.GetComponent<QuestDoorController>()??door.gameObject.AddComponent<QuestDoorController>();controller.lockController=exitLock;controller.eventBus=bus;controller.sceneContext=context;var parent=door.transform.parent??door.transform;var closed=parent.Find("DoorClosedAnchor")??CreateAnchor(parent,"DoorClosedAnchor",door.transform);var open=parent.Find("DoorOpenAnchor")??CreateAnchor(parent,"DoorOpenAnchor",door.transform);controller.closedAnchor=closed;controller.openAnchor=open;var voice=door.GetComponent<VoiceCommandCapabilities>()??door.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"open","close"};AddAliases(door,"door,exit door");}
+        }
+        private static void EnsureKeyInsertAnchor(AIEditableObject lockItem)
+        {
+            var anchor=lockItem.transform.Find("key_insert_anchor");var created=!anchor;
+            if(!anchor){anchor=new GameObject("key_insert_anchor").transform;anchor.SetParent(lockItem.transform,false);}
+            // Lock meshes are scaled very small in the imported scene. A whole-lock
+            // local-unit offset places the key visibly in front of the keyhole.
+            anchor.localPosition=Vector3.forward*1.15f;anchor.localRotation=Quaternion.identity;
+            DreamCodeVR2ClientLogger.Event("quest","KEY_INSERT_ANCHOR_READY",null,new { lock_id=lockItem.objectId,anchor_name=anchor.name,created,local_position=anchor.localPosition,local_rotation=anchor.localRotation });
         }
         private static Transform CreateAnchor(Transform parent,string name,Transform source){var anchor=new GameObject(name).transform;anchor.SetParent(parent,false);anchor.SetPositionAndRotation(source.position,source.rotation);return anchor;}
         private static void ConfigurePaintingAndLamps(QuestEventBus bus,SceneContextTransmitter context)
         {
-            var painting=AuthoringActionExecutor.FindEditable("painting_001");if(painting){var p=painting.GetComponent<QuestPaintingController>()??painting.gameObject.AddComponent<QuestPaintingController>();var parent=painting.transform.parent??painting.transform;p.crookedAnchor=parent.Find("PaintingCrookedAnchor")??CreateAnchor(parent,"PaintingCrookedAnchor",painting.transform);p.alignedAnchor=parent.Find("PaintingAlignedAnchor")??CreateAnchor(parent,"PaintingAlignedAnchor",painting.transform);p.clueToReveal=AuthoringActionExecutor.FindEditable("clue_note_001")?.gameObject;p.eventBus=bus;p.sceneContext=context;var voice=painting.GetComponent<VoiceCommandCapabilities>()??painting.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"MOVE_TO_PRESET"};}
-            for(var i=1;i<=4;i++){var lamp=AuthoringActionExecutor.FindEditable("lamp_00"+i);if(!lamp)continue;lamp.displayName="Puzzle Lamp "+i;var controller=lamp.GetComponent<QuestLampController>()??lamp.gameObject.AddComponent<QuestLampController>();controller.eventBus=bus;controller.sceneContext=context;var voice=lamp.GetComponent<VoiceCommandCapabilities>()??lamp.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"ACTIVATE","DEACTIVATE","TOGGLE"};}
+            var painting=AuthoringActionExecutor.FindEditable("painting_001");if(painting){var p=painting.GetComponent<QuestPaintingController>()??painting.gameObject.AddComponent<QuestPaintingController>();var parent=painting.transform.parent??painting.transform;p.crookedAnchor=parent.Find("PaintingCrookedAnchor")??CreateAnchor(parent,"PaintingCrookedAnchor",painting.transform);p.alignedAnchor=parent.Find("PaintingAlignedAnchor")??CreateAnchor(parent,"PaintingAlignedAnchor",painting.transform);p.clueToReveal=AuthoringActionExecutor.FindEditable("clue_note_001")?.gameObject;p.eventBus=bus;p.sceneContext=context;var voice=painting.GetComponent<VoiceCommandCapabilities>()??painting.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"move_to_preset"};voice.predefinedPresets=new[]{"aligned"};AddAliases(painting,"painting,picture");}
+            for(var i=1;i<=4;i++){var lamp=AuthoringActionExecutor.FindEditable("lamp_00"+i);if(!lamp)continue;lamp.displayName="Puzzle Lamp "+i;var controller=lamp.GetComponent<QuestLampController>()??lamp.gameObject.AddComponent<QuestLampController>();controller.eventBus=bus;controller.sceneContext=context;var voice=lamp.GetComponent<VoiceCommandCapabilities>()??lamp.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"activate","deactivate","toggle"};AddAliases(lamp,"puzzle lamp "+i);}
         }
         private static void ConfigureNotes(){foreach(var id in new[]{"clue_note_001","clue_note_002"}){var note=AuthoringActionExecutor.FindEditable(id);if(note&&!note.GetComponent<QuestNoteController>())note.gameObject.AddComponent<QuestNoteController>();}}
+        private static string DrawerAliases(string id)
+        {
+            switch(id)
+            {
+                case "table_drawer_001": return "drawer,table drawer,desk drawer,first table drawer,first desk drawer,table drawer 1,desk drawer 1";
+                case "table_drawer_002": return "second table drawer,second desk drawer,table drawer 2,desk drawer 2";
+                case "table_drawer_003": return "third table drawer,third desk drawer,table drawer 3,desk drawer 3";
+                case "cabinet_drawer_001": return "cabinet drawer,first cabinet drawer,cabinet drawer 1";
+                case "cabinet_drawer_002": return "second cabinet drawer,cabinet drawer 2";
+                case "cabinet_drawer_003": return "third cabinet drawer,cabinet drawer 3";
+                default: return "drawer";
+            }
+        }
+        private static void LogDrawerCapabilities(){foreach(var id in new[]{"table_drawer_001","table_drawer_002","table_drawer_003","cabinet_drawer_001","cabinet_drawer_002","cabinet_drawer_003"}){var item=AuthoringActionExecutor.FindEditable(id);var voice=item?item.GetComponent<VoiceCommandCapabilities>():null;DreamCodeVR2ClientLogger.Event("quest","DRAWER_CAPABILITIES_PUBLISHED",null,new { object_id=id,labels=item?.labels,commands=voice?.predefinedVoiceActions });}}
+        private static void AddAliases(AIEditableObject item,string commaSeparated){if(!item)return;var values=new System.Collections.Generic.List<string>(item.labels??new string[0]);foreach(var value in commaSeparated.Split(','))if(!values.Contains(value.Trim()))values.Add(value.Trim());item.labels=values.ToArray();}
+        private static void ValidateC1Capabilities(){foreach(var item in Object.FindObjectsByType<AIEditableObject>(FindObjectsInactive.Include,FindObjectsSortMode.None)){var voice=item?item.GetComponent<VoiceCommandCapabilities>():null;if(!voice||voice.predefinedVoiceActions==null)continue;foreach(var command in voice.predefinedVoiceActions){var valid=!string.IsNullOrWhiteSpace(command)&&command==command.ToLowerInvariant()&&(command=="open"||command=="close"||command=="move_to_preset"||command=="use_with"||command=="place_in"||command=="activate"||command=="deactivate"||command=="toggle");if(command=="move_to_preset"&&(voice.predefinedPresets==null||voice.predefinedPresets.Length==0))valid=false;if(!valid)DreamCodeVR2ClientLogger.Warn("quest","C1_CAPABILITY_INVALID","Invalid advertised C1 capability.",new { object_id=item.objectId,command });else DreamCodeVR2ClientLogger.Event("quest","C1_CAPABILITY_VALIDATED",null,new { object_id=item.objectId,command,presets=voice.predefinedPresets });}}}
         private static void Protect(AIEditableObject item){if(!item)return;var caps=item.GetComponent<AuthoringCapabilities>()??item.gameObject.AddComponent<AuthoringCapabilities>();caps.questCritical=true;caps.allowedOperations=new string[0];caps.forbiddenAffordanceChanges=new[]{"grabbable"};}
         private static void StartFixedQuest(QuestRuntimeState state)
         {

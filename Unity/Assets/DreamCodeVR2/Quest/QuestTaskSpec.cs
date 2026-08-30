@@ -5,6 +5,7 @@ namespace DreamCodeVR2.Quest
     [Serializable]
     public class QuestTaskSpec
     {
+        public string taskId;
         public int step;
         public string type;
         public string target;
