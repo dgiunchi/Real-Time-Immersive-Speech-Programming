@@ -64,7 +64,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
 
         [Test] public void NextTaskGeneratedAcceptsObjectValuedScopesAndNestedQuestInstance()
         {
-            const string raw="{\"type\":\"NextTaskGenerated\",\"task\":{\"task_id\":\"set_a_instance_1:T1\",\"player_instruction\":\"Straighten the painting and reveal the first clue.\",\"task_type\":\"reveal_clue\",\"required_objects\":[\"painting_001\",\"clue_note_001\"],\"success_conditions\":[\"painting_aligned:painting_001\",\"object_revealed:clue_note_001\"],\"dependencies\":[],\"protected_objects\":[\"door_001\"],\"allowed_authoring_scope\":{},\"allowed_solution_scope\":{},\"quest_setup\":[{\"object_id\":\"sphere_001\",\"primitive\":\"sphere\",\"placement_anchor\":\"table_001.desk_surface_anchor\",\"initial_grabbable\":false,\"preset_id\":\"soccer_ball\"}]},\"quest_instance\":{\"schema_version\":\"1.0\",\"quest_instance_id\":\"set_a_instance_1\",\"quest_set_id\":\"set_a_ball_and_drawer\",\"placements\":[{\"object_id\":\"key_001\",\"anchor_id\":\"table_drawer_001.drawer_inside_anchor\"}],\"key_lock_bindings\":[],\"task_targets\":{\"drawer\":\"table_drawer_001\"},\"initial_states\":{\"door_001\":\"closed\"},\"anchor_assignments\":{\"key_001\":\"table_drawer_001.drawer_inside_anchor\"},\"c1_setup\":[{\"object_id\":\"sphere_001\",\"primitive\":\"sphere\",\"placement_anchor\":\"table_001.desk_surface_anchor\"}]}}";
+            const string raw="{\"type\":\"NextTaskGenerated\",\"task\":{\"task_id\":\"set_a_instance_1:T1\",\"player_instruction\":\"Straighten the painting and reveal the first clue.\",\"task_type\":\"reveal_clue\",\"required_objects\":[\"painting_001\",\"clue_note_001\"],\"success_conditions\":[\"painting_aligned:painting_001\",\"object_revealed:clue_note_001\"],\"dependencies\":[],\"protected_objects\":[\"door_001\"],\"allowed_authoring_scope\":{},\"allowed_solution_scope\":{},\"quest_setup\":[{\"object_id\":\"sphere_001\",\"primitive\":\"sphere\",\"placement_anchor\":\"table_001.desk_surface_anchor\",\"initial_grabbable\":false,\"preset_id\":\"soccer_ball\"}]},\"quest_instance\":{\"schema_version\":\"1.0\",\"quest_instance_id\":\"set_a_instance_1\",\"quest_set_id\":\"set_a_ball_and_drawer\",\"placements\":[{\"object_id\":\"key_001\",\"anchor_id\":\"table_drawer_002.drawer_inside_anchor\"}],\"key_lock_bindings\":[],\"task_targets\":{\"drawer\":\"table_drawer_002\"},\"initial_states\":{\"door_001\":\"closed\"},\"anchor_assignments\":{\"key_001\":\"table_drawer_002.drawer_inside_anchor\"},\"c1_setup\":[{\"object_id\":\"sphere_001\",\"primitive\":\"sphere\",\"placement_anchor\":\"table_001.desk_surface_anchor\"}]}}";
             var envelope=JsonConvert.DeserializeObject<AuthoringEnvelope>(raw);
             Assert.That(envelope,Is.Not.Null);
             Assert.That(envelope.task.task_id,Is.EqualTo("set_a_instance_1:T1"));
@@ -282,10 +282,18 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
 
         [Test] public void CorrectKeySnapsIntoTheLockAndRestoresOnReset()
         {
-            var key=CreateEditable("key_001");key.transform.position=new Vector3(1,2,3);var body=key.gameObject.AddComponent<Rigidbody>();body.isKinematic=false;var grab=key.gameObject.AddComponent<ExperimentalGrabbableAdapter>();grab.SetGrabbable(true);
+            var key=CreateEditable("key_001");key.transform.position=new Vector3(1,2,3);var originalParent=key.transform.parent;var originalScale=key.transform.localScale;var body=key.gameObject.AddComponent<Rigidbody>();body.isKinematic=false;var grab=key.gameObject.AddComponent<ExperimentalGrabbableAdapter>();grab.SetGrabbable(true);
             var lockObject=CreateEditable("lock_002");var lockController=lockObject.gameObject.AddComponent<QuestLockController>();lockController.Configure("key_001","table_drawer_001");
-            Assert.That(lockController.TryUseKey("key_001",out var error),Is.True,error);Assert.That(key.transform.parent.name,Is.EqualTo("key_insert_anchor"));Assert.That(body.isKinematic,Is.True);Assert.That(grab.grabbable,Is.False);
-            key.GetComponent<QuestInsertedKeyState>().Restore();Assert.That(key.transform.position,Is.EqualTo(new Vector3(1,2,3)));Assert.That(body.isKinematic,Is.False);Assert.That(grab.grabbable,Is.True);
+            Assert.That(lockController.TryUseKey("key_001",out var error),Is.True,error);Assert.That(key.transform.parent,Is.SameAs(originalParent));Assert.That(key.transform.localScale,Is.EqualTo(originalScale));Assert.That(body.isKinematic,Is.True);Assert.That(grab.grabbable,Is.False);
+            key.GetComponent<QuestInsertedKeyState>().Restore();Assert.That(key.transform.position,Is.EqualTo(new Vector3(1,2,3)));Assert.That(key.transform.localScale,Is.EqualTo(originalScale));Assert.That(body.isKinematic,Is.False);Assert.That(grab.grabbable,Is.True);
+        }
+
+        [Test] public void DoorOpeningRotatesTheDoorChildWithoutMovingDoorRoot()
+        {
+            var doorRoot=CreateEditable("door_001");var leaf=new GameObject("Door").transform;leaf.SetParent(doorRoot.transform,false);var closed=CreateAnchor("closed",root.transform,Quaternion.identity);var open=CreateAnchor("open",root.transform,Quaternion.Euler(0,90,0));
+            var controller=doorRoot.gameObject.AddComponent<QuestDoorController>();controller.movingDoor=leaf;controller.closedAnchor=closed;controller.openAnchor=open;var rootPosition=doorRoot.transform.position;var rootRotation=doorRoot.transform.rotation;
+            Assert.That(controller.TryOpen(out var error),Is.True,error);Assert.That(doorRoot.transform.position,Is.EqualTo(rootPosition));Assert.That(doorRoot.transform.rotation,Is.EqualTo(rootRotation));Assert.That(Quaternion.Angle(leaf.rotation,open.rotation),Is.LessThan(.01f));
+            Assert.That(controller.TryClose(out error),Is.True,error);Assert.That(Quaternion.Angle(leaf.rotation,closed.rotation),Is.LessThan(.01f));
         }
 
         [Test] public void A1DrawerContentsRemainHiddenUntilThePhysicalLockedDrawerOpens()
@@ -295,11 +303,33 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             Assert.That(key.gameObject.activeSelf,Is.False);Assert.That(drawer.TryOpen(out var error),Is.True,error);Assert.That(key.gameObject.activeSelf,Is.True);Assert.That(note.gameObject.activeSelf,Is.True);
         }
 
-        [Test] public void A1LegacyDrawerBindingResolvesToTheCanonicalDeskLock()
+        [Test] public void CanonicalA1BindingPassesThroughWithoutDrawerRewrite()
         {
-            var wire=JsonConvert.DeserializeObject<AuthoringEnvelope>("{\"task\":{\"task_id\":\"set_a_instance_1:T1\",\"player_instruction\":\"Start\",\"success_conditions\":[]},\"quest_instance\":{\"quest_instance_id\":\"set_a_instance_1\",\"task_targets\":{\"drawer\":\"table_drawer_001\"},\"key_lock_bindings\":[{\"key_id\":\"key_001\",\"lock_id\":\"lock_drawer_001\",\"role\":\"drawer\"}]}}");
+            var wire=JsonConvert.DeserializeObject<AuthoringEnvelope>("{\"task\":{\"task_id\":\"set_a_instance_1:T3\",\"player_instruction\":\"Unlock the drawer.\",\"required_objects\":[\"lock_002\"],\"success_conditions\":[\"lock_unlocked:lock_002\"]},\"quest_instance\":{\"quest_instance_id\":\"set_a_instance_1\",\"task_targets\":{\"drawer\":\"table_drawer_002\"},\"key_lock_bindings\":[{\"key_id\":\"key_001\",\"lock_id\":\"lock_002\",\"role\":\"drawer\"}]}}");
             Assert.That(FixedQuestWireConverter.TryConvert(wire.task,wire.quest_instance,out var instance,out var error),Is.True,error);
             Assert.That(instance.lockBindings[0].lockId,Is.EqualTo("lock_002"));Assert.That(instance.lockBindings[0].targetObjectId,Is.EqualTo("table_drawer_002"));Assert.That(instance.targetDrawerId,Is.EqualTo("table_drawer_002"));
+            Assert.That(instance.plan.tasks[0].successConditions[0].object_id,Is.EqualTo("lock_002"));
+        }
+
+        [Test] public void CanonicalA1OpenTaskPassesThroughWithoutDrawerRewrite()
+        {
+            var wire=JsonConvert.DeserializeObject<ServerNextTaskDto>("{\"task_id\":\"set_a_instance_1:T4\",\"player_instruction\":\"Open the unlocked drawer.\",\"task_type\":\"open_drawer\",\"required_objects\":[\"table_drawer_002\"],\"success_conditions\":[\"object_open:table_drawer_002\"]}");
+            Assert.That(NextTaskWireConverter.TryConvert(wire,out var task,out var error),Is.True,error);
+            Assert.That(task.requiredObjects,Is.EqualTo(new[]{"table_drawer_002"}));Assert.That(task.successConditions[0].object_id,Is.EqualTo("table_drawer_002"));
+        }
+
+        [Test] public void CanonicalA1ResolvesItsLockAndDrawerWithoutInstanceSpecificRemapping()
+        {
+            var source=new QuestInstance{questId="set_a_instance_1",targetDrawerId="table_drawer_002",lockBindings=new[]{new QuestLockBinding{requiredKeyId="key_001",lockId="lock_002",targetObjectId="table_drawer_002"}}};
+            var resolved=QuestInstanceResolver.Resolve(source);
+            Assert.That(resolved.targetDrawerId,Is.EqualTo("table_drawer_002"));Assert.That(resolved.lockBindings[0].lockId,Is.EqualTo("lock_002"));Assert.That(resolved.lockBindings[0].requiredKeyId,Is.EqualTo("key_001"));Assert.That(resolved.lockBindings[0].targetObjectId,Is.EqualTo("table_drawer_002"));
+        }
+
+        [Test] public void LegacyLockAliasNormalizationDoesNotRewriteItsDeclaredDrawer()
+        {
+            var wire=JsonConvert.DeserializeObject<AuthoringEnvelope>("{\"task\":{\"task_id\":\"legacy:T1\",\"player_instruction\":\"Unlock it.\",\"success_conditions\":[]},\"quest_instance\":{\"quest_instance_id\":\"legacy\",\"task_targets\":{\"drawer\":\"cabinet_drawer_002\"},\"key_lock_bindings\":[{\"key_id\":\"key_001\",\"lock_id\":\"lock_drawer_001\",\"role\":\"drawer\"}]}}");
+            Assert.That(FixedQuestWireConverter.TryConvert(wire.task,wire.quest_instance,out var instance,out var error),Is.True,error);
+            Assert.That(instance.lockBindings[0].lockId,Is.EqualTo("lock_002"));Assert.That(instance.lockBindings[0].targetObjectId,Is.EqualTo("cabinet_drawer_002"));Assert.That(instance.targetDrawerId,Is.EqualTo("cabinet_drawer_002"));
         }
 
         [Test] public void ResetClearsStaleBindingBeforeTheNextQuestBinding()
@@ -309,14 +339,14 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             lockController.Configure("key_002","cabinet_drawer_002");Assert.That(lockController.TryUseKey("key_002",out var error),Is.True,error);
         }
 
-        [TestCase("set_a_instance_1:T1","lock_002","key_001")]
-        [TestCase("set_a_instance_2:T1","lock_002","key_001")]
-        [TestCase("set_b_instance_1:T1","lock_003","key_001")]
-        [TestCase("set_c_instance_1:T1","lock_002","key_002")]
-        public void FixedFallbackInstancesRetainTheirDeclaredCanonicalDrawerBinding(string taskId,string expectedLock,string expectedKey)
+        [TestCase("set_a_instance_1:T1","lock_002","key_001","table_drawer_002")]
+        [TestCase("set_a_instance_2:T1","lock_002","key_001","table_drawer_002")]
+        [TestCase("set_b_instance_1:T1","lock_003","key_001","cabinet_drawer_002")]
+        [TestCase("set_c_instance_1:T1","lock_003","key_002","cabinet_drawer_002")]
+        public void FixedFallbackInstancesRetainTheirDeclaredCanonicalDrawerBinding(string taskId,string expectedLock,string expectedKey,string expectedTarget)
         {
             Assert.That(FixedQuestActivationFallback.TryCreate(taskId,ExperimentCondition.VoiceCommandBaseline,out var instance),Is.True);
-            Assert.That(instance.lockBindings[0].lockId,Is.EqualTo(expectedLock));Assert.That(instance.lockBindings[0].requiredKeyId,Is.EqualTo(expectedKey));
+            Assert.That(instance.lockBindings[0].lockId,Is.EqualTo(expectedLock));Assert.That(instance.lockBindings[0].requiredKeyId,Is.EqualTo(expectedKey));Assert.That(instance.lockBindings[0].targetObjectId,Is.EqualTo(expectedTarget));
         }
 
         [Test] public void A1FallbackUsesThePhysicalLockedDeskDrawer()

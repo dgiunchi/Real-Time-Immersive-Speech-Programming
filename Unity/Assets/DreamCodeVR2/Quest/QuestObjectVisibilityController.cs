@@ -11,7 +11,7 @@ namespace DreamCodeVR2.Quest
     {
         private readonly Dictionary<AIEditableObject,bool> originalActive=new Dictionary<AIEditableObject,bool>();
         private static readonly HashSet<string> PuzzleIds=new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { "key_001","key_002","clue_note_001","clue_note_002","painting_001","sphere_001","lamp_001","lamp_002","lamp_003","lamp_004" };
+        { "key_001","key_002","clue_note_001","clue_note_002","sphere_001" };
 
         public void ApplyFixedInstance(QuestInstance instance)
         {

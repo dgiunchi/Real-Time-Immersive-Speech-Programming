@@ -42,6 +42,21 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             IsOpen = false;
         }
 
+        // Drawer colliders are deliberately kept for closed-drawer pointing. Once the
+        // drawer is open, however, a volume collider on the drawer root can sit in
+        // front of every object in its cavity. Pointer systems should skip only that
+        // semantic drawer collider, never colliders owned by the drawer's contents.
+        public static bool ShouldIgnoreColliderForOpenDrawerContents(Collider collider)
+        {
+            if (!collider) return false;
+            var drawer = collider.GetComponentInParent<ExperimentalDrawerController>();
+            if (!drawer || !drawer.IsOpen) return false;
+
+            var colliderOwner = collider.GetComponentInParent<AIEditableObject>();
+            var drawerOwner = drawer.GetComponent<AIEditableObject>();
+            return colliderOwner && drawerOwner && colliderOwner.gameObject == drawerOwner.gameObject;
+        }
+
         private bool TryMove(bool requestedOpen, out string error)
         {
             if (!TryGetTarget(requestedOpen, out var target, out error))

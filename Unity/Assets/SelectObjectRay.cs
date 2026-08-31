@@ -233,12 +233,29 @@ public class SelectObjectRay : MonoBehaviour
     {
         var hits = Physics.RaycastAll(origin, direction, range, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
             .OrderBy(hit => hit.distance);
+        SelectionHit? openDrawerFallback = null;
 
         foreach (var hit in hits)
         {
             var hitObject = hit.collider ? hit.collider.gameObject : null;
             if (hitObject == null)
             {
+                continue;
+            }
+
+            if (ExperimentalDrawerController.ShouldIgnoreColliderForOpenDrawerContents(hit.collider))
+            {
+                var drawerEditable = hitObject.GetComponentInParent<AIEditableObject>();
+                if (!openDrawerFallback.HasValue && drawerEditable != null)
+                {
+                    openDrawerFallback = new SelectionHit
+                    {
+                        hitInfo = hit,
+                        hitObject = hitObject,
+                        resolvedObject = drawerEditable.gameObject,
+                        editableObject = drawerEditable
+                    };
+                }
                 continue;
             }
 
@@ -263,7 +280,7 @@ public class SelectObjectRay : MonoBehaviour
             };
         }
 
-        return null;
+        return openDrawerFallback;
     }
 
     // We only send messages to the server, so we don't need to implement this method

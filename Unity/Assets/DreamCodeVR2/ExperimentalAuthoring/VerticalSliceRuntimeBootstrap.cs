@@ -152,19 +152,36 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         }
         private static void ConfigureLocksAndDoor(AIEditableObject lockObject,AIEditableObject door,QuestEventBus bus,SceneContextTransmitter context)
         {
-            foreach(var id in new[]{"lock_001","lock_002","lock_003"}){var item=AuthoringActionExecutor.FindEditable(id);if(!item)continue;var lockController=item.GetComponent<QuestLockController>()??item.gameObject.AddComponent<QuestLockController>();lockController.eventBus=bus;lockController.sceneContext=context;if(id=="lock_001"||id=="lock_002")EnsureKeyInsertAnchor(item);}
+            foreach(var id in new[]{"lock_001","lock_002","lock_003"}){var item=AuthoringActionExecutor.FindEditable(id);if(!item)continue;var lockController=item.GetComponent<QuestLockController>()??item.gameObject.AddComponent<QuestLockController>();lockController.eventBus=bus;lockController.sceneContext=context;EnsureKeyInsertAnchor(item);EnsureKeyInsertionZone(item,lockController);}
             var exitLock=lockObject?lockObject.GetComponent<QuestLockController>():null;if(exitLock)exitLock.Configure("key_001","door_001");
-            if(door){var controller=door.GetComponent<QuestDoorController>()??door.gameObject.AddComponent<QuestDoorController>();controller.lockController=exitLock;controller.eventBus=bus;controller.sceneContext=context;var parent=door.transform.parent??door.transform;var closed=parent.Find("DoorClosedAnchor")??CreateAnchor(parent,"DoorClosedAnchor",door.transform);var open=parent.Find("DoorOpenAnchor")??CreateAnchor(parent,"DoorOpenAnchor",door.transform);controller.closedAnchor=closed;controller.openAnchor=open;var voice=door.GetComponent<VoiceCommandCapabilities>()??door.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"open","close"};AddAliases(door,"door,exit door");}
+            if(door){var controller=door.GetComponent<QuestDoorController>()??door.gameObject.AddComponent<QuestDoorController>();controller.lockController=exitLock;controller.eventBus=bus;controller.sceneContext=context;var parent=door.transform.parent??door.transform;var leaf=FindDoorLeaf(door.transform)??door.transform;var closed=parent.Find("DoorClosedAnchor")??CreateAnchor(parent,"DoorClosedAnchor",leaf);var open=parent.Find("DoorOpenAnchor")??CreateAnchor(parent,"DoorOpenAnchor",leaf);ConfigureHingeBasedDoorPose(leaf,parent,closed,open);controller.movingDoor=leaf;controller.closedAnchor=closed;controller.openAnchor=open;var voice=door.GetComponent<VoiceCommandCapabilities>()??door.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"open","close"};AddAliases(door,"door,exit door");}
         }
         private static void EnsureKeyInsertAnchor(AIEditableObject lockItem)
         {
             var anchor=lockItem.transform.Find("key_insert_anchor");var created=!anchor;
             if(!anchor){anchor=new GameObject("key_insert_anchor").transform;anchor.SetParent(lockItem.transform,false);}
-            // Lock meshes are scaled very small in the imported scene. A whole-lock
-            // local-unit offset places the key visibly in front of the keyhole.
-            anchor.localPosition=Vector3.forward*1.15f;anchor.localRotation=Quaternion.identity;
+            // The imported lock pivot is slightly above its visible keyhole.
+            anchor.localPosition=new Vector3(0f,-.15f,1.15f);anchor.localRotation=Quaternion.identity;
             DreamCodeVR2ClientLogger.Event("quest","KEY_INSERT_ANCHOR_READY",null,new { lock_id=lockItem.objectId,anchor_name=anchor.name,created,local_position=anchor.localPosition,local_rotation=anchor.localRotation });
         }
+        private static void EnsureKeyInsertionZone(AIEditableObject lockItem,QuestLockController lockController)
+        {
+            var zone=lockItem.transform.Find("KeyInsertionZone");
+            if(!zone){var go=new GameObject("KeyInsertionZone");zone=go.transform;zone.SetParent(lockItem.transform,false);zone.localPosition=Vector3.zero;zone.localRotation=Quaternion.identity;var collider=go.AddComponent<SphereCollider>();collider.radius=.75f;}
+            var controller=zone.GetComponent<KeyInsertionZone>()??zone.gameObject.AddComponent<KeyInsertionZone>();controller.lockController=lockController;
+        }
+        private static void ConfigureHingeBasedDoorPose(Transform door,Transform parent,Transform closed,Transform open)
+        {
+            if(!door||!closed||!open)return;
+            var hinge=parent.Find("DoorHingeAnchor");
+            if(!hinge){hinge=new GameObject("DoorHingeAnchor").transform;hinge.SetParent(parent,false);var width=DoorHalfWidth(door);hinge.SetPositionAndRotation(closed.position-closed.right*width,closed.rotation);}
+            var angle=-90f;var rotation=Quaternion.AngleAxis(angle,hinge.up);var offset=closed.position-hinge.position;
+            open.SetPositionAndRotation(hinge.position+rotation*offset,rotation*closed.rotation);
+            DreamCodeVR2ClientLogger.Event("quest","DOOR_HINGE_CONFIGURED",null,new { door_name=door.name,hinge_position=hinge.position,open_angle=angle });
+            DreamCodeVR2ClientLogger.Event("quest","DOOR_OPEN_POSE_VALIDATED",null,new { door_name=door.name,hinge_fixed_distance=Vector3.Distance(hinge.position,open.position),open_position=open.position,open_rotation=open.rotation,valid=Vector3.Distance(closed.position,open.position)>=.001f });
+        }
+        private static Transform FindDoorLeaf(Transform root){foreach(var candidate in root.GetComponentsInChildren<Transform>(true))if(candidate!=root&&string.Equals(candidate.name,"Door",System.StringComparison.OrdinalIgnoreCase))return candidate;return null;}
+        private static float DoorHalfWidth(Transform door){var found=false;var bounds=new Bounds(door.position,Vector3.zero);foreach(var renderer in door.GetComponentsInChildren<Renderer>(true)){if(!found){bounds=renderer.bounds;found=true;}else bounds.Encapsulate(renderer.bounds);}return found?Mathf.Max(.05f,Vector3.Dot(bounds.extents,new Vector3(Mathf.Abs(door.right.x),Mathf.Abs(door.right.y),Mathf.Abs(door.right.z)))):.45f;}
         private static Transform CreateAnchor(Transform parent,string name,Transform source){var anchor=new GameObject(name).transform;anchor.SetParent(parent,false);anchor.SetPositionAndRotation(source.position,source.rotation);return anchor;}
         private static void ConfigurePaintingAndLamps(QuestEventBus bus,SceneContextTransmitter context)
         {

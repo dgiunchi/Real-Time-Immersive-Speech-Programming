@@ -17086,7 +17086,7 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 0.40430796, y: 0.23192199, z: 0.32075837}
+  m_Size: {x: 0.4343081, y: 0.23192199, z: 0.32075837}
   m_Center: {x: 0.12261578, y: 0.11596098, z: 0.000000014901161}
 --- !u!1001 &1213554617
 PrefabInstance:

@@ -187,6 +187,7 @@ namespace DreamCodeVR2.ContextBridge
                     continue;
                 }
 
+                RaycastHit? openDrawerFallback = null;
                 foreach (var hit in Physics.RaycastAll(
                     origin.position,
                     origin.forward,
@@ -194,6 +195,15 @@ namespace DreamCodeVR2.ContextBridge
                     raycastLayers,
                     QueryTriggerInteraction.Ignore).OrderBy(hit => hit.distance))
                 {
+                    if (ExperimentalDrawerController.ShouldIgnoreColliderForOpenDrawerContents(hit.collider))
+                    {
+                        if (!openDrawerFallback.HasValue)
+                        {
+                            openDrawerFallback = hit;
+                        }
+                        continue;
+                    }
+
                     if (!TryResolveEditableHit(hit, out _))
                     {
                         continue;
@@ -208,6 +218,13 @@ namespace DreamCodeVR2.ContextBridge
                     bestDistance = hit.distance;
                     foundHit = true;
                     break;
+                }
+
+                if (!foundHit && openDrawerFallback.HasValue && openDrawerFallback.Value.distance < bestDistance)
+                {
+                    bestHit = openDrawerFallback.Value;
+                    bestDistance = bestHit.distance;
+                    foundHit = true;
                 }
             }
 

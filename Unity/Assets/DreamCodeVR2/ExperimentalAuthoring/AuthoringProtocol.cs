@@ -96,9 +96,10 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         [JsonProperty("candidate_object_ids")] public string[] candidate_object_ids;
     }
     [Serializable] public class ServerQuestSetupDto { [JsonProperty("object_id")] public string object_id; public string primitive; [JsonProperty("placement_anchor")] public string placement_anchor; [JsonProperty("initial_grabbable")] public bool initial_grabbable; [JsonProperty("preset_id")] public string preset_id; }
+    [Serializable] public class ServerRequiredRuntimeObjectDto { [JsonProperty("object_id")] public string object_id; public string primitive; [JsonProperty("object_type")] public string object_type; [JsonProperty("semantic_profile")] public string semantic_profile; [JsonProperty("preset_id")] public string preset_id; [JsonProperty("material_profile")] public string material_profile; [JsonProperty("initial_placement_anchor")] public string initial_placement_anchor; [JsonProperty("placement_anchor")] public string placement_anchor; [JsonProperty("initial_semantic_state")] public string initial_semantic_state; [JsonProperty("initial_grabbable")] public bool initial_grabbable; [JsonProperty("canonical_size_m")] public float canonical_size_m; [JsonProperty("canonical_scale")] public float canonical_scale; }
     [Serializable] public class ServerQuestBindingDto { [JsonProperty("key_id")] public string key_id; [JsonProperty("lock_id")] public string lock_id; public string role; }
     [Serializable] public class ServerQuestPlacementDto { [JsonProperty("object_id")] public string object_id; [JsonProperty("anchor_id")] public string anchor_id; }
-    [Serializable] public class ServerQuestInstanceDto { [JsonProperty("schema_version")] public string schema_version; [JsonProperty("quest_instance_id")] public string quest_instance_id; [JsonProperty("quest_set_id")] public string quest_set_id; [JsonProperty("placements")] public ServerQuestPlacementDto[] placements; [JsonProperty("key_lock_bindings")] public ServerQuestBindingDto[] key_lock_bindings; [JsonProperty("task_targets")] public JObject task_targets; [JsonProperty("clue_texts")] public JObject clue_texts; [JsonProperty("initial_states")] public JObject initial_states; [JsonProperty("anchor_assignments")] public JObject anchor_assignments; [JsonProperty("c1_setup")] public ServerQuestSetupDto[] c1_setup; [JsonProperty("relevant_object_ids")] public string[] relevant_object_ids; }
+    [Serializable] public class ServerQuestInstanceDto { [JsonProperty("schema_version")] public string schema_version; [JsonProperty("quest_instance_id")] public string quest_instance_id; [JsonProperty("quest_set_id")] public string quest_set_id; [JsonProperty("placements")] public ServerQuestPlacementDto[] placements; [JsonProperty("key_lock_bindings")] public ServerQuestBindingDto[] key_lock_bindings; [JsonProperty("task_targets")] public JObject task_targets; [JsonProperty("clue_texts")] public JObject clue_texts; [JsonProperty("initial_states")] public JObject initial_states; [JsonProperty("anchor_assignments")] public JObject anchor_assignments; [JsonProperty("c1_setup")] public ServerQuestSetupDto[] c1_setup; [JsonProperty("required_runtime_objects")] public ServerRequiredRuntimeObjectDto[] required_runtime_objects; [JsonProperty("relevant_object_ids")] public string[] relevant_object_ids; }
     public static class NextTaskWireConverter
     {
         public static bool TryConvert(ServerNextTaskDto wire, out NextTaskSpec runtime, out string error)
@@ -110,8 +111,16 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             {
                 if(!TryConvertCondition(conditions[index],out converted[index])){error="Unsupported success condition: "+(conditions[index]??"<null>");return false;}
             }
-            runtime=new NextTaskSpec{taskId=wire.task_id,title=wire.title,playerInstruction=wire.player_instruction,taskType=wire.task_type,requiredObjects=wire.required_objects,successConditions=ApplyCausalSuccessSemantics(wire,converted),dependencies=wire.dependencies,protectedObjects=wire.protected_objects,allowedAuthoringScope=wire.allowed_authoring_scope,allowedSolutionScope=wire.allowed_solution_scope,narrativeContext=wire.narrative_context,candidateObjectIds=wire.candidate_object_ids};
+            NormalizeProtocolObjectReferences(converted,wire.required_objects,out var requiredObjects);
+            runtime=new NextTaskSpec{taskId=wire.task_id,title=wire.title,playerInstruction=wire.player_instruction,taskType=wire.task_type,requiredObjects=requiredObjects,successConditions=ApplyCausalSuccessSemantics(wire,converted),dependencies=wire.dependencies,protectedObjects=wire.protected_objects,allowedAuthoringScope=wire.allowed_authoring_scope,allowedSolutionScope=wire.allowed_solution_scope,narrativeContext=wire.narrative_context,candidateObjectIds=wire.candidate_object_ids};
             return true;
+        }
+        // Compatibility is protocol-boundary lock-alias normalization only. Canonical
+        // drawer IDs supplied by the server always pass through unchanged.
+        private static void NormalizeProtocolObjectReferences(RuntimeSuccessCondition[] conditions,string[] sourceRequiredObjects,out string[] requiredObjects)
+        {
+            requiredObjects=sourceRequiredObjects==null?Array.Empty<string>():Array.ConvertAll(sourceRequiredObjects,DreamCodeVR2.Quest.QuestCanonicalIds.Normalize);
+            foreach(var condition in conditions??Array.Empty<RuntimeSuccessCondition>())if(condition!=null)condition.object_id=DreamCodeVR2.Quest.QuestCanonicalIds.Normalize(condition.object_id);
         }
         // A server task may include a visibility consequence beside its causal action
         // (for example painting_aligned plus object_revealed:clue_note_001). The local
@@ -223,7 +232,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         {
             task=null;
             if(!NextTaskWireConverter.TryConvert(wire,out var runtime,out error))return false;
-            var target=wire.required_objects!=null&&wire.required_objects.Length>0?wire.required_objects[0]:null;
+            var target=runtime.requiredObjects!=null&&runtime.requiredObjects.Length>0?runtime.requiredObjects[0]:null;
             task=new DreamCodeVR2.Quest.QuestTaskSpec{taskId=runtime.taskId,step=0,type=runtime.taskType,target=target,description=runtime.playerInstruction,successConditions=NormalizeLockConditions(runtime.successConditions)};
             return true;
         }
@@ -237,7 +246,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             foreach(var binding in setup.key_lock_bindings??Array.Empty<ServerQuestBindingDto>())
             {
                 var canonicalLock=NormalizeLockId(binding.lock_id);
-                bindings.Add(new DreamCodeVR2.Quest.QuestLockBinding{requiredKeyId=binding.key_id,lockId=canonicalLock,targetObjectId=binding.role=="exit"?"door_001":NormalizeDrawerTarget(setup,canonicalLock,Target(setup,"drawer"))});
+                bindings.Add(new DreamCodeVR2.Quest.QuestLockBinding{requiredKeyId=binding.key_id,lockId=canonicalLock,targetObjectId=binding.role=="exit"?"door_001":Target(setup,"drawer")});
             }
             var notes=new List<DreamCodeVR2.Quest.QuestNoteBinding>();
             if(setup.clue_texts!=null)foreach(var property in setup.clue_texts.Properties())notes.Add(new DreamCodeVR2.Quest.QuestNoteBinding{noteId=property.Name,text=(string)property.Value,visible=false});
@@ -246,20 +255,21 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             if(setup.anchor_assignments!=null)foreach(var property in setup.anchor_assignments.Properties())AddPlacement(placements,property.Name,(string)property.Value);
             var initialStates=new List<DreamCodeVR2.Quest.QuestInitialStateBinding>();
             if(setup.initial_states!=null)foreach(var property in setup.initial_states.Properties())initialStates.Add(new DreamCodeVR2.Quest.QuestInitialStateBinding{objectId=NormalizeLockId(property.Name),state=(string)property.Value});
-            var selectedDrawer=NormalizeDrawerTarget(setup,NormalizeLockId("lock_drawer_001"),Target(setup,"drawer"));
-            instance=new DreamCodeVR2.Quest.QuestInstance{questId=setup.quest_instance_id,questSetId=setup.quest_set_id,targetDrawerId=selectedDrawer,selectedLampId=Target(setup,"lamp"),lockBindings=bindings.ToArray(),notes=notes.ToArray(),placements=placements.ToArray(),initialStates=initialStates.ToArray(),relevantObjectIds=setup.relevant_object_ids,plan=new DreamCodeVR2.Quest.QuestPlan{quest_id=setup.quest_instance_id,title=setup.quest_set_id,tasks=new List<DreamCodeVR2.Quest.QuestTaskSpec>{task}}};
-            var sphere=Array.Find(wire.quest_setup??Array.Empty<ServerQuestSetupDto>(),candidate=>candidate!=null&&candidate.object_id=="sphere_001");
-            if(sphere!=null){instance.requiresC1Sphere=true;instance.c1SphereId=sphere.object_id;instance.c1SphereStartAnchorId=sphere.placement_anchor;instance.c1SpherePlacementAnchorId="basket_001.basket_inside_anchor";}
+            var selectedDrawer=Target(setup,"drawer");
+            var runtimeObjects=ConvertRuntimeObjects(setup,wire);
+            instance=new DreamCodeVR2.Quest.QuestInstance{questId=setup.quest_instance_id,questSetId=setup.quest_set_id,targetDrawerId=selectedDrawer,selectedLampId=Target(setup,"lamp"),lockBindings=bindings.ToArray(),notes=notes.ToArray(),placements=placements.ToArray(),initialStates=initialStates.ToArray(),requiredRuntimeObjects=runtimeObjects,relevantObjectIds=setup.relevant_object_ids,plan=new DreamCodeVR2.Quest.QuestPlan{quest_id=setup.quest_instance_id,title=setup.quest_set_id,tasks=new List<DreamCodeVR2.Quest.QuestTaskSpec>{task}}};
+            var sphere=Array.Find(runtimeObjects,candidate=>candidate!=null&&candidate.objectId=="sphere_001");
+            if(sphere!=null){instance.requiresC1Sphere=true;instance.c1SphereId=sphere.objectId;instance.c1SphereStartAnchorId=sphere.initialAnchorId;instance.c1SpherePlacementAnchorId="basket_001.basket_inside_anchor";}
             return true;
         }
-        private static string Target(ServerQuestInstanceDto setup,string name)=>setup.task_targets==null?null:(string)setup.task_targets[name];
-        // The server's A1 drawer role is legacy/logical. Resolve it alongside the
-        // corresponding lock alias so runtime interaction uses the physical scene pair.
-        private static string NormalizeDrawerTarget(ServerQuestInstanceDto setup,string canonicalLock,string requestedDrawer)
+        private static DreamCodeVR2.Quest.QuestRuntimeObjectSpec[] ConvertRuntimeObjects(ServerQuestInstanceDto setup,ServerNextTaskDto wire)
         {
-            if(string.Equals(setup?.quest_instance_id,"set_a_instance_1",StringComparison.OrdinalIgnoreCase)&&canonicalLock=="lock_002")return "table_drawer_002";
-            return requestedDrawer;
+            var primary=setup?.required_runtime_objects??Array.Empty<ServerRequiredRuntimeObjectDto>();var source=primary.Length>0?"required_runtime_objects":"legacy_quest_setup";var values=new List<DreamCodeVR2.Quest.QuestRuntimeObjectSpec>();
+            if(primary.Length>0)foreach(var runtimeObject in primary)if(runtimeObject!=null&&!string.IsNullOrWhiteSpace(runtimeObject.object_id))values.Add(new DreamCodeVR2.Quest.QuestRuntimeObjectSpec{objectId=DreamCodeVR2.Quest.QuestCanonicalIds.Normalize(runtimeObject.object_id),primitive=string.IsNullOrWhiteSpace(runtimeObject.primitive)?runtimeObject.object_type:runtimeObject.primitive,semanticProfile=runtimeObject.semantic_profile,presetId=runtimeObject.preset_id,materialProfile=runtimeObject.material_profile,initialAnchorId=string.IsNullOrWhiteSpace(runtimeObject.initial_placement_anchor)?runtimeObject.placement_anchor:runtimeObject.initial_placement_anchor,initialSemanticState=runtimeObject.initial_semantic_state,initialGrabbable=runtimeObject.initial_grabbable,canonicalSizeMeters=runtimeObject.canonical_size_m,canonicalScale=runtimeObject.canonical_scale,source=source});
+            else {var legacy=wire?.quest_setup??setup?.c1_setup??Array.Empty<ServerQuestSetupDto>();foreach(var legacyObject in legacy)if(legacyObject!=null&&!string.IsNullOrWhiteSpace(legacyObject.object_id))values.Add(new DreamCodeVR2.Quest.QuestRuntimeObjectSpec{objectId=DreamCodeVR2.Quest.QuestCanonicalIds.Normalize(legacyObject.object_id),primitive=legacyObject.primitive,presetId=legacyObject.preset_id,initialAnchorId=legacyObject.placement_anchor,initialGrabbable=legacyObject.initial_grabbable,source=source});DreamCodeVR2ClientLogger.Event("quest","RUNTIME_OBJECT_LEGACY_FALLBACK_USED",null,new { quest_instance_id=setup?.quest_instance_id,count=values.Count });}
+            foreach(var value in values)DreamCodeVR2ClientLogger.Event("quest","REQUIRED_RUNTIME_OBJECT_RECEIVED",null,new { quest_instance_id=setup?.quest_instance_id,object_id=value.objectId,object_type=value.primitive,initial_anchor=value.initialAnchorId,source=value.source });return values.ToArray();
         }
+        private static string Target(ServerQuestInstanceDto setup,string name)=>setup.task_targets==null?null:(string)setup.task_targets[name];
         private static void AddPlacement(List<DreamCodeVR2.Quest.QuestPlacementBinding> values,string objectId,string anchorId)
         {
             if(string.IsNullOrWhiteSpace(objectId)||string.IsNullOrWhiteSpace(anchorId)||values.Exists(value=>value.objectId==objectId))return;
@@ -269,10 +279,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         {
             // Server drawer-lock aliases are logical puzzle IDs; resolve them once to
             // the scene's canonical lock objects. lock_001 is the exit-door lock.
-            if(id=="lock_drawer_001")return "lock_002";
-            if(id=="lock_drawer_002")return "lock_002";
-            if(id=="lock_drawer_003")return "lock_003";
-            return id;
+            return DreamCodeVR2.Quest.QuestCanonicalIds.Normalize(id);
         }
         private static RuntimeSuccessCondition[] NormalizeLockConditions(RuntimeSuccessCondition[] conditions)
         {
@@ -292,8 +299,8 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             switch(instanceId)
             {
                 case "set_a_instance_2": drawer="table_drawer_002";drawerLock="lock_002";break;
-                case "set_b_instance_1": setId="set_b_search_and_locks";drawer="cabinet_drawer_001";drawerLock="lock_003";instruction="Find the required key and use it to unlock the cabinet drawer.";target=drawer;conditions=new[]{new RuntimeSuccessCondition{type="LOCK_UNLOCKED",object_id=drawerLock}};break;
-                case "set_c_instance_1": setId="set_c_alternate_key_relation_lamp";drawer="cabinet_drawer_002";drawerLock="lock_002";drawerKey="key_002";exitKey="key_001";lamp="lamp_003";instruction="Straighten the painting and reveal the first clue.";target="painting_001";conditions=new[]{new RuntimeSuccessCondition{type="PAINTING_ALIGNED",object_id="painting_001"},new RuntimeSuccessCondition{type="OBJECT_REVEALED",object_id="clue_note_001"}};break;
+                case "set_b_instance_1": setId="set_b_search_and_locks";drawer="cabinet_drawer_002";drawerLock="lock_003";instruction="Find the required key and use it to unlock the cabinet drawer.";target=drawer;conditions=new[]{new RuntimeSuccessCondition{type="LOCK_UNLOCKED",object_id=drawerLock}};break;
+                case "set_c_instance_1": setId="set_c_alternate_key_relation_lamp";drawer="cabinet_drawer_002";drawerLock="lock_003";drawerKey="key_002";exitKey="key_001";lamp="lamp_003";instruction="Straighten the painting and reveal the first clue.";target="painting_001";conditions=new[]{new RuntimeSuccessCondition{type="PAINTING_ALIGNED",object_id="painting_001"},new RuntimeSuccessCondition{type="OBJECT_REVEALED",object_id="clue_note_001"}};break;
                 case "set_a_instance_1": break;
                 default:return false;
             }
