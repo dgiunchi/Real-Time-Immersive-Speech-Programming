@@ -350,13 +350,14 @@ namespace DreamCodeVR2.Quest
         public Transform closedAnchor; public Transform openAnchor; public Transform movingDoor; public QuestLockController lockController;
         public bool IsOpen { get; private set; } public bool IsLocked => lockController && lockController.IsLocked;
         public SceneContextTransmitter sceneContext; public QuestEventBus eventBus;
+        public void LogMotionMode(){DreamCodeVR2ClientLogger.Event("quest","DOOR_MOTION_MODE",null,new { door_id=Id(),mode="procedural",moving_door=MotionTarget().name });}
         public bool TryOpen(out string error)
         {
             DreamCodeVR2ClientLogger.Event("quest","DOOR_OPEN_ATTEMPT",null,new { door_id=Id() });
             if(IsLocked){error="The door is locked.";DreamCodeVR2ClientLogger.Event("quest","DOOR_LOCKED_REJECTION",error,new { door_id=Id() });return false;}
-            if(!Valid(out error))return false;MoveLeaf(openAnchor);IsOpen=true;Publish("open");DreamCodeVR2ClientLogger.Event("quest","DOOR_OPENED",null,new { door_id=Id(),moving_door_name=MotionTarget().name });return true;
+            if(!Valid(out error))return false;DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_REQUESTED",null,new { door_id=Id(),action="open",mode="procedural" });MoveLeaf(openAnchor);IsOpen=true;Publish("open");DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_STATE",null,new { door_id=Id(),state="open",normalized_time=1f,semantic_open=IsOpen });DreamCodeVR2ClientLogger.Event("quest","DOOR_OPENED",null,new { door_id=Id(),moving_door_name=MotionTarget().name });return true;
         }
-        public bool TryClose(out string error){if(!Valid(out error))return false;MoveLeaf(closedAnchor);IsOpen=false;Publish("closed");return true;}
+        public bool TryClose(out string error){if(!Valid(out error))return false;DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_REQUESTED",null,new { door_id=Id(),action="close",mode="procedural" });MoveLeaf(closedAnchor);IsOpen=false;Publish("closed");DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_STATE",null,new { door_id=Id(),state="closed",normalized_time=1f,semantic_open=IsOpen });return true;}
         private Transform MotionTarget()=>movingDoor?movingDoor:transform;
         private void MoveLeaf(Transform pose){MotionTarget().rotation=pose.rotation;}
         private bool Valid(out string error){if(!closedAnchor||!openAnchor||Quaternion.Angle(closedAnchor.rotation,openAnchor.rotation)<.1f){error="DoorOpenAnchor must have a different rotation from DoorClosedAnchor.";return false;}error=null;return true;}

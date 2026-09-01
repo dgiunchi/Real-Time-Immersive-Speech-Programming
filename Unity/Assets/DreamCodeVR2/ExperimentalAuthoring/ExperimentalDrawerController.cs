@@ -49,6 +49,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         public static bool ShouldIgnoreColliderForOpenDrawerContents(Collider collider)
         {
             if (!collider) return false;
+            if (collider.GetComponent<DrawerSelectionHandle>()) return false;
             var drawer = collider.GetComponentInParent<ExperimentalDrawerController>();
             if (!drawer || !drawer.IsOpen) return false;
 

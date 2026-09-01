@@ -176,59 +176,18 @@ namespace DreamCodeVR2.ContextBridge
 
         private bool TryGetBestPointerHit(out RaycastHit bestHit)
         {
-            bestHit = default;
-            var foundHit = false;
+            var found = false;
             var bestDistance = float.PositiveInfinity;
-
+            bestHit = default;
             foreach (var origin in pointerOrigins)
             {
-                if (!origin)
-                {
-                    continue;
-                }
-
-                RaycastHit? openDrawerFallback = null;
-                foreach (var hit in Physics.RaycastAll(
-                    origin.position,
-                    origin.forward,
-                    maxRayDistance,
-                    raycastLayers,
-                    QueryTriggerInteraction.Ignore).OrderBy(hit => hit.distance))
-                {
-                    if (ExperimentalDrawerController.ShouldIgnoreColliderForOpenDrawerContents(hit.collider))
-                    {
-                        if (!openDrawerFallback.HasValue)
-                        {
-                            openDrawerFallback = hit;
-                        }
-                        continue;
-                    }
-
-                    if (!TryResolveEditableHit(hit, out _))
-                    {
-                        continue;
-                    }
-
-                    if (hit.distance >= bestDistance)
-                    {
-                        continue;
-                    }
-
-                    bestHit = hit;
-                    bestDistance = hit.distance;
-                    foundHit = true;
-                    break;
-                }
-
-                if (!foundHit && openDrawerFallback.HasValue && openDrawerFallback.Value.distance < bestDistance)
-                {
-                    bestHit = openDrawerFallback.Value;
-                    bestDistance = bestHit.distance;
-                    foundHit = true;
-                }
+                if (!origin) continue;
+                if (!SemanticPointerRaycast.TryResolve(origin.position, origin.forward, maxRayDistance, raycastLayers, out var semantic) || semantic.hit.distance >= bestDistance) continue;
+                bestHit = semantic.hit;
+                bestDistance = semantic.hit.distance;
+                found = true;
             }
-
-            return foundHit;
+            return found;
         }
 
         private bool TryResolveEditableHit(RaycastHit hit, out AIEditableObject editableObject)

@@ -148,6 +148,9 @@ public class SelectObjectRay : MonoBehaviour
         public GameObject hitObject;
         public GameObject resolvedObject;
         public AIEditableObject editableObject;
+        public string resolutionReason;
+        public Collider internalCandidate;
+        public Collider drawerHandleCandidate;
     }
 
     private void SetCurrentSelection(SelectionHit selection)
@@ -162,6 +165,7 @@ public class SelectObjectRay : MonoBehaviour
         if (logSelectionDebug && lastSelectedObject != selection.resolvedObject)
         {
             Debug.Log($"[Selection] hit={selection.hitObject.name} resolved={selection.editableObject.objectId} display={selection.editableObject.displayName}");
+            DreamCodeVR2ClientLogger.Event("drawer", "DRAWER_RAY_RESOLUTION", null, new { raw_hit = selection.hitObject.name, internal_candidate = selection.internalCandidate ? selection.internalCandidate.gameObject.name : null, drawer_handle_candidate = selection.drawerHandleCandidate ? selection.drawerHandleCandidate.gameObject.name : null, final_semantic_id = selection.editableObject.objectId, resolution_reason = selection.resolutionReason });
             //Debug.Log($"[Selection] hitTag={selection.hitObject.tag} resolvedTag={selection.resolvedObject.tag}");
         }
 
@@ -231,56 +235,8 @@ public class SelectObjectRay : MonoBehaviour
 
     private SelectionHit? GetSelectionHit(Vector3 origin, Vector3 direction)
     {
-        var hits = Physics.RaycastAll(origin, direction, range, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-            .OrderBy(hit => hit.distance);
-        SelectionHit? openDrawerFallback = null;
-
-        foreach (var hit in hits)
-        {
-            var hitObject = hit.collider ? hit.collider.gameObject : null;
-            if (hitObject == null)
-            {
-                continue;
-            }
-
-            if (ExperimentalDrawerController.ShouldIgnoreColliderForOpenDrawerContents(hit.collider))
-            {
-                var drawerEditable = hitObject.GetComponentInParent<AIEditableObject>();
-                if (!openDrawerFallback.HasValue && drawerEditable != null)
-                {
-                    openDrawerFallback = new SelectionHit
-                    {
-                        hitInfo = hit,
-                        hitObject = hitObject,
-                        resolvedObject = drawerEditable.gameObject,
-                        editableObject = drawerEditable
-                    };
-                }
-                continue;
-            }
-
-            var editableObject = hitObject.GetComponentInParent<AIEditableObject>();
-            if (editableObject == null)
-            {
-                continue;
-            }
-
-            var resolvedObject = editableObject.gameObject;
-            if (!hitObject.CompareTag("game") && !resolvedObject.CompareTag("game"))
-            {
-                continue;
-            }
-
-            return new SelectionHit
-            {
-                hitInfo = hit,
-                hitObject = hitObject,
-                resolvedObject = resolvedObject,
-                editableObject = editableObject
-            };
-        }
-
-        return openDrawerFallback;
+        if (!SemanticPointerRaycast.TryResolve(origin, direction, range, Physics.DefaultRaycastLayers, out var semantic)) return null;
+        return new SelectionHit { hitInfo = semantic.hit, hitObject = semantic.hit.collider.gameObject, resolvedObject = semantic.editable.gameObject, editableObject = semantic.editable, resolutionReason = semantic.reason, internalCandidate = semantic.internalCandidate, drawerHandleCandidate = semantic.drawerHandleCandidate };
     }
 
     // We only send messages to the server, so we don't need to implement this method

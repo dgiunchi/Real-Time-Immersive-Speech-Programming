@@ -101,6 +101,53 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             Assert.That(Vector3.Distance(QuestSoccerBall.SpawnPosition(anchor,.08f),new Vector3(1,2,3)),Is.LessThan(.0001f));
         }
 
+        [Test] public void DeclaredAccessibleSoccerBallAliasResolvesToTheDeskSurface()
+        {
+            var table=CreateEditable("table_001");var point=new GameObject("desk_surface_anchor");point.transform.SetParent(table.transform);var anchor=point.AddComponent<AuthoringAnchor>();anchor.anchorId="table_001.desk_surface_anchor";anchor.placementMode=AnchorPlacementMode.Surface;
+            Assert.That(QuestRuntimeObjectFactory.TryResolveInitialAnchor("table_001.soccer_ball_anchor",out var resolved,out var resolvedId,out var error),Is.True,error);
+            Assert.That(resolved,Is.SameAs(anchor));Assert.That(resolvedId,Is.EqualTo("table_001.desk_surface_anchor"));
+        }
+
+        [Test] public void RuntimeSphereIsNotCreatedInsideALockedDrawer()
+        {
+            var drawerItem=CreateEditable("table_drawer_003");drawerItem.gameObject.AddComponent<ExperimentalDrawerController>();var lockItem=CreateEditable("lock_003");var lockController=lockItem.gameObject.AddComponent<QuestLockController>();
+            var point=new GameObject("drawer_inside_anchor");point.transform.SetParent(drawerItem.transform);var anchor=point.AddComponent<AuthoringAnchor>();anchor.anchorId="table_drawer_003.drawer_inside_anchor";
+            var owner=root.AddComponent<QuestInstanceController>();owner.Apply(new QuestInstance{questId="fixture",requiredRuntimeObjects=Array.Empty<QuestRuntimeObjectSpec>()});
+            lockController.Configure("key_001","table_drawer_003");
+            QuestRuntimeObjectFactory.Ensure(new QuestRuntimeObjectSpec{objectId="sphere_001",primitive="sphere",initialAnchorId=anchor.anchorId,presetId="soccer_ball"},owner);
+            Assert.That(AuthoringActionExecutor.FindEditable("sphere_001"),Is.Null);
+        }
+
+        [Test] public void A1AndA2DeclaredAccessibleRuntimeAnchorsResolveWithoutDrawerFallback()
+        {
+            var table=CreateEditable("table_001");var point=new GameObject("desk_surface_anchor");point.transform.SetParent(table.transform);var anchor=point.AddComponent<AuthoringAnchor>();anchor.anchorId="table_001.desk_surface_anchor";anchor.placementMode=AnchorPlacementMode.Surface;
+            Assert.That(QuestRuntimeObjectFactory.TryResolveInitialAnchor("table_001.desk_surface_anchor",out var a1,out var a1Id,out var a1Error),Is.True,a1Error);
+            Assert.That(QuestRuntimeObjectFactory.TryResolveInitialAnchor("table_001.soccer_ball_anchor",out var a2,out var a2Id,out var a2Error),Is.True,a2Error);
+            Assert.That(a1,Is.SameAs(anchor));Assert.That(a2,Is.SameAs(anchor));Assert.That(a1Id,Is.EqualTo("table_001.desk_surface_anchor"));Assert.That(a2Id,Is.EqualTo("table_001.desk_surface_anchor"));
+        }
+
+        [Test] public void RuntimeSphereRemainsUnderItsResolvedAccessibleAnchorAfterCreation()
+        {
+            var table=CreateEditable("table_001");var point=new GameObject("desk_surface_anchor");point.transform.SetParent(table.transform);var anchor=point.AddComponent<AuthoringAnchor>();anchor.anchorId="table_001.desk_surface_anchor";anchor.placementMode=AnchorPlacementMode.Surface;
+            var owner=root.AddComponent<QuestInstanceController>();owner.Apply(new QuestInstance{questId="fixture",requiredRuntimeObjects=Array.Empty<QuestRuntimeObjectSpec>()});
+            QuestRuntimeObjectFactory.Ensure(new QuestRuntimeObjectSpec{objectId="sphere_001",primitive="sphere",initialAnchorId=anchor.anchorId,presetId="soccer_ball"},owner);
+            var sphere=AuthoringActionExecutor.FindEditable("sphere_001");Assert.That(sphere,Is.Not.Null);Assert.That(sphere.transform.parent,Is.SameAs(anchor.transform));Assert.That(sphere.GetComponentInParent<ExperimentalDrawerController>(),Is.Null);
+        }
+
+        [Test] public void NonGrabbablePuzzleKeyRetainsUseWithCapabilityInSceneContext()
+        {
+            var key=CreateEditable("key_001");var grab=key.gameObject.AddComponent<ExperimentalGrabbableAdapter>();grab.SetGrabbable(false);var voice=key.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"use_with"};
+            var compiler=root.AddComponent<SceneContextCompiler>();var packet=compiler.CaptureSnapshot("00000000-0000-0000-0000-000000000000");var summary=Array.Find(packet.objects,item=>item.id=="key_001");
+            Assert.That(grab.grabbable,Is.False);Assert.That(summary.predefined_voice_commands,Does.Contain("use_with"));
+        }
+
+        [Test] public void C1ApplyMakesKeyNonGrabbableWithoutRemovingUseWith()
+        {
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.condition=ExperimentCondition.VoiceCommandBaseline;var key=CreateEditable("key_001");var grab=key.gameObject.AddComponent<ExperimentalGrabbableAdapter>();grab.SetGrabbable(true);var voice=key.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"use_with"};
+            var owner=root.AddComponent<QuestInstanceController>();owner.Apply(new QuestInstance{questId="fixture",relevantObjectIds=new[]{"key_001"}});
+            Assert.That(grab.grabbable,Is.False);Assert.That(voice.predefinedVoiceActions,Does.Contain("use_with"));
+        }
+
         [Test] public void CanonicalA1A2AndBasketAnchorModesAreExplicit()
         {
             var a1=new GameObject("a1").AddComponent<AuthoringAnchor>();a1.anchorId="table_001.desk_surface_anchor";a1.placementMode=AnchorPlacementMode.Surface;
@@ -294,6 +341,16 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             var controller=doorRoot.gameObject.AddComponent<QuestDoorController>();controller.movingDoor=leaf;controller.closedAnchor=closed;controller.openAnchor=open;var rootPosition=doorRoot.transform.position;var rootRotation=doorRoot.transform.rotation;
             Assert.That(controller.TryOpen(out var error),Is.True,error);Assert.That(doorRoot.transform.position,Is.EqualTo(rootPosition));Assert.That(doorRoot.transform.rotation,Is.EqualTo(rootRotation));Assert.That(Quaternion.Angle(leaf.rotation,open.rotation),Is.LessThan(.01f));
             Assert.That(controller.TryClose(out error),Is.True,error);Assert.That(Quaternion.Angle(leaf.rotation,closed.rotation),Is.LessThan(.01f));
+        }
+
+        [Test] public void DrawerSelectionHandleIsAChildProxyForTheCanonicalDrawer()
+        {
+            var drawer=CreateEditable("table_drawer_001");var rendererChild=GameObject.CreatePrimitive(PrimitiveType.Cube);rendererChild.transform.SetParent(drawer.transform,false);rendererChild.transform.localScale=new Vector3(.6f,.2f,.4f);
+            var controller=drawer.gameObject.AddComponent<ExperimentalDrawerController>();controller.closedAnchor=CreateAnchor("closed",root.transform,Quaternion.identity);controller.openAnchor=CreateAnchor("open",root.transform,Quaternion.identity);controller.openAnchor.position=Vector3.forward;
+            var handle=DrawerSelectionHandle.Ensure(drawer,controller);
+            var collider=handle.GetComponent<BoxCollider>();var start=handle.transform.position;
+            Assert.That(handle,Is.Not.Null);Assert.That(handle.transform.IsChildOf(drawer.transform),Is.True);Assert.That(handle.Drawer,Is.SameAs(drawer));Assert.That(collider.isTrigger,Is.False);Assert.That(collider.size.x,Is.EqualTo(.6f*(1f-DrawerSelectionHandle.FrontInsetFraction*2f)).Within(.001f));Assert.That(collider.size.y,Is.EqualTo(.2f*(1f-DrawerSelectionHandle.FrontInsetFraction*2f)).Within(.001f));Assert.That(collider.size.z,Is.EqualTo(DrawerSelectionHandle.FrontDepth).Within(.001f));
+            drawer.transform.position+=Vector3.right;Assert.That(Vector3.Distance(handle.transform.position-start,Vector3.right),Is.LessThan(.001f));
         }
 
         [Test] public void A1DrawerContentsRemainHiddenUntilThePhysicalLockedDrawerOpens()
