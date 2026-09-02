@@ -85,6 +85,8 @@ namespace DreamCodeVR2.SceneContext
         public string associated_target_object_id;
         public bool? is_aligned;
         public bool? is_lamp_active;
+        public string light_profile;
+        public string sphere_profile;
         public string[] placement_anchor_ids;
     }
 

@@ -52,6 +52,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private void ApplyConfiguration()
         {
             Resolve();
+            authoringUi?.ClearParticipantCommandFeedback();
             // C1 remains a legitimate voice-interaction condition: never disable microphone/STT here.
             if (microphoneCapture) { microphoneCapture.sendToServer = true; microphoneCapture.pttMicGain = Mathf.Clamp(studyConfiguration ? studyConfiguration.pttMicGain : microphoneCapture.pttMicGain,1f,4f); }
             if (authoringUi) authoringUi.SetExperimentalAuthoringVisible(true);

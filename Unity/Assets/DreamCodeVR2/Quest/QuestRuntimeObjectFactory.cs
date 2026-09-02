@@ -11,7 +11,7 @@ namespace DreamCodeVR2.Quest
         public static void Ensure(QuestRuntimeObjectSpec spec,QuestInstanceController owner)
         {
             if(spec==null||string.IsNullOrWhiteSpace(spec.objectId))return;var id=QuestCanonicalIds.Normalize(spec.objectId);var existing=AuthoringActionExecutor.FindEditable(id);
-            if(existing){DreamCodeVR2ClientLogger.Event("quest","RUNTIME_OBJECT_REUSED",null,new { object_id=id,unity_name=existing.gameObject.name,source=spec.source });return;}
+            if(existing){ApplyInitialSphereProfile(existing.GetComponent<C1QuestSphereController>(),spec,owner);DreamCodeVR2ClientLogger.Event("quest","RUNTIME_OBJECT_REUSED",null,new { object_id=id,unity_name=existing.gameObject.name,source=spec.source });return;}
             if(!string.Equals(spec.primitive,"sphere",StringComparison.OrdinalIgnoreCase)){DreamCodeVR2ClientLogger.Warn("quest","RUNTIME_OBJECT_CREATE_UNSUPPORTED","Runtime primitive is not supported.",new { object_id=id,primitive=spec.primitive });return;}
             if(!TryResolveInitialAnchor(spec.initialAnchorId,out var anchor,out var resolvedAnchorId,out var resolutionError))
             {
@@ -28,6 +28,7 @@ namespace DreamCodeVR2.Quest
             var body=sphere.AddComponent<Rigidbody>();body.isKinematic=true;var grab=sphere.AddComponent<ExperimentalGrabbableAdapter>();grab.SetGrabbable(spec.initialGrabbable);
             var voice=sphere.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"move_to_preset","place_in"};if(IsSoccerProfile(spec))voice.predefinedPresets=new[]{"soccer_ball"};
             var marker=sphere.AddComponent<C1QuestSphereController>();marker.instanceController=owner;marker.placementAnchorId=owner.ActiveInstance?.c1SpherePlacementAnchorId;
+            ApplyInitialSphereProfile(marker,spec,owner);
             if(!string.IsNullOrWhiteSpace(spec.initialSemanticState)){var state=sphere.AddComponent<AuthoringSemanticState>();state.state=spec.initialSemanticState;}
             var containingDrawer=anchor.GetComponentInParent<ExperimentalDrawerController>();
             if(containingDrawer&&containingDrawer.IsOpen)
@@ -36,6 +37,17 @@ namespace DreamCodeVR2.Quest
                 else DreamCodeVR2ClientLogger.Warn("quest","RUNTIME_OBJECT_CONTAINER_CLOSE_FAILED",closeError,new { object_id=id,drawer_id=containingDrawer.GetComponent<AIEditableObject>()?.objectId });
             }
             FindFirstContext()?.SendSceneContextSnapshot("runtime object created");DreamCodeVR2ClientLogger.Event("quest","RUNTIME_OBJECT_CREATED",null,new { object_id=id,unity_name=sphere.name,declared_anchor_id=spec.initialAnchorId,resolved_anchor_id=resolvedAnchorId,parent_gameobject=anchor.gameObject.name,parent_drawer_id=containingDrawer?containingDrawer.GetComponent<AIEditableObject>()?.objectId:null,position=sphere.transform.position,scale=sphere.transform.lossyScale,tag=sphere.tag,grabbable=grab.grabbable,condition=UnityEngine.Object.FindFirstObjectByType<ExperimentConditionManager>()?.condition.ToString(),source=spec.source });
+        }
+        private static void ApplyInitialSphereProfile(C1QuestSphereController controller,QuestRuntimeObjectSpec spec,QuestInstanceController owner)
+        {
+            if(string.IsNullOrWhiteSpace(spec?.sphereProfile))return;
+            var condition=UnityEngine.Object.FindFirstObjectByType<ExperimentConditionManager>()?.condition.ToString();
+            var setId=QuestCanonicalSetIds.Normalize(owner?.ActiveInstance?.questSetId);
+            var error=(string)null;
+            var success=controller&&controller.TrySetProfile(spec.sphereProfile,out error);
+            var details=new { object_id=spec.objectId,profile=spec.sphereProfile,canonical_set_id=setId,condition,source="initial_runtime_setup",success,resulting_profile=controller?controller.SphereProfile:null,controller_found=controller!=null };
+            if(success)DreamCodeVR2ClientLogger.Event("quest","QUEST_RUNTIME_OBJECT_PROFILE_APPLIED",null,details);
+            else DreamCodeVR2ClientLogger.Warn("quest","QUEST_RUNTIME_OBJECT_PROFILE_APPLIED",error??"sphere_profile_application_failed",details);
         }
         private static bool IsSoccerProfile(QuestRuntimeObjectSpec spec)=>string.Equals(spec.presetId,"soccer_ball",StringComparison.OrdinalIgnoreCase)||string.Equals(spec.semanticProfile,"soccer_ball",StringComparison.OrdinalIgnoreCase);
         // `soccer_ball_anchor` is a protocol alias for the authored, accessible desk surface.

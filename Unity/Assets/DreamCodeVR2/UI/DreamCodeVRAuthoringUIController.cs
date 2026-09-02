@@ -332,6 +332,23 @@ namespace DreamCodeVR2.UI
                 SetStatus(lastResult);
             }
         }
+
+        // Uses the existing FeedbackCard, never the confirmation card. New feedback replaces
+        // the old message and the existing feedbackHideDelay controls its transient lifetime.
+        public void ShowParticipantCommandFeedback(string message)
+        {
+            SetStatus(message);
+            UpdatePanelVisibility();
+        }
+
+        public void ClearParticipantCommandFeedback()
+        {
+            lastStatusMessage = null;
+            lastFeedbackTime = float.NegativeInfinity;
+            if (statusText) statusText.text = "Feedback: Ready.";
+            if (compactFeedbackText) compactFeedbackText.text = "Feedback: Ready.";
+            UpdatePanelVisibility();
+        }
         public void SetParticipantQuestInfo(string instruction,int completed)
         {
             var objective=TruncateMultiline(string.IsNullOrWhiteSpace(instruction)?"No active task.":instruction.Trim(),90);

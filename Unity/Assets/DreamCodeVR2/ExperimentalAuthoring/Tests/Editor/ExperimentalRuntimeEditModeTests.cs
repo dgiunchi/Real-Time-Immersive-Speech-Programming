@@ -37,10 +37,32 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
                 (ExperimentCondition[])Enum.GetValues(typeof(ExperimentCondition)));
         }
 
+        [Test] public void CanonicalConsequenceProtocolDeserializesVersionedInstruction()
+        {
+            var envelope=JsonConvert.DeserializeObject<AuthoringEnvelope>("{\"type\":\"QuestConsequenceInstruction\",\"protocol_version\":1,\"instruction_id\":\"i-1\",\"session_id\":\"s-1\",\"canonical_set_id\":\"set_c\",\"source_task_id\":\"set_c:T2\",\"instruction_type\":\"SET_LIGHT_PROFILE\",\"target_object_id\":\"lamp_001\",\"payload\":{\"profile\":\"green\"}}");
+            Assert.That(envelope.protocolVersion,Is.EqualTo(1));Assert.That(envelope.instructionId,Is.EqualTo("i-1"));Assert.That(envelope.instructionType,Is.EqualTo("SET_LIGHT_PROFILE"));Assert.That((string)envelope.payload["profile"],Is.EqualTo("green"));
+        }
+
+        [Test] public void CanonicalSetNormalizationKeepsOnlySetABCAtRuntimeBoundary()
+        {
+            Assert.That(QuestCanonicalSetIds.Normalize("set_a_instance_1"),Is.EqualTo("set_a"));Assert.That(QuestCanonicalSetIds.Normalize("set_b"),Is.EqualTo("set_b"));Assert.That(QuestCanonicalSetIds.Normalize("set_c_old"),Is.EqualTo("set_c"));
+        }
+
         [Test] public void GrabbableAdapterStoresRealEnableState()
         {
             var body=root.AddComponent<Rigidbody>();var adapter=root.AddComponent<ExperimentalGrabbableAdapter>();
             adapter.SetGrabbable(true);Assert.That(adapter.grabbable,Is.True);adapter.SetGrabbable(false);Assert.That(adapter.grabbable,Is.False);Assert.That(body,Is.Not.Null);
+        }
+
+        [Test] public void CanonicalInitialStatesApplyGenericActiveAndInactiveObjectState()
+        {
+            var key=new GameObject("key_001");key.transform.SetParent(root.transform);key.AddComponent<AIEditableObject>().objectId="key_001";
+            var unusedLock=new GameObject("lock_002");unusedLock.transform.SetParent(root.transform);unusedLock.AddComponent<AIEditableObject>().objectId="lock_002";unusedLock.AddComponent<QuestLockController>();
+            var controller=root.AddComponent<QuestInstanceController>();
+            controller.Apply(new QuestInstance{questId="set_a",initialStates=new[]{new QuestInitialStateBinding{objectId="key_001",state="inactive"},new QuestInitialStateBinding{objectId="lock_002",state="inactive"}}});
+            Assert.That(key.activeSelf,Is.False);Assert.That(unusedLock.activeSelf,Is.False);
+            controller.Apply(new QuestInstance{questId="set_b",initialStates=new[]{new QuestInitialStateBinding{objectId="key_001",state="active"},new QuestInitialStateBinding{objectId="lock_002",state="active"}}});
+            Assert.That(key.activeSelf,Is.True);Assert.That(unusedLock.activeSelf,Is.True);
         }
 
         [Test] public void FixedQuestWireUsesNetwork101QuestInstanceInsteadOfHttpStartPayload()
@@ -92,6 +114,20 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             Assert.That(QuestSoccerBall.CanonicalRadiusMeters,Is.EqualTo(.08f));
         }
 
+        [TestCase("set_a","set_a")]
+        [TestCase("set_a_instance_1","set_a")]
+        [TestCase("set_b_instance_1","set_b")]
+        [TestCase("set_c_instance_1","set_c")]
+        public void CanonicalSetIdsNormalizeAtOneBoundary(string input,string expected)
+        {
+            Assert.That(QuestCanonicalSetIds.Normalize(input),Is.EqualTo(expected));
+        }
+
+        [Test] public void AvailabilityGenerationIncrementsAndResetClears()
+        {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();var key=CreateEditable("key_001");Assert.That(reporter.MarkAvailable(key,"cabinet_drawer_003","reveal"),Is.EqualTo(1));Assert.That(reporter.MarkAvailable(key,"cabinet_drawer_003","reveal"),Is.EqualTo(2));reporter.ResetCompleted();Assert.That(reporter.AvailabilityGeneration("key_001"),Is.EqualTo(0));
+        }
+
         [Test] public void SurfaceAnchorOffsetsSphereByItsEffectiveRadiusWhileContainmentDoesNot()
         {
             var anchorObject=new GameObject("placement-anchor");anchorObject.transform.SetParent(root.transform);anchorObject.transform.position=new Vector3(1,2,3);
@@ -134,6 +170,24 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             var sphere=AuthoringActionExecutor.FindEditable("sphere_001");Assert.That(sphere,Is.Not.Null);Assert.That(sphere.transform.parent,Is.SameAs(anchor.transform));Assert.That(sphere.GetComponentInParent<ExperimentalDrawerController>(),Is.Null);
         }
 
+        [Test] public void InitialRuntimeSphereProfileIsAppliedAndCanBeResetWithoutConditionBranching()
+        {
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.condition=ExperimentCondition.VoiceCommandBaseline;
+            var cabinet=CreateEditable("cabinet_drawer_003");var point=new GameObject("drawer_inside_anchor");point.transform.SetParent(cabinet.transform);var anchor=point.AddComponent<AuthoringAnchor>();anchor.anchorId="cabinet_drawer_003.drawer_inside_anchor";anchor.placementMode=AnchorPlacementMode.Center;
+            var owner=root.AddComponent<QuestInstanceController>();owner.Apply(new QuestInstance{questId="set_a_fixture",questSetId="set_a",requiredRuntimeObjects=Array.Empty<QuestRuntimeObjectSpec>()});
+            QuestRuntimeObjectFactory.Ensure(new QuestRuntimeObjectSpec{objectId="sphere_001",primitive="sphere",initialAnchorId=anchor.anchorId,sphereProfile="football",source="required_runtime_objects"},owner);
+            var sphere=AuthoringActionExecutor.FindEditable("sphere_001").GetComponent<C1QuestSphereController>();Assert.That(sphere.SphereProfile,Is.EqualTo("football"));
+            manager.condition=ExperimentCondition.PlayerAuthoring;QuestRuntimeObjectFactory.Ensure(new QuestRuntimeObjectSpec{objectId="sphere_001",primitive="sphere",initialAnchorId=anchor.anchorId,sphereProfile="neutral",source="required_runtime_objects"},owner);
+            Assert.That(sphere.SphereProfile,Is.EqualTo("neutral"));
+        }
+
+        [Test] public void RuntimeObjectWireMapsTheExplicitSphereProfileField()
+        {
+            var envelope=JsonConvert.DeserializeObject<AuthoringEnvelope>("{\"task\":{\"task_id\":\"set_a:T1\",\"player_instruction\":\"Align the painting.\",\"task_type\":\"painting\",\"required_objects\":[\"painting_001\"],\"success_conditions\":[\"painting_aligned:painting_001\"]},\"quest_instance\":{\"quest_instance_id\":\"set_a\",\"quest_set_id\":\"set_a\",\"required_runtime_objects\":[{\"object_id\":\"sphere_001\",\"primitive\":\"sphere\",\"initial_placement_anchor\":\"cabinet_drawer_003.drawer_inside_anchor\",\"sphere_profile\":\"football\"}]}}");
+            Assert.That(FixedQuestWireConverter.TryConvert(envelope.task,envelope.quest_instance,out var instance,out var error),Is.True,error);
+            Assert.That(instance.requiredRuntimeObjects[0].sphereProfile,Is.EqualTo("football"));
+        }
+
         [Test] public void NonGrabbablePuzzleKeyRetainsUseWithCapabilityInSceneContext()
         {
             var key=CreateEditable("key_001");var grab=key.gameObject.AddComponent<ExperimentalGrabbableAdapter>();grab.SetGrabbable(false);var voice=key.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"use_with"};
@@ -173,7 +227,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             Assert.That(text.text,Is.EqualTo("Scene fallback"));
         }
 
-        [TestCase("ambiguous_target","Please specify which object.")]
+        [TestCase("ambiguous_target","More than one object matches your request.")]
         [TestCase("missing_capability","That action is not available.")]
         [TestCase("key_lock_failed","That key does not fit this lock.")]
         [TestCase("target_locked","The object is locked.")]
@@ -191,11 +245,18 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
 
         [Test] public void LocalExecutionFailureShowsSafeParticipantFeedback()
         {
-            var ui=root.AddComponent<DreamCodeVR2.UI.DreamCodeVRAuthoringUIController>();var card=new GameObject("feedback-card");card.transform.SetParent(root.transform);ui.proposalCardGroup=card.AddComponent<CanvasGroup>();
-            var reason=new GameObject("reason").AddComponent<TMPro.TextMeshPro>();reason.transform.SetParent(card.transform);ui.proposalReasonText=reason;
+            var ui=root.AddComponent<DreamCodeVR2.UI.DreamCodeVRAuthoringUIController>();var card=new GameObject("feedback-card");card.transform.SetParent(root.transform);ui.feedbackCardGroup=card.AddComponent<CanvasGroup>();
+            var reason=new GameObject("reason").AddComponent<TMPro.TextMeshPro>();reason.transform.SetParent(card.transform);ui.statusText=reason;
             var presenter=root.AddComponent<AuthoringProposalPresenter>();presenter.ui=ui;
             presenter.ShowC1ExecutionFeedback(new AuthoringExecutionResult{success=false,error=new AuthoringValidationError{code="target_locked",message="internal detail"}},null,"command-1");
-            Assert.That(reason.text,Is.EqualTo("The object is locked."));Assert.That(ui.proposalCardGroup.alpha,Is.EqualTo(1f));
+            Assert.That(reason.text,Is.EqualTo("Feedback: That object is locked."));
+        }
+
+        [Test] public void ServerParticipantMessageReplacesPreviousFeedbackAndClearRemovesIt()
+        {
+            var ui=root.AddComponent<DreamCodeVR2.UI.DreamCodeVRAuthoringUIController>();var text=new GameObject("feedback").AddComponent<TMPro.TextMeshPro>();text.transform.SetParent(root.transform);ui.statusText=text;var presenter=root.AddComponent<AuthoringProposalPresenter>();presenter.ui=ui;
+            presenter.ShowServerFeedback("Desk Drawer 2 is locked.","physical_lock_locked","server_execution_feedback","request-1","command-1");Assert.That(text.text,Is.EqualTo("Feedback: Desk Drawer 2 is locked."));
+            presenter.ShowServerFeedback("Command not understood.","command_not_understood","server_rejection","request-2","command-2");Assert.That(text.text,Is.EqualTo("Feedback: Command not understood."));ui.ClearParticipantCommandFeedback();Assert.That(text.text,Is.EqualTo("Feedback: Ready."));
         }
 
         [Test] public void C1FailureFeedbackDefaultDurationIsReadable()
@@ -270,6 +331,31 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             Assert.That(note.activeSelf,Is.False);Assert.That(harness.state.CompletedTaskCount,Is.EqualTo(1));
         }
 
+        [Test] public void CanonicalLampProfileMutatesOnePhysicalLightAndRestoresItsAuthoredColor()
+        {
+            var lampObject=CreateEditable("lamp_001");var pointLight=new GameObject("Point Light");pointLight.transform.SetParent(lampObject.transform);var physical=pointLight.AddComponent<Light>();physical.type=LightType.Spot;var authored=new Color(.62f,.71f,.93f,1f);physical.color=authored;
+            var lamp=lampObject.gameObject.AddComponent<QuestLampController>();
+            Assert.That(lamp.TrySetColorProfile("green",out var error),Is.True,error);
+            Assert.That(lamp.AuthoritativeLight,Is.SameAs(physical));Assert.That(lamp.ColorProfile,Is.EqualTo("green"));Assert.That(physical.color.g,Is.GreaterThan(physical.color.r));
+            Assert.That(lamp.TrySetColorProfile("default",out error),Is.True,error);
+            Assert.That(lamp.ColorProfile,Is.EqualTo("default"));Assert.That(physical.color,Is.EqualTo(authored));
+        }
+
+        [Test] public void CanonicalLampRequiresOneUnambiguousPhysicalLightUnlessAnAuthoredReferenceExists()
+        {
+            var lampObject=CreateEditable("lamp_001");var lamp=lampObject.gameObject.AddComponent<QuestLampController>();
+            Assert.That(lamp.TrySetColorProfile("green",out var missingError),Is.False);StringAssert.Contains("No UnityEngine.Light",missingError);
+            for(var i=0;i<2;i++){var child=new GameObject("Point Light "+i);child.transform.SetParent(lampObject.transform);child.AddComponent<Light>();}
+            Assert.That(lamp.TrySetColorProfile("green",out var ambiguousError),Is.False);StringAssert.Contains("More than one UnityEngine.Light",ambiguousError);
+        }
+
+        [Test] public void FourCanonicalLampsIndependentlyApplyAndResetTheirPhysicalProfiles()
+        {
+            var lamps=new QuestLampController[4];var authored=new Color[4];
+            for(var i=0;i<lamps.Length;i++){var item=CreateEditable("lamp_00"+(i+1));var point=new GameObject("Point Light");point.transform.SetParent(item.transform);var light=point.AddComponent<Light>();authored[i]=new Color(.2f+i*.1f,.5f,.7f,1f);light.color=authored[i];lamps[i]=item.gameObject.AddComponent<QuestLampController>();Assert.That(lamps[i].TrySetColorProfile("green",out var error),Is.True,error);}
+            for(var i=0;i<lamps.Length;i++){Assert.That(lamps[i].ColorProfile,Is.EqualTo("green"));Assert.That(lamps[i].AuthoritativeLight.color.g,Is.GreaterThan(lamps[i].AuthoritativeLight.color.r));Assert.That(lamps[i].TrySetColorProfile("default",out var error),Is.True,error);Assert.That(lamps[i].AuthoritativeLight.color,Is.EqualTo(authored[i]));}
+        }
+
         [Test] public void BallAnchorTaskCompletesWhenSphereReachesTheConfiguredAnchor()
         {
             var harness=CreateHarness("OBJECT_AT_ANCHOR","sphere_001","basket_001.basket_inside_anchor");
@@ -327,12 +413,47 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             Assert.That(lockController.TryUseKey("key_001",out var error),Is.True,error);Assert.That(lockController.IsUnlocked,Is.True);
         }
 
+        [Test] public void PhysicalDrawerLocksGateIndependentlyAndUnlockIndependently()
+        {
+            var tableLock=CreateEditable("lock_002").gameObject.AddComponent<QuestLockController>();tableLock.ConfigurePhysicalTarget("table_drawer_002");tableLock.Configure("key_001","table_drawer_002");
+            var cabinetLock=CreateEditable("lock_003").gameObject.AddComponent<QuestLockController>();cabinetLock.ConfigurePhysicalTarget("cabinet_drawer_002");cabinetLock.Configure("key_002","cabinet_drawer_002");
+            Assert.That(QuestLockController.CanOpenTarget("table_drawer_002",out _),Is.False);Assert.That(QuestLockController.CanOpenTarget("cabinet_drawer_002",out _),Is.False);
+            Assert.That(tableLock.TryUseKey("key_001",out var tableError),Is.True,tableError);Assert.That(QuestLockController.CanOpenTarget("table_drawer_002",out _),Is.True);Assert.That(QuestLockController.CanOpenTarget("cabinet_drawer_002",out _),Is.False);
+            Assert.That(cabinetLock.TryUseKey("key_002",out var cabinetError),Is.True,cabinetError);Assert.That(QuestLockController.CanOpenTarget("cabinet_drawer_002",out _),Is.True);
+        }
+
+        [Test] public void ClearingQuestBindingDoesNotRemovePhysicalDrawerLock()
+        {
+            var lockController=CreateEditable("lock_003").gameObject.AddComponent<QuestLockController>();lockController.ConfigurePhysicalTarget("cabinet_drawer_002");lockController.Configure("key_002","cabinet_drawer_002");
+            lockController.ClearQuestBinding();Assert.That(lockController.physicalTargetObjectId,Is.EqualTo("cabinet_drawer_002"));Assert.That(QuestLockController.CanOpenTarget("cabinet_drawer_002",out _),Is.False);
+        }
+
+        [Test] public void PhysicalDrawerMayBeExplicitlyInitializedUnlocked()
+        {
+            var lockController=CreateEditable("lock_002").gameObject.AddComponent<QuestLockController>();lockController.ConfigurePhysicalTarget("table_drawer_002");lockController.SetLocked(false);
+            Assert.That(QuestLockController.CanOpenTarget("table_drawer_002",out _),Is.True);lockController.ResetLocked();Assert.That(QuestLockController.CanOpenTarget("table_drawer_002",out _),Is.False);
+        }
+
         [Test] public void CorrectKeySnapsIntoTheLockAndRestoresOnReset()
         {
             var key=CreateEditable("key_001");key.transform.position=new Vector3(1,2,3);var originalParent=key.transform.parent;var originalScale=key.transform.localScale;var body=key.gameObject.AddComponent<Rigidbody>();body.isKinematic=false;var grab=key.gameObject.AddComponent<ExperimentalGrabbableAdapter>();grab.SetGrabbable(true);
             var lockObject=CreateEditable("lock_002");var lockController=lockObject.gameObject.AddComponent<QuestLockController>();lockController.Configure("key_001","table_drawer_001");
             Assert.That(lockController.TryUseKey("key_001",out var error),Is.True,error);Assert.That(key.transform.parent,Is.SameAs(originalParent));Assert.That(key.transform.localScale,Is.EqualTo(originalScale));Assert.That(body.isKinematic,Is.True);Assert.That(grab.grabbable,Is.False);
             key.GetComponent<QuestInsertedKeyState>().Restore();Assert.That(key.transform.position,Is.EqualTo(new Vector3(1,2,3)));Assert.That(key.transform.localScale,Is.EqualTo(originalScale));Assert.That(body.isKinematic,Is.False);Assert.That(grab.grabbable,Is.True);
+        }
+
+        [Test] public void KeyPoseNormalizationRestoresImportedMeshOrientationWithoutMovingTheKey()
+        {
+            var key=CreateEditable("key_001");var mesh=GameObject.CreatePrimitive(PrimitiveType.Cube);mesh.transform.SetParent(key.transform,false);mesh.transform.localRotation=Quaternion.Euler(0,35,0);var canonical=mesh.transform.localRotation;var position=new Vector3(1,2,3);key.transform.position=position;
+            KeyPoseNormalizer.Normalize(key,"initial_setup");mesh.transform.localRotation=Quaternion.Euler(90,0,0);KeyPoseNormalizer.NormalizeVisualOnly(key,"release");
+            Assert.That(Quaternion.Angle(mesh.transform.localRotation,canonical),Is.LessThan(.01f));Assert.That(key.transform.position,Is.EqualTo(position));
+        }
+
+        [Test] public void KeyPoseNormalizationUsesAnchorWorldPoseWithoutChangingCanonicalScale()
+        {
+            var key=CreateEditable("key_002");key.transform.localScale=new Vector3(.5f,.5f,.5f);var anchor=CreateAnchor("key_anchor",root.transform,Quaternion.Euler(0,45,0));anchor.position=new Vector3(2,0,1);
+            KeyPoseNormalizer.Normalize(key,"relocation",anchor);
+            Assert.That(key.transform.position,Is.EqualTo(anchor.position));Assert.That(Quaternion.Angle(key.transform.rotation,anchor.rotation),Is.LessThan(.01f));Assert.That(key.transform.localScale,Is.EqualTo(new Vector3(.5f,.5f,.5f)));
         }
 
         [Test] public void DoorOpeningRotatesTheDoorChildWithoutMovingDoorRoot()

@@ -82,7 +82,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private static AuthoringAnchor FindAnchor(string id) { foreach(var item in FindObjectsByType<AuthoringAnchor>(FindObjectsInactive.Include,FindObjectsSortMode.None))if(item&&item.anchorId==id)return item;return null; }
         private static bool IsFalse(string v)=>string.Equals(v,"false",StringComparison.OrdinalIgnoreCase)||v=="0";
         private static string ObjectType(AIEditableObject o)=>o.labels!=null&&o.labels.Length>0?o.labels[0]:o.gameObject.name;
-        private static Color ReadColor(Material m)=>m&&m.HasProperty("_BaseColor")?m.GetColor("_BaseColor"):m?m.color:Color.white;
+        private static Color ReadColor(Material m)=>m&&m.HasProperty("_BaseColor")?m.GetColor("_BaseColor"):m&&m.HasProperty("_Color")?m.GetColor("_Color"):Color.white;
         private static void SetColor(Material m,Color c){if(!m)return;if(m.HasProperty("_BaseColor"))m.SetColor("_BaseColor",c);if(m.HasProperty("_Color"))m.color=c;}
         private AuthoringExecutionResult Ok(AuthoringAction a,string m)=>new AuthoringExecutionResult{actionId=a.actionId,success=true,message=m};
         private AuthoringExecutionResult Fail(AuthoringAction a,string code,string m)=>new AuthoringExecutionResult{actionId=a?.actionId,success=false,message=m,error=new AuthoringValidationError{code=code,message=m}};

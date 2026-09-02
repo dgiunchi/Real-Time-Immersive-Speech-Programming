@@ -56,13 +56,19 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         {
             switch((reasonCode??string.Empty).Trim().ToLowerInvariant())
             {
-                case "ambiguous_target": return "Please specify which object.";
+                case "command_not_understood": return "Command not understood.";
+                case "command_too_complex": return "Command too complex. Try one operation at a time.";
+                case "target_not_found": case "missing_target": return "I can't find the object you mean.";
+                case "ambiguous_target": return "More than one object matches your request.";
+                case "operation_not_supported_for_target": return "Can't do this operation with that object.";
+                case "invalid_object_relation": return "Those objects can't be used together.";
+                case "authoring_not_available": case "authoring_unavailable": return "Authoring is not available in this condition.";
                 case "missing_capability": case "command_not_allowed": case "capability_rejected": case "unsupported_interaction": return "That action is not available.";
                 case "target_not_in_task_scope": case "quest_integrity": case "predefined_command_not_available": return "That action is not available right now.";
-                case "wrong_key": case "invalid_key": case "key_lock_failed": case "lock_rejected": return "That key does not fit this lock.";
-                case "object_locked": case "target_locked": return "The object is locked.";
+                case "wrong_key": case "invalid_key": case "key_lock_failed": case "lock_rejected": return "This key doesn't work with this lock.";
+                case "object_locked": case "target_locked": case "physical_lock_locked": return "That object is locked.";
+                case "invalid_current_state": return "Can't do that in the current state.";
                 case "missing_preset": case "unsupported_preset": case "soccer_ball_preset_failed": case "missing_soccer_material": return "That transformation is not available.";
-                case "missing_target": return "That object is not available.";
                 default: return "Command failed.";
             }
         }
@@ -70,8 +76,13 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         {
             var participantMessage=ParticipantSafeFailureMessage(reasonCode);
             PendingProposal=null;
-            ui?.ShowC1CommandFeedback(false,participantMessage);
-            DreamCodeVR2ClientLogger.Event("participant_ui","VOICE_COMMAND_FEEDBACK_SHOWN",null,new { feedback_type="failure",reason_code=string.IsNullOrWhiteSpace(reasonCode)?"unknown":reasonCode,source,command_id=commandId });
+            ui?.HideProposal();ui?.ShowParticipantCommandFeedback(participantMessage);
+            DreamCodeVR2ClientLogger.Event("participant_ui","PARTICIPANT_COMMAND_FEEDBACK",null,new { request_id=commandId,command_id=commandId,reason_code=string.IsNullOrWhiteSpace(reasonCode)?"unknown":reasonCode,displayed_message=participantMessage,source="local_fallback" });
+        }
+        public void ShowServerFeedback(string participantMessage,string reasonCode,string source,string requestId,string commandId)
+        {
+            PendingProposal=null;ui?.HideProposal();var message=string.IsNullOrWhiteSpace(participantMessage)?ParticipantSafeFailureMessage(reasonCode):participantMessage.Trim();ui?.ShowParticipantCommandFeedback(message);
+            DreamCodeVR2ClientLogger.Event("participant_ui","PARTICIPANT_COMMAND_FEEDBACK",null,new { request_id=requestId,command_id=commandId,reason_code=string.IsNullOrWhiteSpace(reasonCode)?"unknown":reasonCode,displayed_message=message,source });
         }
         private void ShowC1SuccessFeedback(){ui?.ShowC1CommandFeedback(true,null);DreamCodeVR2ClientLogger.Event("participant_ui", "C1_COMMAND_SUCCESS_FEEDBACK_SHOWN");}
         private void Clear(){PendingProposal=null;ui?.HideProposal();}

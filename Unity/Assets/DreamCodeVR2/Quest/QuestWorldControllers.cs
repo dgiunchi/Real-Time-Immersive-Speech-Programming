@@ -11,7 +11,10 @@ namespace DreamCodeVR2.Quest
     [Serializable] public class QuestNoteBinding { public string noteId; public string text; public bool visible; public string anchorId; }
     [Serializable] public class QuestPlacementBinding { public string objectId; public string anchorId; }
     [Serializable] public class QuestInitialStateBinding { public string objectId; public string state; }
-    [Serializable] public class QuestRuntimeObjectSpec { public string objectId; public string primitive; public string semanticProfile; public string presetId; public string materialProfile; public string initialAnchorId; public string initialSemanticState; public bool initialGrabbable; public float canonicalSizeMeters; public float canonicalScale; public string source; }
+    // An inactive lock is semantically unavailable for the selected quest, but its
+    // authored mesh remains a permanent visible fixture on the drawer.
+    public sealed class QuestSemanticInactivityMarker : MonoBehaviour { public bool reportsInactive; }
+    [Serializable] public class QuestRuntimeObjectSpec { public string objectId; public string primitive; public string semanticProfile; public string sphereProfile; public string presetId; public string materialProfile; public string initialAnchorId; public string initialSemanticState; public bool initialGrabbable; public float canonicalSizeMeters; public float canonicalScale; public string source; }
     [Serializable] public class QuestInstance { public string questId; public string questSetId; public QuestLockBinding[] lockBindings; public QuestNoteBinding[] notes; public QuestPlacementBinding[] placements; public QuestInitialStateBinding[] initialStates; public QuestRuntimeObjectSpec[] requiredRuntimeObjects; public string[] relevantObjectIds; public string selectedLampId; public string targetDrawerId; public QuestPlan plan; public bool requiresC1Sphere; public string c1SphereId="sphere_001"; public string c1SphereStartAnchorId; public string c1SpherePlacementAnchorId; }
 
     public static class QuestSoccerBall
@@ -52,14 +55,14 @@ namespace DreamCodeVR2.Quest
         private readonly System.Collections.Generic.Dictionary<string,string> previousRequiredKeyIds=new System.Collections.Generic.Dictionary<string,string>(StringComparer.Ordinal);
         public void Apply(QuestInstance instance)
         {
-            if(instance==null)return;DreamCodeVR2ClientLogger.Event("quest","QUEST_INSTANCE_RECEIVED",null,new { quest_instance_id=instance.questId,quest_set_id=instance.questSetId });ActiveResolvedInstance=QuestInstanceResolver.Resolve(instance);ActiveInstance=instance;if(!runtimeState)runtimeState=FindFirstObjectByType<QuestRuntimeState>();
+            if(instance==null)return;FindFirstObjectByType<DreamCodeVR2.UI.DreamCodeVRAuthoringUIController>()?.ClearParticipantCommandFeedback();DreamCodeVR2ClientLogger.Event("quest","QUEST_INSTANCE_RECEIVED",null,new { quest_instance_id=instance.questId,quest_set_id=instance.questSetId });ActiveResolvedInstance=QuestInstanceResolver.Resolve(instance);ActiveInstance=instance;if(!runtimeState)runtimeState=FindFirstObjectByType<QuestRuntimeState>();
             ResetControlledState();
             EnsureRuntimeObjects(ActiveResolvedInstance);
             foreach(var binding in ActiveResolvedInstance.lockBindings)ApplyLockBinding(instance,binding);
             ApplyPlacements(ActiveResolvedInstance.placements);
             FindFirstObjectByType<QuestObjectVisibilityController>()?.ApplyFixedInstance(instance);
             foreach(var note in instance.notes??Array.Empty<QuestNoteBinding>()){var item=AuthoringActionExecutor.FindEditable(note.noteId);item?.GetComponent<QuestNoteController>()?.Configure(note.text,note.visible);}
-            ConfigureA1DrawerContents(ActiveResolvedInstance);
+            ConfigureA1DrawerContents(ActiveResolvedInstance);NormalizeStaticKeys("initial_setup");
             ApplyInitialStates(instance.initialStates);
             CloseRuntimeObjectContainersUnlessExplicitlyOpen(ActiveResolvedInstance,instance.initialStates);
             LogLockBindingSummary(instance.questId);
@@ -84,8 +87,9 @@ namespace DreamCodeVR2.Quest
             foreach(var candidate in FindObjectsByType<AuthoringAnchor>(FindObjectsInactive.Include,FindObjectsSortMode.None))if(candidate&&candidate.anchorId==instance.c1SpherePlacementAnchorId){anchor=candidate;return true;}return false;
         }
         public void ClearC1QuestSphere(){foreach(var item in FindObjectsByType<C1QuestSphereController>(FindObjectsInactive.Include,FindObjectsSortMode.None))if(item)Destroy(item.gameObject);}
+        private static void NormalizeStaticKeys(string reason){foreach(var item in FindObjectsByType<AIEditableObject>(FindObjectsInactive.Include,FindObjectsSortMode.None))KeyPoseNormalizer.Normalize(item,reason);}
         private void EnsureRuntimeObjects(ResolvedQuestInstance resolved){foreach(var spec in resolved?.requiredRuntimeObjects??Array.Empty<QuestRuntimeObjectSpec>())QuestRuntimeObjectFactory.Ensure(spec,this);}
-        private void ResetControlledState(){previousRequiredKeyIds.Clear();FindFirstObjectByType<QuestObjectVisibilityController>()?.RestoreAll();ClearC1QuestSphere();foreach(var inserted in FindObjectsByType<QuestInsertedKeyState>(FindObjectsInactive.Include,FindObjectsSortMode.None))inserted.Restore();foreach(var reveal in FindObjectsByType<QuestDrawerContentsReveal>(FindObjectsInactive.Include,FindObjectsSortMode.None))reveal.ClearConfiguration();foreach(var drawer in FindObjectsByType<ExperimentalDrawerController>(FindObjectsInactive.Include,FindObjectsSortMode.None))drawer.ResetClosed();foreach(var lockController in FindObjectsByType<QuestLockController>(FindObjectsInactive.Include,FindObjectsSortMode.None)){var item=lockController.GetComponent<AIEditableObject>();if(item&&!string.IsNullOrWhiteSpace(item.objectId))previousRequiredKeyIds[item.objectId]=lockController.requiredKeyId;lockController.ClearQuestBinding();}foreach(var door in FindObjectsByType<QuestDoorController>(FindObjectsInactive.Include,FindObjectsSortMode.None))door.TryClose(out _);foreach(var painting in FindObjectsByType<QuestPaintingController>(FindObjectsInactive.Include,FindObjectsSortMode.None))painting.ResetCrooked();foreach(var lamp in FindObjectsByType<QuestLampController>(FindObjectsInactive.Include,FindObjectsSortMode.None))lamp.SetLampState(false);foreach(var clue in FindObjectsByType<QuestNoteController>(FindObjectsInactive.Include,FindObjectsSortMode.None))clue.ResetToDefault(false);}
+        private void ResetControlledState(){previousRequiredKeyIds.Clear();foreach(var marker in FindObjectsByType<QuestSemanticInactivityMarker>(FindObjectsInactive.Include,FindObjectsSortMode.None))marker.reportsInactive=false;FindFirstObjectByType<QuestObjectVisibilityController>()?.RestoreAll();ClearC1QuestSphere();foreach(var inserted in FindObjectsByType<QuestInsertedKeyState>(FindObjectsInactive.Include,FindObjectsSortMode.None))inserted.Restore();foreach(var reveal in FindObjectsByType<QuestDrawerContentsReveal>(FindObjectsInactive.Include,FindObjectsSortMode.None))reveal.ClearConfiguration();foreach(var drawer in FindObjectsByType<ExperimentalDrawerController>(FindObjectsInactive.Include,FindObjectsSortMode.None))drawer.ResetClosed();foreach(var lockController in FindObjectsByType<QuestLockController>(FindObjectsInactive.Include,FindObjectsSortMode.None)){var item=lockController.GetComponent<AIEditableObject>();if(item&&!string.IsNullOrWhiteSpace(item.objectId))previousRequiredKeyIds[item.objectId]=lockController.requiredKeyId;lockController.ClearQuestBinding();}foreach(var door in FindObjectsByType<QuestDoorController>(FindObjectsInactive.Include,FindObjectsSortMode.None))door.TryClose(out _);foreach(var painting in FindObjectsByType<QuestPaintingController>(FindObjectsInactive.Include,FindObjectsSortMode.None))painting.ResetCrooked();foreach(var lamp in FindObjectsByType<QuestLampController>(FindObjectsInactive.Include,FindObjectsSortMode.None))lamp.SetLampState(false);foreach(var clue in FindObjectsByType<QuestNoteController>(FindObjectsInactive.Include,FindObjectsSortMode.None))clue.ResetToDefault(false);}
         private void ApplyLockBinding(QuestInstance instance,QuestLockBinding binding)
         {
             var item=AuthoringActionExecutor.FindEditable(binding?.lockId);var controller=item?item.GetComponent<QuestLockController>():null;previousRequiredKeyIds.TryGetValue(binding?.lockId??string.Empty,out var previous);
@@ -128,7 +132,7 @@ namespace DreamCodeVR2.Quest
                 // example, below the painting). The payload's anchor assignment identifies
                 // the clue context; it must not relocate the rendered note to a ball anchor.
                 if(item.GetComponent<QuestNoteController>()||item.objectId?.StartsWith("clue_note",StringComparison.OrdinalIgnoreCase)==true){DreamCodeVR2ClientLogger.Event("quest","QUEST_INSTANCE_CLUE_POSITION_PRESERVED",null,new { object_id=placement.objectId,anchor_id=placement.anchorId });continue;}
-                item.transform.SetParent(anchor.transform,true);item.transform.rotation=anchor.transform.rotation;item.transform.position=anchor.placementMode==AnchorPlacementMode.Surface?anchor.transform.position+anchor.transform.up*SupportExtentAlong(item.transform,anchor.transform.up):anchor.transform.position;anchor.SetOccupied(true);
+                item.transform.SetParent(anchor.transform,true);item.transform.rotation=anchor.transform.rotation;item.transform.position=anchor.placementMode==AnchorPlacementMode.Surface?anchor.transform.position+anchor.transform.up*SupportExtentAlong(item.transform,anchor.transform.up):anchor.transform.position;if(item.objectId?.IndexOf("key",StringComparison.OrdinalIgnoreCase)>=0)KeyPoseNormalizer.Normalize(item,"relocation",anchor.transform);anchor.SetOccupied(true);
                 DreamCodeVR2ClientLogger.Event("quest","QUEST_INSTANCE_PLACEMENT_APPLIED",null,new { object_id=placement.objectId,anchor_id=placement.anchorId });
             }
         }
@@ -163,7 +167,7 @@ namespace DreamCodeVR2.Quest
                 slot.localPosition=anchorName=="drawer_key_anchor"?new Vector3(-.075f,.012f,0):new Vector3(.025f,0f,0);
                 slot.localRotation=Quaternion.identity;
             }
-            item.transform.SetParent(slot,false);item.transform.localPosition=Vector3.zero;item.transform.localRotation=Quaternion.identity;
+            item.transform.SetParent(slot,false);item.transform.localPosition=Vector3.zero;item.transform.localRotation=Quaternion.identity;if(item.objectId?.IndexOf("key",StringComparison.OrdinalIgnoreCase)>=0)KeyPoseNormalizer.Normalize(item,"reveal",slot);
             if(anchorName=="drawer_note_anchor"){AlignNoteFaceUp(item,slot);RestOnAnchorSurface(item,slot);}
             DreamCodeVR2ClientLogger.Event("quest","QUEST_DRAWER_CONTENT_PLACED",null,new { drawer_id=drawerId,object_id=item.objectId,anchor_id=drawerId+"."+anchorName,world_position=item.transform.position,world_rotation=item.transform.rotation,local_position=slot.localPosition });
         }
@@ -199,11 +203,32 @@ namespace DreamCodeVR2.Quest
             foreach(var state in states??Array.Empty<QuestInitialStateBinding>())
             {
                 var item=AuthoringActionExecutor.FindEditable(state?.objectId);if(!item)continue;var value=(state.state??string.Empty).ToLowerInvariant();
-                var drawer=item.GetComponent<ExperimentalDrawerController>();var door=item.GetComponent<QuestDoorController>();var lamp=item.GetComponent<QuestLampController>();var lockController=item.GetComponent<QuestLockController>()??QuestLockController.FindForTarget(item.objectId);string error;
+                // `active` / `inactive` are canonical world-state values, not lamp
+                // commands.  In particular, locks and puzzle objects that are not part
+                // of a set must be hidden before RESET_COMPLETED is acknowledged.
+                if(value=="active"||value=="inactive")
+                {
+                    var active=value=="active";
+                    var marker=item.GetComponent<QuestSemanticInactivityMarker>()??item.gameObject.AddComponent<QuestSemanticInactivityMarker>();
+                    marker.reportsInactive=!active;
+                    var inactiveLockController=item.GetComponent<QuestLockController>()??QuestLockController.FindForTarget(item.objectId);
+                    if(!active&&inactiveLockController)
+                    {
+                        item.gameObject.SetActive(true);
+                        inactiveLockController.SetLocked(true);
+                        DreamCodeVR2ClientLogger.Event("quest","QUEST_INSTANCE_INITIAL_STATE_APPLIED",null,new { object_id=state.objectId,state=state.state,application="semantic_inactive_visible_lock",active_self=true });
+                        continue;
+                    }
+                    item.gameObject.SetActive(active);
+                    DreamCodeVR2ClientLogger.Event("quest","QUEST_INSTANCE_INITIAL_STATE_APPLIED",null,new { object_id=state.objectId,state=state.state,application="game_object_active",active_self=active });
+                    continue;
+                }
+                var drawer=item.GetComponent<ExperimentalDrawerController>();var door=item.GetComponent<QuestDoorController>()??item.GetComponentInChildren<QuestDoorController>(true);var lamp=item.GetComponent<QuestLampController>();var lockController=item.GetComponent<QuestLockController>()??QuestLockController.FindForTarget(item.objectId);string error;
                 if(value=="open"&&drawer)drawer.TryOpen(out error); else if(value=="closed"&&drawer)drawer.TryClose(out error);
                 else if(value=="open"&&door)door.TryOpen(out error); else if(value=="closed"&&door)door.TryClose(out error);
-                else if((value=="active"||value=="on")&&lamp)lamp.SetLampState(true); else if((value=="inactive"||value=="off")&&lamp)lamp.SetLampState(false);
-                else if(value=="locked"&&lockController)lockController.ResetLocked();
+                else if(value=="on"&&lamp)lamp.SetLampState(true); else if(value=="off"&&lamp)lamp.SetLampState(false);
+                else if(value=="locked"&&lockController)lockController.SetLocked(true);
+                else if(value=="unlocked"&&lockController)lockController.SetLocked(false);
                 else {DreamCodeVR2ClientLogger.Warn("quest","QUEST_INSTANCE_INITIAL_STATE_IGNORED","Quest initial state has no compatible local controller.",new { object_id=state?.objectId,state=state?.state });continue;}
                 DreamCodeVR2ClientLogger.Event("quest","QUEST_INSTANCE_INITIAL_STATE_APPLIED",null,new { object_id=state.objectId,state=state.state });
             }
@@ -227,16 +252,25 @@ namespace DreamCodeVR2.Quest
 
     public class C1QuestSphereController : MonoBehaviour
     {
-        public QuestInstanceController instanceController; public string placementAnchorId; public bool SoccerBallAppearanceApplied { get; private set; }
+        public QuestInstanceController instanceController; public string placementAnchorId; public bool SoccerBallAppearanceApplied { get; private set; } public string SphereProfile=>SoccerBallAppearanceApplied?"football":"neutral";
+        private Material[] authoredMaterials;
+        private void Awake(){CaptureAuthoredMaterials();}
+        public bool TrySetProfile(string profile,out string error)
+        {
+            if(string.Equals(profile,"football",StringComparison.OrdinalIgnoreCase))return TryApplySoccerBallPreset(out error);
+            if(!string.Equals(profile,"neutral",StringComparison.OrdinalIgnoreCase)){error="Unsupported sphere profile.";return false;}
+            CaptureAuthoredMaterials();var renderers=GetComponentsInChildren<Renderer>(true);for(var i=0;i<renderers.Length&&i<authoredMaterials.Length;i++)renderers[i].material=authoredMaterials[i];SoccerBallAppearanceApplied=false;var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();semantic.state="neutral";FindFirstObjectByType<QuestWorldStateReporter>()?.SphereProfile(GetComponent<AIEditableObject>(),"neutral");FindFirstObjectByType<SceneContextTransmitter>()?.SendSceneContextSnapshot("sphere neutral profile");DreamCodeVR2ClientLogger.Event("quest","SPHERE_PROFILE_APPLIED",null,new { object_id=Id(),sphere_profile="neutral" });error=null;return true;
+        }
         public bool TryApplySoccerBallPreset(out string error)
         {
             var material=Resources.Load<Material>("SoccerBall");
             if(!material){error="Soccer-ball material asset Resources/SoccerBall is not available.";DreamCodeVR2ClientLogger.Warn("quest","SOCCER_BALL_PRESET_FAILED",error,new { object_id=Id() });return false;}
             foreach(var renderer in GetComponentsInChildren<Renderer>(true))renderer.material=material;
             SoccerBallAppearanceApplied=true;var editable=GetComponent<AIEditableObject>();if(editable){var labels=new System.Collections.Generic.List<string>(editable.labels??Array.Empty<string>());if(!labels.Contains("soccer_ball"))labels.Add("soccer_ball");if(!labels.Contains("ball"))labels.Add("ball");editable.labels=labels.ToArray();}
-            var state=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();state.state="soccer_ball";FindFirstObjectByType<SceneContextTransmitter>()?.SendSceneContextSnapshot("soccer ball preset");DreamCodeVR2ClientLogger.Event("quest","SOCCER_BALL_PRESET_APPLIED",null,new { object_id=Id() });error=null;return true;
+            var state=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();state.state="soccer_ball";FindFirstObjectByType<QuestWorldStateReporter>()?.SphereProfile(editable,"football");FindFirstObjectByType<SceneContextTransmitter>()?.SendSceneContextSnapshot("soccer ball preset");DreamCodeVR2ClientLogger.Event("quest","SPHERE_PROFILE_APPLIED",null,new { object_id=Id(),sphere_profile="football" });error=null;return true;
         }
         private string Id()=>GetComponent<AIEditableObject>()?.objectId??gameObject.name;
+        private void CaptureAuthoredMaterials(){if(authoredMaterials!=null)return;var renderers=GetComponentsInChildren<Renderer>(true);authoredMaterials=new Material[renderers.Length];for(var i=0;i<renderers.Length;i++)authoredMaterials[i]=renderers[i].material;}
     }
 
     // Quest bindings, rather than labels or colours, decide which key opens a lock.
@@ -244,26 +278,30 @@ namespace DreamCodeVR2.Quest
     {
         public string requiredKeyId;
         public string associatedTargetObjectId;
+        [Tooltip("Permanent scene ownership. This is intentionally independent of the active QuestInstance binding.")]
+        public string physicalTargetObjectId;
         public bool IsLocked { get; private set; } = true;
         public bool IsUnlocked => !IsLocked;
         public QuestEventBus eventBus; public SceneContextTransmitter sceneContext;
         private static readonly System.Collections.Generic.Dictionary<string,int> lastSuccessfulControllerByTarget=new System.Collections.Generic.Dictionary<string,int>(StringComparer.Ordinal);
-        public void Configure(string keyId, string targetId, bool locked = true) { var before=IsLocked;requiredKeyId=keyId; associatedTargetObjectId=targetId; IsLocked=locked;Trace("LOCK_STATE_CONFIGURED",null,before); Publish("configured"); }
-        public void ClearQuestBinding(){var before=IsLocked;if(!string.IsNullOrWhiteSpace(associatedTargetObjectId))lastSuccessfulControllerByTarget.Remove(associatedTargetObjectId);requiredKeyId=null;associatedTargetObjectId=null;IsLocked=true;Trace("LOCK_STATE_BINDING_CLEARED",null,before);Publish("binding cleared");}
+        public void ConfigurePhysicalTarget(string targetId){physicalTargetObjectId=targetId;DreamCodeVR2ClientLogger.Event("quest","PHYSICAL_LOCK_TARGET_CONFIGURED",null,new { lock_id=Id(),physical_target_id=physicalTargetObjectId });}
+        public void Configure(string keyId, string targetId, bool locked = true) { var before=IsLocked;requiredKeyId=keyId; associatedTargetObjectId=targetId; IsLocked=locked;Trace("LOCK_STATE_CONFIGURED",null,before); Publish("configured");FindFirstObjectByType<QuestWorldStateReporter>()?.LockChanged(this); }
+        public void ClearQuestBinding(){var before=IsLocked;var target=physicalTargetObjectId??associatedTargetObjectId;if(!string.IsNullOrWhiteSpace(target))lastSuccessfulControllerByTarget.Remove(target);requiredKeyId=null;associatedTargetObjectId=null;IsLocked=true;Trace("LOCK_STATE_BINDING_CLEARED",null,before);Publish("binding cleared");}
         public bool TryUseKey(string keyId, out string error)
         {
             var isLockedBefore=IsLocked;var bindingMatch=!string.IsNullOrWhiteSpace(requiredKeyId)&&string.Equals(requiredKeyId,keyId,StringComparison.Ordinal);
             DreamCodeVR2ClientLogger.Event("quest", "LOCK_USE_ATTEMPT", null, new { lock_id=Id(), incoming_key_id=keyId,required_key_id=requiredKeyId,is_locked_before=isLockedBefore,controller_instance_id=GetInstanceID(),binding_match=bindingMatch });
             if (!IsLocked) { error="The lock is already unlocked."; return false; }
             if (!bindingMatch) { error="That key does not fit this lock."; DreamCodeVR2ClientLogger.Event("quest", "LOCK_WRONG_KEY", error, new { lock_id=Id(), incoming_key_id=keyId,required_key_id=requiredKeyId,binding_match=false }); return false; }
-            IsLocked=false;if(!string.IsNullOrWhiteSpace(associatedTargetObjectId))lastSuccessfulControllerByTarget[associatedTargetObjectId]=GetInstanceID(); SnapKeyIntoLock(keyId); error=null; Trace("LOCK_USE_SUCCESS",keyId,isLockedBefore);DreamCodeVR2ClientLogger.Event("quest", "LOCK_UNLOCKED", null, new { lock_id=Id(), key_id=keyId, target_id=associatedTargetObjectId,is_locked_after=IsLocked,is_unlocked_after=IsUnlocked,controller_instance_id=GetInstanceID() }); eventBus?.Publish(QuestEventType.LockOpened,Id(),keyId);Trace("LOCK_STATE_AFTER_UNLOCK_EVENT",keyId,isLockedBefore); Publish("unlocked");Trace("LOCK_STATE_AFTER_SCENE_CONTEXT_REFRESH",keyId,isLockedBefore); return true;
+            var physicalTarget=physicalTargetObjectId??associatedTargetObjectId;IsLocked=false;if(!string.IsNullOrWhiteSpace(physicalTarget))lastSuccessfulControllerByTarget[physicalTarget]=GetInstanceID(); SnapKeyIntoLock(keyId); error=null; Trace("LOCK_USE_SUCCESS",keyId,isLockedBefore);DreamCodeVR2ClientLogger.Event("quest", "LOCK_UNLOCKED", null, new { lock_id=Id(), key_id=keyId, target_id=physicalTarget,is_locked_after=IsLocked,is_unlocked_after=IsUnlocked,controller_instance_id=GetInstanceID() }); eventBus?.Publish(QuestEventType.LockOpened,Id(),keyId);Trace("LOCK_STATE_AFTER_UNLOCK_EVENT",keyId,isLockedBefore); Publish("unlocked");FindFirstObjectByType<QuestWorldStateReporter>()?.LockChanged(this);Trace("LOCK_STATE_AFTER_SCENE_CONTEXT_REFRESH",keyId,isLockedBefore); return true;
         }
-        public void ResetLocked() { var before=IsLocked;IsLocked=true;Trace("LOCK_STATE_RESET_LOCKED",null,before); Publish("locked"); }
+        public void ResetLocked() { SetLocked(true); }
+        public void SetLocked(bool locked) { var before=IsLocked;IsLocked=locked;Trace(locked?"LOCK_STATE_RESET_LOCKED":"LOCK_STATE_INITIALIZED_UNLOCKED",null,before); Publish(locked?"locked":"unlocked");FindFirstObjectByType<QuestWorldStateReporter>()?.LockChanged(this); }
         public static QuestLockController FindForTarget(string targetObjectId)
         {
             if (string.IsNullOrWhiteSpace(targetObjectId)) return null;
             foreach (var candidate in FindObjectsByType<QuestLockController>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-                if (candidate && string.Equals(candidate.associatedTargetObjectId, targetObjectId, StringComparison.Ordinal)) return candidate;
+                if (candidate && string.Equals(candidate.physicalTargetObjectId??candidate.associatedTargetObjectId, targetObjectId, StringComparison.Ordinal)) return candidate;
             return null;
         }
         public static bool CanOpenTarget(string targetObjectId,out string error)
@@ -271,7 +309,8 @@ namespace DreamCodeVR2.Quest
             var controller=FindForTarget(targetObjectId);lastSuccessfulControllerByTarget.TryGetValue(targetObjectId,out var successfulControllerId);
             var locked=controller&&controller.IsLocked;
             var drawer=AuthoringActionExecutor.FindEditable(targetObjectId)?.GetComponent<ExperimentalDrawerController>();
-            DreamCodeVR2ClientLogger.Event("quest","DRAWER_OPEN_GATE",null,new { drawer_id=targetObjectId,resolved_lock_id=controller?controller.Id():null,lock_controller_instance_id=controller?controller.GetInstanceID():0,unlock_controller_instance_id=successfulControllerId,same_lock_controller_as_unlock=successfulControllerId!=0&&controller&&successfulControllerId==controller.GetInstanceID(),lock_is_locked=locked,lock_is_unlocked=controller&&controller.IsUnlocked,drawer_local_locked_state=(bool?)null,drawer_controller_found=drawer!=null,open_allowed=!locked });
+            var instance=FindFirstObjectByType<QuestInstanceController>();var task=instance&&instance.runtimeState?instance.runtimeState.GetCurrentTask():null;var relevant=instance&&instance.ActiveInstance!=null&&((instance.ActiveInstance.relevantObjectIds!=null&&Array.IndexOf(instance.ActiveInstance.relevantObjectIds,targetObjectId)>=0)||string.Equals(instance.ActiveInstance.targetDrawerId,targetObjectId,StringComparison.Ordinal));var reason=locked?"physical_lock_locked":"no_physical_lock_or_unlocked";
+            DreamCodeVR2ClientLogger.Event("quest","DRAWER_OPEN_GATE",null,new { drawer_id=targetObjectId,lock_id=controller?controller.Id():null,lock_found=controller!=null,lock_state=controller?(controller.IsLocked?"locked":"unlocked"):"unbound",quest_instance_id=instance?.ActiveInstance?.questId,task_id=task?.taskId,quest_relevant=relevant,allowed=!locked,reason,resolved_lock_id=controller?controller.Id():null,lock_controller_instance_id=controller?controller.GetInstanceID():0,unlock_controller_instance_id=successfulControllerId,same_lock_controller_as_unlock=successfulControllerId!=0&&controller&&successfulControllerId==controller.GetInstanceID(),drawer_controller_found=drawer!=null });
             if(locked){error="The target is locked.";return false;} error=null;return true;
         }
         private void SnapKeyIntoLock(string keyId)
@@ -282,7 +321,7 @@ namespace DreamCodeVR2.Quest
             inserted.SnapToLock(transform,Id(),keyId);
         }
         private string Id()=>GetComponent<AIEditableObject>()?.objectId??gameObject.name;
-        private void Trace(string eventName,string incomingKeyId,bool isLockedBefore){DreamCodeVR2ClientLogger.Event("quest",eventName,null,new { lock_id=Id(),required_key_id=requiredKeyId,incoming_key_id=incomingKeyId,is_locked_before=isLockedBefore,is_locked_after=IsLocked,is_unlocked_after=IsUnlocked,controller_instance_id=GetInstanceID(),target_id=associatedTargetObjectId });}
+        private void Trace(string eventName,string incomingKeyId,bool isLockedBefore){DreamCodeVR2ClientLogger.Event("quest",eventName,null,new { lock_id=Id(),required_key_id=requiredKeyId,incoming_key_id=incomingKeyId,is_locked_before=isLockedBefore,is_locked_after=IsLocked,is_unlocked_after=IsUnlocked,controller_instance_id=GetInstanceID(),target_id=associatedTargetObjectId,physical_target_id=physicalTargetObjectId });}
         private void Publish(string state){var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();semantic.state=IsLocked?"locked":"unlocked";sceneContext?.SendSceneContextSnapshot("lock "+state);}
     }
 
@@ -291,6 +330,7 @@ namespace DreamCodeVR2.Quest
     public class QuestInsertedKeyState : MonoBehaviour
     {
         private Transform originalParent; private Vector3 originalPosition; private Quaternion originalRotation; private Vector3 originalLocalScale; private Transform insertionPose; private float visualCenterHeightOffset; private bool captured; private Rigidbody body; private bool wasKinematic; private ExperimentalGrabbableAdapter grabbable; private bool wasGrabbable;
+        public bool IsInserted=>captured&&insertionPose;
         public void SnapToLock(Transform lockTransform,string lockId,string keyId)
         {
             if(!captured){captured=true;originalParent=transform.parent;originalPosition=transform.position;originalRotation=transform.rotation;originalLocalScale=transform.localScale;body=GetComponent<Rigidbody>();if(body)wasKinematic=body.isKinematic;grabbable=GetComponent<ExperimentalGrabbableAdapter>();if(grabbable)wasGrabbable=grabbable.grabbable;}
@@ -301,7 +341,7 @@ namespace DreamCodeVR2.Quest
             // rendered key below it produces a sheared key even with worldPositionStays.
             // Keep the key under its original hierarchy and follow the lock pose in world
             // space instead; this also keeps it attached when the containing drawer moves.
-            insertionPose=slot;ApplyInsertionPose(true);
+            insertionPose=slot;KeyPoseNormalizer.Normalize(GetComponent<AIEditableObject>(),"lock_insert",slot);ApplyInsertionPose(true);
             FindFirstObjectByType<SceneContextTransmitter>()?.SendSceneContextSnapshot("key inserted into lock");
             var lockParentItem=lockTransform.parent?lockTransform.parent.GetComponent<AIEditableObject>():null;
             DreamCodeVR2ClientLogger.Event("quest","KEY_INSERT_POSE_APPLIED",null,new { key_id=keyId,lock_id=lockId,anchor_name=slot.name,used_authored_anchor=usedAuthoredAnchor,follow_mode="world_pose_without_reparenting",lock_parent_object_id=lockParentItem?lockParentItem.objectId:null,visual_center_height_offset=visualCenterHeightOffset,world_position=transform.position,world_rotation=transform.rotation,world_scale=transform.lossyScale });
@@ -324,7 +364,7 @@ namespace DreamCodeVR2.Quest
         }
         public void Restore()
         {
-            if(!captured)return;insertionPose=null;visualCenterHeightOffset=0f;transform.SetParent(originalParent,true);transform.SetPositionAndRotation(originalPosition,originalRotation);transform.localScale=originalLocalScale;if(body)body.isKinematic=wasKinematic;if(grabbable)grabbable.SetGrabbable(wasGrabbable);captured=false;
+            if(!captured)return;insertionPose=null;visualCenterHeightOffset=0f;transform.SetParent(originalParent,true);transform.SetPositionAndRotation(originalPosition,originalRotation);transform.localScale=originalLocalScale;if(body){body.isKinematic=wasKinematic;body.linearVelocity=Vector3.zero;body.angularVelocity=Vector3.zero;}if(grabbable)grabbable.SetGrabbable(wasGrabbable);KeyPoseNormalizer.NormalizeVisualOnly(GetComponent<AIEditableObject>(),"reset");captured=false;
             DreamCodeVR2ClientLogger.Event("quest","KEY_INSERTION_RESTORED",null,new { key_id=GetComponent<AIEditableObject>()?.objectId });
         }
     }
@@ -340,7 +380,7 @@ namespace DreamCodeVR2.Quest
             DreamCodeVR2ClientLogger.Event("quest","QUEST_DRAWER_CONTENTS_HIDDEN",null,new { quest_instance_id=questId,drawer_id=drawerId,object_ids=ContentIds() });
         }
         public void ClearConfiguration(){if(drawer)drawer.MotionCompleted-=OnDrawerMotionCompleted;foreach(var content in contents)if(content)content.SetActive(true);contents=Array.Empty<GameObject>();drawer=null;questId=null;drawerId=null;}
-        private void OnDrawerMotionCompleted(bool open){if(!open)return;foreach(var content in contents)if(content)content.SetActive(true);FindFirstObjectByType<SceneContextTransmitter>()?.SendSceneContextSnapshot("drawer contents revealed");DreamCodeVR2ClientLogger.Event("quest","QUEST_OBJECT_REVEALED",null,new { quest_instance_id=questId,drawer_id=drawerId,object_ids=ContentIds(),reason="drawer_opened" });}
+        private void OnDrawerMotionCompleted(bool open){if(!open)return;var reporter=FindFirstObjectByType<QuestWorldStateReporter>();foreach(var content in contents)if(content){content.SetActive(true);reporter?.Revealed(content.GetComponent<AIEditableObject>(),drawerId);}FindFirstObjectByType<SceneContextTransmitter>()?.SendSceneContextSnapshot("drawer contents revealed");DreamCodeVR2ClientLogger.Event("quest","QUEST_OBJECT_REVEALED",null,new { quest_instance_id=questId,drawer_id=drawerId,object_ids=ContentIds(),reason="drawer_opened" });}
         private string[] ContentIds(){var ids=new System.Collections.Generic.List<string>();foreach(var content in contents){var id=content?content.GetComponent<AIEditableObject>()?.objectId:null;if(!string.IsNullOrWhiteSpace(id))ids.Add(id);}return ids.ToArray();}
         private void OnDestroy(){if(drawer)drawer.MotionCompleted-=OnDrawerMotionCompleted;}
     }
@@ -384,8 +424,47 @@ namespace DreamCodeVR2.Quest
 
     public class QuestLampController : MonoBehaviour
     {
-        public bool IsActive { get; private set; } public SceneContextTransmitter sceneContext; public QuestEventBus eventBus;
+        private static readonly Color CanonicalGreen=new Color(.12f,.8f,.2f,1f);
+        [SerializeField] private Light authoritativeLight;
+        private Color authoredLightColor;
+        private bool authoredLightColorCaptured;
+        private bool sourceDiagnosticEmitted;
+        public bool IsActive { get; private set; } public string ColorProfile { get; private set; }="default"; public SceneContextTransmitter sceneContext; public QuestEventBus eventBus;
+        public Light AuthoritativeLight=>authoritativeLight;
         public void SetLampState(bool active){IsActive=active;var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();semantic.state=active?"active":"inactive";eventBus?.Publish(QuestEventType.ObjectStateChanged,Id(),null,semantic.state);sceneContext?.SendSceneContextSnapshot("lamp state");DreamCodeVR2ClientLogger.Event("quest","LAMP_STATE_CHANGED",null,new { object_id=Id(), active });}
+        public void SetColorProfile(string profile){TrySetColorProfile(profile,out _);}
+        public bool TrySetColorProfile(string profile,out string error)
+        {
+            var normalized=string.Equals(profile,"green",StringComparison.OrdinalIgnoreCase)?"green":"default";
+            if(!TryResolveAuthoritativeLight(out var light,out error))return false;
+            if(!authoredLightColorCaptured){authoredLightColor=light.color;authoredLightColorCaptured=true;}
+            var desired=normalized=="green"?CanonicalGreen:authoredLightColor;
+            var oldProfile=ColorProfile;var oldColor=light.color;
+            light.color=desired;
+            if(!SameColor(light.color,desired)){error="The canonical point light did not accept the requested color.";DreamCodeVR2ClientLogger.Warn("quest","LIGHT_PROFILE_APPLY_FAILED",error,new { lamp_id=Id(),profile=normalized,light_gameobject=light.gameObject.name });return false;}
+            ColorProfile=normalized;
+            var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();semantic.state=ColorProfile;
+            var changed=!string.Equals(oldProfile,ColorProfile,StringComparison.Ordinal)||!SameColor(oldColor,light.color);
+            if(changed){FindFirstObjectByType<QuestWorldStateReporter>()?.LightProfile(GetComponent<AIEditableObject>(),oldProfile,ColorProfile,light.color);sceneContext?.SendSceneContextSnapshot("light profile");DreamCodeVR2ClientLogger.Event("quest","LIGHT_PROFILE_APPLIED",null,new { lamp_id=Id(),profile=ColorProfile,physical_color=ColorPayload(light.color),semantic_profile=ColorProfile,success=true });}
+            error=null;return true;
+        }
+        public bool ValidateCanonicalLightSource(out string error)=>TryResolveAuthoritativeLight(out _,out error);
+        private bool TryResolveAuthoritativeLight(out Light light,out string error)
+        {
+            var candidates=GetComponentsInChildren<Light>(true);
+            if(authoritativeLight&&authoritativeLight.transform.IsChildOf(transform))light=authoritativeLight;
+            else if(candidates.Length==1){light=candidates[0];authoritativeLight=light;}
+            else {light=null;error=candidates.Length==0?"No UnityEngine.Light exists below this canonical lamp.":"More than one UnityEngine.Light exists below this canonical lamp; assign the authoritative source explicitly.";EmitSourceDiagnostic(null,candidates.Length);DreamCodeVR2ClientLogger.Warn("quest","CANONICAL_LAMP_LIGHT_UNRESOLVED",error,new { lamp_id=Id(),candidate_count=candidates.Length });return false;}
+            if(!authoredLightColorCaptured){authoredLightColor=light.color;authoredLightColorCaptured=true;}
+            EmitSourceDiagnostic(light,candidates.Length);error=null;return true;
+        }
+        private void EmitSourceDiagnostic(Light light,int candidateCount)
+        {
+            if(sourceDiagnosticEmitted)return;sourceDiagnosticEmitted=true;
+            DreamCodeVR2ClientLogger.Event("quest","CANONICAL_LAMP_LIGHT_RESOLVED",null,new { lamp_id=Id(),lamp_gameobject=gameObject.name,light_gameobject=light?light.gameObject.name:null,light_type=light?light.type.ToString():null,initial_color=light?ColorPayload(light.color):null,candidate_count=candidateCount });
+        }
+        private static bool SameColor(Color a,Color b)=>Mathf.Abs(a.r-b.r)<.0001f&&Mathf.Abs(a.g-b.g)<.0001f&&Mathf.Abs(a.b-b.b)<.0001f&&Mathf.Abs(a.a-b.a)<.0001f;
+        private static object ColorPayload(Color color)=>new { r=color.r,g=color.g,b=color.b,a=color.a };
         public void Toggle(){SetLampState(!IsActive);}
         private string Id()=>GetComponent<AIEditableObject>()?.objectId??gameObject.name;
     }

@@ -46,6 +46,7 @@ namespace DreamCodeVR2.Quest
         public event Action<string> SceneActionApplied;
 
         private readonly List<QuestTaskRuntimeEntry> taskEntries = new List<QuestTaskRuntimeEntry>();
+        private bool awaitingServerTask;
 
         public IReadOnlyList<QuestTaskRuntimeEntry> TaskEntries => taskEntries;
         public int CompletedTaskCount => taskEntries.Count(entry => entry.status == QuestTaskStatus.Completed);
@@ -53,7 +54,7 @@ namespace DreamCodeVR2.Quest
 
         public bool IsQuestActive => ActiveQuestPlan != null && !IsQuestCompleted;
 
-        public bool IsQuestCompleted => ActiveQuestPlan != null
+        public bool IsQuestCompleted => !awaitingServerTask && ActiveQuestPlan != null
             && taskEntries.Count > 0
             && taskEntries.All(entry => entry.status == QuestTaskStatus.Completed
                 || entry.status == QuestTaskStatus.Skipped);
@@ -158,7 +159,9 @@ namespace DreamCodeVR2.Quest
             }
 
             CurrentTaskIndex = taskEntries.Count;
-            LastTaskResult = $"Quest completed: {GetQuestDisplayTitle()}";
+            LastTaskResult = awaitingServerTask
+                ? "Waiting for the next objective from the server."
+                : $"Quest completed: {GetQuestDisplayTitle()}";
             RefreshParticipantUi();
             return false;
         }
@@ -166,6 +169,7 @@ namespace DreamCodeVR2.Quest
         public void ResetQuest()
         {
             ActiveQuestPlan = null;
+            awaitingServerTask = false;
             CurrentTaskIndex = -1;
             LastTaskResult = null;
             taskEntries.Clear();
@@ -258,11 +262,20 @@ namespace DreamCodeVR2.Quest
             LastTaskResult="Current objective: "+GetObjectiveLabel(task);RefreshParticipantUi();
         }
 
+        // C1/C2 fixed quests are streamed one task at a time. After reporting a
+        // completion, the participant must wait for the NID101 successor rather
+        // than being told that a one-item local plan is the whole quest.
+        public void SetAwaitingServerTask(bool value)
+        {
+            awaitingServerTask=value;
+            RefreshParticipantUi();
+        }
+
         public void RecordIncorrectAttempt(string objectId, string reason) { IncorrectAttempts++; LastIncorrectAttempt = reason; RegisterInteraction(objectId); EnsureEventBus(); eventBus?.Publish(QuestEventType.IncorrectAttempt, objectId, null, reason); }
         public void RecordHintRequested() { HintCount++; EnsureEventBus(); eventBus?.Publish(QuestEventType.HintRequested); }
         private void RegisterInteraction(string objectId) { if (string.IsNullOrWhiteSpace(objectId)) return; recentlyInteractedObjectIds.Remove(objectId); recentlyInteractedObjectIds.Insert(0, objectId); if (recentlyInteractedObjectIds.Count > 8) recentlyInteractedObjectIds.RemoveAt(recentlyInteractedObjectIds.Count - 1); }
         private void EnsureEventBus() { if (!eventBus) eventBus = QuestEventBus.Instance ? QuestEventBus.Instance : FindFirstObjectByType<QuestEventBus>(); }
-        private void RefreshParticipantUi(){var task=GetCurrentTask();var instruction=task==null?(IsQuestCompleted?"Quest complete.":"No active task."):(string.IsNullOrWhiteSpace(task.description)?GetObjectiveLabel(task):task.description);FindFirstObjectByType<DreamCodeVRAuthoringUIController>()?.SetParticipantQuestInfo(instruction,CompletedTaskCount);}
+        private void RefreshParticipantUi(){var task=GetCurrentTask();var instruction=task==null?(awaitingServerTask?"Preparing the next objective...":IsQuestCompleted?"Quest complete.":"No active task."):(string.IsNullOrWhiteSpace(task.description)?GetObjectiveLabel(task):task.description);FindFirstObjectByType<DreamCodeVRAuthoringUIController>()?.SetParticipantQuestInfo(instruction,CompletedTaskCount);}
 
         private bool TryGetCurrentEntry(out QuestTaskRuntimeEntry entry)
         {

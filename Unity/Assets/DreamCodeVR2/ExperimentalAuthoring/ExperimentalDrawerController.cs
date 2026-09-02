@@ -118,6 +118,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         {
             var id = GetComponent<AIEditableObject>()?.objectId;
             eventBus?.Publish(QuestEventType.ObjectStateChanged, id, null, open ? "open" : "closed");
+            if(open) FindFirstObjectByType<QuestWorldStateReporter>()?.DrawerOpened(id);
             sceneContext?.SendSceneContextSnapshot("drawer state");
         }
 

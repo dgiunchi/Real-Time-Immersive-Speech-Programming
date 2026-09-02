@@ -141,8 +141,8 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             questSetSection.transform.SetParent(panel.transform, false);
             questSetSection.GetComponent<VerticalLayoutGroup>().spacing = 5;
             AddHeader(questSetSection.transform, "QUEST SET");
-            var questSetRow=AddButtons(questSetSection.transform,new (string,Action)[]{("A  BALL & DRAWER",()=>SelectQuestSet("set_a_ball_and_drawer")),("B  SEARCH & LOCKS",()=>SelectQuestSet("set_b_search_and_locks")),("C  KEY + LAMP",()=>SelectQuestSet("set_c_alternate_key_relation_lamp"))},48);
-            questSetButtons["set_a_ball_and_drawer"]=questSetRow[0];questSetButtons["set_b_search_and_locks"]=questSetRow[1];questSetButtons["set_c_alternate_key_relation_lamp"]=questSetRow[2];
+            var questSetRow=AddButtons(questSetSection.transform,new (string,Action)[]{("SET A",()=>SelectQuestSet("set_a")),("SET B",()=>SelectQuestSet("set_b")),("SET C",()=>SelectQuestSet("set_c"))},48);
+            questSetButtons["set_a"]=questSetRow[0];questSetButtons["set_b"]=questSetRow[1];questSetButtons["set_c"]=questSetRow[2];
             questInstanceSection = new GameObject("QuestInstanceSelection", typeof(RectTransform), typeof(VerticalLayoutGroup));
             questInstanceSection.transform.SetParent(panel.transform, false);
             questInstanceSection.GetComponent<VerticalLayoutGroup>().spacing = 5;
@@ -458,16 +458,16 @@ namespace DreamCodeVR2.ExperimentalAuthoring
 
         private static readonly Dictionary<string, string[]> QuestInstances = new Dictionary<string, string[]>
         {
-            { "set_a_ball_and_drawer", new[] { "set_a_instance_1", "set_a_instance_2" } },
-            { "set_b_search_and_locks", new[] { "set_b_instance_1" } },
-            { "set_c_alternate_key_relation_lamp", new[] { "set_c_instance_1" } }
+            { "set_a", new[] { "set_a" } },
+            { "set_b", new[] { "set_b" } },
+            { "set_c", new[] { "set_c" } }
         };
 
         private void SelectQuestSet(string setId)
         {
-            conditionManager?.PrepareResearcherQuestSet(setId);
+            setId=DreamCodeVR2.Quest.QuestCanonicalSetIds.Normalize(setId);conditionManager?.PrepareResearcherQuestSet(setId);conditionManager?.PrepareResearcherQuestInstance(setId);
             DreamCodeVR2ClientLogger.Event("researcher","RESEARCHER_QUEST_SET_SELECTED",null,new { quest_set_id=setId });
-            Note("quest set selected. Choose an instance.");BuildQuestInstanceButtons();RefreshQuestSelectionVisuals();
+            Note("canonical quest set selected.");BuildQuestInstanceButtons();RefreshQuestSelectionVisuals();
         }
 
         private void SelectQuestInstance(string instanceId)
@@ -492,7 +492,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private void RefreshQuestSelectionVisuals()
         {
             var isC3=conditionManager&&conditionManager.selectedCondition==ExperimentCondition.DynamicStorytelling;
-            if(questSetSection)questSetSection.SetActive(!isC3);if(questInstanceSection)questInstanceSection.SetActive(!isC3);
+            if(questSetSection)questSetSection.SetActive(!isC3);if(questInstanceSection)questInstanceSection.SetActive(false);
             ApplySelectionVisuals(questSetButtons,conditionManager?.selectedQuestSetId);ApplySelectionVisuals(questInstanceButtons,conditionManager?.selectedQuestInstanceId);
         }
 

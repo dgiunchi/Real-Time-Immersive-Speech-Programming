@@ -14,15 +14,37 @@ namespace DreamCodeVR2.ExperimentalAuthoring
 {
     public static class VerticalSliceRuntimeBootstrap
     {
+        private const string EscapeRoomSceneName="DreamCodeVR2_EscapeRoom_Testbed";
+        private static bool installedForEscapeRoom;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Install()
         {
-            if(SceneManager.GetActiveScene().name!="DreamCodeVR2_EscapeRoom_Testbed")return;
+            // On Quest the bootstrap assembly can be initialized while Unity is still
+            // transitioning from the launcher scene to the escape-room scene.  The old
+            // one-shot active-scene check then returned permanently, leaving anchors and
+            // runtime puzzle controllers unconfigured.  Keep listening until the actual
+            // study scene is loaded.
+            SceneManager.sceneLoaded-=OnSceneLoaded;
+            SceneManager.sceneLoaded+=OnSceneLoaded;
+            if(SceneManager.GetActiveScene().name!=EscapeRoomSceneName)return;
+            InstallForEscapeRoom();
+        }
+
+        private static void OnSceneLoaded(Scene scene,LoadSceneMode mode)
+        {
+            if(scene.name==EscapeRoomSceneName)InstallForEscapeRoom();
+        }
+
+        private static void InstallForEscapeRoom()
+        {
+            if(installedForEscapeRoom)return;
+            installedForEscapeRoom=true;
             EnsureEventSystem(); EnsureXrUiRaycasters();
             var root=GameObject.Find("ExperimentalAuthoringRuntime")??new GameObject("ExperimentalAuthoringRuntime");
-            var configuration=Resources.Load<StudyConfiguration>("StudyConfiguration"); var logger=Ensure<DreamCodeVR2ClientLogger>(root);logger.Configure(configuration);DreamCodeVR2ClientLogger.Event("bootstrap","SCENE_LOADED",null,new { scene=SceneManager.GetActiveScene().name }); EnsureUbiqTcpConnection(configuration);
+            var configuration=Resources.Load<StudyConfiguration>("StudyConfiguration"); var logger=Ensure<DreamCodeVR2ClientLogger>(root);Ensure<DreamCodeVR2.Quest.QuestConsequenceDispatcher>(root);logger.Configure(configuration);DreamCodeVR2ClientLogger.Event("bootstrap","SCENE_LOADED",null,new { scene=SceneManager.GetActiveScene().name }); EnsureUbiqTcpConnection(configuration);
             var context=Object.FindFirstObjectByType<SceneContextTransmitter>(); var ui=Object.FindFirstObjectByType<DreamCodeVRAuthoringUIController>();
-            var eventBus=Ensure<QuestEventBus>(root); var state=Object.FindFirstObjectByType<QuestRuntimeState>()??Ensure<QuestRuntimeState>(root); Ensure<QuestInstanceController>(root).runtimeState=state;Ensure<QuestObjectVisibilityController>(root);
+            var eventBus=Ensure<QuestEventBus>(root); var state=Object.FindFirstObjectByType<QuestRuntimeState>()??Ensure<QuestRuntimeState>(root); Ensure<QuestInstanceController>(root).runtimeState=state;Ensure<QuestObjectVisibilityController>(root);Ensure<QuestWorldStateReporter>(root);
             var undo=Ensure<AuthoringUndoManager>(root); var executor=Ensure<AuthoringActionExecutor>(root); executor.undoManager=undo;executor.sceneContextTransmitter=context;
             var protocol=Ensure<AuthoringProtocolClient>(root);protocol.executor=executor;protocol.undoManager=undo;protocol.sceneContext=context;
             var condition=Ensure<ExperimentConditionManager>(root);condition.studyConfiguration=configuration;condition.authoringUi=ui;condition.protocolClient=protocol;executor.studyConfiguration=condition.studyConfiguration;
@@ -101,10 +123,21 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         }
         private static void RegisterPlacementAnchors()
         {
-            foreach(var pair in new[]{("table_001","desk_surface_anchor"),("cabinet_001","cabinet_top_anchor"),("table_drawer_001","drawer_inside_anchor"),("table_drawer_002","drawer_inside_anchor"),("table_drawer_003","drawer_inside_anchor"),("cabinet_drawer_001","drawer_inside_anchor"),("cabinet_drawer_002","drawer_inside_anchor"),("cabinet_drawer_003","drawer_inside_anchor"),("basket_001","basket_inside_anchor")})
+            var definitions=new[]{("table_001","desk_surface_anchor"),("cabinet_001","cabinet_top_anchor"),("painting_001","clue_display_anchor"),("table_drawer_001","drawer_inside_anchor"),("table_drawer_002","drawer_inside_anchor"),("table_drawer_003","drawer_inside_anchor"),("cabinet_drawer_001","drawer_inside_anchor"),("cabinet_drawer_002","drawer_inside_anchor"),("cabinet_drawer_003","drawer_inside_anchor"),("basket_001","basket_inside_anchor")};
+            DreamCodeVR2ClientLogger.Event("quest","PLACEMENT_ANCHOR_REGISTRATION_BEGIN",null,new { expected_anchor_count=definitions.Length });
+            foreach(var pair in definitions)
             {
                 var owner=AuthoringActionExecutor.FindEditable(pair.Item1);
                 var resolution=ResolvePlacementAnchor(owner,pair.Item2,out var point);
+                // The scene composition already has drawer anchors, but the authored
+                // painting has no equivalent child transform.  Preserve the note's
+                // existing world pose as its canonical reveal pose and create only this
+                // missing runtime marker; no puzzle object is reparented here.
+                if(resolution==PlacementAnchorResolution.Missing&&pair.Item1=="painting_001"&&pair.Item2=="clue_display_anchor")
+                {
+                    point=EnsurePaintingClueDisplayAnchor(owner);
+                    resolution=point?PlacementAnchorResolution.Found:PlacementAnchorResolution.Missing;
+                }
                 if(resolution==PlacementAnchorResolution.Missing)
                 {
                     DreamCodeVR2ClientLogger.Warn("quest","PLACEMENT_ANCHOR_MISSING","Placement anchor was not found below its canonical owner in the loaded scene.",new { object_id=pair.Item1,anchor_name=pair.Item2 });
@@ -150,9 +183,22 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             }
             return point?PlacementAnchorResolution.Found:PlacementAnchorResolution.Missing;
         }
+        private static Transform EnsurePaintingClueDisplayAnchor(AIEditableObject painting)
+        {
+            if(!painting)return null;
+            var existing=painting.transform.Find("clue_display_anchor");
+            if(existing)return existing;
+            var point=new GameObject("clue_display_anchor").transform;
+            var clue=AuthoringActionExecutor.FindEditable("clue_note_001");
+            point.SetParent(painting.transform,true);
+            if(clue)point.SetPositionAndRotation(clue.transform.position,clue.transform.rotation);
+            else point.SetPositionAndRotation(painting.transform.position-painting.transform.up*.35f+painting.transform.forward*.02f,painting.transform.rotation);
+            DreamCodeVR2ClientLogger.Event("quest","PLACEMENT_ANCHOR_RUNTIME_CREATED",null,new { anchor_id="painting_001.clue_display_anchor",source=clue?"clue_note_001_current_pose":"painting_fallback_pose",position=point.position });
+            return point;
+        }
         private static void ConfigureLocksAndDoor(AIEditableObject lockObject,AIEditableObject door,QuestEventBus bus,SceneContextTransmitter context)
         {
-            foreach(var id in new[]{"lock_001","lock_002","lock_003"}){var item=AuthoringActionExecutor.FindEditable(id);if(!item)continue;var lockController=item.GetComponent<QuestLockController>()??item.gameObject.AddComponent<QuestLockController>();lockController.eventBus=bus;lockController.sceneContext=context;EnsureKeyInsertAnchor(item);EnsureKeyInsertionZone(item,lockController);}
+            foreach(var id in new[]{"lock_001","lock_002","lock_003"}){var item=AuthoringActionExecutor.FindEditable(id);if(!item)continue;var lockController=item.GetComponent<QuestLockController>()??item.gameObject.AddComponent<QuestLockController>();lockController.eventBus=bus;lockController.sceneContext=context;lockController.ConfigurePhysicalTarget(id=="lock_001"?"door_001":id=="lock_002"?"table_drawer_002":"cabinet_drawer_002");EnsureKeyInsertAnchor(item);EnsureKeyInsertionZone(item,lockController);}
             var exitLock=lockObject?lockObject.GetComponent<QuestLockController>():null;if(exitLock)exitLock.Configure("key_001","door_001");
             if(door){var controller=door.GetComponent<QuestDoorController>()??door.gameObject.AddComponent<QuestDoorController>();controller.lockController=exitLock;controller.eventBus=bus;controller.sceneContext=context;var parent=door.transform.parent??door.transform;var leaf=FindDoorLeaf(door.transform)??door.transform;var legacy=leaf.GetComponent<DoorScript.Door>();if(legacy&&legacy.enabled){legacy.enabled=false;DreamCodeVR2ClientLogger.Event("quest","DOOR_TRANSFORM_OWNER_CONFLICT",null,new { door_id=door.objectId,component="DoorScript.Door",resolution="disabled_legacy_transform_writer" });}var closed=parent.Find("DoorClosedAnchor")??CreateAnchor(parent,"DoorClosedAnchor",leaf);var open=parent.Find("DoorOpenAnchor")??CreateAnchor(parent,"DoorOpenAnchor",leaf);ConfigureHingeBasedDoorPose(leaf,parent,closed,open);controller.movingDoor=leaf;controller.closedAnchor=closed;controller.openAnchor=open;controller.LogMotionMode();var voice=door.GetComponent<VoiceCommandCapabilities>()??door.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"open","close"};AddAliases(door,"door,exit door");}
         }
@@ -186,7 +232,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private static void ConfigurePaintingAndLamps(QuestEventBus bus,SceneContextTransmitter context)
         {
             var painting=AuthoringActionExecutor.FindEditable("painting_001");if(painting){var p=painting.GetComponent<QuestPaintingController>()??painting.gameObject.AddComponent<QuestPaintingController>();var parent=painting.transform.parent??painting.transform;p.crookedAnchor=parent.Find("PaintingCrookedAnchor")??CreateAnchor(parent,"PaintingCrookedAnchor",painting.transform);p.alignedAnchor=parent.Find("PaintingAlignedAnchor")??CreateAnchor(parent,"PaintingAlignedAnchor",painting.transform);p.clueToReveal=AuthoringActionExecutor.FindEditable("clue_note_001")?.gameObject;p.eventBus=bus;p.sceneContext=context;var voice=painting.GetComponent<VoiceCommandCapabilities>()??painting.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"move_to_preset"};voice.predefinedPresets=new[]{"aligned"};AddAliases(painting,"painting,picture");}
-            for(var i=1;i<=4;i++){var lamp=AuthoringActionExecutor.FindEditable("lamp_00"+i);if(!lamp)continue;lamp.displayName="Puzzle Lamp "+i;var controller=lamp.GetComponent<QuestLampController>()??lamp.gameObject.AddComponent<QuestLampController>();controller.eventBus=bus;controller.sceneContext=context;var voice=lamp.GetComponent<VoiceCommandCapabilities>()??lamp.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"activate","deactivate","toggle"};AddAliases(lamp,"puzzle lamp "+i);}
+            for(var i=1;i<=4;i++){var lamp=AuthoringActionExecutor.FindEditable("lamp_00"+i);if(!lamp)continue;lamp.displayName="Puzzle Lamp "+i;var controller=lamp.GetComponent<QuestLampController>()??lamp.gameObject.AddComponent<QuestLampController>();controller.eventBus=bus;controller.sceneContext=context;if(!controller.ValidateCanonicalLightSource(out var lightError))DreamCodeVR2ClientLogger.Warn("quest","CANONICAL_LAMP_LIGHT_UNRESOLVED",lightError,new { lamp_id=lamp.objectId });var voice=lamp.GetComponent<VoiceCommandCapabilities>()??lamp.gameObject.AddComponent<VoiceCommandCapabilities>();voice.predefinedVoiceActions=new[]{"activate","deactivate","toggle"};AddAliases(lamp,"puzzle lamp "+i);}
         }
         private static void ConfigureNotes(){foreach(var id in new[]{"clue_note_001","clue_note_002"}){var note=AuthoringActionExecutor.FindEditable(id);if(note&&!note.GetComponent<QuestNoteController>())note.gameObject.AddComponent<QuestNoteController>();}}
         private static string DrawerAliases(string id)

@@ -106,6 +106,8 @@ namespace DreamCodeVR2.SceneContext
                 ,associated_target_object_id = editableObject.GetComponent<DreamCodeVR2.Quest.QuestLockController>()?.associatedTargetObjectId
                 ,is_aligned = editableObject.GetComponent<DreamCodeVR2.Quest.QuestPaintingController>()?.IsAligned
                 ,is_lamp_active = editableObject.GetComponent<DreamCodeVR2.Quest.QuestLampController>()?.IsActive
+                ,light_profile = editableObject.GetComponent<DreamCodeVR2.Quest.QuestLampController>()?.ColorProfile
+                ,sphere_profile = editableObject.GetComponent<DreamCodeVR2.Quest.C1QuestSphereController>()?.SphereProfile
                 ,placement_anchor_ids = BuildPlacementAnchors(editableObject)
             };
         }
