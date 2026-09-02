@@ -72,7 +72,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
                 MotionInterrupted?.Invoke(requestedOpen);
                 Log("DRAWER_MOTION_INTERRUPTED", requestedOpen, null, transform.position, target.position);
             }
-            if (IsOpen == requestedOpen && IsAtTarget(target)) { PublishState(requestedOpen); return true; }
+            if (IsOpen == requestedOpen && IsAtTarget(target)) return true;
             if (duration <= 0f) { SetPose(target); Complete(requestedOpen, target); return true; }
             Log("DRAWER_MOTION_START", requestedOpen, null, transform.position, target.position);
             motion = StartCoroutine(MoveRoutine(requestedOpen, target));
@@ -117,9 +117,11 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private void PublishState(bool open)
         {
             var id = GetComponent<AIEditableObject>()?.objectId;
-            eventBus?.Publish(QuestEventType.ObjectStateChanged, id, null, open ? "open" : "closed");
-            if(open) FindFirstObjectByType<QuestWorldStateReporter>()?.DrawerOpened(id);
+            var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();
+            semantic.state=open?"open":"closed";
             sceneContext?.SendSceneContextSnapshot("drawer state");
+            FindFirstObjectByType<QuestWorldStateReporter>()?.DrawerStateChanged(GetComponent<AIEditableObject>(),semantic.state);
+            eventBus?.Publish(QuestEventType.ObjectStateChanged, id, null, semantic.state);
         }
 
         private bool IsAtTarget(Transform target) => Vector3.Distance(transform.position, target.position) < .001f && (!applyAnchorRotation || Quaternion.Angle(transform.rotation, target.rotation) < .1f);

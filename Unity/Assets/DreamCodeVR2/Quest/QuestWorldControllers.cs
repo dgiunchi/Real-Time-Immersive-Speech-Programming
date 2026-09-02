@@ -89,7 +89,7 @@ namespace DreamCodeVR2.Quest
         public void ClearC1QuestSphere(){foreach(var item in FindObjectsByType<C1QuestSphereController>(FindObjectsInactive.Include,FindObjectsSortMode.None))if(item)Destroy(item.gameObject);}
         private static void NormalizeStaticKeys(string reason){foreach(var item in FindObjectsByType<AIEditableObject>(FindObjectsInactive.Include,FindObjectsSortMode.None))KeyPoseNormalizer.Normalize(item,reason);}
         private void EnsureRuntimeObjects(ResolvedQuestInstance resolved){foreach(var spec in resolved?.requiredRuntimeObjects??Array.Empty<QuestRuntimeObjectSpec>())QuestRuntimeObjectFactory.Ensure(spec,this);}
-        private void ResetControlledState(){previousRequiredKeyIds.Clear();foreach(var marker in FindObjectsByType<QuestSemanticInactivityMarker>(FindObjectsInactive.Include,FindObjectsSortMode.None))marker.reportsInactive=false;FindFirstObjectByType<QuestObjectVisibilityController>()?.RestoreAll();ClearC1QuestSphere();foreach(var inserted in FindObjectsByType<QuestInsertedKeyState>(FindObjectsInactive.Include,FindObjectsSortMode.None))inserted.Restore();foreach(var reveal in FindObjectsByType<QuestDrawerContentsReveal>(FindObjectsInactive.Include,FindObjectsSortMode.None))reveal.ClearConfiguration();foreach(var drawer in FindObjectsByType<ExperimentalDrawerController>(FindObjectsInactive.Include,FindObjectsSortMode.None))drawer.ResetClosed();foreach(var lockController in FindObjectsByType<QuestLockController>(FindObjectsInactive.Include,FindObjectsSortMode.None)){var item=lockController.GetComponent<AIEditableObject>();if(item&&!string.IsNullOrWhiteSpace(item.objectId))previousRequiredKeyIds[item.objectId]=lockController.requiredKeyId;lockController.ClearQuestBinding();}foreach(var door in FindObjectsByType<QuestDoorController>(FindObjectsInactive.Include,FindObjectsSortMode.None))door.TryClose(out _);foreach(var painting in FindObjectsByType<QuestPaintingController>(FindObjectsInactive.Include,FindObjectsSortMode.None))painting.ResetCrooked();foreach(var lamp in FindObjectsByType<QuestLampController>(FindObjectsInactive.Include,FindObjectsSortMode.None))lamp.SetLampState(false);foreach(var clue in FindObjectsByType<QuestNoteController>(FindObjectsInactive.Include,FindObjectsSortMode.None))clue.ResetToDefault(false);}
+        private void ResetControlledState(){previousRequiredKeyIds.Clear();foreach(var marker in FindObjectsByType<QuestSemanticInactivityMarker>(FindObjectsInactive.Include,FindObjectsSortMode.None))marker.reportsInactive=false;FindFirstObjectByType<QuestObjectVisibilityController>()?.RestoreAll();ClearC1QuestSphere();foreach(var inserted in FindObjectsByType<QuestInsertedKeyState>(FindObjectsInactive.Include,FindObjectsSortMode.None))inserted.Restore();foreach(var reveal in FindObjectsByType<QuestDrawerContentsReveal>(FindObjectsInactive.Include,FindObjectsSortMode.None))reveal.ClearConfiguration();foreach(var drawer in FindObjectsByType<ExperimentalDrawerController>(FindObjectsInactive.Include,FindObjectsSortMode.None))drawer.ResetClosed();foreach(var lockController in FindObjectsByType<QuestLockController>(FindObjectsInactive.Include,FindObjectsSortMode.None)){var item=lockController.GetComponent<AIEditableObject>();if(item&&!string.IsNullOrWhiteSpace(item.objectId))previousRequiredKeyIds[item.objectId]=lockController.requiredKeyId;lockController.ClearQuestBinding();}foreach(var door in FindObjectsByType<QuestDoorController>(FindObjectsInactive.Include,FindObjectsSortMode.None))door.TryClose(out _);foreach(var painting in FindObjectsByType<QuestPaintingController>(FindObjectsInactive.Include,FindObjectsSortMode.None))painting.ResetCrooked();foreach(var lamp in FindObjectsByType<QuestLampController>(FindObjectsInactive.Include,FindObjectsSortMode.None)){lamp.ResetToDefaultProfile();lamp.SetLampState(false);}foreach(var clue in FindObjectsByType<QuestNoteController>(FindObjectsInactive.Include,FindObjectsSortMode.None))clue.ResetToDefault(false);}
         private void ApplyLockBinding(QuestInstance instance,QuestLockBinding binding)
         {
             var item=AuthoringActionExecutor.FindEditable(binding?.lockId);var controller=item?item.GetComponent<QuestLockController>():null;previousRequiredKeyIds.TryGetValue(binding?.lockId??string.Empty,out var previous);
@@ -293,7 +293,7 @@ namespace DreamCodeVR2.Quest
             DreamCodeVR2ClientLogger.Event("quest", "LOCK_USE_ATTEMPT", null, new { lock_id=Id(), incoming_key_id=keyId,required_key_id=requiredKeyId,is_locked_before=isLockedBefore,controller_instance_id=GetInstanceID(),binding_match=bindingMatch });
             if (!IsLocked) { error="The lock is already unlocked."; return false; }
             if (!bindingMatch) { error="That key does not fit this lock."; DreamCodeVR2ClientLogger.Event("quest", "LOCK_WRONG_KEY", error, new { lock_id=Id(), incoming_key_id=keyId,required_key_id=requiredKeyId,binding_match=false }); return false; }
-            var physicalTarget=physicalTargetObjectId??associatedTargetObjectId;IsLocked=false;if(!string.IsNullOrWhiteSpace(physicalTarget))lastSuccessfulControllerByTarget[physicalTarget]=GetInstanceID(); SnapKeyIntoLock(keyId); error=null; Trace("LOCK_USE_SUCCESS",keyId,isLockedBefore);DreamCodeVR2ClientLogger.Event("quest", "LOCK_UNLOCKED", null, new { lock_id=Id(), key_id=keyId, target_id=physicalTarget,is_locked_after=IsLocked,is_unlocked_after=IsUnlocked,controller_instance_id=GetInstanceID() }); eventBus?.Publish(QuestEventType.LockOpened,Id(),keyId);Trace("LOCK_STATE_AFTER_UNLOCK_EVENT",keyId,isLockedBefore); Publish("unlocked");FindFirstObjectByType<QuestWorldStateReporter>()?.LockChanged(this);Trace("LOCK_STATE_AFTER_SCENE_CONTEXT_REFRESH",keyId,isLockedBefore); return true;
+            var physicalTarget=physicalTargetObjectId??associatedTargetObjectId;IsLocked=false;if(!string.IsNullOrWhiteSpace(physicalTarget))lastSuccessfulControllerByTarget[physicalTarget]=GetInstanceID(); SnapKeyIntoLock(keyId); error=null; Trace("LOCK_USE_SUCCESS",keyId,isLockedBefore);DreamCodeVR2ClientLogger.Event("quest", "LOCK_UNLOCKED", null, new { lock_id=Id(), key_id=keyId, target_id=physicalTarget,is_locked_after=IsLocked,is_unlocked_after=IsUnlocked,controller_instance_id=GetInstanceID() }); Publish("unlocked");FindFirstObjectByType<QuestWorldStateReporter>()?.LockChanged(this);Trace("LOCK_STATE_AFTER_SCENE_CONTEXT_REFRESH",keyId,isLockedBefore); eventBus?.Publish(QuestEventType.LockOpened,Id(),keyId);Trace("LOCK_STATE_AFTER_UNLOCK_EVENT",keyId,isLockedBefore); return true;
         }
         public void ResetLocked() { SetLocked(true); }
         public void SetLocked(bool locked) { var before=IsLocked;IsLocked=locked;Trace(locked?"LOCK_STATE_RESET_LOCKED":"LOCK_STATE_INITIALIZED_UNLOCKED",null,before); Publish(locked?"locked":"unlocked");FindFirstObjectByType<QuestWorldStateReporter>()?.LockChanged(this); }
@@ -380,7 +380,21 @@ namespace DreamCodeVR2.Quest
             DreamCodeVR2ClientLogger.Event("quest","QUEST_DRAWER_CONTENTS_HIDDEN",null,new { quest_instance_id=questId,drawer_id=drawerId,object_ids=ContentIds() });
         }
         public void ClearConfiguration(){if(drawer)drawer.MotionCompleted-=OnDrawerMotionCompleted;foreach(var content in contents)if(content)content.SetActive(true);contents=Array.Empty<GameObject>();drawer=null;questId=null;drawerId=null;}
-        private void OnDrawerMotionCompleted(bool open){if(!open)return;var reporter=FindFirstObjectByType<QuestWorldStateReporter>();foreach(var content in contents)if(content){content.SetActive(true);reporter?.Revealed(content.GetComponent<AIEditableObject>(),drawerId);}FindFirstObjectByType<SceneContextTransmitter>()?.SendSceneContextSnapshot("drawer contents revealed");DreamCodeVR2ClientLogger.Event("quest","QUEST_OBJECT_REVEALED",null,new { quest_instance_id=questId,drawer_id=drawerId,object_ids=ContentIds(),reason="drawer_opened" });}
+        private void OnDrawerMotionCompleted(bool open)
+        {
+            if(!open)return;
+            var reporter=FindFirstObjectByType<QuestWorldStateReporter>();
+            foreach(var content in contents)
+            {
+                if(!content)continue;
+                content.SetActive(true);
+                var editable=content.GetComponent<AIEditableObject>();
+                var generation=reporter?.Revealed(editable,drawerId)??0;
+                reporter?.DrawerOpened(drawerId,editable?editable.objectId:null,generation);
+            }
+            FindFirstObjectByType<SceneContextTransmitter>()?.SendSceneContextSnapshot("drawer contents revealed");
+            DreamCodeVR2ClientLogger.Event("quest","QUEST_OBJECT_REVEALED",null,new { quest_instance_id=questId,drawer_id=drawerId,object_ids=ContentIds(),reason="drawer_opened" });
+        }
         private string[] ContentIds(){var ids=new System.Collections.Generic.List<string>();foreach(var content in contents){var id=content?content.GetComponent<AIEditableObject>()?.objectId:null;if(!string.IsNullOrWhiteSpace(id))ids.Add(id);}return ids.ToArray();}
         private void OnDestroy(){if(drawer)drawer.MotionCompleted-=OnDrawerMotionCompleted;}
     }
@@ -395,14 +409,22 @@ namespace DreamCodeVR2.Quest
         {
             DreamCodeVR2ClientLogger.Event("quest","DOOR_OPEN_ATTEMPT",null,new { door_id=Id() });
             if(IsLocked){error="The door is locked.";DreamCodeVR2ClientLogger.Event("quest","DOOR_LOCKED_REJECTION",error,new { door_id=Id() });return false;}
+            if(IsOpen){error=null;return true;}
             if(!Valid(out error))return false;DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_REQUESTED",null,new { door_id=Id(),action="open",mode="procedural" });MoveLeaf(openAnchor);IsOpen=true;Publish("open");DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_STATE",null,new { door_id=Id(),state="open",normalized_time=1f,semantic_open=IsOpen });DreamCodeVR2ClientLogger.Event("quest","DOOR_OPENED",null,new { door_id=Id(),moving_door_name=MotionTarget().name });return true;
         }
-        public bool TryClose(out string error){if(!Valid(out error))return false;DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_REQUESTED",null,new { door_id=Id(),action="close",mode="procedural" });MoveLeaf(closedAnchor);IsOpen=false;Publish("closed");DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_STATE",null,new { door_id=Id(),state="closed",normalized_time=1f,semantic_open=IsOpen });return true;}
+        public bool TryClose(out string error){if(!IsOpen){error=null;return true;}if(!Valid(out error))return false;DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_REQUESTED",null,new { door_id=Id(),action="close",mode="procedural" });MoveLeaf(closedAnchor);IsOpen=false;Publish("closed");DreamCodeVR2ClientLogger.Event("quest","DOOR_ANIMATION_STATE",null,new { door_id=Id(),state="closed",normalized_time=1f,semantic_open=IsOpen });return true;}
         private Transform MotionTarget()=>movingDoor?movingDoor:transform;
         private void MoveLeaf(Transform pose){MotionTarget().rotation=pose.rotation;}
         private bool Valid(out string error){if(!closedAnchor||!openAnchor||Quaternion.Angle(closedAnchor.rotation,openAnchor.rotation)<.1f){error="DoorOpenAnchor must have a different rotation from DoorClosedAnchor.";return false;}error=null;return true;}
         private string Id()=>GetComponent<AIEditableObject>()?.objectId??gameObject.name;
-        private void Publish(string state){var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();semantic.state=IsOpen?"open":"closed";eventBus?.Publish(QuestEventType.ObjectStateChanged,Id(),null,semantic.state);sceneContext?.SendSceneContextSnapshot("door "+state);}
+        private void Publish(string state)
+        {
+            var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();
+            semantic.state=IsOpen?"open":"closed";
+            sceneContext?.SendSceneContextSnapshot("door "+state);
+            FindFirstObjectByType<QuestWorldStateReporter>()?.DoorStateChanged(GetComponent<AIEditableObject>(),semantic.state);
+            eventBus?.Publish(QuestEventType.ObjectStateChanged,Id(),null,semantic.state);
+        }
     }
 
     public class QuestPaintingController : MonoBehaviour
@@ -410,15 +432,101 @@ namespace DreamCodeVR2.Quest
         public Transform crookedAnchor; public Transform alignedAnchor; public GameObject clueToReveal;
         public float alignmentPositionTolerance=.06f; public float alignmentRotationTolerance=8f;
         public bool IsAligned { get; private set; } public SceneContextTransmitter sceneContext; public QuestEventBus eventBus;
+        private string semanticState="crooked";
         public void SetPhysicalManipulation(bool enabled){var adapter=GetComponent<ExperimentalGrabbableAdapter>();if(enabled){var body=GetComponent<Rigidbody>()??gameObject.AddComponent<Rigidbody>();body.isKinematic=false;adapter=adapter??gameObject.AddComponent<ExperimentalGrabbableAdapter>();adapter.SetGrabbable(true);DreamCodeVR2ClientLogger.Event("quest","PAINTING_PHYSICAL_GRAB_ENABLED",null,new { object_id=Id() });}else if(adapter)adapter.SetGrabbable(false);}
-        private void Update(){if(IsAligned||!alignedAnchor)return;var manager=FindFirstObjectByType<ExperimentConditionManager>();if(manager==null||manager.condition==ExperimentCondition.VoiceCommandBaseline)return;if(Vector3.Distance(transform.position,alignedAnchor.position)<=alignmentPositionTolerance&&Quaternion.Angle(transform.rotation,alignedAnchor.rotation)<=alignmentRotationTolerance)CompleteAlignment();}
+        private void Awake(){NormalizeAnchorConfiguration();ApplySemanticStateWithoutEmission(IsPhysicallyAligned()?"aligned":"crooked");}
+        private void Update()
+        {
+            if(!alignedAnchor)return;
+            var manager=FindFirstObjectByType<ExperimentConditionManager>();
+            if(manager==null||manager.condition==ExperimentCondition.VoiceCommandBaseline)return;
+            if(IsPhysicallyAligned())CompleteAlignment();
+            else if(IsAligned)CompleteUnalignment("painting moved away from aligned pose");
+        }
         public bool TryAlign(out string error)
         {
+            NormalizeAnchorConfiguration();
             if(!crookedAnchor||!alignedAnchor||Quaternion.Angle(crookedAnchor.rotation,alignedAnchor.rotation)<.1f){error="PaintingAlignedAnchor requires manual Scene View rotation.";return false;}
-            transform.SetPositionAndRotation(alignedAnchor.position,alignedAnchor.rotation);CompleteAlignment();error=null;return true;
+            transform.SetPositionAndRotation(alignedAnchor.position,alignedAnchor.rotation);
+            var positionError=AlignmentPositionError();
+            var rotationError=AlignmentRotationError();
+            var physicallyAligned=positionError<=alignmentPositionTolerance&&rotationError<=alignmentRotationTolerance;
+            EmitAlignmentCheck(positionError,rotationError,physicallyAligned,physicallyAligned?"success":"failed");
+            if(!physicallyAligned){error="Painting did not reach the canonical aligned pose.";return false;}
+            CompleteAlignment();error=null;return true;
         }
-        private void CompleteAlignment(){if(IsAligned)return;IsAligned=true;if(clueToReveal)clueToReveal.SetActive(true);var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();semantic.state="aligned";eventBus?.Publish(QuestEventType.ObjectStateChanged,Id(),null,"aligned");sceneContext?.SendSceneContextSnapshot("painting aligned");DreamCodeVR2ClientLogger.Event("quest","PAINTING_ALIGNED",null,new { object_id=Id() });}
-        public void ResetCrooked(){if(crookedAnchor)transform.SetPositionAndRotation(crookedAnchor.position,crookedAnchor.rotation);IsAligned=false;if(clueToReveal)clueToReveal.SetActive(false);var semantic=GetComponent<AuthoringSemanticState>();if(semantic)semantic.state="crooked";}
+        private void CompleteAlignment()
+        {
+            if(ShouldAutoRevealClue())clueToReveal.SetActive(true);
+            PublishSemanticTransition("aligned",true,"painting aligned");
+            DreamCodeVR2ClientLogger.Event("quest","PAINTING_ALIGNED",null,new { object_id=Id() });
+        }
+        private void CompleteUnalignment(string reason){PublishSemanticTransition("crooked",false,reason);}
+        public void ResetCrooked()
+        {
+            NormalizeAnchorConfiguration();
+            if(crookedAnchor)transform.SetPositionAndRotation(crookedAnchor.position,crookedAnchor.rotation);
+            IsAligned=false;
+            if(clueToReveal)clueToReveal.SetActive(false);
+            ApplySemanticStateWithoutEmission("crooked");
+        }
+        private void PublishSemanticTransition(string newState,bool physicalAlignmentConfirmed,string sceneContextReason)
+        {
+            var normalized=(newState??string.Empty).Trim().ToLowerInvariant();
+            if(string.IsNullOrWhiteSpace(normalized))return;
+            var oldState=semanticState;
+            IsAligned=normalized=="aligned";
+            if(oldState==normalized)return;
+            ApplySemanticStateWithoutEmission(normalized);
+            sceneContext?.SendSceneContextSnapshot(sceneContextReason);
+            var manager=FindFirstObjectByType<ExperimentConditionManager>();
+            var reporter=FindFirstObjectByType<QuestWorldStateReporter>();
+            var emitted=reporter?.PaintingStateChanged(GetComponent<AIEditableObject>(),oldState,normalized,physicalAlignmentConfirmed,manager?.sessionId,QuestCanonicalSetIds.Normalize(manager?.activeQuestSetId))??false;
+            DreamCodeVR2ClientLogger.Event("quest","PAINTING_SEMANTIC_STATE_CHANGED",null,new { object_id=Id(),old_state=oldState,new_state=normalized,physical_alignment_confirmed=physicalAlignmentConfirmed,session_id=manager?.sessionId,canonical_set_id=QuestCanonicalSetIds.Normalize(manager?.activeQuestSetId),quest_world_state_emitted=emitted });
+            eventBus?.Publish(QuestEventType.ObjectStateChanged,Id(),null,normalized);
+        }
+        private void ApplySemanticStateWithoutEmission(string state)
+        {
+            semanticState=(state??"crooked").Trim().ToLowerInvariant();
+            var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();
+            semantic.state=semanticState;
+            IsAligned=semanticState=="aligned";
+        }
+        private bool ShouldAutoRevealClue()
+        {
+            if(!clueToReveal)return false;
+            var manager=FindFirstObjectByType<ExperimentConditionManager>();
+            if(manager==null)return true;
+            var normalizedSetId=QuestCanonicalSetIds.Normalize(manager.activeQuestSetId);
+            var isCanonicalFixedSet=normalizedSetId=="set_a"||normalizedSetId=="set_b"||normalizedSetId=="set_c";
+            return manager.IsDynamicStorytelling||!isCanonicalFixedSet;
+        }
+        private void NormalizeAnchorConfiguration(){crookedAnchor=DetachAnchorFromPaintingHierarchy(crookedAnchor,"crooked_anchor");alignedAnchor=DetachAnchorFromPaintingHierarchy(alignedAnchor,"aligned_anchor");}
+        private Transform DetachAnchorFromPaintingHierarchy(Transform anchor,string anchorRole)
+        {
+            if(!anchor||anchor==transform||!anchor.IsChildOf(transform))return anchor;
+            var worldPosition=anchor.position;
+            var worldRotation=anchor.rotation;
+            var stableParent=transform.parent;
+            anchor.SetParent(stableParent,true);
+            anchor.SetPositionAndRotation(worldPosition,worldRotation);
+            DreamCodeVR2ClientLogger.Event("quest","PAINTING_ANCHOR_REPARENTED",null,new { object_id=Id(),anchor_role=anchorRole,anchor_path=TransformPath(anchor),stable_parent_path=TransformPath(stableParent),anchor_world_position=anchor.position,anchor_world_rotation=anchor.rotation.eulerAngles });
+            return anchor;
+        }
+        private float AlignmentPositionError()=>!alignedAnchor?float.PositiveInfinity:Vector3.Distance(transform.position,alignedAnchor.position);
+        private float AlignmentRotationError()=>!alignedAnchor?float.PositiveInfinity:Quaternion.Angle(transform.rotation,alignedAnchor.rotation);
+        private bool IsPhysicallyAligned()=>alignedAnchor&&AlignmentPositionError()<=alignmentPositionTolerance&&AlignmentRotationError()<=alignmentRotationTolerance;
+        private void EmitAlignmentCheck(float positionError,float rotationError,bool physicallyAligned,string result)
+        {
+            DreamCodeVR2ClientLogger.Event("quest","PAINTING_ALIGNMENT_CHECK",null,new { object_id=Id(),painting_transform_path=TransformPath(transform),aligned_anchor_path=TransformPath(alignedAnchor),painting_world_position=transform.position,anchor_world_position=alignedAnchor?alignedAnchor.position:Vector3.zero,painting_world_rotation=transform.rotation.eulerAngles,anchor_world_rotation=alignedAnchor?alignedAnchor.rotation.eulerAngles:Vector3.zero,position_error=positionError,rotation_error_degrees=rotationError,position_tolerance=alignmentPositionTolerance,rotation_tolerance=alignmentRotationTolerance,physically_aligned=physicallyAligned,result });
+        }
+        private static string TransformPath(Transform node)
+        {
+            if(!node)return null;
+            var path=node.name;
+            while(node.parent){node=node.parent;path=node.name+"/"+path;}
+            return path;
+        }
         private string Id()=>GetComponent<AIEditableObject>()?.objectId??gameObject.name;
     }
 
@@ -432,6 +540,13 @@ namespace DreamCodeVR2.Quest
         public bool IsActive { get; private set; } public string ColorProfile { get; private set; }="default"; public SceneContextTransmitter sceneContext; public QuestEventBus eventBus;
         public Light AuthoritativeLight=>authoritativeLight;
         public void SetLampState(bool active){IsActive=active;var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();semantic.state=active?"active":"inactive";eventBus?.Publish(QuestEventType.ObjectStateChanged,Id(),null,semantic.state);sceneContext?.SendSceneContextSnapshot("lamp state");DreamCodeVR2ClientLogger.Event("quest","LAMP_STATE_CHANGED",null,new { object_id=Id(), active });}
+        public void ResetToDefaultProfile()
+        {
+            if(TryResolveAuthoritativeLight(out var light,out _)&&authoredLightColorCaptured)light.color=authoredLightColor;
+            ColorProfile="default";
+            var semantic=GetComponent<AuthoringSemanticState>()??gameObject.AddComponent<AuthoringSemanticState>();
+            semantic.state=IsActive?"active":"inactive";
+        }
         public void SetColorProfile(string profile){TrySetColorProfile(profile,out _);}
         public bool TrySetColorProfile(string profile,out string error)
         {
@@ -496,6 +611,7 @@ namespace DreamCodeVR2.Quest
             DreamCodeVR2ClientLogger.Event("quest",string.IsNullOrWhiteSpace(text)?"QUEST_CLUE_TEXT_FALLBACK":"QUEST_CLUE_TEXT_APPLIED",null,new { clue_id=GetComponent<AIEditableObject>()?.objectId,has_renderer=renderedText!=null });
             gameObject.SetActive(visible);
         }
+        public void SetVisible(bool visible){gameObject.SetActive(visible);}
         public void ResetToDefault(bool visible){ResolveRenderer();CaptureDefaultText();CaptureDefaultTransform();transform.SetParent(defaultParent,true);transform.SetPositionAndRotation(defaultPosition,defaultRotation);transform.localScale=defaultScale;QuestText=defaultText;if(renderedText)renderedText.text=defaultText;gameObject.SetActive(visible);}
         private void ResolveRenderer(){if(!renderedText)renderedText=GetComponentInChildren<TMP_Text>(true);}
         private void CaptureDefaultText(){if(defaultText==null&&renderedText)defaultText=renderedText.text??string.Empty;}
@@ -511,12 +627,20 @@ namespace DreamCodeVR2.Quest
         public SceneContextTransmitter sceneContext;
         public bool NotifyPlaced(AIEditableObject item)
         {
-            if(!anchor||!item)return false; item.transform.SetParent(anchor.transform,true);anchor.SetOccupied(true);eventBus?.Publish(QuestEventType.ObjectPlacedInZone,item.objectId,anchor.anchorId);sceneContext?.SendSceneContextSnapshot("object placed at anchor");DreamCodeVR2ClientLogger.Event("quest","OBJECT_PLACED_AT_ANCHOR",null,new { object_id=item.objectId, anchor_id=anchor.anchorId });return true;
+            if(!anchor||!item)return false; item.transform.SetParent(anchor.transform,true);anchor.SetOccupied(true);sceneContext?.SendSceneContextSnapshot("object placed at anchor");FindFirstObjectByType<QuestWorldStateReporter>()?.ObjectAnchorChanged(item,anchor.anchorId);eventBus?.Publish(QuestEventType.ObjectPlacedInZone,item.objectId,anchor.anchorId);DreamCodeVR2ClientLogger.Event("quest","OBJECT_PLACED_AT_ANCHOR",null,new { object_id=item.objectId, anchor_id=anchor.anchorId });return true;
         }
         private void OnTriggerEnter(Collider other)
         {
             var item=other ? other.GetComponentInParent<AIEditableObject>() : null;
             if(item) NotifyPlaced(item);
+        }
+        private void OnTriggerExit(Collider other)
+        {
+            var item=other ? other.GetComponentInParent<AIEditableObject>() : null;
+            if(!item||!anchor)return;
+            if(item.transform.parent==anchor.transform)item.transform.SetParent(anchor.transform.parent,true);
+            FindFirstObjectByType<SceneContextTransmitter>()?.SendSceneContextSnapshot("object left anchor");
+            FindFirstObjectByType<QuestWorldStateReporter>()?.ObjectAnchorChanged(item,null);
         }
     }
 }

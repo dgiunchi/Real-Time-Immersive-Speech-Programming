@@ -3,6 +3,8 @@ using NUnit.Framework;
 using Newtonsoft.Json;
 using System;
 using System.Reflection;
+using System.Collections;
+using System.Collections.Generic;
 using DreamCodeVR2.ContextBridge;
 using DreamCodeVR2.Quest;
 using DreamCodeVR2.SceneContext;
@@ -259,6 +261,85 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             presenter.ShowServerFeedback("Command not understood.","command_not_understood","server_rejection","request-2","command-2");Assert.That(text.text,Is.EqualTo("Feedback: Command not understood."));ui.ClearParticipantCommandFeedback();Assert.That(text.text,Is.EqualTo("Feedback: Ready."));
         }
 
+        [Test] public void SuccessfulPaintingExecutionMarksCommandIdAsTerminalAndDuplicateExecutionIsIgnored()
+        {
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.condition=ExperimentCondition.VoiceCommandBaseline;
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var executor=root.AddComponent<PredefinedVoiceCommandExecutor>();protocol.predefinedCommandExecutor=executor;protocol.conditionManager=manager;
+            var painting=CreateEditable("painting_001");
+            var capabilities=painting.gameObject.AddComponent<VoiceCommandCapabilities>();capabilities.predefinedVoiceActions=new[]{"MOVE_TO_PRESET"};
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();
+            controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);
+            controller.alignedAnchor=CreateAnchor("aligned",painting.transform,Quaternion.Euler(0,0,15));
+            InvokePrivate(protocol,"ExecutePredefined",new PredefinedVoiceCommand{commandId="paint-1",command="MOVE_TO_PRESET",targetObjectId="painting_001",preset="aligned"});
+            InvokePrivate(protocol,"ExecutePredefined",new PredefinedVoiceCommand{commandId="paint-1",command="MOVE_TO_PRESET",targetObjectId="painting_001",preset="aligned"});
+            Assert.That(controller.IsAligned,Is.True);
+            Assert.That((bool)InvokePrivate(protocol,"IsDuplicatePredefinedExecution","paint-1"),Is.True);
+            var terminal=(ICollection)GetPrivateField(protocol,"terminalSuccessfulPredefinedCommandIds");
+            Assert.That(terminal.Count,Is.EqualTo(1));
+        }
+
+        [Test] public void PaintingTryAlignDetachesSceneAnchorsFromMovedHierarchyBeforeValidation()
+        {
+            var painting=CreateEditable("painting_001");
+            painting.transform.rotation=Quaternion.Euler(0,270,30);
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();
+            controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);
+            controller.alignedAnchor=CreateAnchor("aligned",painting.transform,Quaternion.Euler(0,0,-30));
+
+            Assert.That(controller.alignedAnchor.IsChildOf(painting.transform),Is.True);
+            Assert.That(controller.TryAlign(out var error),Is.True,error);
+            Assert.That(controller.alignedAnchor.IsChildOf(painting.transform),Is.False);
+            Assert.That(controller.crookedAnchor.IsChildOf(painting.transform),Is.False);
+            Assert.That(Vector3.Distance(painting.transform.position,controller.alignedAnchor.position),Is.LessThan(.0001f));
+            Assert.That(Quaternion.Angle(painting.transform.rotation,controller.alignedAnchor.rotation),Is.LessThan(.0001f));
+        }
+
+        [Test] public void PaintingTryAlignFailsSafelyWhenAlignedAnchorIsMissing()
+        {
+            var painting=CreateEditable("painting_001");
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();
+            controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);
+
+            Assert.That(controller.TryAlign(out var error),Is.False);
+            Assert.That(error,Is.EqualTo("PaintingAlignedAnchor requires manual Scene View rotation."));
+            Assert.That(controller.IsAligned,Is.False);
+        }
+
+        [Test] public void PredefinedPaintingExecutionSucceedsForSceneStyleNestedAnchors()
+        {
+            var painting=CreateEditable("painting_001");
+            painting.transform.rotation=Quaternion.Euler(0,270,30);
+            var capabilities=painting.gameObject.AddComponent<VoiceCommandCapabilities>();
+            capabilities.predefinedVoiceActions=new[]{"MOVE_TO_PRESET"};
+            capabilities.predefinedPresets=new[]{"aligned"};
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();
+            controller.crookedAnchor=CreateAnchor("PaintingCrookedAnchor",painting.transform,Quaternion.identity);
+            controller.alignedAnchor=CreateAnchor("PaintingAlignedAnchor",painting.transform,Quaternion.Euler(0,0,-30));
+            var executor=root.AddComponent<PredefinedVoiceCommandExecutor>();
+
+            var result=executor.Execute(new PredefinedVoiceCommand{commandId="paint-scene",command="MOVE_TO_PRESET",targetObjectId="painting_001",preset="aligned"});
+
+            Assert.That(result.success,Is.True,result.message);
+            Assert.That(result.error,Is.Null);
+            Assert.That(controller.IsAligned,Is.True);
+        }
+
+        [Test] public void LatePredefinedFailureIsSuppressedAfterLocalPaintingSuccess()
+        {
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.condition=ExperimentCondition.VoiceCommandBaseline;
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var executor=root.AddComponent<PredefinedVoiceCommandExecutor>();protocol.predefinedCommandExecutor=executor;protocol.conditionManager=manager;
+            var painting=CreateEditable("painting_001");
+            var capabilities=painting.gameObject.AddComponent<VoiceCommandCapabilities>();capabilities.predefinedVoiceActions=new[]{"MOVE_TO_PRESET"};
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();
+            controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);
+            controller.alignedAnchor=CreateAnchor("aligned",painting.transform,Quaternion.Euler(0,0,15));
+            InvokePrivate(protocol,"ExecutePredefined",new PredefinedVoiceCommand{commandId="paint-2",command="MOVE_TO_PRESET",targetObjectId="painting_001",preset="aligned"});
+            Assert.That((bool)InvokePrivate(protocol,"ShouldSuppressPredefinedFailureFeedback","paint-2","server_rejection"),Is.True);
+            Assert.That((bool)InvokePrivate(protocol,"ShouldSuppressPredefinedFailureFeedback","other-command","server_rejection"),Is.False);
+        }
+
         [Test] public void C1FailureFeedbackDefaultDurationIsReadable()
         {
             var ui=root.AddComponent<DreamCodeVR2.UI.DreamCodeVRAuthoringUIController>();
@@ -288,12 +369,101 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
         [Test] public void CausalPaintingTaskCompletesWhileItsClueIsStillHidden()
         {
             var harness=CreateHarness("PAINTING_ALIGNED","painting_001");
-            var painting=CreateEditable("painting_001"); var controller=painting.gameObject.AddComponent<QuestPaintingController>();controller.eventBus=harness.bus;
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.sessionId="session-1";manager.activeQuestSetId="set_a_instance_1";
+            var painting=CreateEditable("painting_001"); var controller=painting.gameObject.AddComponent<QuestPaintingController>();controller.eventBus=harness.bus;controller.sceneContext=root.AddComponent<SceneContextTransmitter>();
             controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);controller.alignedAnchor=CreateAnchor("aligned",painting.transform,Quaternion.Euler(0,0,15));
             var clue=new GameObject("clue_note_001");clue.transform.SetParent(root.transform);clue.SetActive(false);
             Assert.That(controller.TryAlign(out var error),Is.True,error);
             Assert.That(clue.activeSelf,Is.False);
             Assert.That(harness.state.CompletedTaskCount,Is.EqualTo(1));
+            Assert.That(reporter.LastPreparedPayload,Is.Not.Null);
+            Assert.That((string)reporter.LastPreparedPayload["type"],Is.EqualTo("QuestWorldStateEvent"));
+            Assert.That((string)reporter.LastPreparedPayload["event_type"],Is.EqualTo("PAINTING_STATE_CHANGED"));
+            Assert.That((string)reporter.LastPreparedPayload["session_id"],Is.EqualTo("session-1"));
+            Assert.That((string)reporter.LastPreparedPayload["canonical_set_id"],Is.EqualTo("set_a"));
+            Assert.That((string)reporter.LastPreparedPayload["object_id"],Is.EqualTo("painting_001"));
+            Assert.That((string)reporter.LastPreparedPayload["semantic_state"]?["painting_001"],Is.EqualTo("aligned"));
+            Assert.That(reporter.LastPreparedPayload["world_state"],Is.Null);
+        }
+
+        [Test] public void PaintingWorldStateEventIsPreparedBeforeTaskCompletedForSameTransition()
+        {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.sessionId="session-2";manager.activeQuestSetId="set_b";
+            var harness=CreateHarness("PAINTING_ALIGNED","painting_001");
+            var orderedEvents=new System.Collections.Generic.List<string>();
+            reporter.EventPrepared += _ => orderedEvents.Add("world_state");
+            harness.bus.Published += evt => { if(evt.type==QuestEventType.TaskCompleted) orderedEvents.Add("task_completed"); };
+            var painting=CreateEditable("painting_001"); var controller=painting.gameObject.AddComponent<QuestPaintingController>();controller.eventBus=harness.bus;controller.sceneContext=root.AddComponent<SceneContextTransmitter>();
+            controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);controller.alignedAnchor=CreateAnchor("aligned",painting.transform,Quaternion.Euler(0,0,15));
+            Assert.That(controller.TryAlign(out var error),Is.True,error);
+            CollectionAssert.AreEqual(new[]{"world_state","task_completed"},orderedEvents);
+        }
+
+        [Test] public void PaintingAlignedTransitionDoesNotSpamDuplicateWorldStateEvents()
+        {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.sessionId="session-3";manager.activeQuestSetId="set_c";
+            var painting=CreateEditable("painting_001");
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();controller.sceneContext=root.AddComponent<SceneContextTransmitter>();
+            controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);controller.alignedAnchor=CreateAnchor("aligned",painting.transform,Quaternion.Euler(0,0,15));
+            var count=0;
+            reporter.EventPrepared += _ => count++;
+            Assert.That(controller.TryAlign(out var error),Is.True,error);
+            Assert.That(controller.TryAlign(out error),Is.True,error);
+            Assert.That(count,Is.EqualTo(1));
+        }
+
+        [Test] public void PaintingResetClearsAlignedSemanticStateWithoutSendingTransitionSpam()
+        {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.sessionId="session-4";manager.activeQuestSetId="set_a";
+            var painting=CreateEditable("painting_001");
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();controller.sceneContext=root.AddComponent<SceneContextTransmitter>();
+            controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);controller.alignedAnchor=CreateAnchor("aligned",painting.transform,Quaternion.Euler(0,0,15));
+            var count=0;
+            reporter.EventPrepared += _ => count++;
+            Assert.That(controller.TryAlign(out var error),Is.True,error);
+            controller.ResetCrooked();
+            Assert.That(controller.IsAligned,Is.False);
+            Assert.That(painting.GetComponent<AuthoringSemanticState>()?.state,Is.EqualTo("crooked"));
+            Assert.That(count,Is.EqualTo(1));
+        }
+
+        [Test] public void PaintingResetRestoresCrookedPoseAfterAlignment()
+        {
+            var painting=CreateEditable("painting_001");
+            painting.transform.rotation=Quaternion.Euler(0,270,30);
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();
+            controller.crookedAnchor=CreateAnchor("PaintingCrookedAnchor",painting.transform,Quaternion.identity);
+            controller.alignedAnchor=CreateAnchor("PaintingAlignedAnchor",painting.transform,Quaternion.Euler(0,0,-30));
+
+            Assert.That(controller.TryAlign(out var error),Is.True,error);
+            controller.ResetCrooked();
+
+            Assert.That(controller.IsAligned,Is.False);
+            Assert.That(Quaternion.Angle(painting.transform.rotation,controller.crookedAnchor.rotation),Is.LessThan(.0001f));
+            Assert.That(Quaternion.Angle(painting.transform.rotation,controller.alignedAnchor.rotation),Is.GreaterThan(8f));
+        }
+
+        [TestCase("set_a_instance_1","set_a")]
+        [TestCase("set_b_instance_1","set_b")]
+        [TestCase("set_c_instance_1","set_c")]
+        public void PaintingStateEventUsesSharedCanonicalSetNormalization(string activeSetId,string expectedCanonicalSetId)
+        {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.sessionId="session-shared";manager.activeQuestSetId=activeSetId;
+            var painting=CreateEditable("painting_001");
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();controller.sceneContext=root.AddComponent<SceneContextTransmitter>();
+            controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);controller.alignedAnchor=CreateAnchor("aligned",painting.transform,Quaternion.Euler(0,0,15));
+            Assert.That(controller.TryAlign(out var error),Is.True,error);
+            Assert.That((string)reporter.LastPreparedPayload["canonical_set_id"],Is.EqualTo(expectedCanonicalSetId));
         }
 
         [Test] public void BootstrapWiresRuntimeValidatorIntoTheEventDrivenValidator()
@@ -306,11 +476,48 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
         [Test] public void CausalDrawerTaskCompletesWhileItsNoteIsStillHidden()
         {
             var harness=CreateHarness("OBJECT_OPEN","table_drawer_001");
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
             var drawerObject=CreateEditable("table_drawer_001");var drawer=drawerObject.gameObject.AddComponent<ExperimentalDrawerController>();drawer.eventBus=harness.bus;drawer.duration=0;
             drawer.closedAnchor=CreateAnchor("closed",drawerObject.transform,Quaternion.identity);drawer.openAnchor=CreateAnchor("open",drawerObject.transform,Quaternion.identity);drawer.openAnchor.position+=Vector3.forward;
             var note=new GameObject("clue_note_001");note.transform.SetParent(root.transform);note.SetActive(false);
             Assert.That(drawer.TryOpen(out var error),Is.True,error);
             Assert.That(note.activeSelf,Is.False);Assert.That(harness.state.CompletedTaskCount,Is.EqualTo(1));
+            Assert.That((string)reporter.LastPreparedPayload["event_type"],Is.EqualTo("DRAWER_STATE_CHANGED"));
+            Assert.That((string)reporter.LastPreparedPayload["object_id"],Is.EqualTo("table_drawer_001"));
+            Assert.That((string)reporter.LastPreparedPayload["state"],Is.EqualTo("open"));
+            Assert.That(reporter.LastPreparedPayload["anchor_id"],Is.Null);
+        }
+
+        [Test] public void DoorStateChangedUsesExactStateFieldAndPrecedesLocalTaskCompletion()
+        {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var harness=CreateHarness("DOOR_OPEN","door_001");
+            var orderedEvents=new List<string>();
+            reporter.EventPrepared += _ => orderedEvents.Add("world_state");
+            harness.bus.Published += evt => { if(evt.type==QuestEventType.TaskCompleted) orderedEvents.Add("task_completed"); };
+            var doorRoot=CreateEditable("door_001");var leaf=new GameObject("Door").transform;leaf.SetParent(doorRoot.transform,false);var closed=CreateAnchor("closed",root.transform,Quaternion.identity);var open=CreateAnchor("open",root.transform,Quaternion.Euler(0,90,0));
+            var controller=doorRoot.gameObject.AddComponent<QuestDoorController>();controller.eventBus=harness.bus;controller.sceneContext=root.AddComponent<SceneContextTransmitter>();controller.movingDoor=leaf;controller.closedAnchor=closed;controller.openAnchor=open;
+            Assert.That(controller.TryOpen(out var error),Is.True,error);
+            Assert.That((string)reporter.LastPreparedPayload["event_type"],Is.EqualTo("DOOR_STATE_CHANGED"));
+            Assert.That((string)reporter.LastPreparedPayload["object_id"],Is.EqualTo("door_001"));
+            Assert.That((string)reporter.LastPreparedPayload["state"],Is.EqualTo("open"));
+            CollectionAssert.AreEqual(new[]{"world_state","task_completed"},orderedEvents);
+        }
+
+        [Test] public void BasketPlacementEmitsExactCanonicalAnchorField()
+        {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var harness=CreateHarness("OBJECT_AT_ANCHOR","sphere_001","basket_001.basket_inside_anchor");
+            var anchorObject=new GameObject("basket_inside_anchor");anchorObject.transform.SetParent(root.transform);var anchor=anchorObject.AddComponent<AuthoringAnchor>();anchor.anchorId="basket_001.basket_inside_anchor";
+            var monitor=anchorObject.AddComponent<QuestPlacementMonitor>();monitor.anchor=anchor;monitor.eventBus=harness.bus;monitor.sceneContext=root.AddComponent<SceneContextTransmitter>();
+            var sphere=CreateEditable("sphere_001");
+            Assert.That(monitor.NotifyPlaced(sphere),Is.True);
+            Assert.That((string)reporter.LastPreparedPayload["event_type"],Is.EqualTo("OBJECT_ANCHOR_CHANGED"));
+            Assert.That((string)reporter.LastPreparedPayload["object_id"],Is.EqualTo("sphere_001"));
+            Assert.That((string)reporter.LastPreparedPayload["anchor_id"],Is.EqualTo("basket_001.basket_inside_anchor"));
         }
 
         [Test] public void CausalLockTaskCompletesWhileItsDrawerRemainsClosed()
@@ -376,6 +583,20 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             Assert.That(harness.state.CompletedTaskCount,Is.EqualTo(0));
             clue.gameObject.SetActive(true);harness.bus.Publish(QuestEventType.ObjectStateChanged,"clue_note_001",null,"revealed");
             Assert.That(harness.state.CompletedTaskCount,Is.EqualTo(1));
+        }
+
+        [Test] public void CanonicalPaintingDoesNotAutonomouslyRevealAssignedClue()
+        {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.sessionId="session-paint";manager.activeQuestSetId="set_a_instance_1";manager.condition=ExperimentCondition.VoiceCommandBaseline;
+            var harness=CreateHarness("PAINTING_ALIGNED","painting_001");
+            var painting=CreateEditable("painting_001");var clue=CreateEditable("clue_note_001");clue.gameObject.SetActive(false);
+            var controller=painting.gameObject.AddComponent<QuestPaintingController>();controller.eventBus=harness.bus;controller.sceneContext=root.AddComponent<SceneContextTransmitter>();controller.clueToReveal=clue.gameObject;
+            controller.crookedAnchor=CreateAnchor("crooked",painting.transform,Quaternion.identity);controller.alignedAnchor=CreateAnchor("aligned",painting.transform,Quaternion.Euler(0,0,15));
+            Assert.That(controller.TryAlign(out var error),Is.True,error);
+            Assert.That(clue.gameObject.activeSelf,Is.False);
+            Assert.That((string)reporter.LastPreparedPayload["event_type"],Is.EqualTo("PAINTING_STATE_CHANGED"));
         }
 
         [Test] public void ActionTasksDropVisibilitySideEffectsButDiscoveryTasksKeepThem()
@@ -476,9 +697,47 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
 
         [Test] public void A1DrawerContentsRemainHiddenUntilThePhysicalLockedDrawerOpens()
         {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
             var drawerItem=CreateEditable("table_drawer_002");var drawer=drawerItem.gameObject.AddComponent<ExperimentalDrawerController>();drawer.duration=0;drawer.closedAnchor=CreateAnchor("closed",root.transform,Quaternion.identity);drawer.openAnchor=CreateAnchor("open",root.transform,Quaternion.identity);drawer.openAnchor.position=Vector3.forward;
             var key=CreateEditable("key_002");var note=CreateEditable("clue_note_002");var reveal=drawerItem.gameObject.AddComponent<QuestDrawerContentsReveal>();reveal.Configure("set_a_instance_1","table_drawer_002",new[]{key.gameObject,note.gameObject});
+            var events=new List<Newtonsoft.Json.Linq.JObject>();
+            reporter.EventPrepared += payload => events.Add(payload);
             Assert.That(key.gameObject.activeSelf,Is.False);Assert.That(drawer.TryOpen(out var error),Is.True,error);Assert.That(key.gameObject.activeSelf,Is.True);Assert.That(note.gameObject.activeSelf,Is.True);
+            Assert.That(events.Exists(payload=>(string)payload["event_type"]=="DRAWER_STATE_CHANGED"&&(string)payload["state"]=="open"),Is.True);
+            var revealEvent=events.Find(payload=>(string)payload["event_type"]=="OBJECT_REVEALED"&&(string)payload["object_id"]=="key_002");
+            var discoveryEvent=events.Find(payload=>(string)payload["event_type"]=="DRAWER_OPEN_TRANSITION"&&(string)payload["object_id"]=="key_002");
+            Assert.That(revealEvent,Is.Not.Null);
+            Assert.That(discoveryEvent,Is.Not.Null);
+            Assert.That((int)revealEvent["availability_generation"],Is.EqualTo((int)discoveryEvent["availability_generation"]));
+        }
+
+        [Test] public void SetObjectVisibilityRevealsClueWithoutMovingIt()
+        {
+            var dispatcher=root.AddComponent<QuestConsequenceDispatcher>();
+            var protocol=root.AddComponent<AuthoringProtocolClient>();
+            var manager=root.AddComponent<ExperimentConditionManager>();manager.sessionId="s-1";manager.activeQuestSetId="set_a";manager.condition=ExperimentCondition.PlayerAuthoring;
+            var clue=CreateEditable("clue_note_001");clue.gameObject.AddComponent<QuestNoteController>();clue.gameObject.SetActive(false);
+            clue.transform.position=new Vector3(3,4,5);var originalParent=clue.transform.parent;var originalRotation=clue.transform.rotation;
+            var instruction=new QuestConsequenceInstruction{protocolVersion=1,instructionId="vis-1",sessionId="s-1",canonicalSetId="set_a",instructionType="SET_OBJECT_VISIBILITY",targetObjectId="clue_note_001",payload=JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>("{\"visible\":\"true\"}")};
+            var routine=(IEnumerator)typeof(QuestConsequenceDispatcher).GetMethod("ApplyRoutine",BindingFlags.Instance|BindingFlags.NonPublic)?.Invoke(dispatcher,new object[]{instruction});
+            while(routine.MoveNext()){}
+            Assert.That(clue.gameObject.activeSelf,Is.True);
+            Assert.That(clue.transform.parent,Is.SameAs(originalParent));
+            Assert.That(clue.transform.position,Is.EqualTo(new Vector3(3,4,5)));
+            Assert.That(clue.transform.rotation,Is.EqualTo(originalRotation));
+        }
+
+        [Test] public void SetBResetKeepsLock002LockedAndTableDrawer002Closed()
+        {
+            var lockObject=CreateEditable("lock_002");var lockController=lockObject.gameObject.AddComponent<QuestLockController>();lockController.ConfigurePhysicalTarget("table_drawer_002");
+            var drawerObject=CreateEditable("table_drawer_002");var drawer=drawerObject.gameObject.AddComponent<ExperimentalDrawerController>();drawer.closedAnchor=CreateAnchor("closed",root.transform,Quaternion.identity);drawer.openAnchor=CreateAnchor("open",root.transform,Quaternion.identity);drawer.openAnchor.position=Vector3.forward;drawer.TryOpen(out _);
+            var controller=root.AddComponent<QuestInstanceController>();
+            controller.Apply(new QuestInstance{questId="set_b_instance_1",questSetId="set_b",targetDrawerId="table_drawer_002",lockBindings=new[]{new QuestLockBinding{lockId="lock_002",requiredKeyId="key_002",targetObjectId="table_drawer_002"}},initialStates=new[]{new QuestInitialStateBinding{objectId="lock_002",state="locked"},new QuestInitialStateBinding{objectId="table_drawer_002",state="closed"}}});
+            Assert.That(lockController.IsLocked,Is.True);
+            Assert.That(drawer.IsOpen,Is.False);
+            Assert.That(drawer.TryOpen(out var error),Is.False);
+            StringAssert.Contains("locked",error);
         }
 
         [Test] public void CanonicalA1BindingPassesThroughWithoutDrawerRewrite()
@@ -539,6 +798,8 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             state.StartQuest(new QuestPlan{tasks=new System.Collections.Generic.List<QuestTaskSpec>{new QuestTaskSpec{taskId="causal-test",step=1,target=objectId,successConditions=new[]{new RuntimeSuccessCondition{type=conditionType,object_id=objectId,anchor_id=anchorId}}}}});
             return (bus,state);
         }
+        private static object InvokePrivate(object target,string methodName,params object[] args)=>target.GetType().GetMethod(methodName,BindingFlags.Instance|BindingFlags.NonPublic)?.Invoke(target,args);
+        private static object GetPrivateField(object target,string fieldName)=>target.GetType().GetField(fieldName,BindingFlags.Instance|BindingFlags.NonPublic)?.GetValue(target);
         private AIEditableObject CreateEditable(string id){var go=new GameObject(id);go.transform.SetParent(root.transform);var editable=go.AddComponent<AIEditableObject>();editable.objectId=id;return editable;}
         private static Transform CreateAnchor(string name,Transform parent,Quaternion localRotation){var anchor=new GameObject(name).transform;anchor.SetParent(parent,false);anchor.localPosition=Vector3.zero;anchor.localRotation=localRotation;return anchor;}
     }
