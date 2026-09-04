@@ -386,6 +386,49 @@ namespace DreamCodeVR2.ExperimentalAuthoring.Tests.Editor
             Assert.That(NextTaskWireConverter.TryConvert(discovery.task,out var discoverySpec,out var discoveryError),Is.True,discoveryError);Assert.That(discoverySpec.successConditions,Has.Length.EqualTo(2));
         }
 
+        [TestCase("set_a:T2","drawer_discovery:cabinet_drawer_003:sphere_001","cabinet_drawer_003","sphere_001")]
+        [TestCase("set_a:T4","drawer_discovery:table_drawer_001:key_001","table_drawer_001","key_001")]
+        [TestCase("set_b:T2","drawer_discovery:cabinet_drawer_001:key_002","cabinet_drawer_001","key_002")]
+        [TestCase("set_b:T4","drawer_discovery:cabinet_drawer_003:key_001","cabinet_drawer_003","key_001")]
+        [TestCase("set_c:T3","drawer_discovery:table_drawer_001:clue_note_002","table_drawer_001","clue_note_002")]
+        [TestCase("set_c:T4","drawer_discovery:cabinet_drawer_001:sphere_001","cabinet_drawer_001","sphere_001")]
+        public void CanonicalDrawerDiscoveryConditionsConvertWithBothIds(string taskId,string rawCondition,string expectedContainer,string expectedObject)
+        {
+            var wire=new ServerNextTaskDto{task_id=taskId,player_instruction="Find the item.",task_type="drawer_discovery",required_objects=new[]{expectedContainer,expectedObject},success_conditions=new[]{rawCondition}};
+            Assert.That(NextTaskWireConverter.TryConvert(wire,out var task,out var error),Is.True,error);
+            Assert.That(task.successConditions,Has.Length.EqualTo(1));Assert.That(task.successConditions[0].type,Is.EqualTo("DRAWER_DISCOVERY"));Assert.That(task.successConditions[0].container_id,Is.EqualTo(expectedContainer));Assert.That(task.successConditions[0].object_id,Is.EqualTo(expectedObject));
+        }
+
+        [TestCase("drawer_discovery")]
+        [TestCase("drawer_discovery:drawer_only")]
+        [TestCase("drawer_discovery::sphere_001")]
+        [TestCase("drawer_discovery:cabinet_drawer_003:")]
+        public void MalformedDrawerDiscoveryConditionsAreRejectedPrecisely(string rawCondition)
+        {
+            var wire=new ServerNextTaskDto{task_id="bad",player_instruction="Find the item.",success_conditions=new[]{rawCondition}};
+            Assert.That(NextTaskWireConverter.TryConvert(wire,out _,out var error),Is.False);Assert.That(error,Does.Contain("drawer_discovery"));
+        }
+
+        [Test] public void DrawerDiscoveryRequiresQualifiedOpenAndMatchingCurrentGeneration()
+        {
+            var reporter=root.AddComponent<QuestWorldStateReporter>();var validator=root.AddComponent<RuntimeTaskValidator>();
+            var expectedDrawer=CreateEditable("cabinet_drawer_003");var wrongDrawer=CreateEditable("table_drawer_001");var sphere=CreateEditable("sphere_001");sphere.transform.SetParent(wrongDrawer.transform,true);
+            var condition=new RuntimeSuccessCondition{type="DRAWER_DISCOVERY",container_id="cabinet_drawer_003",object_id="sphere_001"};
+            Assert.That(validator.IsSatisfied(condition,"set_a:T2"),Is.False,"visibility/object existence alone must not satisfy discovery");
+            reporter.DrawerOpened("table_drawer_001");Assert.That(validator.IsSatisfied(condition,"set_a:T2"),Is.False,"wrong drawer must not satisfy discovery");
+            sphere.transform.SetParent(expectedDrawer.transform,true);reporter.DrawerOpened("cabinet_drawer_003");Assert.That(validator.IsSatisfied(condition,"set_a:T2"),Is.True,"matching closed-to-open drawer evidence must satisfy discovery");
+            reporter.MarkAvailable(sphere,"cabinet_drawer_003","new_generation");Assert.That(validator.IsSatisfied(condition,"set_a:T2"),Is.False,"stale discovery generation must not satisfy discovery");
+        }
+
+        [Test] public void ConvertedDrawerDiscoveryTaskCanBecomeTheActiveServerSuccessor()
+        {
+            var drawer=CreateEditable("cabinet_drawer_003");CreateEditable("sphere_001");
+            var wire=new ServerNextTaskDto{task_id="set_a:T2",player_instruction="Find the sphere.",task_type="drawer_discovery",required_objects=new[]{drawer.objectId,"sphere_001"},success_conditions=new[]{"drawer_discovery:cabinet_drawer_003:sphere_001"}};
+            Assert.That(FixedQuestWireConverter.TryConvertTask(wire,out var task,out var error),Is.True,error);
+            var state=root.AddComponent<QuestRuntimeState>();state.ActivateAppendedServerTask(task);
+            Assert.That(state.GetCurrentTask()?.taskId,Is.EqualTo("set_a:T2"));
+        }
+
         [Test] public void C1FallbackUsesReadableTextWithoutTechnicalCommandOrId()
         {
             var text=ParticipantFacingText.Describe(new PredefinedVoiceCommand{command="MOVE_TO_PRESET",targetObjectId="painting_001",preset="aligned"});

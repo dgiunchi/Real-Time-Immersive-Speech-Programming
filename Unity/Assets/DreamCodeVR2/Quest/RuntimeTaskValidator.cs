@@ -10,9 +10,9 @@ namespace DreamCodeVR2.Quest
         public bool ValidateNextTask(NextTaskSpec spec, out string error)
         {
             error=null; if(spec==null||string.IsNullOrWhiteSpace(spec.taskId)||string.IsNullOrWhiteSpace(spec.playerInstruction)){error="Task specification is incomplete.";return false;}
-            foreach(var condition in spec.successConditions??Array.Empty<RuntimeSuccessCondition>()){if(!IsAllowed(condition)){error="Task uses a non-allowlisted success condition.";return false;}if(!string.IsNullOrWhiteSpace(condition.object_id)&&AuthoringActionExecutor.FindEditable(condition.object_id)==null){error="Task references an unavailable runtime object: "+condition.object_id;DreamCodeVR2ClientLogger.Warn("c3","C3_TASK_ACTIVATION_REJECTED",error,new { task_id=spec.taskId,object_id=condition.object_id });return false;}if(condition.type=="OBJECT_AT_ANCHOR"&&!HasAnchor(condition.anchor_id)){error="Task references an unavailable anchor: "+condition.anchor_id;DreamCodeVR2ClientLogger.Warn("c3","C3_TASK_ACTIVATION_REJECTED",error,new { task_id=spec.taskId,anchor_id=condition.anchor_id });return false;}} return true;
+            foreach(var condition in spec.successConditions??Array.Empty<RuntimeSuccessCondition>()){if(!IsAllowed(condition)){error="Task uses a non-allowlisted success condition.";return false;}if(!string.IsNullOrWhiteSpace(condition.object_id)&&AuthoringActionExecutor.FindEditable(condition.object_id)==null){error="Task references an unavailable runtime object: "+condition.object_id;DreamCodeVR2ClientLogger.Warn("c3","C3_TASK_ACTIVATION_REJECTED",error,new { task_id=spec.taskId,object_id=condition.object_id });return false;}if(string.Equals(condition.type,"DRAWER_DISCOVERY",StringComparison.OrdinalIgnoreCase)&&AuthoringActionExecutor.FindEditable(condition.container_id)==null){error="Task references an unavailable discovery container: "+condition.container_id;DreamCodeVR2ClientLogger.Warn("quest","FIXED_QUEST_DISCOVERY_CONTAINER_REJECTED",error,new { task_id=spec.taskId,container_id=condition.container_id });return false;}if(condition.type=="OBJECT_AT_ANCHOR"&&!HasAnchor(condition.anchor_id)){error="Task references an unavailable anchor: "+condition.anchor_id;DreamCodeVR2ClientLogger.Warn("c3","C3_TASK_ACTIVATION_REJECTED",error,new { task_id=spec.taskId,anchor_id=condition.anchor_id });return false;}} return true;
         }
-        public bool IsSatisfied(RuntimeSuccessCondition condition)
+        public bool IsSatisfied(RuntimeSuccessCondition condition,string taskId=null)
         {
             if(condition==null)return false; var obj=AuthoringActionExecutor.FindEditable(condition.object_id);
             switch((condition.type??string.Empty).ToUpperInvariant())
@@ -32,6 +32,7 @@ namespace DreamCodeVR2.Quest
                 case "OBJECT_HAS_STATE": return obj&&obj.GetComponent<AuthoringSemanticState>()?.state==condition.value;
                 case "OBJECT_HAS_AFFORDANCE": var a=obj?obj.GetComponent<AuthoringAffordanceState>():null;return a&&a.Get(condition.value);
                 case "OBJECT_GRABBED": return obj&&obj.GetComponent<ExperimentalGrabbableAdapter>()?.IsHeld==true;
+                case "DRAWER_DISCOVERY": return FindFirstObjectByType<QuestWorldStateReporter>()?.EvaluateDrawerDiscovery(taskId,condition.container_id,condition.object_id)==true;
                 case "OBJECT_LINK_ACTIVE": return obj&&obj.GetComponent<AuthoringObjectLink>();
                 case "OBJECT_BEHAVIOR_ACTIVE": return obj&&obj.GetComponent<AuthoringRuntimeBehavior>()?.IsActive==true;
                 case "MULTIPLE_CONDITIONS_ALL": foreach(var child in condition.children??Array.Empty<RuntimeSuccessCondition>())if(!IsSatisfied(child))return false;return true;
@@ -47,6 +48,6 @@ namespace DreamCodeVR2.Quest
         }
         private static bool HasAnchor(string id){if(string.IsNullOrWhiteSpace(id))return false;foreach(var anchor in FindObjectsByType<AuthoringAnchor>(FindObjectsInactive.Include,FindObjectsSortMode.None))if(anchor&&anchor.anchorId==id)return true;return false;}
         private static bool IsAllowed(RuntimeSuccessCondition c)
-        { if(c==null)return false; switch((c.type??string.Empty).ToUpperInvariant()){case "OBJECT_AT_ANCHOR":case "PAINTING_ALIGNED":case "OBJECT_REVEALED":case "OBJECT_HELD":case "OBJECT_OPEN":case "OBJECT_CLOSED":case "LOCK_UNLOCKED":case "OBJECT_ACTIVE":case "OBJECT_INACTIVE":case "DOOR_OPEN":case "AUTHORING_OBJECT_CREATED":case "AUTHORING_PROPERTY_SET":case "OBJECT_HAS_STATE":case "OBJECT_HAS_AFFORDANCE":case "OBJECT_GRABBED":case "OBJECT_USED_WITH":case "OBJECT_LINK_ACTIVE":case "OBJECT_BEHAVIOR_ACTIVE":case "SEQUENCE_COMPLETED":case "MULTIPLE_CONDITIONS_ALL":case "MULTIPLE_CONDITIONS_ANY":return true;default:return false;} }
+        { if(c==null)return false; switch((c.type??string.Empty).ToUpperInvariant()){case "OBJECT_AT_ANCHOR":case "PAINTING_ALIGNED":case "OBJECT_REVEALED":case "OBJECT_HELD":case "OBJECT_OPEN":case "OBJECT_CLOSED":case "LOCK_UNLOCKED":case "OBJECT_ACTIVE":case "OBJECT_INACTIVE":case "DOOR_OPEN":case "DRAWER_DISCOVERY":case "AUTHORING_OBJECT_CREATED":case "AUTHORING_PROPERTY_SET":case "OBJECT_HAS_STATE":case "OBJECT_HAS_AFFORDANCE":case "OBJECT_GRABBED":case "OBJECT_USED_WITH":case "OBJECT_LINK_ACTIVE":case "OBJECT_BEHAVIOR_ACTIVE":case "SEQUENCE_COMPLETED":case "MULTIPLE_CONDITIONS_ALL":case "MULTIPLE_CONDITIONS_ANY":return true;default:return false;} }
     }
 }

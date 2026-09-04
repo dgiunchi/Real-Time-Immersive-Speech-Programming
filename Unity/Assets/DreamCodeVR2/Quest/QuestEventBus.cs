@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace DreamCodeVR2.Quest
 {
-    public enum QuestEventType { ObjectPickedUp, ObjectDropped, ObjectPlacedInZone, ObjectStateChanged, ButtonPressed, LockOpened, ObjectCreated, BehaviorAdded, LinkActivated, HintRequested, IncorrectAttempt, TaskStarted, TaskCompleted }
+    public enum QuestEventType { ObjectPickedUp, ObjectDropped, ObjectPlacedInZone, ObjectStateChanged, DrawerDiscovery, ButtonPressed, LockOpened, ObjectCreated, BehaviorAdded, LinkActivated, HintRequested, IncorrectAttempt, TaskStarted, TaskCompleted }
     [Serializable] public class QuestEvent { public QuestEventType type; public string objectId; public string secondaryObjectId; public string detail; public long timestamp; }
     public class QuestEventBus : MonoBehaviour
     {

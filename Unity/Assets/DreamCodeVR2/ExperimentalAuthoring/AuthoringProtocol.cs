@@ -111,7 +111,12 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             var conditions=wire.success_conditions??Array.Empty<string>(); var converted=new RuntimeSuccessCondition[conditions.Length];
             for(var index=0;index<conditions.Length;index++)
             {
-                if(!TryConvertCondition(conditions[index],out converted[index])){error="Unsupported success condition: "+(conditions[index]??"<null>");return false;}
+                if(!TryConvertCondition(conditions[index],out converted[index],out var conditionError))
+                {
+                    if(IsDrawerDiscoveryWire(conditions[index]))LogDrawerDiscoveryCondition(wire.task_id,conditions[index],null,false);
+                    error=conditionError??("Unsupported success condition: "+(conditions[index]??"<null>"));return false;
+                }
+                if(string.Equals(converted[index]?.type,"DRAWER_DISCOVERY",StringComparison.OrdinalIgnoreCase))LogDrawerDiscoveryCondition(wire.task_id,conditions[index],converted[index],true);
             }
             NormalizeProtocolObjectReferences(converted,wire.required_objects,out var requiredObjects);
             runtime=new NextTaskSpec{taskId=wire.task_id,title=wire.title,playerInstruction=wire.player_instruction,taskType=wire.task_type,requiredObjects=requiredObjects,successConditions=ApplyCausalSuccessSemantics(wire,converted),dependencies=wire.dependencies,protectedObjects=wire.protected_objects,allowedAuthoringScope=wire.allowed_authoring_scope,allowedSolutionScope=wire.allowed_solution_scope,narrativeContext=wire.narrative_context,candidateObjectIds=wire.candidate_object_ids};
@@ -122,7 +127,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private static void NormalizeProtocolObjectReferences(RuntimeSuccessCondition[] conditions,string[] sourceRequiredObjects,out string[] requiredObjects)
         {
             requiredObjects=sourceRequiredObjects==null?Array.Empty<string>():Array.ConvertAll(sourceRequiredObjects,DreamCodeVR2.Quest.QuestCanonicalIds.Normalize);
-            foreach(var condition in conditions??Array.Empty<RuntimeSuccessCondition>())if(condition!=null)condition.object_id=DreamCodeVR2.Quest.QuestCanonicalIds.Normalize(condition.object_id);
+            foreach(var condition in conditions??Array.Empty<RuntimeSuccessCondition>())if(condition!=null){condition.object_id=DreamCodeVR2.Quest.QuestCanonicalIds.Normalize(condition.object_id);condition.container_id=DreamCodeVR2.Quest.QuestCanonicalIds.Normalize(condition.container_id);}
         }
         // A server task may include a visibility consequence beside its causal action
         // (for example painting_aligned plus object_revealed:clue_note_001). The local
@@ -141,7 +146,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         {
             switch((condition?.type??string.Empty).ToUpperInvariant())
             {
-                case "PAINTING_ALIGNED": case "OBJECT_OPEN": case "LOCK_UNLOCKED": case "OBJECT_ACTIVE": case "OBJECT_AT_ANCHOR": case "DOOR_OPEN": return true;
+                case "PAINTING_ALIGNED": case "OBJECT_OPEN": case "LOCK_UNLOCKED": case "OBJECT_ACTIVE": case "OBJECT_AT_ANCHOR": case "DOOR_OPEN": case "DRAWER_DISCOVERY": return true;
                 default:return false;
             }
         }
@@ -150,11 +155,19 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             var text=((wire?.task_type??string.Empty)+" "+(wire?.player_instruction??string.Empty)).ToLowerInvariant();
             return text.Contains("find ")||text.Contains("retrieve")||text.Contains("inspect")||text.Contains("read ")||text.Contains("pick up")||text.Contains("pickup")||text.Contains("grab ");
         }
-        private static bool TryConvertCondition(string wire,out RuntimeSuccessCondition condition)
+        private static bool TryConvertCondition(string wire,out RuntimeSuccessCondition condition,out string error)
         {
-            condition=null;if(string.IsNullOrWhiteSpace(wire))return false;
-            var parts=wire.Split(':');if(parts.Length<2)return false;
-            var name=parts[0].Trim().ToLowerInvariant();var objectId=parts[1].Trim();if(string.IsNullOrWhiteSpace(objectId))return false;
+            condition=null;error=null;if(string.IsNullOrWhiteSpace(wire)){error="Success condition is empty.";return false;}
+            var parts=wire.Split(':');var name=parts[0].Trim().ToLowerInvariant();
+            if(name=="drawer_discovery")
+            {
+                if(parts.Length!=3){error="drawer_discovery requires exactly container_id and object_id: "+wire;return false;}
+                var containerId=parts[1].Trim();var discoveredObjectId=parts[2].Trim();
+                if(string.IsNullOrWhiteSpace(containerId)||string.IsNullOrWhiteSpace(discoveredObjectId)){error="drawer_discovery requires non-empty container_id and object_id: "+wire;return false;}
+                condition=new RuntimeSuccessCondition{type="DRAWER_DISCOVERY",container_id=containerId,object_id=discoveredObjectId};return true;
+            }
+            if(parts.Length<2){error="Success condition requires a type and object ID: "+wire;return false;}
+            var objectId=parts[1].Trim();if(string.IsNullOrWhiteSpace(objectId)){error="Success condition object ID is empty: "+wire;return false;}
             string type;
             switch(name)
             {
@@ -162,7 +175,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
                 case "painting_aligned": type="PAINTING_ALIGNED";break;
                 case "object_revealed": type="OBJECT_REVEALED";break;
                 case "object_held": type="OBJECT_HELD";break;
-                case "object_at_anchor": if(parts.Length!=3||string.IsNullOrWhiteSpace(parts[2]))return false; condition=new RuntimeSuccessCondition{type="OBJECT_AT_ANCHOR",object_id=objectId,anchor_id=parts[2].Trim()};return true;
+                case "object_at_anchor": if(parts.Length!=3||string.IsNullOrWhiteSpace(parts[2])){error="object_at_anchor requires object_id and anchor_id: "+wire;return false;} condition=new RuntimeSuccessCondition{type="OBJECT_AT_ANCHOR",object_id=objectId,anchor_id=parts[2].Trim()};return true;
                 case "object_open": type="OBJECT_OPEN";break;
                 case "object_closed": type="OBJECT_CLOSED";break;
                 case "lock_unlocked": type="LOCK_UNLOCKED";break;
@@ -170,11 +183,13 @@ namespace DreamCodeVR2.ExperimentalAuthoring
                 case "object_inactive": type="OBJECT_INACTIVE";break;
                 case "door_open": type="DOOR_OPEN";break;
                 case "authoring_object_created": type="AUTHORING_OBJECT_CREATED";break;
-                case "authoring_property_set": if(parts.Length!=3)return false;condition=new RuntimeSuccessCondition{type="AUTHORING_PROPERTY_SET",object_id=objectId,value=parts[2].Trim()};return true;
-                default:return false;
+                case "authoring_property_set": if(parts.Length!=3){error="authoring_property_set requires object_id and property value: "+wire;return false;}condition=new RuntimeSuccessCondition{type="AUTHORING_PROPERTY_SET",object_id=objectId,value=parts[2].Trim()};return true;
+                default:error="Unsupported success condition: "+wire;return false;
             }
             condition=new RuntimeSuccessCondition{type=type,object_id=objectId};return true;
         }
+        private static bool IsDrawerDiscoveryWire(string wire)=>!string.IsNullOrWhiteSpace(wire)&&wire.TrimStart().StartsWith("drawer_discovery",StringComparison.OrdinalIgnoreCase);
+        private static void LogDrawerDiscoveryCondition(string taskId,string raw,RuntimeSuccessCondition condition,bool success)=>DreamCodeVR2ClientLogger.Event("quest","FIXED_QUEST_DISCOVERY_CONDITION_PARSED",null,new { task_id=taskId,raw_condition=raw,container_id=condition?.container_id,object_id=condition?.object_id,success });
     }
     [Serializable]
     [JsonConverter(typeof(TaskPolicyScopeJsonConverter))]
@@ -311,5 +326,5 @@ namespace DreamCodeVR2.ExperimentalAuthoring
             return true;
         }
     }
-    [Serializable] public class RuntimeSuccessCondition { public string type; public string object_id; public string anchor_id; public string value; public RuntimeSuccessCondition[] children; }
+    [Serializable] public class RuntimeSuccessCondition { public string type; public string object_id; public string container_id; public string anchor_id; public string value; public RuntimeSuccessCondition[] children; }
 }

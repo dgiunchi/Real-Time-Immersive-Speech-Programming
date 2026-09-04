@@ -72,7 +72,7 @@ namespace DreamCodeVR2.ExperimentalAuthoring
                 MotionInterrupted?.Invoke(requestedOpen);
                 Log("DRAWER_MOTION_INTERRUPTED", requestedOpen, null, transform.position, target.position);
             }
-            if (IsOpen == requestedOpen && IsAtTarget(target)) { PublishState(requestedOpen); return true; }
+            if (IsOpen == requestedOpen && IsAtTarget(target)) { PublishState(requestedOpen, false); return true; }
             if (duration <= 0f) { SetPose(target); Complete(requestedOpen, target); return true; }
             Log("DRAWER_MOTION_START", requestedOpen, null, transform.position, target.position);
             motion = StartCoroutine(MoveRoutine(requestedOpen, target));
@@ -108,17 +108,20 @@ namespace DreamCodeVR2.ExperimentalAuthoring
         private void Complete(bool requestedOpen, Transform target)
         {
             motion = null;
+            var changed=IsOpen!=requestedOpen;
             IsOpen = requestedOpen;
-            PublishState(requestedOpen);
+            PublishState(requestedOpen, changed);
             Log("DRAWER_MOTION_COMPLETE", requestedOpen, null, transform.position, target.position);
             MotionCompleted?.Invoke(requestedOpen);
         }
 
-        private void PublishState(bool open)
+        private void PublishState(bool open, bool changed)
         {
             var id = GetComponent<AIEditableObject>()?.objectId;
             eventBus?.Publish(QuestEventType.ObjectStateChanged, id, null, open ? "open" : "closed");
-            if(open) FindFirstObjectByType<QuestWorldStateReporter>()?.DrawerOpened(id);
+            var reporter=FindFirstObjectByType<QuestWorldStateReporter>();
+            if(open&&changed) reporter?.DrawerOpened(id);
+            else if(!open&&changed) reporter?.DrawerClosed(id);
             sceneContext?.SendSceneContextSnapshot("drawer state");
         }
 

@@ -18,7 +18,7 @@ namespace DreamCodeVR2.Quest
                 RuntimeSuccessCondition triggeringCondition=null;
                 foreach(var condition in task.successConditions)
                 {
-                    var result=runtimeValidator.IsSatisfied(condition);
+                    var result=runtimeValidator.IsSatisfied(condition,task.taskId);
                     var lockController=condition?.type=="LOCK_UNLOCKED"?AuthoringActionExecutor.FindEditable(condition.object_id)?.GetComponent<QuestLockController>():null;
                     DreamCodeVR2.ExperimentalAuthoring.DreamCodeVR2ClientLogger.Event("quest","TASK_SUCCESS_EVALUATION",null,new { task_id=task.taskId,condition=condition?.type,current_value=result,result,triggering_event_type=evt.type.ToString(),triggering_event_object_id=evt.objectId,lock_id=condition?.object_id,lock_is_unlocked=lockController?.IsUnlocked,lock_controller_instance_id=lockController?lockController.GetInstanceID():0 });
                     if(!result)return;
